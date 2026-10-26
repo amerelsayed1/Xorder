@@ -95,6 +95,9 @@ void main() {
     // lists. A cashier takes a payment method and charges what the restaurant
     // set; they do not invent either.
     'postgres_tender_types_repository.dart',
+    // Where the money goes (XORD-015): read at the till, authored in the back
+    // office over the administrator credential.
+    'postgres_financial_accounts_repository.dart',
     'postgres_service_charges_repository.dart',
     'postgres_order_types_repository.dart',
     'postgres_units_repository.dart',
@@ -118,8 +121,11 @@ void main() {
   const adminRepositories = <String>[
     'postgres_admin_repositories.dart',
     'postgres_catalog_admin_repository.dart',
+    'postgres_business_logo_repository.dart',
     'postgres_receipt_profile_repository.dart',
     'postgres_tender_types_repository.dart',
+    'postgres_financial_accounts_repository.dart',
+    'postgres_financial_accounts_admin_repository.dart',
     'postgres_service_charges_repository.dart',
     'postgres_order_types_repository.dart',
     'postgres_units_repository.dart',

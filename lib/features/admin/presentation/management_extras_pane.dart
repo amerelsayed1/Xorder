@@ -8,6 +8,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/destructive_confirm_dialog.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
@@ -146,6 +147,7 @@ class _ManagementExtrasPaneState extends ConsumerState<ManagementExtrasPane> {
       builder: (context) => _ExtraDialog(
         group: existing,
         categories: categories,
+        languages: ref.read(contentLanguagesNowProvider),
         onSave: (group) async =>
             (await repository.saveOptionGroup(group, by: widget.admin))
                 .refusal,
@@ -331,10 +333,14 @@ class _ExtraDialog extends StatefulWidget {
     required this.group,
     required this.categories,
     required this.onSave,
+    required this.languages,
   });
 
   final OptionGroupDraft? group;
   final List<Category> categories;
+
+  /// Which names the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
   final Future<AdminRefusal?> Function(OptionGroupDraft group) onSave;
 
   @override
@@ -358,7 +364,10 @@ class _ExtraDialogState extends State<_ExtraDialog> {
 
   Future<void> _save() async {
     final strings = context.strings;
-    final (:draft, :error) = _group.toDraft(strings);
+    final (:draft, :error) = _group.toDraft(
+      strings,
+      languages: widget.languages,
+    );
     if (draft == null) {
       setState(() => _error = error);
       return;
@@ -408,26 +417,29 @@ class _ExtraDialogState extends State<_ExtraDialog> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: MenuInput(
-                fieldKey: const Key('extras-name'),
-                controller: _group.nameEn,
-                label: s.extrasLibraryNameEn,
-                hint: s.itemGroupNameEn,
-                onChanged: (_) => _changed(),
+            if (widget.languages.showsEnglish)
+              Expanded(
+                child: MenuInput(
+                  fieldKey: const Key('extras-name'),
+                  controller: _group.nameEn,
+                  label: s.extrasLibraryNameEn,
+                  hint: s.itemGroupNameEn,
+                  onChanged: (_) => _changed(),
+                ),
               ),
-            ),
-            const SizedBox(width: PosSpace.md),
-            Expanded(
-              child: MenuInput(
-                fieldKey: const Key('extras-name-ar'),
-                controller: _group.nameAr,
-                label: s.extrasLibraryNameAr,
-                hint: s.itemGroupNameAr,
-                arabic: true,
-                onChanged: (_) => _changed(),
+            if (widget.languages == ContentLanguages.both)
+              const SizedBox(width: PosSpace.md),
+            if (widget.languages.showsArabic)
+              Expanded(
+                child: MenuInput(
+                  fieldKey: const Key('extras-name-ar'),
+                  controller: _group.nameAr,
+                  label: s.extrasLibraryNameAr,
+                  hint: s.itemGroupNameAr,
+                  arabic: true,
+                  onChanged: (_) => _changed(),
+                ),
               ),
-            ),
           ],
         ),
         const SizedBox(height: PosSpace.xs),
@@ -436,24 +448,27 @@ class _ExtraDialogState extends State<_ExtraDialog> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: MenuInput(
-                fieldKey: const Key('extras-heading'),
-                controller: _group.displayEn,
-                label: s.extrasMenuNameEn,
-                hint: _placeholder(_group.nameEn.text, s),
+            if (widget.languages.showsEnglish)
+              Expanded(
+                child: MenuInput(
+                  fieldKey: const Key('extras-heading'),
+                  controller: _group.displayEn,
+                  label: s.extrasMenuNameEn,
+                  hint: _placeholder(_group.nameEn.text, s),
+                ),
               ),
-            ),
-            const SizedBox(width: PosSpace.md),
-            Expanded(
-              child: MenuInput(
-                fieldKey: const Key('extras-heading-ar'),
-                controller: _group.displayAr,
-                label: s.extrasMenuNameAr,
-                hint: _placeholder(_group.nameAr.text, s),
-                arabic: true,
+            if (widget.languages == ContentLanguages.both)
+              const SizedBox(width: PosSpace.md),
+            if (widget.languages.showsArabic)
+              Expanded(
+                child: MenuInput(
+                  fieldKey: const Key('extras-heading-ar'),
+                  controller: _group.displayAr,
+                  label: s.extrasMenuNameAr,
+                  hint: _placeholder(_group.nameAr.text, s),
+                  arabic: true,
+                ),
               ),
-            ),
           ],
         ),
         const SizedBox(height: PosSpace.xs),
@@ -497,7 +512,12 @@ class _ExtraDialogState extends State<_ExtraDialog> {
           ),
         ],
         const SizedBox(height: PosSpace.lg),
-        OptionRows(group: _group, keyPrefix: 'extras', onChanged: _changed),
+        OptionRows(
+          group: _group,
+          keyPrefix: 'extras',
+          onChanged: _changed,
+          languages: widget.languages,
+        ),
       ],
     );
   }

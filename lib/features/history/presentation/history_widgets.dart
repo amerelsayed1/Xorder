@@ -167,18 +167,27 @@ class HistorySearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final pos = context.pos;
     return SizedBox(
-      width: 220,
+      // Wide enough for the longest hint in either language ("Invoice, table or
+      // customer" / "رقم الفاتورة أو الطاولة أو العميل") without cutting it.
+      width: 280,
       height: PosSize.filterChip,
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         onChanged: onChanged,
+        // **Fills the box.** A TextField is only as tall as its text unless it
+        // is told to expand, so a SizedBox of the chips' height around a bare
+        // one still drew a 25 px strip pinned to the top, beside 38 px chips.
+        expands: true,
+        minLines: null,
+        maxLines: null,
+        textAlignVertical: TextAlignVertical.center,
         style: PosText.mono(size: 13, color: pos.ink),
         decoration: InputDecoration(
           isDense: true,
           hintText: hint,
           hintStyle: PosText.ui(size: 13, color: pos.muted),
-          contentPadding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
+          contentPadding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.zero,
             borderSide: pos.resting,

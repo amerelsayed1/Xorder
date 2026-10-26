@@ -15,6 +15,7 @@ import '../models/service_charge.dart';
 import '../models/supplier.dart';
 import '../models/supplier_invoice.dart';
 import '../models/tender_method.dart';
+import '../models/financial_account.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
 import '../models/discount.dart';
@@ -212,6 +213,25 @@ abstract interface class TenderTypesRepository {
   /// let somebody bring it back — and for a receipt reprint, where the method a
   /// sale was taken on may since have been retired.
   Future<List<TenderMethod>> all({bool includeInactive = false});
+}
+
+/// The places the business keeps its money, and which one each payment method
+/// pays into (XORD-015, stage 1). Read-only for the till, like the payment
+/// methods: a cashier takes a method, they do not choose where it lands.
+///
+/// Nothing reads these to move money yet; stage 1 only shows them.
+abstract interface class FinancialAccountsRepository {
+  /// Accounts in the order the restaurant put them in. [includeInactive] is for
+  /// the back office, which has to show a switched-off one to bring it back.
+  Future<List<FinancialAccount>> accounts({bool includeInactive = false});
+
+  /// Every (payment method, branch) default this restaurant has set.
+  Future<List<TenderAccountDefault>> defaults();
+
+  /// The restaurant's active branches, for tying an account to one and for the
+  /// per-branch default. Read here rather than through the shared branch
+  /// provider so the accounts pane depends on one repository and nothing else.
+  Future<List<PosBranch>> branches();
 }
 
 /// What stock is counted and bought in — kg, litre, a tray of thirty — as the

@@ -16,6 +16,8 @@
 /// that drifts.
 library;
 
+import 'dart:typed_data';
+
 import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../domain/models/receipt_profile.dart';
@@ -43,7 +45,7 @@ enum SlipEmphasis {
 enum SlipRuleWeight { solid, dashed, heavy }
 
 /// The pictures on the slip. Drawn by `paintSlipGlyph`, never an icon font.
-enum SlipGlyph { phone, pin, heart }
+enum SlipGlyph { phone, pin }
 
 sealed class SlipBlock {
   const SlipBlock();
@@ -67,6 +69,18 @@ class SlipCentre extends SlipBlock {
   final bool numeric;
 }
 
+/// The restaurant's logo, as the till holds it (a PNG or JPEG), centred at the
+/// top of the slip.
+///
+/// The bytes, not a decoded picture: a document is data that tests read, and
+/// decoding is the renderers' job — each decodes for its own surface, and a
+/// logo that will not decode is skipped by both, never an error (XORD-024).
+class SlipLogo extends SlipBlock {
+  const SlipLogo(this.bytes);
+
+  final Uint8List bytes;
+}
+
 /// A boxed banner: REPRINT, REFUNDED. Boxed because it has to survive being
 /// photographed and photocopied.
 class SlipStamp extends SlipBlock {
@@ -88,12 +102,25 @@ class SlipRow extends SlipBlock {
     this.value, {
     this.struck = false,
     this.numeric = true,
+    this.amount = false,
+    this.secondary = false,
   });
 
   final String label;
   final String value;
   final bool struck;
   final bool numeric;
+
+  /// The label is the quieter half: a fact about the sale (date, cashier) set
+  /// beside its value, not money. Drawn at `SlipMetrics.bodySecondary`, so the
+  /// value reads first.
+  final bool secondary;
+
+  /// The value is money, with its currency code. Amounts share one width on
+  /// the slip and end at the same edge, so their decimal points stand in one
+  /// line — on an Arabic slip too, where a left-aligned figure would line up
+  /// its first digit instead (XORD-025).
+  final bool amount;
 }
 
 class SlipRule extends SlipBlock {
@@ -104,6 +131,15 @@ class SlipRule extends SlipBlock {
 
 class SlipGap extends SlipBlock {
   const SlipGap([this.dots = 8]);
+
+  /// Between two blocks of one section that are not separated by a rule. Equal
+  /// to `SlipMetrics.spaceMd`; a test holds the two together (this file cannot
+  /// import the sizes, which import this).
+  const SlipGap.medium() : dots = 12;
+
+  /// Between two sections that have no rule between them. Equal to
+  /// `SlipMetrics.spaceSection`.
+  const SlipGap.section() : dots = 20;
 
   final int dots;
 }
@@ -151,11 +187,6 @@ class SlipGrandTotal extends SlipBlock {
   final String currency;
 }
 
-/// A heart between two short rules, under the thank-you.
-class SlipOrnament extends SlipBlock {
-  const SlipOrnament();
-}
-
 /// A rate in basis points as the paper prints it: 1400 is "14", 1250 is
 /// "12.5", 1225 is "12.25".
 ///
@@ -184,7 +215,8 @@ class ReceiptDocument {
   /// Build the slip from what was sold.
   ///
   /// The same arguments `ReceiptPaper` takes, and in the same order, so the
-  /// call sites can hand both the identical values. [tenderMethods] is the
+  /// call sites can hand both the identical values. [logo] is the restaurant's
+  /// picture, or null for none. [tenderMethods] is the
   /// till's configured list, used only to put a tender's Arabic name on an
   /// Arabic slip.
   factory ReceiptDocument.of(
@@ -195,6 +227,7 @@ class ReceiptDocument {
     required String cashierName,
     ReceiptProfile profile = const ReceiptProfile(branchId: 0),
     List<TenderMethod> tenderMethods = TenderMethod.seeded,
+    Uint8List? logo,
   }) {
     final blocks = <SlipBlock>[];
 
@@ -205,12 +238,17 @@ class ReceiptDocument {
     // on it.
     if (data.isReprint) blocks.add(SlipStamp(strings.receiptReprintMark));
     if (data.wasRefunded) {
-      blocks.add(SlipStamp(strings.receiptRefundedMark(data.refunded.format(withCurrency: true))));
+      blocks.add(
+        SlipStamp(
+          strings.receiptRefundedMark(data.refunded.format(withCurrency: true)),
+        ),
+      );
     }
 
-    // No logo. The owner's design has one above the name, and neither the
-    // receipt profile nor the tenant carries an image to put there; inventing
-    // a field for it is a schema change this slip does not get to make.
+    // The restaurant's own logo, above its name, when it has one and the till
+    // is set to print it (the caller passes null otherwise). Nothing of
+    // XOrder's goes up here: the mark is the footer's, at the bottom.
+    if (logo != null && logo.isNotEmpty) blocks.add(SlipLogo(logo));
     final name = profile.tradeName.trim().isEmpty
         ? tenantName
         : profile.tradeName;
@@ -243,8 +281,12 @@ class ReceiptDocument {
 
     // ── Who, when, which ──────────────────────────────────────────────────
     blocks.add(const SlipRule());
-    blocks.add(SlipRow(strings.receiptDate, _date(data.occurredAt)));
-    blocks.add(SlipRow(strings.receiptTime, _time(data.occurredAt)));
+    blocks.add(
+      SlipRow(strings.receiptDate, _date(data.occurredAt), secondary: true),
+    );
+    blocks.add(
+      SlipRow(strings.receiptTime, _time(data.occurredAt), secondary: true),
+    );
     blocks.add(
       data.invoiceNumber == null
           // No number yet: the platform assigns it. PROVISIONAL is what stops
@@ -253,18 +295,30 @@ class ReceiptDocument {
               strings.receiptOrderNumber,
               strings.provisionalInvoice,
               numeric: false,
+              secondary: true,
             )
-          : SlipRow(strings.receiptOrderNumber, data.invoiceNumber!),
+          : SlipRow(
+              strings.receiptOrderNumber,
+              data.invoiceNumber!,
+              secondary: true,
+            ),
     );
     blocks.add(
       SlipRow(
         strings.receiptCashier,
         cashierName.toUpperCase(),
         numeric: false,
+        secondary: true,
       ),
     );
     if (terminalCode.trim().isNotEmpty) {
-      blocks.add(SlipRow(strings.receiptTerminal, terminalCode.trim()));
+      blocks.add(
+        SlipRow(
+          strings.receiptTerminal,
+          terminalCode.trim(),
+          secondary: true,
+        ),
+      );
     }
     blocks.add(
       SlipRow(
@@ -274,20 +328,27 @@ class ReceiptDocument {
           if (data.tableLabel != null) data.tableLabel!,
         ].join(' · '),
         numeric: false,
+        secondary: true,
       ),
     );
 
     // ── What was sold ─────────────────────────────────────────────────────
-    blocks.add(const SlipRule());
+    //
+    // Space, not a rule: the shaded heading of the table is the line.
+    blocks.add(const SlipGap.medium());
     blocks.add(
-      SlipItemsHeader(strings.receiptItem, strings.receiptQty, strings.receiptPrice),
+      SlipItemsHeader(
+        strings.receiptItem,
+        strings.receiptQty,
+        strings.receiptPrice,
+      ),
     );
     for (final line in data.lines) {
       blocks.add(
         SlipItem(
           '${line.name}${line.wasRepriced ? ' *' : ''}',
           '${line.quantity}',
-          line.lineTotal.format(),
+          line.lineTotal.format(withCurrency: true),
           struck: line.isVoided,
         ),
       );
@@ -301,7 +362,13 @@ class ReceiptDocument {
     // and printed a total 28.72 too high — the arithmetic is the one part of
     // that picture this slip does not copy.
     blocks.add(const SlipRule(SlipRuleWeight.dashed));
-    blocks.add(SlipRow(strings.receiptSubtotal, data.subtotal.format()));
+    blocks.add(
+      SlipRow(
+        strings.receiptSubtotal,
+        data.subtotal.format(withCurrency: true),
+        amount: true,
+      ),
+    );
     if (!data.discount.isZero) {
       blocks.add(
         SlipRow(
@@ -309,7 +376,8 @@ class ReceiptDocument {
             final bp? => strings.receiptDiscount(receiptPercent(bp)),
             null => strings.orderDetailDiscount,
           },
-          '-${data.discount.format()}',
+          '-${data.discount.format(withCurrency: true)}',
+          amount: true,
         ),
       );
     }
@@ -320,7 +388,8 @@ class ReceiptDocument {
             final bp? => strings.receiptService(receiptPercent(bp)),
             null => strings.orderDetailService,
           },
-          data.service.format(),
+          data.service.format(withCurrency: true),
+          amount: true,
         ),
       );
     }
@@ -328,13 +397,20 @@ class ReceiptDocument {
     // a zero-rated bottle of water beside a standard-rated meal is two lines —
     // and the bare word otherwise. See `ReceiptData.taxLines`.
     if (data.taxLines.isEmpty) {
-      blocks.add(SlipRow(strings.orderDetailVat, data.vat.format()));
+      blocks.add(
+        SlipRow(
+          strings.orderDetailVat,
+          data.vat.format(withCurrency: true),
+          amount: true,
+        ),
+      );
     } else {
       for (final line in data.taxLines) {
         blocks.add(
           SlipRow(
             strings.receiptVat(receiptPercent(line.rateBp)),
-            line.amount.format(),
+            line.amount.format(withCurrency: true),
+            amount: true,
           ),
         );
       }
@@ -349,7 +425,9 @@ class ReceiptDocument {
     );
 
     // ── How it was paid ───────────────────────────────────────────────────
-    blocks.add(const SlipRule());
+    //
+    // Space under the heavy rule and the total, not a second rule.
+    blocks.add(const SlipGap.section());
     final payments = data.payments;
     if (payments.length == 1) {
       blocks.add(
@@ -367,16 +445,29 @@ class ReceiptDocument {
         blocks.add(
           SlipRow(
             _tenderName(payment, strings, tenderMethods),
-            payment.amount.format(),
+            payment.amount.format(withCurrency: true),
+            amount: true,
           ),
         );
       }
     }
-    blocks.add(SlipRow(strings.receiptPaid, data.paid.format()));
+    blocks.add(
+      SlipRow(
+        strings.receiptPaid,
+        data.paid.format(withCurrency: true),
+        amount: true,
+      ),
+    );
     if (!data.change.isZero) {
-      blocks.add(SlipRow(strings.receiptChange, data.change.format()));
+      blocks.add(
+        SlipRow(
+          strings.receiptChange,
+          data.change.format(withCurrency: true),
+          amount: true,
+        ),
+      );
     }
-    blocks.add(const SlipRule());
+    blocks.add(const SlipGap.section());
 
     // ── Footer ────────────────────────────────────────────────────────────
     //
@@ -407,9 +498,11 @@ class ReceiptDocument {
     final footer = (profile.footerNote ?? '').trim();
     if (footer.isNotEmpty) blocks.add(SlipCentre(footer));
 
-    blocks.add(SlipCentre(strings.receiptThanks, emphasis: SlipEmphasis.strong));
-    blocks.add(SlipCentre(strings.receiptLookForward));
-    blocks.add(const SlipOrnament());
+    // One thank-you (owner, 26 Oct 2026): it was a thank-you, a second line
+    // saying the same and a heart. The restaurant's own words stay above it.
+    blocks.add(
+      SlipCentre(strings.receiptThanks, emphasis: SlipEmphasis.strong),
+    );
     blocks.add(const SlipCentre('xorder.io', emphasis: SlipEmphasis.small));
 
     // Tax figures came from read-only device config rather than the server.

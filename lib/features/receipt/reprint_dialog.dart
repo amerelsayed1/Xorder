@@ -65,11 +65,8 @@ class ReprintDialog extends ConsumerStatefulWidget {
   }) => showDialog<PrintOutcome>(
     context: context,
     barrierColor: context.pos.scrimHeavy,
-    builder: (_) => ReprintDialog(
-      detail: detail,
-      refunds: refunds,
-      approvedBy: approvedBy,
-    ),
+    builder: (_) =>
+        ReprintDialog(detail: detail, refunds: refunds, approvedBy: approvedBy),
   );
 
   @override
@@ -111,7 +108,8 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
                       widget.detail,
                       refunds: widget.refunds,
                     ),
-                    profile: ref.watch(receiptProfileProvider).valueOrNull ??
+                    profile:
+                        ref.watch(receiptProfileProvider).valueOrNull ??
                         const ReceiptProfile(branchId: 0),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
@@ -128,6 +126,7 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
                     tenderMethods:
                         ref.watch(tenderTypesProvider).valueOrNull ??
                         TenderMethod.seeded,
+                    logo: ref.watch(receiptLogoProvider).valueOrNull,
                   ),
                 ),
               ),
@@ -180,6 +179,16 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
     if (by == null) return;
     setState(() => _busy = true);
 
+    // The logo this till holds now (decided: a reprint is not a snapshot of the
+    // original's). Read **before** the reprint is recorded, never between the
+    // record and the print: a dialog dismissed in that gap would leave a
+    // reprint on the ledger that never came out of the printer. Never throws;
+    // none is a slip without one.
+    final logo = await ref
+        .read(receiptLogoProvider.future)
+        .catchError((Object _) => null);
+    if (!mounted) return;
+
     final order = widget.detail.order;
     try {
       await ref
@@ -231,6 +240,7 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
             tenderMethods:
                 ref.read(tenderTypesProvider).valueOrNull ??
                 TenderMethod.seeded,
+            logo: logo,
           ),
           isReprint: true,
           // A reprint never kicks the drawer. No money is moving, and a drawer

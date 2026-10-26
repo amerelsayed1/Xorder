@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/content_languages.dart';
 import '../../domain/models/combo_draft.dart';
 import '../../domain/models/option_group.dart';
 import '../../domain/models/tax.dart';
@@ -17,6 +18,7 @@ import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/menu_import.dart';
+import '../../domain/services/table_batch.dart';
 import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
 import 'pos_database.dart';
@@ -410,6 +412,11 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         }
       }
 
+      // The foreign key proves the category exists, not that it is ours or in
+      // use. Asked here, in the transaction, for the same reason as the SKU.
+      final unavailable = await _categoryUnavailable(tx, product);
+      if (unavailable != null) return AdminResult<Product>.refused(unavailable);
+
       if (product.id == 0) {
         final rows = await tx.execute(
           Sql.named(
@@ -567,11 +574,27 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         CatalogInvalid('A rate cannot be negative.'),
       );
     }
+    // The default group holds the same figure below, and its table refuses
+    // anything over 100% — say so here rather than as a constraint error.
+    if (config.vatBp > 10000) {
+      return const AdminResult.refused(
+        CatalogInvalid('A rate is between 0% and 100%.'),
+      );
+    }
 
     return database.runTx(this.config, (tx) async {
       final existing = await tx.execute(
         Sql.named(
           'SELECT payload FROM pos_money_config WHERE restaurant_id = @r',
+        ),
+        parameters: {'r': restaurantId},
+      );
+      // The rate the ticket actually charges, which is the default group's
+      // whenever one exists — see `TaxConfig.defaultTaxGroup`.
+      final groupBefore = await tx.execute(
+        Sql.named(
+          'SELECT rate_bp FROM pos_tax_groups '
+          'WHERE restaurant_id = @r AND is_default FOR UPDATE',
         ),
         parameters: {'r': restaurantId},
       );
@@ -593,16 +616,41 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         parameters: {'r': restaurantId, 'payload': payload},
       );
 
+      // **The VAT box has to move the rate the till charges.** Once a default
+      // tax group exists (every offline setup seeds one at 14%) the ticket
+      // prices from it and never reads `vat_bp`, so saving only the payload
+      // left a restaurant that typed 0 still charging 14%. One default group
+      // per restaurant is a unique index, so this is one row or none.
+      final groupAfter = await tx.execute(
+        Sql.named(
+          'UPDATE pos_tax_groups SET rate_bp = @vat '
+          'WHERE restaurant_id = @r AND is_default RETURNING rate_bp',
+        ),
+        parameters: {'r': restaurantId, 'vat': config.vatBp},
+      );
+
       await _audit(
         tx,
         by: by,
         action: AuditAction.moneyConfigChanged,
         entityType: AuditAction.entityMoney,
         entityId: '$restaurantId',
-        before: before == null
+        before: before == null && groupBefore.isEmpty
             ? null
-            : {'service_bp': before.serviceBp, 'vat_bp': before.vatBp},
-        after: {'service_bp': config.serviceBp, 'vat_bp': config.vatBp},
+            : {
+                if (before != null) ...{
+                  'service_bp': before.serviceBp,
+                  'vat_bp': before.vatBp,
+                },
+                if (groupBefore.isNotEmpty)
+                  'default_group_rate_bp': groupBefore.first[0],
+              },
+        after: {
+          'service_bp': config.serviceBp,
+          'vat_bp': config.vatBp,
+          if (groupAfter.isNotEmpty)
+            'default_group_rate_bp': groupAfter.first[0],
+        },
       );
 
       // Read back through the codec, so what is returned is what the ticket
@@ -619,6 +667,60 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
   /// The floor plan is the ROOM, not the menu, so it answers to
   /// `settings.manage` like the money rules do.
+  @override
+  Future<AdminResult<ContentLanguages>> saveContentLanguages(
+    ContentLanguages languages, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    return database.runTx(config, (tx) async {
+      final before = await tx.execute(
+        Sql.named(
+          'SELECT content_languages FROM pos_restaurants WHERE id = @r',
+        ),
+        parameters: {'r': restaurantId},
+      );
+      if (before.isEmpty) {
+        return const AdminResult<ContentLanguages>.refused(
+          CatalogInvalid('This restaurant is not set up on this till yet.'),
+        );
+      }
+      final was = before.first[0] as String?;
+      if (was == languages.wire) return AdminResult.done(languages);
+
+      await tx.execute(
+        Sql.named(
+          'UPDATE pos_restaurants SET content_languages = @value WHERE id = @r',
+        ),
+        parameters: {'r': restaurantId, 'value': languages.wire},
+      );
+
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.contentLanguagesSaved,
+        entityType: AuditAction.entityContentLanguages,
+        entityId: '$restaurantId',
+        before: {'content_languages': was},
+        after: {'content_languages': languages.wire},
+      );
+
+      return AdminResult.done(languages);
+    });
+  }
+
+  /// The same door as [_blockedSettings] with the order-types key (XORD-002).
+  AdminRefusal? _blockedOrderTypes(PosStaff by) {
+    if (!offline) return const NotPermitted(PosCapability.orderTypesManage);
+    if (!adminAvailable) return const AdministratorCredentialRequired();
+    if (!Authorization.check(by, PosCapability.orderTypesManage).isAllowed) {
+      return const NotPermitted(PosCapability.orderTypesManage);
+    }
+    return null;
+  }
+
   AdminRefusal? _blockedSettings(PosStaff by) {
     if (!offline) return const NotPermitted(PosCapability.settingsManage);
     if (!adminAvailable) return const AdministratorCredentialRequired();
@@ -761,8 +863,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   Future<AdminResult<OrderTypeConfig>> saveOrderType(
     OrderTypeConfig orderType, {
     required PosStaff by,
+    Set<OrderType>? entitled,
   }) async {
-    final blocked = _blockedSettings(by);
+    // Its own key since XORD-002: it used to be `settings.manage`.
+    final blocked = _blockedOrderTypes(by);
     if (blocked != null) return AdminResult.refused(blocked);
 
     if (orderType.nameEn.trim().isEmpty) {
@@ -772,6 +876,27 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     }
 
     return database.runTx(config, (tx) async {
+      // Only what the licence includes can be switched ON. Switching OFF is
+      // always allowed (the last-one rule below aside), so a type the licence
+      // no longer covers can still be taken down.
+      if (orderType.isActive &&
+          entitled != null &&
+          !entitled.contains(orderType.type)) {
+        final already = await tx.execute(
+          Sql.named(
+            'SELECT is_active FROM pos_order_types '
+            'WHERE restaurant_id = @r AND code = @code',
+          ),
+          parameters: {'r': restaurantId, 'code': orderType.type.wire},
+        );
+        final wasOn = already.isNotEmpty && already.first[0] == true;
+        if (!wasOn) {
+          return const AdminResult<OrderTypeConfig>.refused(
+            CatalogInvalid('This order type is not included in the licence.'),
+          );
+        }
+      }
+
       // A restaurant with no active order type has a till that cannot start a
       // ticket. Refused rather than warned, like the last cash tender method:
       // the fix afterwards is a database edit by somebody who will not know
@@ -970,6 +1095,97 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           sortOrder: row[10]! as int,
         ),
       );
+    });
+  }
+
+  @override
+  Future<AdminResult<List<DiningTable>>> createTables(
+    List<DiningTable> tables, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    if (tables.isEmpty || tables.length > TableBatch.maxQuantity) {
+      return const AdminResult.refused(
+        CatalogInvalid('Add between 1 and 100 tables at a time.'),
+      );
+    }
+    final labels = [for (final t in tables) t.label.trim()];
+    if (labels.any((l) => l.isEmpty)) {
+      return const AdminResult.refused(
+        CatalogInvalid('A table needs a label.'),
+      );
+    }
+    if (tables.any((t) => t.seats < 1)) {
+      return const AdminResult.refused(
+        CatalogInvalid('A table seats at least one person.'),
+      );
+    }
+    if (labels.toSet().length != labels.length) {
+      return const AdminResult.refused(
+        CatalogInvalid('Two of these tables would have the same name.'),
+      );
+    }
+    final branch = branchId;
+    if (branch == null) {
+      return const AdminResult.refused(EditedElsewhere(0));
+    }
+
+    return database.runTx(config, (tx) async {
+      // The unique key is `(branch_id, label)`, and it counts tables that are
+      // out of service too, so this reads every row of the branch.
+      final clash = await tx.execute(
+        Sql.named(
+          'SELECT label FROM pos_dining_tables '
+          'WHERE branch_id = @branch AND label = ANY(@labels) ORDER BY label',
+        ),
+        parameters: {'branch': branch, 'labels': labels},
+      );
+      if (clash.isNotEmpty) {
+        final names = [for (final row in clash.take(5)) '"${row[0]}"'];
+        return AdminResult<List<DiningTable>>.refused(
+          CatalogInvalid(
+            'This branch already has ${names.join(', ')}'
+            '${clash.length > 5 ? ' and ${clash.length - 5} more' : ''}. '
+            'Nothing was added.',
+          ),
+        );
+      }
+
+      final created = <DiningTable>[];
+      for (var i = 0; i < tables.length; i++) {
+        final rows = await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_dining_tables '
+            '  (restaurant_id, branch_id, label, seats, area_name) '
+            'VALUES (@r, @branch, @label, @seats, @area) '
+            'RETURNING $_tableColumns',
+          ),
+          parameters: {
+            'r': restaurantId,
+            'branch': branch,
+            'label': labels[i],
+            'seats': tables[i].seats,
+            'area': _orNull(tables[i].areaName),
+          },
+        );
+        final table = _tableFrom(rows.first);
+        created.add(table);
+        await _audit(
+          tx,
+          by: by,
+          action: AuditAction.tableCreated,
+          entityType: AuditAction.entityTable,
+          entityId: '${table.id}',
+          after: {
+            'label': table.label,
+            'seats': table.seats,
+            'batch': tables.length,
+          },
+        );
+      }
+      return AdminResult.done(created);
     });
   }
 
@@ -1792,6 +2008,40 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       }
     }
     return null;
+  }
+
+  /// Refuses a product whose category is another restaurant's, or is archived
+  /// and the product is new or moving into it (XORD-014). An item that already
+  /// sits in a category archived since may still be repriced: refusing that
+  /// would lock a price edit behind an unrelated archive.
+  Future<AdminRefusal?> _categoryUnavailable(
+    TxSession tx,
+    Product product,
+  ) async {
+    const refusal = CatalogRefused(CatalogProblem.categoryUnavailable);
+    final category = await tx.execute(
+      Sql.named(
+        'SELECT is_active FROM pos_categories '
+        'WHERE id = @c AND restaurant_id = @r',
+      ),
+      parameters: {'c': product.categoryId, 'r': restaurantId},
+    );
+    if (category.isEmpty) return refusal;
+    if (category.first[0]! as bool) return null;
+
+    if (product.id == 0) return refusal;
+    final unchanged = await tx.execute(
+      Sql.named(
+        'SELECT 1 FROM pos_products '
+        'WHERE id = @id AND restaurant_id = @r AND category_id = @c',
+      ),
+      parameters: {
+        'id': product.id,
+        'r': restaurantId,
+        'c': product.categoryId,
+      },
+    );
+    return unchanged.isEmpty ? refusal : null;
   }
 
   Future<AdminRefusal?> _categoriesAreOurs(

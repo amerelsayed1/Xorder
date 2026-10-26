@@ -9,6 +9,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/combo_draft.dart';
+import 'package:xorder_pos/domain/models/content_languages.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
@@ -75,6 +76,7 @@ void main() {
     _Combos? repository,
     bool offline = true,
     Locale locale = const Locale('en'),
+    ContentLanguages languages = ContentLanguages.both,
   }) async {
     tester.view
       ..physicalSize = const Size(1600, 2400)
@@ -87,6 +89,7 @@ void main() {
         overrides: [
           ...fakeRepositoryOverrides(english: locale.languageCode == 'en'),
           catalogAdminRepositoryProvider.overrideWithValue(combos),
+          contentLanguagesProvider.overrideWith((ref) async => languages),
           catalogProvider.overrideWith(
             (ref) async => Catalog(
               categories: const [meals, drinksCategory],
@@ -185,6 +188,83 @@ void main() {
     });
   });
 
+  group('content languages (XORD-005)', () {
+    testWidgets('Arabic only: one name box, group names Arabic, English mirrors', (
+      tester,
+    ) async {
+      final repository = (await pump(
+        tester,
+        languages: ContentLanguages.arabic,
+      ))!;
+
+      await tapKey(tester, 'combos-new');
+      expect(find.byKey(const Key('combo-name')), findsNothing);
+      expect(find.byKey(const Key('combo-name-ar')), findsOneWidget);
+
+      await type(tester, 'combo-name-ar', 'وجبة برجر');
+      await type(tester, 'combo-price', '85');
+      await tapKey(tester, 'combo-add-group');
+      expect(find.byKey(const Key('combo-group-name-0')), findsNothing);
+      await type(tester, 'combo-group-name-ar-0', 'اختر جانبا');
+      await tapKey(tester, 'combo-add-option-0');
+      await choose(tester, 'combo-option-product-0-0', 'Chips');
+      await tapKey(tester, 'combo-save');
+
+      final saved = repository.saved.single;
+      expect(saved.nameAr, 'وجبة برجر');
+      expect(saved.nameEn, 'وجبة برجر');
+      expect(saved.groups.single.nameAr, 'اختر جانبا');
+      expect(saved.groups.single.nameEn, 'اختر جانبا');
+    });
+
+    testWidgets('English only, editing: the hidden Arabic names survive', (
+      tester,
+    ) async {
+      final repository = (await pump(
+        tester,
+        repository: _Combos([
+          const ComboDraft(
+            id: 7,
+            categoryId: 1,
+            nameEn: 'Burger meal',
+            nameAr: 'وجبة برجر',
+            price: Money(8500),
+            groups: [
+              ComboGroupDraft(
+                id: 70,
+                nameEn: 'Burger',
+                nameAr: 'برجر',
+                options: [ComboOptionDraft(productId: 10)],
+              ),
+            ],
+          ),
+        ]),
+        languages: ContentLanguages.english,
+      ))!;
+
+      await tapKey(tester, 'combo-row-7');
+      expect(find.byKey(const Key('combo-name-ar')), findsNothing);
+      expect(find.byKey(const Key('combo-group-name-ar-0')), findsNothing);
+
+      await type(tester, 'combo-name', 'Burger deal');
+      await tapKey(tester, 'combo-save');
+
+      final saved = repository.saved.single;
+      expect(saved.nameEn, 'Burger deal');
+      expect(saved.nameAr, 'وجبة برجر');
+      expect(saved.groups.single.nameAr, 'برجر');
+    });
+
+    testWidgets('both: the two name boxes, as always', (tester) async {
+      await pump(tester);
+
+      await tapKey(tester, 'combos-new');
+
+      expect(find.byKey(const Key('combo-name')), findsOneWidget);
+      expect(find.byKey(const Key('combo-name-ar')), findsOneWidget);
+    });
+  });
+
   group('making one', () {
     testWidgets('typed boxes become the draft that is saved', (tester) async {
       final repository = (await pump(tester))!;
@@ -212,7 +292,9 @@ void main() {
       final saved = repository.saved.single;
       expect(saved.id, 0);
       expect(saved.categoryId, 1, reason: 'the first category is the default');
-      expect(saved.nameEn, ' Burger meal ', reason: 'trimmed by the repository');
+      // Trimmed by the dialog's name resolution (XORD-005); the repository
+      // trims again, so the stored value is the same either way.
+      expect(saved.nameEn, 'Burger meal');
       expect(saved.price.minor, 8500);
       expect(saved.sku, 'BM1');
       expect(saved.taxGroupId, isNull);

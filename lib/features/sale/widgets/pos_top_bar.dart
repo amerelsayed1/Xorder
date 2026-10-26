@@ -34,9 +34,7 @@ class PosTopBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ui = ref.watch(posUiProvider);
     final ticket = ref.watch(ticketProvider);
-    final sync = ref.watch(pendingSyncCountProvider);
 
     final strings = context.strings;
 
@@ -54,41 +52,9 @@ class PosTopBar extends ConsumerWidget {
             _identity(pos: context.pos),
             const SizedBox(width: PosSpace.s24),
             _modeSwitch(ref, ticket.orderType, strings, pos: context.pos),
-            const SizedBox(width: PosSpace.s24),
-            // Which pill depends on which question this terminal has.
-            //
-            // A cloud till owes its sales to the platform, so it shows what is
-            // owed and the pill *is* the manual sync control — one tap runs a
-            // real pass. An offline till owes them to nobody: it showed
-            // "offline · 0 queued" permanently, which announces a correct and
-            // intended state as though it were a fault, beside a counter that
-            // can only ever read zero. What it shows instead is the branch
-            // server, because that is the thing that can actually stop it
-            // selling.
-            if (ref.watch(cloudSyncProvider) case final cloud?)
-              SyncPill(
-                online: ui.online,
-                queued: sync.valueOrNull,
-                hasError: sync.hasError,
-                onTap: () {
-                  cloud.kick();
-                  posToast(context, strings.syncingWithPlatform);
-                },
-              )
-            else
-              Builder(
-                builder: (context) {
-                  final branch = ref.watch(branchDatabaseProvider);
-                  return BranchServerPill(
-                    checking: branch.isLoading,
-                    // A failure to *probe* is itself unreachable — the probe
-                    // returning a failure and the probe throwing mean the same
-                    // thing to a cashier.
-                    reachable: branch.hasValue && branch.value == null,
-                    onTap: () => ref.invalidate(branchDatabaseProvider),
-                  );
-                },
-              ),
+            // The connection (a sync state on a cloud till, the branch server
+            // on an offline one) moved to the status bar under every screen
+            // (26 Oct 2026); the top bar no longer says it a second time.
             const SizedBox(width: PosSpace.s14),
             PosButton(
               label: strings.openDrawer,
@@ -131,24 +97,8 @@ class PosTopBar extends ConsumerWidget {
               border: Border.all(color: context.pos.warn),
               onPressed: onCloseShift,
             ),
-            // Whoever entered a PIN, and NOTHING before one has been entered.
-            // This used to read `session.userName`, which the branch server
-            // answers with the first active staff row rather than with the
-            // person holding the till — see `operatorNameProvider`.
-            if (ref.watch(operatorNameProvider) case final operator
-                when operator.isNotEmpty) ...[
-              const SizedBox(width: PosSpace.s14),
-              _avatar(pos: context.pos, initials: ref.watch(operatorInitialsProvider)),
-              const SizedBox(width: PosSpace.sm),
-              Text(
-                operator,
-                style: PosText.ui(
-                  size: 13.5,
-                  weight: FontWeight.w600,
-                  color: context.pos.shellText,
-                ),
-              ),
-            ],
+            // Who is signed in is not said here (owner, 26 Oct 2026): the status
+            // bar under every screen says it once, at the far edge.
           ],
         ),
       ),
@@ -183,10 +133,6 @@ class PosTopBar extends ConsumerWidget {
               weight: FontWeight.w600,
               color: pos.shellText,
             ),
-          ),
-          Text(
-            '${session.branchName} · ${session.terminalCode}',
-            style: PosText.mono(size: 10.5, color: pos.shellMuted),
           ),
         ],
       ),
@@ -238,50 +184,62 @@ class PosTopBar extends ConsumerWidget {
   Widget _modeSwitch(
     WidgetRef ref,
     OrderType active,
-    AppStrings strings,{required PosPalette pos}
-  ) => Container(
-    decoration: BoxDecoration(
-      border: Border.fromBorderSide(pos.shellBorder),
-    ),
-    child: Row(
-      children: [
-        for (final type in supportedOrderTypes)
-          Material(
-            color: type == active ? pos.accent : Colors.transparent,
-            child: InkWell(
-              onTap: () => ref.read(ticketProvider.notifier).setOrderType(type),
-              child: Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
-                alignment: Alignment.center,
-                child: Text(
-                  type.label(strings),
-                  style: PosText.ui(
-                    size: 13,
-                    weight: type == active ? FontWeight.w600 : FontWeight.w500,
-                    color: type == active ? Colors.white : pos.shellText,
-                  ),
-                ),
-              ),
+    AppStrings strings, {
+    required PosPalette pos,
+  }) => supportedOrderTypes.length == 1
+      // Nothing to choose between: a switch with one segment is a button that
+      // does nothing. Show what the order is, once, without inviting a tap
+      // (XORD-002 — the bar adapts to how many types are sold).
+      ? Container(
+          key: const Key('order-type-single'),
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.fromBorderSide(pos.shellBorder),
+          ),
+          child: Text(
+            supportedOrderTypes.single.label(strings),
+            style: PosText.ui(
+              size: 13,
+              weight: FontWeight.w600,
+              color: pos.shellText,
             ),
           ),
-      ],
-    ),
-  );
-
-  Widget _avatar({required PosPalette pos, required String initials}) =>
-      Container(
-    width: 30,
-    height: 30,
-    alignment: Alignment.center,
-    color: pos.shellCard,
-    child: Text(
-      initials,
-      style: PosText.ui(
-        size: 11.5,
-        weight: FontWeight.w800,
-        color: pos.accent,
-      ),
-    ),
-  );
+        )
+      : Container(
+          key: const Key('order-type-switch'),
+          decoration: BoxDecoration(
+            border: Border.fromBorderSide(pos.shellBorder),
+          ),
+          child: Row(
+            children: [
+              for (final type in supportedOrderTypes)
+                Material(
+                  color: type == active ? pos.accent : Colors.transparent,
+                  child: InkWell(
+                    onTap: () =>
+                        ref.read(ticketProvider.notifier).setOrderType(type),
+                    child: Container(
+                      height: 38,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: PosSpace.s14,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        type.label(strings),
+                        style: PosText.ui(
+                          size: 13,
+                          weight: type == active
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: type == active ? Colors.white : pos.shellText,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
 }

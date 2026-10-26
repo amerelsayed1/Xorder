@@ -39,6 +39,7 @@ class _ManagementItemsPaneState extends ConsumerState<ManagementItemsPane> {
       context,
       units: units,
       item: item,
+      languages: ref.read(contentLanguagesNowProvider),
     );
     if (edited == null || !mounted) return;
 

@@ -61,6 +61,19 @@ void main() {
     return scope;
   }
 
+  testWidgets('the XOrder mark is the first thing on the lock screen', (tester) async {
+    await pumpLock(tester);
+
+    final mark = find.byKey(const Key('lock-xorder-logo'));
+    expect(mark, findsOneWidget);
+    // Above the username field and the keypad, not beside or below them.
+    expect(
+      tester.getTopLeft(mark).dy,
+      lessThan(tester.getTopLeft(find.byType(TextField)).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   Future<void> typeUsername(WidgetTester tester, String username) async {
     await tester.enterText(find.byType(TextField), username);
     await tester.pump();
@@ -178,10 +191,11 @@ void main() {
   testWidgets('the screen names nobody before a PIN is typed', (tester) async {
     await pumpLock(tester);
 
-    // The heading claims no identity: it cannot know who is coming back to a
-    // shared till. The name field may be filled in and the tiles name the
-    // roster, but both are offers the PIN still has to back up.
-    expect(find.text('Enter your PIN'), findsOneWidget);
+    // No heading at all, so none can claim an identity: it cannot know who is
+    // coming back to a shared till. The name field may be filled in and the
+    // tiles name the roster, but both are offers the PIN still has to back up.
+    expect(find.text('Enter your PIN'), findsNothing);
+    expect(find.byKey(const Key('lock-message')), findsNothing);
     expect(find.textContaining('·'), findsNothing);
     // Nobody has signed in on this till yet, so nothing to prefill.
     expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
@@ -348,7 +362,7 @@ void main() {
     // straight to the till, so sales carried no cashier and the cash-up refused
     // with a message whose door did not exist.
     test('selling with a shift open and nobody signed in', () {
-      for (final at in [PosRoutes.sale, PosRoutes.floor]) {
+      for (final at in [PosRoutes.sale, PosRoutes.floor, PosRoutes.home]) {
         expect(
           needsSignIn(at: at, signedIn: false, shiftOpen: true),
           isTrue,
@@ -360,6 +374,10 @@ void main() {
     test('somebody signed in is left alone', () {
       expect(
         needsSignIn(at: PosRoutes.sale, signedIn: true, shiftOpen: true),
+        isFalse,
+      );
+      expect(
+        needsSignIn(at: PosRoutes.home, signedIn: true, shiftOpen: true),
         isFalse,
       );
     });
@@ -374,6 +392,10 @@ void main() {
       );
       expect(
         needsSignIn(at: PosRoutes.sale, signedIn: false, shiftOpen: false),
+        isFalse,
+      );
+      expect(
+        needsSignIn(at: PosRoutes.home, signedIn: false, shiftOpen: false),
         isFalse,
       );
     });

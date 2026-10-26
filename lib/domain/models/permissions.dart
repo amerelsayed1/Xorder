@@ -28,6 +28,37 @@ abstract final class PosCapability {
   /// cloud till's roles carry it through the bootstrap bundle untouched.
   static const customersCreate = 'customers.create';
 
+  /// Choose which order types the branch sells (XORD-002): dine in, takeaway,
+  /// delivery, drive-thru.
+  ///
+  /// Its own key rather than [settingsManage], because switching a type off
+  /// removes it from every till's sale screen at once — a restaurant-wide
+  /// decision a floor manager who may fix a receipt should not make by
+  /// accident. Not back-office-only in spirit but never a cashier's, so it sits
+  /// in [backOffice]. The string is the platform's own
+  /// (`TenantCapability::POS_ORDER_TYPES_MANAGE`), so a cloud till's roles carry
+  /// it through the bootstrap bundle untouched.
+  static const orderTypesManage = 'pos.settings.order_types.manage';
+
+  /// Upload, replace or remove the business logo (XORD-021).
+  ///
+  /// Its own key, not [settingsManage]: the logo is the face of the restaurant
+  /// on every till's start screen, so changing it is a decision for the owner
+  /// rather than for whoever may fix a receipt. Seeded to the owner only
+  /// (migration 59); anybody else is given it in Roles. The string is the one
+  /// the owner's brief names.
+  static const brandingManage = 'business.branding.manage';
+
+  /// Add the business's cash, bank and wallet accounts, and choose which one
+  /// each payment method pays into (XORD-015).
+  ///
+  /// Its own key, not [settingsManage]: whoever may rename a payment method must
+  /// not also be able to redirect where the money lands. The string is the
+  /// platform's `finance.accounts` verbatim, because a cloud till receives roles
+  /// from the bundle untouched. Seeded to the owner only (migration 60);
+  /// anybody else is given it in Roles.
+  static const financeAccounts = 'finance.accounts';
+
   /// See the menu. Separate from [operate] because a manager who never touches
   /// the till still needs to read the catalogue to manage it.
   static const catalogView = 'catalog.view';
@@ -155,6 +186,9 @@ abstract final class PosCapability {
     staffManage,
     terminalManage,
     settingsManage,
+    orderTypesManage,
+    brandingManage,
+    financeAccounts,
     discountApply,
     priceOverride,
     orderVoid,
@@ -212,6 +246,9 @@ abstract final class PosCapability {
   /// administration permissions* — is about what the till can be talked into,
   /// and a checkbox nobody re-reads is not a control.
   static const backOffice = <String>{
+    orderTypesManage,
+    brandingManage,
+    financeAccounts,
     catalogManage,
     purchaseManage,
     staffManage,
@@ -315,6 +352,16 @@ abstract final class PosCapability {
     cashVarianceView: PermissionRisk.high,
     dayForceClose: PermissionRisk.high,
     catalogManage: PermissionRisk.high,
+    // Takes a way of selling off every till of the branch at once.
+    orderTypesManage: PermissionRisk.high,
+    // What every customer sees first, but it moves no money and changes no
+    // record. Not critical; a person who cannot be trusted with it should not
+    // hold the rest of the back office either.
+    brandingManage: PermissionRisk.medium,
+    // Decides where the business's takings are booked. It moves no money
+    // today, but a person who can point card payments at the wrong account can
+    // hide them from whoever reconciles the bank.
+    financeAccounts: PermissionRisk.high,
     // Money leaving the business, and the cost prices every margin is measured
     // against. Not critical: it is an ordinary job somebody does, and a
     // manager should be able to see the control they lack.
@@ -533,6 +580,9 @@ enum CapabilityGroup {
     PosCapability.staffManage,
     PosCapability.terminalManage,
     PosCapability.settingsManage,
+    PosCapability.orderTypesManage,
+    PosCapability.brandingManage,
+    PosCapability.financeAccounts,
     PosCapability.reportsView,
     PosCapability.reportExport,
     PosCapability.backupManage,
@@ -618,6 +668,7 @@ abstract final class SystemRoles {
     PosCapability.catalogManage,
     PosCapability.staffManage,
     PosCapability.settingsManage,
+    PosCapability.orderTypesManage,
     PosCapability.purchaseManage,
     PosCapability.orderViewAll,
     PosCapability.discountApply,

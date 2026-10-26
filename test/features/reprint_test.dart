@@ -195,9 +195,9 @@ void main() {
 
     testWidgets('prints the totals that were charged', (tester) async {
       await open(tester);
-      expect(find.text('175.00'), findsOneWidget);
-      expect(find.text('17.50'), findsOneWidget);
-      expect(find.text('26.95'), findsOneWidget);
+      expect(find.text('175.00 EGP'), findsOneWidget);
+      expect(find.text('17.50 EGP'), findsOneWidget);
+      expect(find.text('26.95 EGP'), findsOneWidget);
       expect(find.text('219.45'), findsWidgets);
     });
 

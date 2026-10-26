@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/l10n/app_strings.dart';
@@ -40,9 +42,14 @@ class ReceiptPaper extends StatelessWidget {
     required this.cashierName,
     this.profile = const ReceiptProfile(branchId: 0),
     this.tenderMethods = TenderMethod.seeded,
+    this.logo,
   });
 
   final ReceiptData data;
+
+  /// The restaurant's logo, or null for none (XORD-024). The caller decides
+  /// whether this till prints it; see `receiptLogoProvider`.
+  final Uint8List? logo;
 
   /// Who this branch is, as Management entered it.
   ///
@@ -76,6 +83,7 @@ class ReceiptPaper extends StatelessWidget {
       cashierName: cashierName,
       profile: profile,
       tenderMethods: tenderMethods,
+      logo: logo,
     );
 
     return ColoredBox(
@@ -85,7 +93,16 @@ class ReceiptPaper extends StatelessWidget {
           final width = constraints.maxWidth.isFinite
               ? constraints.maxWidth
               : _fallbackWidth;
-          final slip = _Slip(document, width / SlipMetrics.paperDots);
+          final slip = _Slip(
+            document,
+            width / SlipMetrics.paperDots,
+            // What a Text here is really drawn with: the theme's default
+            // style underneath ours, and the user's text scale. The amounts
+            // are measured with the same, or the box is narrower than the
+            // text and the currency code wraps under the figure.
+            base: DefaultTextStyle.of(context).style,
+            textScaler: MediaQuery.textScalerOf(context),
+          );
 
           return Directionality(
             textDirection: document.rightToLeft
@@ -116,16 +133,78 @@ class ReceiptPaper extends StatelessWidget {
 /// chosen for the screen alone. A size typed here instead would be the first
 /// step back to a preview that disagrees with the paper.
 class _Slip {
-  _Slip(this.document, this.scale);
+  _Slip(
+    this.document,
+    this.scale, {
+    this.base = const TextStyle(),
+    this.textScaler = TextScaler.noScaling,
+  });
 
   final ReceiptDocument document;
   final double scale;
+
+  /// See where this is built.
+  final TextStyle base;
+  final TextScaler textScaler;
 
   Color get _ink => receiptPalette.ink;
   bool get _rtl => document.rightToLeft;
   TextAlign get _outer => _rtl ? TextAlign.left : TextAlign.right;
 
   double d(double dots) => dots * scale;
+
+  /// How wide the slip's amounts are — the raster's `_amountWidth`, measured
+  /// the same way. Each amount sits in a box this wide with its text ending at
+  /// the right, so the decimal points of a stack of figures share one x, on an
+  /// Arabic slip as on an English one (XORD-025).
+  /// The price column: [SlipMetrics.priceColumn] dots, wider when a price on
+  /// this slip needs it, as the raster does — a large figure is shown whole,
+  /// not cut to an ellipsis. At most 45% of the paper.
+  late final double _priceColumn = () {
+    final reference = d(SlipMetrics.priceColumn);
+    final cap = d(SlipMetrics.contentDots) * 0.45;
+    var widest = 0.0;
+    for (final block in document.blocks) {
+      if (block is! SlipItem) continue;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: block.price,
+          style: base.merge(_style(SlipMetrics.bodySize, mono: true)),
+        ),
+        textDirection: TextDirection.ltr,
+        textScaler: textScaler,
+        maxLines: 1,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    return (widest.ceilToDouble() + 1).clamp(
+      reference,
+      cap < reference ? reference : cap,
+    );
+  }();
+
+  late final double _amountWidth = () {
+    final cap = d(SlipMetrics.contentDots) * 2 / 3;
+    var widest = 0.0;
+    for (final block in document.blocks) {
+      if (block is! SlipRow || !block.amount) continue;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: block.value,
+          style: base.merge(_style(SlipMetrics.bodySize, mono: true)),
+        ),
+        textDirection: TextDirection.ltr,
+        textScaler: textScaler,
+        maxLines: 1,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    // Rounded up a pixel: a box the width of the text to the last fraction
+    // wraps it on the rounding.
+    return (widest.ceilToDouble() + 1).clamp(0.0, cap);
+  }();
 
   /// The raster's faces and weights: 600 for mono, 700 for the Arabic face.
   TextStyle _style(
@@ -161,12 +240,12 @@ class _Slip {
     SlipRule(:final weight) => _rule(weight),
     SlipCentre() => _centre(block),
     SlipStamp(:final text) => _stamp(text),
+    SlipLogo(:final bytes) => _logo(bytes),
     SlipRow() => _row(block),
     SlipItemsHeader() => _itemsHeader(block),
     SlipItem() => _item(block),
     SlipGrandTotal() => _grandTotal(block),
     SlipQr(:final payload) => _qr(payload),
-    SlipOrnament() => _ornament(),
   };
 
   Widget _rule(SlipRuleWeight weight) => Padding(
@@ -216,6 +295,45 @@ class _Slip {
     );
   }
 
+  /// The restaurant's logo. In greyscale and un-dithered: a screen can show
+  /// the picture, but the one-bit conversion the printer gets is a pixel pass
+  /// this synchronous widget does not run. The paper is the reference; this is
+  /// the same box in the same place. A logo that will not decode is left out,
+  /// as it is on paper.
+  Widget _logo(Uint8List bytes) => Padding(
+    padding: EdgeInsets.only(bottom: d(SlipMetrics.logoAfter)),
+    child: Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: d(SlipMetrics.contentDots),
+          maxHeight: d(SlipMetrics.logoMaxHeight),
+        ),
+        child: ColorFiltered(
+          colorFilter: const ColorFilter.matrix(<double>[
+            0.299, 0.587, 0.114, 0, 0, //
+            0.299, 0.587, 0.114, 0, 0,
+            0.299, 0.587, 0.114, 0, 0,
+            0, 0, 0, 1, 0,
+          ]),
+          child: Image.memory(
+            bytes,
+            key: const Key('receipt-logo'),
+            // One logo pixel is one dot of paper, which is `scale` pixels on
+            // this screen: so a small logo previews as small as it prints, and
+            // a large one is held to the box by `fit` and the constraints.
+            scale: 1 / scale,
+            // Never decoded larger than the box can show, whatever the upload.
+            cacheWidth: (d(SlipMetrics.contentDots) * 2).ceil(),
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    ),
+  );
+
   /// A banner across the top of the slip. Boxed and centred, because it has to
   /// survive being photographed, faxed and photocopied.
   Widget _stamp(String text) => Container(
@@ -235,26 +353,36 @@ class _Slip {
   );
 
   Widget _row(SlipRow row) {
+    // Nothing is cut: a long name wraps (the raster does the same). The label
+    // and the value share a baseline, so a quieter label does not float above
+    // the figure beside it.
     Widget value = Text(
       row.value,
-      textAlign: _outer,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: _style(SlipMetrics.bodySize, mono: row.numeric, struck: row.struck),
+      textAlign: row.amount ? TextAlign.right : _outer,
+      style: _style(
+        SlipMetrics.bodySize,
+        mono: row.numeric,
+        struck: row.struck,
+      ),
     );
+    if (row.amount) value = SizedBox(width: _amountWidth, child: value);
     if (row.numeric) value = _ltr(value);
 
     return Padding(
       padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
           Expanded(
             child: Text(
               row.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: _style(SlipMetrics.bodySize, struck: row.struck),
+              style: _style(
+                row.secondary
+                    ? SlipMetrics.bodySecondary
+                    : SlipMetrics.bodySize,
+                struck: row.struck,
+              ),
             ),
           ),
           SizedBox(width: d(SlipMetrics.columnGap)),
@@ -278,7 +406,7 @@ class _Slip {
       SizedBox(width: d(SlipMetrics.columnGap)),
       SizedBox(width: d(SlipMetrics.qtyColumn), child: quantity),
       SizedBox(width: d(SlipMetrics.columnGap)),
-      SizedBox(width: d(SlipMetrics.priceColumn), child: price),
+      SizedBox(width: _priceColumn, child: price),
     ],
   );
 
@@ -298,7 +426,12 @@ class _Slip {
               maxLines: 1,
               style: style,
             ),
-            Text(header.price, textAlign: _outer, maxLines: 1, style: style),
+            Text(
+              header.price,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              style: style,
+            ),
           ),
         ),
       ),
@@ -312,17 +445,21 @@ class _Slip {
       struck: item.struck,
     );
     return Padding(
-      padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.itemGap)),
       child: _columns(
+        // The whole name, over as many lines as it takes.
         Text(
           item.name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: _style(SlipMetrics.bodySize, struck: item.struck),
         ),
         _ltr(Text(item.quantity, textAlign: TextAlign.center, style: figure)),
         _ltr(
-          Text(item.price, textAlign: _outer, maxLines: 1, style: figure),
+          Text(
+            item.price,
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            style: figure,
+          ),
         ),
       ),
     );
@@ -335,8 +472,6 @@ class _Slip {
         Expanded(
           child: Text(
             total.label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
             style: _style(SlipMetrics.totalLabelSize, bold: true),
           ),
         ),
@@ -348,9 +483,15 @@ class _Slip {
           child: _ltr(
             Column(
               mainAxisSize: MainAxisSize.min,
+              // The code ends where the figure ends, not under its middle.
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   total.amount,
+                  // Ending at the box's edge, where the code under it ends: a
+                  // text box a little wider than its glyphs would otherwise
+                  // leave the figure short of it.
+                  textAlign: TextAlign.right,
                   maxLines: 1,
                   style: _style(
                     SlipMetrics.totalAmountSize,
@@ -375,8 +516,10 @@ class _Slip {
   /// the roll.
   Widget _qr(String payload) {
     final modules = ReceiptQrCode.imageOf(payload).moduleCount;
-    final module = SlipMetrics.qrModule(modules, SlipMetrics.contentDots)
-        .toDouble();
+    final module = SlipMetrics.qrModule(
+      modules,
+      SlipMetrics.contentDots,
+    ).toDouble();
     return Padding(
       padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
       child: Center(
@@ -384,27 +527,6 @@ class _Slip {
           padding: EdgeInsets.all(d(module * 4)),
           child: ReceiptQr(payload: payload, size: d(module * modules)),
         ),
-      ),
-    );
-  }
-
-  Widget _ornament() {
-    final arm = SizedBox(
-      width: d(SlipMetrics.ornamentLine),
-      height: d(SlipMetrics.ruleThickness(SlipRuleWeight.solid)),
-      child: ColoredBox(color: _ink),
-    );
-    return Padding(
-      padding: EdgeInsets.only(bottom: d(SlipMetrics.lineGap)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          arm,
-          SizedBox(width: d(SlipMetrics.ornamentGap)),
-          _glyph(SlipGlyph.heart, d(SlipMetrics.ornamentHeart)),
-          SizedBox(width: d(SlipMetrics.ornamentGap)),
-          arm,
-        ],
       ),
     );
   }
@@ -443,8 +565,12 @@ class _GlyphPainter extends CustomPainter {
   final Color colour;
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      paintSlipGlyph(canvas, glyph, Offset.zero & size, Paint()..color = colour);
+  void paint(Canvas canvas, Size size) => paintSlipGlyph(
+    canvas,
+    glyph,
+    Offset.zero & size,
+    Paint()..color = colour,
+  );
 
   @override
   bool shouldRepaint(_GlyphPainter old) =>

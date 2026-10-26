@@ -1,8 +1,13 @@
 import '../../core/money/quantity.dart';
 import '../../core/security/pin_hash.dart' show PasswordProblem;
+
+import 'dart:typed_data';
+
 import '../models/backup.dart';
+import '../models/business_logo.dart';
 import '../models/catalog.dart';
 import '../models/combo_draft.dart';
+import '../models/content_languages.dart';
 import '../services/stock_costing.dart' show OpeningCostProblem;
 import '../models/option_group.dart';
 import '../models/purchase_order.dart';
@@ -10,6 +15,7 @@ import '../models/tax.dart';
 import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
+import '../models/financial_account.dart';
 import '../models/held_sync.dart';
 import '../models/permissions.dart';
 import '../models/receipt_profile.dart';
@@ -44,6 +50,15 @@ class NotPermitted extends AdminRefusal {
   const NotPermitted(this.capability);
 
   final String capability;
+}
+
+/// The picture was turned away, and [reason] says why (XORD-021). Its own
+/// refusal rather than a [CatalogInvalid] sentence, because the words have to
+/// exist in both languages and the size limits belong to the screen's copy.
+class LogoRejected extends AdminRefusal {
+  const LogoRejected(this.reason);
+
+  final LogoRefusal reason;
 }
 
 /// The role still has people on it. Named, not counted: "3 people" sends a
@@ -226,6 +241,17 @@ class CatalogRefused extends AdminRefusal {
   const CatalogRefused(this.problem);
 
   final CatalogProblem problem;
+}
+
+/// A financial account, or the account a payment method pays into, broke one
+/// of [AccountRules] — [AccountProblem] says which (XORD-015).
+///
+/// Its own refusal, like [CatalogRefused], so each language words it and a
+/// problem added to the enum is a compile error in the message table.
+class AccountRefused extends AdminRefusal {
+  const AccountRefused(this.problem);
+
+  final AccountProblem problem;
 }
 
 /// An opening cost cannot be set — [OpeningCostProblem] says why.
@@ -490,7 +516,11 @@ abstract final class AuditAction {
   static const entityOptionGroup = 'option_group';
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
+  static const entityFinancialAccount = 'financial_account';
+  static const entityTenderAccountDefault = 'tender_account_default';
   static const entityOrderType = 'order_type';
+  static const entityContentLanguages = 'content_languages';
+  static const entityBusinessLogo = 'business_logo';
   static const entityTaxGroup = 'tax_group';
   static const entityCombo = 'combo';
   static const entityServiceCharge = 'service_charge';
@@ -543,6 +573,15 @@ abstract final class AuditAction {
   /// future cash-up expects to find in the drawer.
   static const tenderTypeSaved = 'tender_type.saved';
 
+  /// A financial account added, renamed, retied to a branch or switched off
+  /// (XORD-015). Its own action because it decides where money will be booked.
+  static const financialAccountSaved = 'financial_account.saved';
+
+  /// The account a payment method pays into was set, replaced or cleared for a
+  /// branch (XORD-015). Its own action, and worth finding later: it is the line
+  /// that answers "who sent the card takings to that account?".
+  static const tenderAccountDefaultSaved = 'tender_account_default.saved';
+
   /// A named rate added, repriced or retired (§17). Its own action because
   /// changing a rate changes what every product in that group costs, and a
   /// filing is reconciled against the rate that was charged on the day.
@@ -557,6 +596,12 @@ abstract final class AuditAction {
   /// action because turning off *requires a table* changes what the floor plan
   /// is for, and turning off the type itself removes a way of selling.
   static const orderTypeSaved = 'order_type.saved';
+
+  /// The languages the menu is written in switched (XORD-005). Its own action
+  /// because it changes which fields every menu form asks for, on every till.
+  static const contentLanguagesSaved = 'content_languages.saved';
+  static const businessLogoSaved = 'business_logo.saved';
+  static const businessLogoRemoved = 'business_logo.removed';
 
   /// A copy of the database taken — or attempted. `backup.manage` is
   /// critical-risk, so both halves of it are on the ledger: this one is written
@@ -780,13 +825,41 @@ abstract interface class CatalogAdminRepository {
   /// no name to render, because every place that shows an order type reads it off
   /// the enum. So this edits the four — their names, what they require, and
   /// whether the branch offers them at all.
+  ///
+  /// **[by] must hold `pos.settings.order_types.manage`** (XORD-002), and the
+  /// last type left on cannot be switched off. [entitled] is what the licence
+  /// allows, or null for no restriction: a type outside it cannot be switched
+  /// ON, though one already on can always be switched off.
   Future<AdminResult<OrderTypeConfig>> saveOrderType(
     OrderTypeConfig config, {
+    required PosStaff by,
+    Set<OrderType>? entitled,
+  });
+
+  /// Which languages the menu is written in (XORD-005). Offline installs
+  /// author this here; a cloud till receives it from the platform.
+  ///
+  /// Needs `settings.manage`. **Nothing already written is touched**: switching
+  /// a language off only changes which fields the forms ask for.
+  Future<AdminResult<ContentLanguages>> saveContentLanguages(
+    ContentLanguages languages, {
     required PosStaff by,
   });
 
   Future<AdminResult<DiningTable>> saveTable(
     DiningTable table, {
+    required PosStaff by,
+  });
+
+  /// Add several tables in one step (XORD-006): all of them or none.
+  ///
+  /// Needs `settings.manage`, like [saveTable]. One transaction: a name that
+  /// already exists in the branch, a repeat inside the batch, a bad seat count
+  /// or more than 100 tables refuses the whole batch and writes nothing, so a
+  /// retry after a success is refused as a duplicate rather than doubling the
+  /// floor. Each table is audited as `table.created`.
+  Future<AdminResult<List<DiningTable>>> createTables(
+    List<DiningTable> tables, {
     required PosStaff by,
   });
 
@@ -894,6 +967,26 @@ abstract interface class CatalogAdminRepository {
 }
 
 /// The roles a restaurant defines, and what each may do.
+/// Changing the business logo (XORD-021). Offline installs author it here; a
+/// cloud till receives it from the platform and never writes it through this.
+///
+/// Reading is not here: the logo is drawn on the start screen, before anybody
+/// has signed in, so it is read on the till's own credential through a provider
+/// (`businessLogoProvider`) exactly as the menu languages are.
+abstract interface class BusinessLogoRepository {
+  /// Replace the logo with [bytes], which are inspected first: the answer is
+  /// [LogoRejected] for anything that is not a PNG or JPEG of a sensible size.
+  /// Needs `business.branding.manage`. Audited, with sizes and no image.
+  Future<AdminResult<BusinessLogo>> save(
+    Uint8List bytes, {
+    required PosStaff by,
+  });
+
+  /// Take the logo off; the till goes back to the Xorder mark. Removing a logo
+  /// there is none of is a success, not an error.
+  Future<AdminResult<bool>> remove({required PosStaff by});
+}
+
 abstract interface class RolesRepository {
   Future<List<PosRole>> all();
 
@@ -1076,4 +1169,33 @@ class MenuImportOutcome {
   final int productsUpdated;
 
   int get total => productsCreated + productsUpdated;
+}
+
+/// Authoring financial accounts and the account each payment method pays into
+/// (XORD-015, stage 1).
+///
+/// **Offline only**, like [CatalogAdminRepository]: on a cloud till the
+/// platform is the single author and `BootstrapSeeder` replaces these rows from
+/// the bundle, so a locally authored account would last until the next sync.
+/// The provider returns null there and the pane reads and says so.
+///
+/// Gated on `finance.accounts`, which the owner holds and nobody else does
+/// until the owner gives it. No delete anywhere: an account is switched off.
+abstract interface class FinancialAccountsAdminRepository {
+  /// `id == 0` creates.
+  Future<AdminResult<FinancialAccount>> saveAccount(
+    FinancialAccount account, {
+    required PosStaff by,
+  });
+
+  /// Set the account [tenderTypeId] pays into at [branchId] (null = the whole
+  /// business), or clear it with a null [accountId]. A branch row is for this
+  /// restaurant's branches only, and the account must be active and either
+  /// shared or that branch's own.
+  Future<AdminResult<TenderAccountDefault?>> setDefault({
+    required int tenderTypeId,
+    required int? branchId,
+    required int? accountId,
+    required PosStaff by,
+  });
 }

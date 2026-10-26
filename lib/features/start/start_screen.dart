@@ -89,6 +89,10 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     // Watched though no longer shown, so the menu is loading while the shift
     // is opened rather than after the till is already on screen.
     ref.watch(catalogProvider);
+    // The same for the order types: whether this shift goes to the home screen
+    // or straight to selling depends on them (pos-home-screen).
+    ref.watch(orderTypeConfigProvider);
+    ref.watch(branchesProvider);
     // The one place the licence actually gates anything: opening a shift.
     // Never mid-service, and never cash-up — see LicenseEntitlement.
     final licence = ref.watch(licenceEntitlementProvider).valueOrNull;
@@ -161,25 +165,12 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // XOrder's mark above the restaurant's name. Orange on transparent, so
-        // the one asset carries both themes, as it does on the welcome screen.
-        // Centred because the column stretches, and a stretched image ignores
-        // its width.
-        Center(
-          child: Image.asset(
-            'assets/icons/xorder_logo_official.png',
-            key: const Key('start-xorder-logo'),
-            width: 180,
-            fit: BoxFit.contain,
-            // The restaurant's name is right below; a missing asset is better
-            // absent than a broken-image glyph.
-            errorBuilder: (context, error, stack) => const SizedBox.shrink(),
-          ),
-        ),
+        // XOrder's mark, with the restaurant's own logo under it when it has
+        // one (XORD-021), above the restaurant's name.
+        const Center(child: StartLogo()),
         const SizedBox(height: PosSpace.s28),
-        // The handoff specifies a 280px logo image. Until the tenant logo is
-        // fetched from config it is rendered as the wordmark rather than a
-        // placeholder box, which would read as a broken asset.
+        // The name stays under the logo: it is what the receipt and every other
+        // screen call the restaurant, and a logo may be a bare symbol.
         Text(
           session.tenantName.toUpperCase(),
           textAlign: TextAlign.center,
@@ -508,4 +499,66 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       ],
     ),
   );
+}
+
+/// The pictures at the top of the start screen: the XOrder mark, always, and
+/// under it the restaurant's own logo when it has one (XORD-021).
+///
+/// **The restaurant's logo never replaces the XOrder mark** (owner, 26 Oct
+/// 2026). It first did, which made every till look like a different product.
+/// The mark is the product's and stays; the logo is the restaurant's, smaller,
+/// beneath it.
+///
+/// **It cannot fail the screen.** The logo is read from the till's own database
+/// (`businessLogoProvider`, which never throws) and drawn from memory, so there
+/// is no network and nothing to wait for; if the stored bytes will not decode
+/// the logo is simply left out and the mark is still there, and if the mark is
+/// missing too the space is empty. The shift button below does not depend on
+/// any of it.
+class StartLogo extends ConsumerWidget {
+  const StartLogo({super.key});
+
+  Widget _mark() => Image.asset(
+    'assets/icons/xorder_logo_official.png',
+    key: const Key('start-xorder-logo'),
+    width: 180,
+    fit: BoxFit.contain,
+    // The restaurant's name is right below; a missing asset is better absent
+    // than a broken-image glyph.
+    errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+  );
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final logo = ref.watch(businessLogoProvider).valueOrNull;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _mark(),
+        if (logo != null) ...[
+          const SizedBox(height: PosSpace.md),
+          // Drawn as it is, with no plate behind it (owner, 26 Oct 2026): the
+          // white box around a logo that has its own background looked like
+          // a frame on the screen. A transparent PNG with a dark mark is
+          // faint on the dark theme; the Settings card still previews on a
+          // plate for that reason.
+          Container(
+            key: const Key('start-business-logo'),
+            constraints: const BoxConstraints(maxWidth: 160, maxHeight: 72),
+            child: Image.memory(
+              logo.bytes,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              // Decode at about twice the size it is drawn, not at the pixel
+              // size of a 4000-pixel upload.
+              cacheWidth: 320,
+              // Undecodable bytes: no logo, and the mark above is still there.
+              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }

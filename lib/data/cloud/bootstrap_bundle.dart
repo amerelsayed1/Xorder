@@ -14,7 +14,9 @@
 library;
 
 import '../../domain/models/receipt_profile.dart';
+import '../../domain/models/financial_account.dart';
 import '../../domain/models/tender_method.dart';
+import '../../domain/models/content_languages.dart';
 
 /// One parsed key, or null — never an exception.
 int? _asInt(Object? value) => switch (value) {
@@ -69,6 +71,7 @@ class BootstrapRestaurant {
     this.nameAr,
     this.taxRegistrationNumber,
     this.defaultLanguage,
+    this.contentLanguages,
   });
 
   final int id;
@@ -85,6 +88,12 @@ class BootstrapRestaurant {
   /// wizard's own default (Arabic, the restaurants this ships to) is a better
   /// answer than a word the platform happened to send.
   final String? defaultLanguage;
+
+  /// Which languages the platform says the menu is written in (XORD-005): the
+  /// wire value `ar`, `en` or `both`, or null when the platform did not say.
+  /// An older platform sends no `bilingual` at all, and null must leave what
+  /// the till already has alone rather than reset it to `both`.
+  final String? contentLanguages;
 
   /// Mandatory on the wire (A7). Defaulted here only so a malformed bundle
   /// still parses — the seeder refuses to seed money-bearing rows without them.
@@ -111,7 +120,32 @@ class BootstrapRestaurant {
         'ar' => 'ar',
         _ => null,
       },
+      contentLanguages: ContentLanguages.fromPlatform(
+        bilingual: json['bilingual'] is bool ? json['bilingual'] as bool : null,
+        defaultLanguage: _asString(json['default_language']),
+      )?.wire,
     );
+  }
+}
+
+/// The bundle's `branding` block (XORD-021). Only the logo is read: the display
+/// name and accent colour the block also carries are not used by this build.
+///
+/// **A null [logoUrl] means "the restaurant has no logo", but only when the
+/// block was sent at all.** A platform that predates the key sends no block, and
+/// [BootstrapBundle.branding] is then null, which leaves whatever logo the till
+/// holds exactly as it is. The two must not be confused: one removes a logo,
+/// the other says nothing about it.
+class BootstrapBranding {
+  const BootstrapBranding({this.logoUrl});
+
+  /// Where the platform serves the logo, as it baked the address (an absolute
+  /// URL), or null when the restaurant has none.
+  final String? logoUrl;
+
+  static BootstrapBranding? fromJson(Map<String, Object?>? json) {
+    if (json == null) return null;
+    return BootstrapBranding(logoUrl: _asString(json['logo_url']));
   }
 }
 
@@ -567,6 +601,87 @@ class BootstrapTenderType {
   }
 }
 
+/// One financial account, as XORD-015 delivers it inside
+/// `money.financial_accounts`:
+/// `{id, name, kind, currency, branch_id, reference_label, is_active, sort_order}`.
+///
+/// **A proposed contract until the ledger says READY** (`BACKEND_TO_POS.md`);
+/// an older platform sends no such key and the seeder then leaves the table
+/// alone.
+class BootstrapFinancialAccount {
+  const BootstrapFinancialAccount({
+    required this.id,
+    required this.name,
+    required this.kind,
+    this.branchId,
+    this.currency,
+    this.referenceLabel,
+    this.isActive = true,
+    this.sortOrder = 0,
+  });
+
+  /// The **platform** account id, kept as the local primary key.
+  final int id;
+  final String name;
+  final AccountKind kind;
+
+  /// The branch this account belongs to, or null for one the whole business
+  /// shares. Branch ids are the platform's, kept verbatim as `pos_branches.id`.
+  final int? branchId;
+  final String? currency;
+  final String? referenceLabel;
+  final bool isActive;
+  final int sortOrder;
+
+  /// Null for a row this build cannot hold: no id, no name, or a kind it does
+  /// not know. Skipped, never guessed — an account shown as the wrong sort of
+  /// place is worse than one not shown yet.
+  static BootstrapFinancialAccount? fromJson(Map<String, Object?> json) {
+    final id = _asInt(json['id']);
+    final name = _asString(json['name']);
+    final kind = AccountKind.fromWire(_asString(json['kind']));
+    if (id == null || name == null || name.trim().isEmpty || kind == null) {
+      return null;
+    }
+    return BootstrapFinancialAccount(
+      id: id,
+      name: name.trim(),
+      kind: kind,
+      branchId: _asInt(json['branch_id']),
+      currency: _asString(json['currency']),
+      referenceLabel: _asString(json['reference_label']),
+      isActive: _asBool(json['is_active'], orElse: true),
+      sortOrder: _asInt(json['sort_order']) ?? 0,
+    );
+  }
+}
+
+/// One entry of `money.tender_account_defaults`:
+/// `{tender_type_id, branch_id, financial_account_id}`, all PLATFORM ids.
+/// `branch_id` null is the business-wide fallback.
+class BootstrapTenderAccountDefault {
+  const BootstrapTenderAccountDefault({
+    required this.tenderTypeId,
+    required this.accountId,
+    this.branchId,
+  });
+
+  final int tenderTypeId;
+  final int? branchId;
+  final int accountId;
+
+  static BootstrapTenderAccountDefault? fromJson(Map<String, Object?> json) {
+    final tender = _asInt(json['tender_type_id']);
+    final account = _asInt(json['financial_account_id']);
+    if (tender == null || account == null) return null;
+    return BootstrapTenderAccountDefault(
+      tenderTypeId: tender,
+      accountId: account,
+      branchId: _asInt(json['branch_id']),
+    );
+  }
+}
+
 /// The whole document.
 class BootstrapBundle {
   const BootstrapBundle({
@@ -586,6 +701,7 @@ class BootstrapBundle {
     this.money = const {},
     this.invoice = const {},
     this.licence,
+    this.branding,
   });
 
   /// The client's sole precedence signal (§025): accept iff newer than cached.
@@ -633,6 +749,9 @@ class BootstrapBundle {
   /// `{payload, signature, key_id}` when the tenant holds one (POS-BE-015).
   final Map<String, Object?>? licence;
 
+  /// The restaurant's branding, or null when this platform sends none (XORD-021).
+  final BootstrapBranding? branding;
+
   /// The payment methods in [money], parsed.
   ///
   /// A reading of [money] rather than a field beside it: [money] stays the
@@ -641,6 +760,28 @@ class BootstrapBundle {
   List<BootstrapTenderType> get tenderTypes => [
     for (final tender in _asMapList(money['tender_types']))
       ?BootstrapTenderType.fromJson(tender),
+  ];
+
+  /// Does this platform send financial accounts at all? **Absent is "this
+  /// platform predates them", not "there are none"**: an older deployment sends
+  /// no key, and the seeder then leaves what the till holds alone. A present
+  /// but empty list is the platform saying the business has none.
+  bool get sendsFinancialAccounts => money['financial_accounts'] is List;
+
+  /// Same rule for the defaults.
+  bool get sendsTenderAccountDefaults =>
+      money['tender_account_defaults'] is List;
+
+  /// The accounts in [money], parsed (XORD-015).
+  List<BootstrapFinancialAccount> get financialAccounts => [
+    for (final account in _asMapList(money['financial_accounts']))
+      ?BootstrapFinancialAccount.fromJson(account),
+  ];
+
+  /// The default accounts in [money], parsed (XORD-015).
+  List<BootstrapTenderAccountDefault> get tenderAccountDefaults => [
+    for (final row in _asMapList(money['tender_account_defaults']))
+      ?BootstrapTenderAccountDefault.fromJson(row),
   ];
 
   /// Can this bundle seed a database at all? The identity block is the floor:
@@ -705,6 +846,7 @@ class BootstrapBundle {
       money: block('money') ?? const {},
       invoice: block('invoice') ?? const {},
       licence: block('licence'),
+      branding: BootstrapBranding.fromJson(block('branding')),
     );
   }
 }

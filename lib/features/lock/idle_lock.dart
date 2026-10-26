@@ -133,7 +133,7 @@ class _TillIdleLockState extends ConsumerState<TillIdleLock> {
     // up; sent to the lock screen, it is a name and a PIN away.
     if (needsSignIn(at: at, signedIn: false, shiftOpen: shiftOpen) ||
         (at == PosRoutes.orders && shiftOpen)) {
-      router.go(PosRoutes.lock, extra: LockReason.inactivity);
+      router.go(lockLocationFrom(at), extra: LockReason.inactivity);
     }
     return true;
   }

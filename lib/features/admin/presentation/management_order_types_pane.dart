@@ -6,7 +6,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../domain/models/order_type_config.dart';
+import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
+import '../../../domain/models/ticket.dart';
+import '../../../domain/services/order_type_entitlement.dart';
 import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 import 'order_type_dialog.dart';
@@ -37,8 +40,20 @@ class _ManagementOrderTypesPaneState
   bool _busy = false;
   String? _note;
 
+  /// What the licence covers, or null when it says nothing about order types.
+  Set<OrderType>? get _entitled {
+    final features = ref.read(licenceClaimsProvider).valueOrNull?.features;
+    return features == null
+        ? null
+        : OrderTypeEntitlement.fromFeatures(features);
+  }
+
   Future<void> _edit(OrderTypeConfig config) async {
-    final edited = await OrderTypeDialog.show(context, config: config);
+    final edited = await OrderTypeDialog.show(
+      context,
+      config: config,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
 
     await _save(edited);
@@ -71,7 +86,11 @@ class _ManagementOrderTypesPaneState
       _busy = true;
       _note = null;
     });
-    final result = await repository.saveOrderType(edited, by: widget.admin);
+    final result = await repository.saveOrderType(
+      edited,
+      by: widget.admin,
+      entitled: _entitled,
+    );
     if (!mounted) return;
 
     setState(() {
@@ -94,13 +113,24 @@ class _ManagementOrderTypesPaneState
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final authors = ref.watch(catalogAdminRepositoryProvider) != null;
+    // Two things must hold: this till authors its own catalogue (not a cloud
+    // till, whose types come from the platform), and the person may choose
+    // order types at all (XORD-002).
+    final platformOwned = ref.watch(catalogAdminRepositoryProvider) == null;
+    final mayChoose = widget.admin.can(PosCapability.orderTypesManage);
+    final authors = !platformOwned && mayChoose;
+    final entitled = OrderTypeEntitlement.fromFeatures(
+      ref.watch(licenceClaimsProvider).valueOrNull?.features ?? const {},
+    );
 
     return ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
-        if (!authors) ...[
+        if (platformOwned) ...[
           PlatformOwnedNotice(text: strings.orderTypesComeFromPlatform),
+          const SizedBox(height: PosSpace.xl),
+        ] else if (!mayChoose) ...[
+          PlatformOwnedNotice(text: strings.orderTypesNeedPermission),
           const SizedBox(height: PosSpace.xl),
         ],
         PaneSection(title: strings.orderTypes, hint: strings.orderTypesHint),
@@ -116,13 +146,20 @@ class _ManagementOrderTypesPaneState
               ],
               data: (types) => [
                 for (final config in types)
-                  _OrderTypeRow(
-                    config: config,
-                    onEdit: authors && !_busy ? () => _edit(config) : null,
-                    onActive: authors && !_busy
-                        ? (active) => _setActive(config, active)
-                        : null,
-                  ),
+                  // A type the licence does not include and that is off is not
+                  // listed at all: there is nothing to do with it, and a row
+                  // that can never be switched on is a row that invites asking
+                  // why (XORD-002 — hide what is unavailable).
+                  if (entitled == null ||
+                      entitled.contains(config.type) ||
+                      config.isActive)
+                    _OrderTypeRow(
+                      config: config,
+                      onEdit: authors && !_busy ? () => _edit(config) : null,
+                      onActive: authors && !_busy
+                          ? (active) => _setActive(config, active)
+                          : null,
+                    ),
               ],
             ),
         if (_note != null) ...[

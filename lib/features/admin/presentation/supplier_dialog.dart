@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/supplier.dart';
 import '../../../core/text/digits.dart';
 
@@ -14,15 +15,25 @@ import '../../../core/text/digits.dart';
 /// later with the invoice in hand, and a form that demanded a tax number would
 /// be a form that gets skipped and a delivery that goes unrecorded.
 class SupplierDialog extends StatefulWidget {
-  const SupplierDialog({super.key, this.supplier});
+  const SupplierDialog({
+    super.key,
+    this.supplier,
+    this.languages = ContentLanguages.both,
+  });
 
   final Supplier? supplier;
 
-  static Future<Supplier?> show(BuildContext context, {Supplier? supplier}) =>
-      showDialog<Supplier>(
-        context: context,
-        builder: (_) => SupplierDialog(supplier: supplier),
-      );
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
+
+  static Future<Supplier?> show(
+    BuildContext context, {
+    Supplier? supplier,
+    ContentLanguages languages = ContentLanguages.both,
+  }) => showDialog<Supplier>(
+    context: context,
+    builder: (_) => SupplierDialog(supplier: supplier, languages: languages),
+  );
 
   @override
   State<SupplierDialog> createState() => _SupplierDialogState();
@@ -60,10 +71,18 @@ class _SupplierDialogState extends State<SupplierDialog> {
   }
 
   void _save() {
+    // A language the form did not show has no box, so it types nothing.
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _text('name') ?? '',
+      typedAr: _text('name_ar') ?? '',
+      previousEn: widget.supplier?.nameEn,
+      previousAr: widget.supplier?.nameAr,
+    );
     final supplier = Supplier(
       id: widget.supplier?.id ?? 0,
-      nameEn: _text('name') ?? '',
-      nameAr: _text('name_ar'),
+      nameEn: names.nameEn,
+      nameAr: names.nameAr.isEmpty ? null : names.nameAr,
       code: _text('code') ?? '',
       contactName: _text('contact'),
       phone: _phone(),
@@ -115,17 +134,21 @@ class _SupplierDialogState extends State<SupplierDialog> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
-                  _Field(
-                    name: 'name',
-                    label: strings.supplierName,
-                    controller: _box('name', supplier?.nameEn),
-                  ),
-                  _Field(
-                    name: 'name_ar',
-                    label: strings.tenderNameAr,
-                    controller: _box('name_ar', supplier?.nameAr),
-                    optional: true,
-                  ),
+                  if (widget.languages.showsEnglish)
+                    _Field(
+                      name: 'name',
+                      label: strings.supplierName,
+                      controller: _box('name', supplier?.nameEn),
+                    ),
+                  if (widget.languages.showsArabic)
+                    _Field(
+                      name: 'name_ar',
+                      label: widget.languages == ContentLanguages.arabic
+                          ? strings.supplierName
+                          : strings.tenderNameAr,
+                      controller: _box('name_ar', supplier?.nameAr),
+                      optional: widget.languages == ContentLanguages.both,
+                    ),
                   _Field(
                     name: 'contact',
                     label: strings.supplierContact,

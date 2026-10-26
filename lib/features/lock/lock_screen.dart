@@ -245,35 +245,33 @@ class _LockScreenState extends ConsumerState<LockScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                strings.terminalLocked,
-                textAlign: TextAlign.center,
-                style: PosText.mono(
-                  size: 10.5,
-                  weight: FontWeight.w600,
-                  color: context.pos.shellMuted,
-                  letterSpacing: 2.5,
+              // XOrder's mark above everything, as on the start screen: orange
+              // on transparent, so the one asset serves both themes. Absent
+              // rather than a broken-image glyph if the asset is missing.
+              Center(
+                child: Image.asset(
+                  'assets/icons/xorder_logo_official.png',
+                  key: const Key('lock-xorder-logo'),
+                  height: 56,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stack) =>
+                      const SizedBox.shrink(),
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: PosSpace.xl),
-                child: ColoredBox(
-                  color: context.pos.accent,
-                  child: SizedBox(height: 2),
+              const SizedBox(height: PosSpace.s28),
+              // No standing "Enter your PIN" heading: the name field, the keypad
+              // and the dots already say it. This slot is for what went wrong.
+              if (_error != null)
+                Text(
+                  _error!,
+                  key: const Key('lock-message'),
+                  textAlign: TextAlign.center,
+                  style: PosText.ui(
+                    size: 20,
+                    weight: FontWeight.w800,
+                    color: context.pos.offlinePillText,
+                  ),
                 ),
-              ),
-              Text(
-                _error ?? strings.enterYourPin,
-                key: const Key('lock-message'),
-                textAlign: TextAlign.center,
-                style: PosText.ui(
-                  size: 20,
-                  weight: FontWeight.w800,
-                  color: _error != null
-                      ? context.pos.offlinePillText
-                      : context.pos.shellText,
-                ),
-              ),
               if (widget.afterInactivity) ...[
                 const SizedBox(height: PosSpace.sm),
                 Text(
@@ -283,7 +281,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   style: PosText.ui(size: 13, color: context.pos.shellMuted),
                 ),
               ],
-              const SizedBox(height: PosSpace.s24),
+              if (_error != null || widget.afterInactivity)
+                const SizedBox(height: PosSpace.s24),
               if (people.isNotEmpty) ...[
                 MicroLabel(
                   strings.lockPickYourName,

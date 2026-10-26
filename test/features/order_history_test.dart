@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/excel_export.dart';
+import 'package:xorder_pos/app/labels.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
@@ -21,9 +24,12 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/payment_status.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/history/presentation/history_widgets.dart';
 import 'package:xorder_pos/features/history/presentation/order_detail_pane.dart';
 import 'package:xorder_pos/features/history/presentation/order_history_screen.dart';
 import 'package:xorder_pos/features/history/presentation/payment_status_chip.dart';
+
+import '../support/fonts.dart';
 
 /// The order history screen.
 ///
@@ -1712,6 +1718,183 @@ void main() {
             .first,
       );
       expect(directionality.textDirection, TextDirection.ltr);
+    });
+  });
+
+  group('alignment in Arabic', () {
+    // The bundled faces, not the test font (every glyph a full em): widths and
+    // truncation only mean something drawn in the real ones.
+    setUpAll(loadPosFonts);
+
+    /// Where the letters are DRAWN, not the box that holds them. A Text in a
+    /// fixed-width cell fills the cell whether its glyphs sit at one edge or the
+    /// other, so measuring the widget says nothing about alignment.
+    Rect ink(WidgetTester tester, Finder finder) {
+      final paragraph = tester.renderObject<RenderParagraph>(finder);
+      final length = paragraph.text.toPlainText().length;
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: length),
+      );
+      final local = boxes.map((b) => b.toRect()).reduce((a, b) => a.expandToInclude(b));
+      return local.shift(paragraph.localToGlobal(Offset.zero));
+    }
+
+    Finder searchBox() => find.descendant(
+      of: find.byType(HistorySearchField),
+      matching: find.byType(TextField),
+    );
+
+    // Left-to-right text (a time, an invoice number, a quantity) must READ left
+    // to right and still sit on the language's own start edge. It used to sit
+    // on the cell's left: in Arabic the time pressed against the next column's
+    // word ("07:15صالة"), away from its own heading.
+
+    OrderRecord oneOrder() => order(
+      id: 1,
+      invoice: 'HST-000481',
+      occurredAt: at(10),
+      table: 'A1',
+    );
+
+    testWidgets('a time sits under its heading, on the right edge', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()]);
+
+      final heading = ink(tester, find.text(const ArStrings().orderColumnTime));
+      final value = ink(tester, find.text('10:00'));
+
+      // Right edges, where Arabic starts. It was 38 px to the left of this.
+      expect(value.right, closeTo(heading.right, 4));
+    });
+
+    testWidgets('and in English on the left edge, as before', (tester) async {
+      await pump(tester, orders: [oneOrder()]);
+
+      final heading = ink(tester, find.text(const EnStrings().orderColumnTime.toUpperCase()));
+      final value = ink(tester, find.text('10:00'));
+
+      expect(value.left, closeTo(heading.left, 4));
+    });
+
+    testWidgets('the time does not touch the order type beside it', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()]);
+
+      final time = ink(tester, find.text('10:00'));
+      // `.last`: the same word is also a filter chip above the list.
+      final type = ink(tester, find.text(OrderType.dineIn.label(const ArStrings())).last);
+
+      // The type is to the left of the time in Arabic; a clear gap between.
+      expect(type.right, lessThan(time.left - 8));
+    });
+
+    testWidgets('the invoice number lines up with its heading', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()]);
+
+      final heading = ink(tester, find.text(const ArStrings().orderColumnInvoice));
+      final value = ink(tester, find.text('HST-000481'));
+
+      expect(value.right, closeTo(heading.right, 4));
+    });
+
+    testWidgets('the Excel button is at the end of the header, not the middle', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()], onClose: () {});
+
+      final button = tester.getCenter(find.byType(ExcelExportButton));
+      // Arabic ends on the LEFT: well inside the left third of 1440.
+      expect(button.dx, lessThan(1440 / 3));
+    });
+
+    testWidgets('and at the right end in English', (tester) async {
+      await pump(tester, orders: [oneOrder()], onClose: () {});
+
+      final button = tester.getCenter(find.byType(ExcelExportButton));
+      expect(button.dx, greaterThan(1440 * 2 / 3));
+    });
+
+    testWidgets('a line quantity has room before the item name', (tester) async {
+      final record = oneOrder();
+      await pump(
+        tester,
+        locale: 'ar',
+        orders: [record],
+        details: {
+          1: OrderRecordDetail(
+            order: record,
+            lines: const [
+              OrderRecordLine(
+                id: 1,
+                lineKey: 'L1',
+                name: 'Koshari',
+                quantity: 2,
+                unitPrice: Money(5000),
+                lineTotal: Money(10000),
+              ),
+            ],
+            payments: const [],
+            discounts: const [],
+          ),
+        },
+      );
+      await tester.tap(find.text('HST-000481'));
+      await tester.pumpAndSettle();
+
+      final quantity = ink(tester, find.text('2').last);
+      final name = ink(tester, find.text('Koshari'));
+
+      // In Arabic the quantity is on the right and the name to its left, with a
+      // real gap between them.
+      expect(quantity.left - name.right, greaterThan(8));
+    });
+
+    testWidgets('the search box is as tall as the filter chips beside it', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()]);
+
+      final chip = tester.getRect(find.byType(HistoryFilterChip).first);
+      final box = tester.getRect(searchBox());
+      final typing = tester.getRect(
+        find.descendant(of: searchBox(), matching: find.byType(EditableText)),
+      );
+
+      expect(box.height, closeTo(chip.height, 1));
+      // A TextField is only as tall as its text unless it expands: the box was
+      // the chips' height, but its border was drawn round a ~25 px strip pinned
+      // to the top. So it must expand, and what is typed must sit in the MIDDLE
+      // of the chips' height, not near its top.
+      expect(tester.widget<TextField>(searchBox()).expands, isTrue);
+      expect((typing.center.dy - box.center.dy).abs(), lessThan(3));
+    });
+
+    testWidgets('and wide enough to read its whole hint', (tester) async {
+      await pump(tester, locale: 'ar', orders: [oneOrder()]);
+
+      final hint = find.text(const ArStrings().orderHistorySearchHint);
+      expect(hint, findsOneWidget);
+      expect(tester.renderObject<RenderParagraph>(hint).didExceedMaxLines, isFalse);
+      expect(tester.getSize(searchBox()).width, greaterThanOrEqualTo(260));
+    });
+
+    testWidgets('the three footer buttons keep their words whole', (tester) async {
+      final record = oneOrder();
+      await pump(
+        tester,
+        locale: 'ar',
+        orders: [record],
+        details: {
+          1: OrderRecordDetail(
+            order: record,
+            lines: const [],
+            payments: const [OrderRecordPayment(label: 'Cash', amount: Money(26800))],
+            discounts: const [],
+          ),
+        },
+      );
+      await tester.tap(find.text('HST-000481'));
+      await tester.pumpAndSettle();
+
+      // The label is drawn whole: the paragraph did not run out of room.
+      final label = find.text(const ArStrings().receiptReprintAction);
+      expect(label, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(label);
+      expect(paragraph.didExceedMaxLines, isFalse);
     });
   });
 }

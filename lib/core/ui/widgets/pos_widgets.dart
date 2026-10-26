@@ -535,10 +535,16 @@ class UsernameField extends StatelessWidget {
     this.onSubmitted,
     this.onChanged,
     this.autofocus = true,
+    this.textAlign = TextAlign.center,
     super.key,
   });
 
   final TextEditingController controller;
+
+  /// Centred, as on the lock screen's PIN pad. A form that reads in the page's
+  /// direction passes [TextAlign.start], which follows the locale (right in
+  /// Arabic) the way its label above does.
+  final TextAlign textAlign;
 
   /// Enter, which on a keyboard means "done with this field". Without it the
   /// only way from the name to the keypad is the mouse.
@@ -563,7 +569,7 @@ class UsernameField extends StatelessWidget {
         onChanged: onChanged,
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => onSubmitted?.call(),
-        textAlign: TextAlign.center,
+        textAlign: textAlign,
         style: PosText.mono(size: 16, color: context.pos.shellText),
         cursorColor: context.pos.accent,
         decoration: shellInputDecoration(

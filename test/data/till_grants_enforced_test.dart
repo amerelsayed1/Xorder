@@ -332,6 +332,26 @@ void main() {
     );
   });
 
+  test('the till may read the accounts and not author them, offline', () async {
+    // XORD-015. The offline REVOKE after the cloud grants, as for the payment
+    // methods: the accounts are the owner's, authored over the administrator
+    // credential.
+    expect(await refusalFor('SELECT 1 FROM pos_financial_accounts'), isNull);
+    expect(await refusalFor('SELECT 1 FROM pos_tender_account_defaults'), isNull);
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_financial_accounts (restaurant_id, name, kind) '
+        "VALUES (1, 'x', 'cash')",
+      ),
+      '42501',
+    );
+    expect(
+      await refusalFor("UPDATE pos_financial_accounts SET name = 'y'"),
+      '42501',
+    );
+    expect(await refusalFor('DELETE FROM pos_tender_account_defaults'), '42501');
+  });
+
   test('the till may not change what the receipt says about the seller',
       () async {
     // The trade name and registration number on a legal document.

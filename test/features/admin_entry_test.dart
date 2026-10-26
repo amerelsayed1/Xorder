@@ -129,11 +129,30 @@ void main() {
   ];
 
   final door = find.byKey(const Key('admin-username'));
-  // Past the door: the status bar, which is drawn for nobody who is not. It
-  // was the tab strip until the owner took that away (15 Sep 2026). Not a
-  // pane's contents — the door lands on the first tab that holds a pane, and
-  // which that is depends on the till and the person.
-  final inside = find.byKey(const Key('back-office-status-bar'));
+  // Past the door: the back office's header, which is drawn for nobody who is
+  // not. It was the status bar until that moved under every screen (26 Oct
+  // 2026), and the tab strip before that. Not a pane's contents — the door lands
+  // on the first tab that holds a pane, and which that is depends on the till
+  // and the person.
+  final inside = find.byKey(const Key('back-office-title'));
+  // The way out: Log out, a line of the account menu — the bar's last word,
+  // carrying the person's name (XORD-022-D). The header's Exit button and the
+  // bar's own Log out button it replaced are gone.
+  final logOut = find.descendant(
+    of: find.byType(MenuBar),
+    matching: find.text(_strings.logOut),
+  );
+  Future<void> openAccountMenu(WidgetTester tester) async {
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(MenuBar),
+            matching: find.byType(SubmenuButton),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+  }
 
   group('the way in', () {
     testWidgets('F8 no longer opens the back office from a locked till', (
@@ -162,6 +181,12 @@ void main() {
 
       expect(location(app), PosRoutes.management);
       expect(door, findsOneWidget);
+      // The product's mark above the door, and the title says Back office, not
+      // "Admin Mode" (owner, 26 Oct 2026).
+      expect(find.byKey(const Key('admin-sign-in-logo')), findsOneWidget);
+      expect(find.text(_strings.adminSignInTitle), findsOneWidget);
+      expect(_strings.adminSignInTitle, 'Back office');
+      expect(const ArStrings().adminSignInTitle, 'لوحة الإدارة');
       expect(inside, findsNothing, reason: 'the chord is not a lock');
       expect(app.read(adminDbCredentialProvider), isNull);
     }, variant: desktop);
@@ -212,7 +237,10 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
         _strings.adminTitle(managementPaneLabel(_strings, landing).$1),
       );
-      expect(find.byKey(const Key('admin-exit')), findsOneWidget);
+      expect(logOut, findsNothing, reason: 'no button of its own');
+      await openAccountMenu(tester);
+      expect(logOut, findsOneWidget);
+      expect(find.byKey(const Key('admin-exit')), findsNothing);
       expect(inside, findsOneWidget);
       expect(app.read(adminSessionProvider)!.staff.username, 'amer');
       expect(
@@ -237,12 +265,13 @@ void main() {
       );
       expect(home, findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('admin-exit')));
+      await openAccountMenu(tester);
+      await tester.tap(logOut);
       await tester.pumpAndSettle();
       expect(home, findsNothing);
     }, variant: desktop);
 
-    testWidgets('Exit returns to where the till was, and forgets everything', (
+    testWidgets('Log out returns to where the till was, and forgets everything', (
       tester,
     ) async {
       final app = await pumpApp(tester, atTheTill: _cashier);
@@ -250,7 +279,8 @@ void main() {
       await signIn(tester, 'amer', '4321');
       expect(app.read(adminDbCredentialProvider), 'test-credential');
 
-      await tester.tap(find.byKey(const Key('admin-exit')));
+      await openAccountMenu(tester);
+      await tester.tap(logOut);
       await tester.pumpAndSettle();
 
       expect(location(app), PosRoutes.start);

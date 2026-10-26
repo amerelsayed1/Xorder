@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/service_charge.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../app/labels.dart';
@@ -16,16 +17,24 @@ import '../../../core/text/digits.dart';
 /// whichever" is a question nobody has answered — so the choice comes first
 /// and only one box exists at a time.
 class ServiceChargeDialog extends StatefulWidget {
-  const ServiceChargeDialog({super.key, this.charge});
+  const ServiceChargeDialog({
+    super.key,
+    this.charge,
+    this.languages = ContentLanguages.both,
+  });
 
   final ServiceCharge? charge;
+
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
 
   static Future<ServiceCharge?> show(
     BuildContext context, {
     ServiceCharge? charge,
+    ContentLanguages languages = ContentLanguages.both,
   }) => showDialog<ServiceCharge>(
     context: context,
-    builder: (_) => ServiceChargeDialog(charge: charge),
+    builder: (_) => ServiceChargeDialog(charge: charge, languages: languages),
   );
 
   @override
@@ -73,11 +82,18 @@ class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
 
   void _save() {
     final typed = double.tryParse(foldDigits(_amount.text.trim())) ?? 0;
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.charge?.nameEn,
+      previousAr: widget.charge?.nameAr,
+    );
     Navigator.of(context).pop(
       ServiceCharge(
         id: widget.charge?.id ?? 0,
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         // Exactly one of the two, always. Both set is the state the model,
         // the repository and a CHECK constraint all refuse, so the dialog
         // cannot produce it in the first place.
@@ -119,12 +135,21 @@ class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
               ),
               const SizedBox(height: PosSpace.lg),
 
-              _Field(label: strings.chargeName, controller: _nameEn),
-              _Field(
-                label: strings.tenderNameAr,
-                controller: _nameAr,
-                optional: true,
-              ),
+              if (widget.languages.showsEnglish)
+                _Field(
+                  fieldKey: const Key('charge-name'),
+                  label: strings.chargeName,
+                  controller: _nameEn,
+                ),
+              if (widget.languages.showsArabic)
+                _Field(
+                  fieldKey: const Key('charge-name-ar'),
+                  label: widget.languages == ContentLanguages.arabic
+                      ? strings.chargeName
+                      : strings.tenderNameAr,
+                  controller: _nameAr,
+                  optional: widget.languages == ContentLanguages.both,
+                ),
 
               MicroLabel(strings.chargeHow),
               const SizedBox(height: PosSpace.xs),
@@ -266,11 +291,13 @@ class _Field extends StatelessWidget {
   const _Field({
     required this.label,
     required this.controller,
+    this.fieldKey,
     this.optional = false,
   });
 
   final String label;
   final TextEditingController controller;
+  final Key? fieldKey;
   final bool optional;
 
   @override
@@ -282,6 +309,7 @@ class _Field extends StatelessWidget {
         MicroLabel(optional ? context.strings.optionalField(label) : label),
         const SizedBox(height: PosSpace.xs),
         TextField(
+          key: fieldKey,
           controller: controller,
           style: PosText.ui(size: 15, color: context.pos.ink),
         ),

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,6 +19,7 @@ class FloorScreen extends ConsumerWidget {
     required this.onTablePicked,
     required this.onSellWithoutTable,
     required this.onClose,
+    this.hasHome = false,
   });
 
   final void Function(DiningTable table) onTablePicked;
@@ -32,11 +34,33 @@ class FloorScreen extends ConsumerWidget {
   /// the app.
   final VoidCallback onClose;
 
+  /// The branch has a home screen (it sells more than one way), which says how
+  /// an order is sold: Take away and the rest are buttons there, and the way
+  /// back is Escape. The header's "Sell without table" and "Back" buttons are
+  /// then dropped (owner, 26 Oct 2026). Where there is no Home — one way of
+  /// selling, seated — the Floor IS the entry, and they stay: "Sell without
+  /// table" is the only way to sell when no tables exist yet.
+  final bool hasHome;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tables = ref.watch(floorTablesProvider);
     final strings = context.strings;
 
+    return CallbackShortcuts(
+      bindings: {
+        // Escape is the back button.
+        const SingleActivator(LogicalKeyboardKey.escape): onClose,
+      },
+      child: Focus(autofocus: true, child: _scaffold(context, strings, tables)),
+    );
+  }
+
+  Widget _scaffold(
+    BuildContext context,
+    AppStrings strings,
+    AsyncValue<List<DiningTable>> tables,
+  ) {
     return Scaffold(
       backgroundColor: context.pos.page,
       body: tables.when(
@@ -98,18 +122,20 @@ class FloorScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: PosSpace.md),
-              PosButton(
-                label: strings.sellWithoutTable,
-                border: Border.fromBorderSide(pos.resting),
-                onPressed: onSellWithoutTable,
-              ),
-              const SizedBox(width: PosSpace.sm),
-              PosButton(
-                label: strings.backToTill,
-                border: Border.fromBorderSide(pos.resting),
-                onPressed: onClose,
-              ),
+              if (!hasHome) ...[
+                const SizedBox(width: PosSpace.md),
+                PosButton(
+                  label: strings.sellWithoutTable,
+                  border: Border.fromBorderSide(pos.resting),
+                  onPressed: onSellWithoutTable,
+                ),
+                const SizedBox(width: PosSpace.sm),
+                PosButton(
+                  label: strings.backToTill,
+                  border: Border.fromBorderSide(pos.resting),
+                  onPressed: onClose,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: PosSpace.md),

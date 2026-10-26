@@ -188,6 +188,16 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     super.dispose();
   }
 
+  /// Which columns and figures to draw. A locked [HistoryPreset] decides; with
+  /// none, the list takes the Cancelled-orders layout exactly when Voided is the
+  /// only status chosen — every row is then a void, and the money columns would
+  /// be a column of nothing taken. Every other choice is the plain list.
+  HistoryPreset get _layout => widget.preset != HistoryPreset.all
+      ? widget.preset
+      : (_statuses.length == 1 && _statuses.contains(OrderStatus.voided))
+      ? HistoryPreset.voided
+      : HistoryPreset.all;
+
   OrderHistoryQuery _query(DateTime today) {
     final (from, to) = _range.window(today);
     return widget.preset.apply(
@@ -319,10 +329,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _SummaryStrip(
-                            summary: summary,
-                            preset: widget.preset,
-                          ),
+                          _SummaryStrip(summary: summary, preset: _layout),
                           Expanded(
                             child: _list(
                               context,
@@ -415,20 +422,22 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           // BO-11: every page of the filter above, not the one in view, and
           // the strip's figures under them — see `sales_export.dart`. Read
           // through the list's own road and scope, as the person acting.
+          // Not wrapped in a `Flexible`: beside the title's `Expanded` it took
+          // half of what was left, and the button sat in the middle of the
+          // header instead of at its end. The title shrinks first if the room
+          // runs out; the button keeps its size and its edge.
           if (base != null)
-            Flexible(
-              child: ExcelExportButton(
-                fileName: salesFileName(base),
-                build: (strings, rightToLeft) async => salesWorkbook(
-                  rows: await ordersToExport(
-                    ref.read(orderHistoryRepositoryProvider),
-                    base,
-                    viewer: ref.read(actingStaffProvider),
-                  ),
-                  query: base,
-                  strings: strings,
-                  rightToLeft: rightToLeft,
+            ExcelExportButton(
+              fileName: salesFileName(base),
+              build: (strings, rightToLeft) async => salesWorkbook(
+                rows: await ordersToExport(
+                  ref.read(orderHistoryRepositoryProvider),
+                  base,
+                  viewer: ref.read(actingStaffProvider),
                 ),
+                query: base,
+                strings: strings,
+                rightToLeft: rightToLeft,
               ),
             ),
           if (widget.onClose case final close?) ...[
@@ -612,7 +621,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         return HistoryMessage(
           message: filtered
               ? strings.orderHistoryEmptyFiltered
-              : switch (widget.preset) {
+              : switch (_layout) {
                   HistoryPreset.all ||
                   HistoryPreset.invoices => strings.orderHistoryEmpty,
                   HistoryPreset.voided => strings.voidedOrdersEmpty,
@@ -662,7 +671,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     List<OrderRecord> data,
     int? page,
   ) => HistoryTable(
-    minWidth: _Cols.minFor(widget.preset),
+    minWidth: _Cols.minFor(_layout),
     sideways: _sideways,
     sidewaysKey: OrderHistoryScreen.sidewaysKey,
     headings: _columnHeadings(strings),
@@ -674,7 +683,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         final order = data[index];
         return _OrderRow(
           order: order,
-          preset: widget.preset,
+          preset: _layout,
           selected: order.id == _selectedId,
           onTap: () => setState(() => _selectedId = order.id),
         );
@@ -686,7 +695,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     // The two shared columns after the seller, and what follows the total.
     // Over the preset, so a fourth list is a compile error here rather than a
     // table whose headings stand over the wrong columns.
-    final (second, third, tail) = switch (widget.preset) {
+    final (second, third, tail) = switch (_layout) {
       HistoryPreset.all || HistoryPreset.invoices => (
         strings.orderColumnMethod,
         strings.orderColumnTerminal,
@@ -727,7 +736,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         // Who the sale was for. Not on Cancelled orders, whose three shared
         // columns are who voided it, when and why — a customer there would
         // squeeze the reason, which is what that list is read for.
-        if (_Cols.hasCustomer(widget.preset)) ...[
+        if (_Cols.hasCustomer(_layout)) ...[
           const SizedBox(width: PosSpace.sm),
           Expanded(child: MicroLabel(strings.customersColumnCustomer)),
         ],

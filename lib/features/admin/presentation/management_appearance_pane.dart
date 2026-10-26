@@ -6,6 +6,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
+import '../../../domain/models/permissions.dart';
+import '../../../domain/models/shift.dart';
+import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 
 /// Which half of this terminal's appearance a pane shows.
@@ -21,15 +25,113 @@ enum AppearancePart { language, theme }
 /// past the restaurant's address, nor meet the theme first and wonder whether
 /// they chose the wrong line.
 class ManagementAppearancePane extends StatelessWidget {
-  const ManagementAppearancePane({required this.part, super.key});
+  const ManagementAppearancePane({required this.part, this.admin, super.key});
 
   final AppearancePart part;
+
+  /// Who is in the back office, for the menu-languages card (XORD-005). Null
+  /// for a host that shows the terminal's own appearance only.
+  final PosStaff? admin;
 
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(PosSpace.xl),
-    children: [TerminalAppearanceCard(only: part)],
+    children: [
+      TerminalAppearanceCard(only: part),
+      if (part == AppearancePart.language && admin != null) ...[
+        const SizedBox(height: PosSpace.lg),
+        ContentLanguagesCard(admin: admin!),
+      ],
+    ],
   );
+}
+
+/// Which languages the MENU is written in (XORD-005) — categories, items and
+/// the forms that ask for their names. Not the language this till is shown in:
+/// that is the card above it.
+///
+/// An offline install authors it here, under `settings.manage`; a cloud till's
+/// comes from the platform and is read-only, as its order types are.
+class ContentLanguagesCard extends ConsumerStatefulWidget {
+  const ContentLanguagesCard({required this.admin, super.key});
+
+  final PosStaff admin;
+
+  @override
+  ConsumerState<ContentLanguagesCard> createState() =>
+      _ContentLanguagesCardState();
+}
+
+class _ContentLanguagesCardState extends ConsumerState<ContentLanguagesCard> {
+  bool _busy = false;
+  String? _problem;
+
+  Future<void> _choose(ContentLanguages languages) async {
+    final repository = ref.read(catalogAdminRepositoryProvider);
+    if (repository == null || _busy) return;
+
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    final result = await repository.saveContentLanguages(
+      languages,
+      by: widget.admin,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      _problem = result.succeeded
+          ? null
+          : AdminText.refusal(context.strings, result.refusal!);
+    });
+    if (result.succeeded) ref.invalidate(contentLanguagesProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final current = ref.watch(contentLanguagesNowProvider);
+    final platformOwned = ref.watch(catalogAdminRepositoryProvider) == null;
+    final mayChoose = widget.admin.can(PosCapability.settingsManage);
+    final editable = !platformOwned && mayChoose && !_busy;
+
+    return SettingsCard(
+      key: const Key('content-languages'),
+      title: strings.contentLanguagesTitle,
+      hint: strings.contentLanguagesHint,
+      children: [
+        if (platformOwned)
+          PlatformOwnedNotice(text: strings.contentLanguagesFromPlatform)
+        else if (!mayChoose)
+          PlatformOwnedNotice(text: strings.contentLanguagesNeedPermission),
+        if (platformOwned || !mayChoose) const SizedBox(height: PosSpace.sm),
+        _Choices(
+          children: [
+            for (final (value, label) in <(ContentLanguages, String)>[
+              (ContentLanguages.arabic, strings.contentLanguagesArabic),
+              (ContentLanguages.english, strings.contentLanguagesEnglish),
+              (ContentLanguages.both, strings.contentLanguagesBoth),
+            ])
+              _Choice(
+                key: Key('content-language-${value.wire}'),
+                label: label,
+                selected: current == value,
+                onTap: editable ? () => _choose(value) : () {},
+              ),
+          ],
+        ),
+        if (_problem != null) ...[
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            _problem!,
+            style: PosText.ui(size: 12.5, color: context.pos.danger),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 /// Which language and which theme this terminal shows.

@@ -278,129 +278,72 @@ class FinanceRevenuePane extends StatelessWidget {
   }
 }
 
-/// Payments: the methods, and every payment behind them.
-class FinancePaymentsPane extends StatelessWidget {
-  const FinancePaymentsPane({super.key});
+/// Every payment of the period, one row each, with the total — the ledger
+/// behind Reports › Payment methods.
+///
+/// **Hosted by the report since XORD-022-A.** Finance had a Payment methods
+/// page that repeated the report's by-method table and added this ledger; the
+/// owner chose to merge it into the report (2026-10-25), so the table went and
+/// the ledger stayed — no payment row is lost, and the page says one thing in
+/// one place. A section rather than a page: the period belongs to the page that
+/// hosts it, and arrives as [filter].
+class PaymentLedgerSection extends ConsumerWidget {
+  const PaymentLedgerSection({super.key, required this.filter});
+
+  final ReportFilter filter;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = context.strings;
-    return _FinanceFrame(
-      paneKey: 'finance-payments',
-      blurb: s.financePaymentsBlurb,
-      builder: (ref, filter, _) => _read(
-        context,
-        ref.watch(salesReportProvider(filter)),
-        (sales) {
-          final methods = sales.paymentsByMethod;
-          final shares = sales.tenderShares;
-          final zero = Money(0, currency: sales.currency, exponent: sales.exponent);
-          return [
-            MicroLabel(s.financeByMethod),
-            const SizedBox(height: PosSpace.sm),
-            if (methods.isEmpty)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ..._read(
+          context,
+          ref.watch(paymentLedgerProvider(filter)),
+          (ledger) => [
+            if (ledger.entries.isEmpty)
               _Note(s.financeNoPayments)
-            else
+            else ...[
               _Table(
                 columns: [
-                  (label: s.financeMethod, flex: 4, numeric: false),
-                  (label: s.financePaymentCount, flex: 2, numeric: true),
+                  (label: s.financeTime, flex: 3, numeric: false),
+                  (label: s.financeInvoice, flex: 3, numeric: false),
+                  (label: s.terminalCell, flex: 3, numeric: false),
+                  (label: s.financeMethod, flex: 3, numeric: false),
                   (label: s.financeAmount, flex: 3, numeric: true),
-                  (label: s.financeShare, flex: 2, numeric: true),
                 ],
                 rows: [
-                  for (final (i, method) in methods.indexed)
-                    _TableRow(Key('finance-method-row-$i'), [
-                      _text(
-                        context,
-                        // On account is listed — it is payment rows — but
-                        // named for what it is, and given no share: it is
-                        // owed, not taken (§3a rule 3).
-                        method.bucket == PaymentBucket.onAccount
-                            ? '${method.label} · ${s.financeKpiOnAccount}'
-                            : method.label,
-                      ),
-                      _count(context, method.count),
-                      MonoAmount(method.amount),
-                      switch (shares.firstWhereOrNull(
-                        (t) => t.method.sameMethodAs(method),
-                      )) {
-                        final share? => _code(
-                          context,
-                          formatShareBp(share.basisPoints),
-                        ),
-                        null => _code(context, '—'),
+                  for (final entry in ledger.entries)
+                    _TableRow(Key('finance-ledger-row-${entry.paymentId}'), [
+                      _code(context, _stamp(entry.occurredAt)),
+                      _code(context, entry.invoiceNumber),
+                      switch (entry.terminalName) {
+                        final name? => _text(context, name),
+                        // A stranger terminal, listed as the terminal
+                        // table lists it: by the id it wrote.
+                        null => _code(context, entry.terminalId),
                       },
+                      _text(context, entry.label),
+                      MonoAmount(entry.amount),
                     ]),
                 ],
-                // Summed off the rows drawn above it, which are every payment
-                // of the period by method — so the line is collected plus on
-                // account, and says so by being their sum.
-                total: _TableRow(const Key('finance-method-total'), [
-                  _text(context, s.financeTotal, strong: true),
-                  _count(
-                    context,
-                    methods.fold(0, (sum, m) => sum + m.count),
-                    strong: true,
-                  ),
-                  MonoAmount(
-                    methods.fold(zero, (sum, m) => sum + m.amount),
-                    weight: FontWeight.w600,
-                  ),
+                total: _TableRow(const Key('finance-ledger-total'), [
+                  _text(context, s.financeLedgerTotal, strong: true),
                   const SizedBox.shrink(),
+                  const SizedBox.shrink(),
+                  const SizedBox.shrink(),
+                  MonoAmount(ledger.total, weight: FontWeight.w600),
                 ]),
               ),
-            const SizedBox(height: PosSpace.s28),
-            MicroLabel(s.financeLedgerTitle),
-            const SizedBox(height: PosSpace.sm),
-            ..._read(
-              context,
-              ref.watch(paymentLedgerProvider(filter)),
-              (ledger) => [
-                if (ledger.entries.isEmpty)
-                  _Note(s.financeNoPayments)
-                else ...[
-                  _Table(
-                    columns: [
-                      (label: s.financeTime, flex: 3, numeric: false),
-                      (label: s.financeInvoice, flex: 3, numeric: false),
-                      (label: s.terminalCell, flex: 3, numeric: false),
-                      (label: s.financeMethod, flex: 3, numeric: false),
-                      (label: s.financeAmount, flex: 3, numeric: true),
-                    ],
-                    rows: [
-                      for (final entry in ledger.entries)
-                        _TableRow(Key('finance-ledger-row-${entry.paymentId}'), [
-                          _code(context, _stamp(entry.occurredAt)),
-                          _code(context, entry.invoiceNumber),
-                          switch (entry.terminalName) {
-                            final name? => _text(context, name),
-                            // A stranger terminal, listed as the terminal
-                            // table lists it: by the id it wrote.
-                            null => _code(context, entry.terminalId),
-                          },
-                          _text(context, entry.label),
-                          MonoAmount(entry.amount),
-                        ]),
-                    ],
-                    total: _TableRow(const Key('finance-ledger-total'), [
-                      _text(context, s.financeLedgerTotal, strong: true),
-                      const SizedBox.shrink(),
-                      const SizedBox.shrink(),
-                      const SizedBox.shrink(),
-                      MonoAmount(ledger.total, weight: FontWeight.w600),
-                    ]),
-                  ),
-                  if (ledger.truncated) ...[
-                    const SizedBox(height: PosSpace.sm),
-                    _Note(s.financeLedgerTruncated(ledger.entries.length)),
-                  ],
-                ],
+              if (ledger.truncated) ...[
+                const SizedBox(height: PosSpace.sm),
+                _Note(s.financeLedgerTruncated(ledger.entries.length)),
               ],
-            ),
-          ];
-        },
-      ),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }

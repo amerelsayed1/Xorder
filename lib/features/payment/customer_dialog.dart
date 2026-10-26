@@ -81,6 +81,9 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
   bool _busy = false;
   String? _error;
 
+  /// Who is already on file under the number the cashier typed, when someone is.
+  PosCustomer? _taken;
+
   @override
   void initState() {
     super.initState();
@@ -130,20 +133,26 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
     setState(() {
       _busy = true;
       _error = null;
+      _taken = null;
     });
     try {
       final customers = ref.read(customersRepositoryProvider);
 
       // One person per number. Somebody already on file under this number is
-      // selected as they are — not written over with whatever name the cashier
-      // happened to type — and choosing them needs no `customers.create`.
+      // never written over with whatever name the cashier happened to type —
+      // and is not attached silently either: the dialog names them and lets
+      // the cashier confirm it is who they meant. Choosing needs no
+      // `customers.create`.
       final number = PosCustomer.normalisePhone(phone);
       final onFile = (await customers.search(number)).where(
         (c) => PosCustomer.normalisePhone(c.phone) == number,
       );
       if (onFile.isNotEmpty) {
         if (!mounted) return;
-        Navigator.of(context).pop(CustomerChoice(onFile.first));
+        setState(() {
+          _busy = false;
+          _taken = onFile.first;
+        });
         return;
       }
 
@@ -195,7 +204,7 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  _adding ? s.addCustomer : s.whoIsThisFor,
+                  _adding ? s.addCustomer : s.selectCustomer,
                   style: PosText.ui(
                     size: 18,
                     weight: FontWeight.w800,
@@ -225,6 +234,25 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
                   Text(
                     error,
                     style: PosText.ui(size: 12.5, color: palette.danger),
+                  ),
+                ],
+                if (_taken case final taken?) ...[
+                  const SizedBox(height: PosSpace.sm),
+                  Text(
+                    s.customerPhoneTaken(taken.name),
+                    key: const Key('customer-phone-taken'),
+                    style: PosText.ui(
+                      size: 12.5,
+                      weight: FontWeight.w700,
+                      color: palette.danger,
+                    ),
+                  ),
+                  const SizedBox(height: PosSpace.xs),
+                  PosButton(
+                    label: s.useExistingCustomer(taken.name),
+                    border: Border.fromBorderSide(palette.resting),
+                    onPressed: () =>
+                        Navigator.of(context).pop(CustomerChoice(taken)),
                   ),
                 ],
                 if (!_adding) ...[

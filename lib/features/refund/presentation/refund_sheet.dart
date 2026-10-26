@@ -416,12 +416,23 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
           ],
           textDirection: TextDirection.ltr,
-          style: PosText.mono(size: 18, weight: FontWeight.w600, color: palette.ink),
+          textAlign: Directionality.of(context) == TextDirection.rtl
+              ? TextAlign.right
+              : TextAlign.left,
+          textAlignVertical: TextAlignVertical.center,
+          style: PosText.mono(
+            size: 18,
+            weight: FontWeight.w600,
+            color: palette.ink,
+          ),
           onChanged: (_) => setState(() => _message = null),
           decoration: InputDecoration(
             isDense: true,
-            prefixText: '${_order.total.currency} ',
-            prefixStyle: PosText.mono(size: 13, color: palette.muted),
+            suffixText: _order.total.currency,
+            suffixStyle: PosText.mono(size: 13, color: palette.muted),
+            constraints: const BoxConstraints.tightFor(
+              height: PosSize.formControl,
+            ),
             contentPadding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.zero,

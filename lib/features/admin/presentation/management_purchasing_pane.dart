@@ -138,7 +138,11 @@ class _ManagementPurchasingPaneState
   }
 
   Future<void> _editSupplier(Supplier? supplier) async {
-    final edited = await SupplierDialog.show(context, supplier: supplier);
+    final edited = await SupplierDialog.show(
+      context,
+      supplier: supplier,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
     await _run(
       () async => (await ref
@@ -192,6 +196,7 @@ class _ManagementPurchasingPaneState
       context,
       units: units,
       initialName: name,
+      languages: ref.read(contentLanguagesNowProvider),
     );
     if (draft == null || !mounted) return null;
 

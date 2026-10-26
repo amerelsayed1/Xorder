@@ -18,6 +18,7 @@ import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/management_finance_panes.dart';
+import 'package:xorder_pos/features/admin/presentation/report_breakdown_panes.dart';
 
 import '../support/fakes.dart';
 
@@ -438,27 +439,28 @@ void main() {
     );
   });
 
-  group('Payments', () {
-    testWidgets('the methods add up to their total, and so do the payments '
-        'listed — the same money both ways', (tester) async {
-      await _pump(tester, const FinancePaymentsPane());
-
-      final methods = _columnSums(tester, 'finance-method-row-');
-      final methodTotal = _amounts(tester, const Key('finance-method-total'));
-      expect(methods, methodTotal);
+  // Finance's own Payment methods page was merged into Reports › Payment
+  // methods (XORD-022-A, owner's decision 2026-10-25): the by-method table is
+  // the report's, and the ledger of every payment is a section under it. These
+  // keep the claim the old page's tests made: the two ways of adding the same
+  // money agree.
+  group('Payments ledger, under Reports › Payment methods', () {
+    testWidgets('the payments listed add up to their total, and to what the '
+        'report collected plus what is on account — the same money both '
+        'ways', (tester) async {
+      await _pump(tester, ReportPaymentsPane(openedAt: DateTime(2026, 9, 14)));
 
       final ledger = _columnSums(tester, 'finance-ledger-row-');
       final ledgerTotal = _amounts(tester, const Key('finance-ledger-total'));
       expect(ledger, ledgerTotal);
 
-      // Collected plus on account, both ways.
-      expect(methodTotal, [_egp(65000)]);
-      expect(ledgerTotal, methodTotal);
-      expect(
-        _in('finance-method-row-2', find.text('Account · On account')),
-        findsOneWidget,
+      final collected = _amounts(tester, const Key('reports-methods-total'));
+      final onAccount = _amounts(
+        tester,
+        const Key('reports-methods-on-account'),
       );
-      expect(_in('finance-method-row-2', find.text('—')), findsOneWidget);
+      expect(collected.single + onAccount.single, ledgerTotal.single);
+      expect(ledgerTotal, [_egp(65000)]);
       expect(find.text(s.financeLedgerTruncated(3)), findsNothing);
     });
 
@@ -467,7 +469,7 @@ void main() {
     ) async {
       await _pump(
         tester,
-        const FinancePaymentsPane(),
+        ReportPaymentsPane(openedAt: DateTime(2026, 9, 14)),
         books: _Books(truncated: true),
       );
       expect(find.text(s.financeLedgerTruncated(3)), findsOneWidget);
@@ -475,10 +477,11 @@ void main() {
         _columnSums(tester, 'finance-ledger-row-'),
         _amounts(tester, const Key('finance-ledger-total')),
       );
-      // The methods still cover the period.
+      // The report's own table still covers the period.
       expect(
-        _amounts(tester, const Key('finance-method-total')),
-        [_egp(65000)],
+        _amounts(tester, const Key('reports-methods-total')).single +
+            _amounts(tester, const Key('reports-methods-on-account')).single,
+        _egp(65000),
       );
     });
   });

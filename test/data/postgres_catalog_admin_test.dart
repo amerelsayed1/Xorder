@@ -355,6 +355,103 @@ void main() {
       expect(rows.first[0], 1);
     });
 
+    /// XORD-014. The foreign key proves a category row exists, not whose it is
+    /// or whether it is in use, so the repository asks.
+    group('the category an item sits in', () {
+      CatalogProblem? problemOf(AdminResult<Product> result) =>
+          (result.refusal as CatalogRefused?)?.problem;
+
+      Future<int> otherRestaurantsCategory() async {
+        final other = await db.query(
+          pg.config,
+          "INSERT INTO pos_restaurants (slug, name) VALUES ('other-tenant', 'Other') "
+          'RETURNING id',
+        );
+        final category = await db.query(
+          pg.config,
+          "INSERT INTO pos_categories (restaurant_id, name_en) "
+          "VALUES (@r, 'Foreign') RETURNING id",
+          parameters: {'r': other.first[0]! as int},
+        );
+        return category.first[0]! as int;
+      }
+
+      test("another restaurant's category is refused, nothing written", () async {
+        final foreign = await otherRestaurantsCategory();
+
+        final result = await repository.saveProduct(
+          Product(
+            id: 0,
+            categoryId: foreign,
+            nameEn: 'Smuggled',
+            price: const Money(1000),
+          ),
+          by: manager,
+        );
+
+        expect(problemOf(result), CatalogProblem.categoryUnavailable);
+        final rows = await db.query(
+          pg.config,
+          "SELECT count(*) FROM pos_products WHERE name_en = 'Smuggled'",
+        );
+        expect(rows.first[0], 0);
+      });
+
+      test('an archived category takes no new item and no moved item', () async {
+        final kept = await repository.saveProduct(draft(), by: manager);
+        final spare = await repository.saveCategory(
+          const Category(id: 0, nameEn: 'Retired'),
+          by: manager,
+        );
+        await repository.archiveCategory(spare.value!, by: manager);
+
+        final created = await repository.saveProduct(
+          Product(
+            id: 0,
+            categoryId: spare.value!.id,
+            nameEn: 'Ghost',
+            price: const Money(1000),
+          ),
+          by: manager,
+        );
+        final moved = await repository.saveProduct(
+          Product(
+            id: kept.value!.id,
+            categoryId: spare.value!.id,
+            nameEn: 'Espresso',
+            price: const Money(3500),
+          ),
+          by: manager,
+        );
+
+        expect(problemOf(created), CatalogProblem.categoryUnavailable);
+        expect(problemOf(moved), CatalogProblem.categoryUnavailable);
+        final rows = await db.query(
+          pg.config,
+          'SELECT category_id FROM pos_products WHERE id = @id',
+          parameters: {'id': kept.value!.id},
+        );
+        expect(rows.first[0], categoryId);
+      });
+
+      test('an item already in a category archived since can still be repriced',
+          () async {
+        final saved = await repository.saveProduct(draft(), by: manager);
+        await repository.archiveCategory(
+          Category(id: categoryId, nameEn: 'Hot Drinks'),
+          by: manager,
+        );
+
+        final repriced = await repository.saveProduct(
+          draft(id: saved.value!.id, price: 4000),
+          by: manager,
+        );
+
+        expect(repriced.refusal, isNull);
+        expect(repriced.value!.price.minor, 4000);
+      });
+    });
+
     test('the item that owns a SKU can be edited without clashing with itself',
         () async {
       final first = await repository.saveProduct(
@@ -481,6 +578,114 @@ void main() {
       expect(readBack.vatBp, 0, reason: 'no tax configured means no tax');
     });
 
+    /// A default tax group at [rateBp], as `LocalBootstrap.seedTaxGroup` leaves
+    /// every offline restaurant (setup writes it at 14%).
+    Future<void> seedDefaultGroup(int rateBp) => db.query(
+          pg.config,
+          'INSERT INTO pos_tax_groups (restaurant_id, name_en, rate_bp, '
+          '  is_default) VALUES (@r, @name, @rate, true)',
+          parameters: {'r': restaurantId, 'name': 'VAT', 'rate': rateBp},
+        );
+
+    Future<List<int>> defaultGroupRates() async {
+      final rows = await db.query(
+        pg.config,
+        'SELECT rate_bp FROM pos_tax_groups '
+        'WHERE restaurant_id = @r AND is_default',
+        parameters: {'r': restaurantId},
+      );
+      return [for (final row in rows) row[0]! as int];
+    }
+
+    test('setting VAT to 0 reaches the rate the ticket charges (XORD-027)',
+        () async {
+      // The bug: the VAT box saved `vat_bp` into the payload, but a ticket
+      // prices from the default tax group whenever one exists — and setup
+      // seeds one at 14% — so a restaurant that typed 0 went on charging 14%.
+      await seedDefaultGroup(1400);
+
+      final saved = await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 1200, vatBp: 0),
+        by: owner,
+      );
+      expect(saved.value, isNotNull);
+      expect(await defaultGroupRates(), [0],
+          reason: 'one default group, now at 0');
+    });
+
+    test('any other rate moves the default group with it', () async {
+      await seedDefaultGroup(1400);
+      await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 1500),
+        by: owner,
+      );
+      expect(await defaultGroupRates(), [1500]);
+
+      await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 1250),
+        by: owner,
+      );
+      expect(await defaultGroupRates(), [1250], reason: 'fractions survive');
+    });
+
+    test('only the default group moves; the other named rates stay', () async {
+      await seedDefaultGroup(1400);
+      await taxGroup('Reduced', 500);
+
+      await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 0),
+        by: owner,
+      );
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT name_en, rate_bp FROM pos_tax_groups '
+        'WHERE restaurant_id = @r ORDER BY name_en',
+        parameters: {'r': restaurantId},
+      );
+      expect({for (final r in rows) r[0]! as String: r[1]! as int},
+          {'Reduced': 500, 'VAT': 0});
+    });
+
+    test('with no default group it still saves, as before', () async {
+      final saved = await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 0),
+        by: owner,
+      );
+      expect(saved.value, isNotNull);
+      expect(await defaultGroupRates(), isEmpty,
+          reason: 'saving must not invent a group');
+    });
+
+    test('a rate over 100% is refused with a message, not a constraint error',
+        () async {
+      await seedDefaultGroup(1400);
+      final result = await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 10001),
+        by: owner,
+      );
+      expect(result.refusal, isA<CatalogInvalid>());
+      expect(await defaultGroupRates(), [1400], reason: 'nothing changed');
+    });
+
+    test('the audit event records the group rate before and after', () async {
+      await seedDefaultGroup(1400);
+      await repository.saveMoneyConfig(
+        const TaxConfig(serviceBp: 0, vatBp: 0),
+        by: owner,
+      );
+
+      final rows = await db.query(
+        pg.config,
+        "SELECT before_value->>'default_group_rate_bp', "
+        "       after_value->>'default_group_rate_bp' "
+        'FROM pos_audit_events WHERE entity_type = @e ORDER BY id DESC LIMIT 1',
+        parameters: {'e': AuditAction.entityMoney},
+      );
+      expect(rows.first[0], '1400');
+      expect(rows.first[1], '0');
+    });
+
     test('a manager without settings.manage cannot change the rates', () async {
       // `catalog.manage` prices a plate. It does not set the tax rate.
       final result = await repository.saveMoneyConfig(
@@ -583,6 +788,121 @@ void main() {
         by: manager,
       );
       expect(result.refusal, isA<NotPermitted>());
+    });
+
+    // XORD-006 — several tables in one operation.
+    group('adding several at once', () {
+      List<DiningTable> batch(int from, int count, {int seats = 2, String? area}) => [
+        for (var n = from; n < from + count; n++)
+          DiningTable(id: 0, label: 'Table $n', seats: seats, areaName: area),
+      ];
+
+      Future<List<String>> labels() async => [
+        for (final row in await db.query(
+          pg.config,
+          'SELECT label FROM pos_dining_tables WHERE restaurant_id = @r '
+          'ORDER BY id',
+          parameters: {'r': restaurantId},
+        ))
+          row[0]! as String,
+      ];
+
+      test('ten from one gives exactly Table 1 to Table 10, with the shared settings', () async {
+        final result = await repository.createTables(batch(1, 10, seats: 4, area: 'Hall'), by: owner);
+        expect(result.succeeded, isTrue, reason: '${result.refusal}');
+        expect(result.value!.map((t) => t.label), [for (var n = 1; n <= 10; n++) 'Table $n']);
+
+        expect(await labels(), [for (var n = 1; n <= 10; n++) 'Table $n']);
+        final rows = await db.query(
+          pg.config,
+          'SELECT DISTINCT seats, area_name FROM pos_dining_tables WHERE restaurant_id = @r',
+          parameters: {'r': restaurantId},
+        );
+        expect(rows.length, 1);
+        expect((rows.first[0], rows.first[1]), (4, 'Hall'));
+      });
+
+      test('one clash refuses the whole batch and writes nothing', () async {
+        await repository.saveTable(const DiningTable(id: 0, label: 'Table 5', seats: 2), by: owner);
+
+        final result = await repository.createTables(batch(1, 10), by: owner);
+        expect(result.refusal, isA<CatalogInvalid>());
+        expect((result.refusal! as CatalogInvalid).reason, contains('Table 5'));
+        expect(await labels(), ['Table 5'], reason: 'not even Table 1 to 4');
+      });
+
+      test('a table that is out of service still holds its name', () async {
+        final old = await repository.saveTable(const DiningTable(id: 0, label: 'Table 2', seats: 2), by: owner);
+        await repository.archiveTable(old.value!, by: owner);
+
+        final result = await repository.createTables(batch(1, 3), by: owner);
+        expect(result.refusal, isA<CatalogInvalid>());
+        expect(await labels(), ['Table 2']);
+      });
+
+      test('repeating the same batch after it worked does not double the floor', () async {
+        await repository.createTables(batch(1, 10), by: owner);
+        final again = await repository.createTables(batch(1, 10), by: owner);
+
+        expect(again.refusal, isA<CatalogInvalid>());
+        expect((await labels()).length, 10);
+      });
+
+      test('a repeat inside the batch, no seats, no label or no tables are all refused', () async {
+        final twice = [...batch(1, 2), const DiningTable(id: 0, label: 'Table 1', seats: 2)];
+        expect((await repository.createTables(twice, by: owner)).refusal, isA<CatalogInvalid>());
+        expect((await repository.createTables(batch(1, 3, seats: 0), by: owner)).refusal, isA<CatalogInvalid>());
+        expect(
+          (await repository.createTables([const DiningTable(id: 0, label: '  ', seats: 2)], by: owner)).refusal,
+          isA<CatalogInvalid>(),
+        );
+        expect((await repository.createTables(const [], by: owner)).refusal, isA<CatalogInvalid>());
+        expect(await labels(), isEmpty);
+      });
+
+      test('100 is the most in one go', () async {
+        expect((await repository.createTables(batch(1, 101), by: owner)).refusal, isA<CatalogInvalid>());
+        expect(await labels(), isEmpty);
+
+        final hundred = await repository.createTables(batch(1, 100), by: owner);
+        expect(hundred.succeeded, isTrue, reason: '${hundred.refusal}');
+        expect((await labels()).length, 100);
+      });
+
+      test('every table is audited, naming the size of the batch', () async {
+        Future<int> created() async {
+          final rows = await db.query(
+            pg.config,
+            'SELECT count(*) FROM pos_audit_events WHERE action = @a',
+            parameters: {'a': AuditAction.tableCreated},
+          );
+          return int.parse('${rows.first[0]}');
+        }
+
+        final before = await created();
+        await repository.createTables(batch(1, 3), by: owner);
+        expect(await created(), before + 3);
+
+        final last = await db.query(
+          pg.config,
+          'SELECT after_value FROM pos_audit_events WHERE action = @a ORDER BY id DESC LIMIT 1',
+          parameters: {'a': AuditAction.tableCreated},
+        );
+        expect(last.first[0].toString(), contains('batch'));
+      });
+
+      test('settings.manage is needed, and a cloud till may not', () async {
+        expect((await repository.createTables(batch(1, 2), by: manager)).refusal, isA<NotPermitted>());
+
+        final cloud = PostgresCatalogAdminRepository(
+          database: db,
+          config: pg.config,
+          restaurantId: restaurantId,
+          offline: false,
+        );
+        expect((await cloud.createTables(batch(1, 2), by: owner)).refusal, isA<NotPermitted>());
+        expect(await labels(), isEmpty);
+      });
     });
   });
   group('importing a spreadsheet', () {

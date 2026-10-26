@@ -212,6 +212,12 @@ enum CatalogProblem {
   /// (`pos_products_sku_unique`); said as a refusal so the editor can show it
   /// rather than the database's exception reaching the dialog.
   skuTaken,
+
+  /// The category is not one of this restaurant's, or it is archived and the
+  /// item would be created in it or moved into it. The foreign key only proves
+  /// the row exists, not whose it is; an item in an archived category is off
+  /// every cashier's screen while the owner believes it is on sale (XORD-014).
+  categoryUnavailable,
 }
 
 /// A modifier group — the server's `option_group`.

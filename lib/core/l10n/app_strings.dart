@@ -255,6 +255,8 @@ sealed class AppStrings {
   String get printerPaper80;
   String get printerPaper58;
   String get printerPaperWidthHelp;
+  String get printerPrintLogo;
+  String get printerPrintLogoHint;
 
   // ── Floor ─────────────────────────────────────────────────────────────────
   String get pickATable;
@@ -462,6 +464,7 @@ sealed class AppStrings {
 
   /// The platform knows this licence and has withdrawn it.
   String get licenceRevokedByPlatform;
+  String licenceSeatsFull(int? seats);
 
   // ── Setup wizard chrome ───────────────────────────────────────────────────
   String get productWordmark;
@@ -603,7 +606,8 @@ sealed class AppStrings {
   /// would overwrite.
   /// POS-BE-014 — who the food is for, asked at the moment the money is
   /// taken, which is when a phone number gets given.
-  String get whoIsThisFor;
+  String get walkInCustomer;
+  String get selectCustomer;
   String get searchNameOrPhone;
   String get addCustomer;
   String get customerName;
@@ -612,6 +616,8 @@ sealed class AppStrings {
   String get noCustomerFound;
   String get removeCustomer;
   String get customerNeedsNameAndPhone;
+  String customerPhoneTaken(String name);
+  String useExistingCustomer(String name);
   String get customerOnTicket;
 
   String get backOfficeIsOnTheCloud;
@@ -929,8 +935,24 @@ sealed class AppStrings {
   // ── Management: the floor ─────────────────────────────────────────────────
   String get floorPlan;
   String get floorPlanHint;
+  String get paneDining;
+  String get tabAccount;
   String get floorComesFromPlatform;
   String get addTable;
+  String get addSeveralTables;
+  String get bulkTablesTitle;
+  String get bulkTablePrefix;
+  String get bulkTableStart;
+  String get bulkTableQuantity;
+  String get bulkTableDefaultPrefix;
+  String bulkTablePreview(String first, String last, int count);
+  String bulkTablesCreated(int count);
+  String bulkTablesCreate(int count);
+  String bulkTableQuantityInvalid(int max);
+  String get bulkTableStartInvalid;
+  String get bulkTableSeatsInvalid;
+  String get bulkTablePrefixInvalid;
+  String bulkTableClashes(String names);
   String get tableLabel;
   String get tableSeatsLabel;
   String get tableArea;
@@ -1066,6 +1088,73 @@ sealed class AppStrings {
   String get capAdminEnter;
   String get capPaymentRemove;
   String get capCustomersCreate;
+  String get capOrderTypesManage;
+  String get capBrandingManage;
+  String get capFinanceAccounts;
+  String get actFinancialAccountSaved;
+  String get actTenderAccountDefaultSaved;
+  String get refusalAccountNameMissing;
+  String get refusalAccountNameTaken;
+  String get refusalAccountReference;
+  String get refusalAccountNameNumber;
+  String get refusalAccountBranchUnknown;
+  String get refusalAccountMethodUnknown;
+  String get refusalAccountUnavailable;
+  String get refusalAccountOtherBranch;
+  String get refusalAccountIsDefault;
+  String get paneFinanceAccounts;
+  String get financeAccountsBlurb;
+  String get accountsAdd;
+  String get accountsEdit;
+  String get accountsNone;
+  String get accountsNoneHint;
+  String get accountKindCash;
+  String get accountKindBank;
+  String get accountKindWallet;
+  String get accountName;
+  String get accountType;
+  String get accountBranch;
+  String get accountAllBranches;
+  String get accountBranchHint;
+  String get accountReferenceLabel;
+  String get accountReferenceHint;
+  String get accountSwitchOn;
+  String get accountsComeFromPlatform;
+  String get accountsDefaultsTitle;
+  String get accountsDefaultsHint;
+  String get accountsNoMethods;
+  String get accountsPaysIntoAll;
+  String get accountsPaysInto;
+  String get accountsSameAsAll;
+  String get accountsNoAccount;
+  String get actBusinessLogoSaved;
+  String get actBusinessLogoRemoved;
+  String get logoRefusedEmpty;
+  String get logoRefusedTooLarge;
+  String get logoRefusedUnsupported;
+  String get logoRefusedUnreadable;
+  String get logoRefusedTooSmall;
+  String get logoRefusedTooBig;
+  String get businessLogoTitle;
+  String get businessLogoHint;
+  String get businessLogoNone;
+  String get businessLogoChoose;
+  String get businessLogoReplace;
+  String get businessLogoRemove;
+  String get businessLogoFromPlatform;
+  String get businessLogoNeedPermission;
+  String get businessLogoReadFailed;
+  String get businessLogoSavedNote;
+  String get businessLogoRemovedNote;
+  String get orderTypesNeedPermission;
+  String get contentLanguagesTitle;
+  String get contentLanguagesHint;
+  String get contentLanguagesArabic;
+  String get contentLanguagesEnglish;
+  String get contentLanguagesBoth;
+  String get contentLanguagesFromPlatform;
+  String get contentLanguagesNeedPermission;
+  String get actContentLanguagesSaved;
   String get customerCreateNotAllowed;
   String get capReportExport;
 
@@ -1448,8 +1537,6 @@ sealed class AppStrings {
   String get financeOverviewBlurb;
   String get financeRevenue;
   String get financeRevenueBlurb;
-  String get financePayments;
-  String get financePaymentsBlurb;
   String get financeTaxes;
   String get financeTaxesBlurb;
   String get financePeriodToday;
@@ -1773,6 +1860,10 @@ sealed class AppStrings {
   /// this the one thing on the screen naming the page.
   String adminTitle(String pane);
   String get exitAdminMode;
+
+  /// The window bar's one-word way out of Admin Mode: the same act as
+  /// [exitAdminMode], worded for a bar that has no room for a sentence.
+  String get logOut;
   String get adminSignInTitle;
   String adminSignInHelp(int minutes);
   String get yourPin;
@@ -2263,6 +2354,7 @@ sealed class AppStrings {
   String get refusalOfferAbovePrice;
   String get refusalCategoryNameMissing;
   String get refusalSkuTaken;
+  String get refusalCategoryUnavailable;
 
   /// A save that failed for a reason this screen has no sentence for. Said
   /// instead of leaving the editor frozen on "Saving…".
@@ -3921,6 +4013,12 @@ final class EnStrings extends AppStrings {
       'is cut off at the edge rather than shrunk to fit.';
 
   @override
+  String get printerPrintLogo => 'Print logo on receipts';
+  @override
+  String get printerPrintLogoHint =>
+      'When the restaurant has a logo. About 15mm of paper per receipt.';
+
+  @override
   String get pickATable => 'Pick a table';
   @override
   String get pickATableHelp =>
@@ -4246,6 +4344,12 @@ final class EnStrings extends AppStrings {
   String get licenceRevokedByPlatform =>
       'This licence has been withdrawn. Nothing is wrong with the key — speak '
       'to your supplier.';
+  @override
+  String licenceSeatsFull(int? seats) =>
+      'This licence covers ${seats ?? 'a fixed number of'} device(s) and every '
+      'one is already in use on another machine. The key is correct and the '
+      'licence has not been withdrawn — ask your supplier to release the old '
+      'device or add another.';
 
   @override
   String get productWordmark => 'XORDER POS';
@@ -4516,8 +4620,9 @@ final class EnStrings extends AppStrings {
   @override
   String get adminDatabaseUser => 'Administrator role';
   @override
+  String get walkInCustomer => 'Walk-in customer';
   @override
-  String get whoIsThisFor => 'Who is this for?';
+  String get selectCustomer => 'Select customer';
   @override
   String get searchNameOrPhone => 'Name, or any part of the number';
   @override
@@ -4536,6 +4641,11 @@ final class EnStrings extends AppStrings {
   String get customerNeedsNameAndPhone =>
       'A customer needs a name and a number — the number is how they are '
       'found again.';
+  @override
+  String customerPhoneTaken(String name) =>
+      'This number is already saved for $name.';
+  @override
+  String useExistingCustomer(String name) => 'Use $name';
   @override
   String get customerOnTicket => 'Customer';
   @override
@@ -5187,10 +5297,45 @@ final class EnStrings extends AppStrings {
   @override
   String get floorPlanHint => 'The tables a waiter can seat somebody at';
   @override
+  String get paneDining => 'Dining areas & tables';
+  @override
+  String get tabAccount => 'Account';
+  @override
   String get floorComesFromPlatform =>
       'This terminal takes its floor plan from the platform.';
   @override
   String get addTable => 'Add table';
+  @override
+  String get addSeveralTables => 'Add several';
+  @override
+  String get bulkTablesTitle => 'Add several tables';
+  @override
+  String get bulkTablePrefix => 'Name';
+  @override
+  String get bulkTableStart => 'First number';
+  @override
+  String get bulkTableQuantity => 'How many';
+  @override
+  String get bulkTableDefaultPrefix => 'Table';
+  @override
+  String bulkTablePreview(String first, String last, int count) =>
+      '$count tables: $first to $last';
+  @override
+  String bulkTablesCreated(int count) => 'Added $count tables';
+  @override
+  String bulkTablesCreate(int count) => 'Add $count tables';
+  @override
+  String bulkTableQuantityInvalid(int max) => 'Enter a number from 1 to $max.';
+  @override
+  String get bulkTableStartInvalid =>
+      'Enter a first number from 1, up to 9999 for the last table.';
+  @override
+  String get bulkTableSeatsInvalid => 'A table seats at least one person.';
+  @override
+  String get bulkTablePrefixInvalid => 'That name is too long.';
+  @override
+  String bulkTableClashes(String names) =>
+      'These names already exist in this branch: $names. Change the name or the first number.';
   @override
   String get tableLabel => 'Label';
   @override
@@ -5442,6 +5587,222 @@ final class EnStrings extends AppStrings {
 
   @override
   String get capCustomersCreate => 'Add a customer from the order';
+
+  @override
+  String get capOrderTypesManage => 'Choose which order types are sold';
+
+  @override
+  String get capBrandingManage => 'Change the business logo';
+  @override
+  String get capFinanceAccounts =>
+      'Manage money accounts';
+  @override
+  String get actFinancialAccountSaved =>
+      'Changed a money account';
+  @override
+  String get actTenderAccountDefaultSaved =>
+      'Changed where a payment method pays in';
+  @override
+  String get refusalAccountNameMissing =>
+      'An account needs a name.';
+  @override
+  String get refusalAccountNameTaken =>
+      'You already have an account with this name.';
+  @override
+  String get refusalAccountReference =>
+      'Use a short label such as the last four digits, not a full account number.';
+
+  @override
+  String get refusalAccountNameNumber =>
+      'An account name should not be an account number. Use a short name, and put a few digits in the reference.';
+  @override
+  String get refusalAccountBranchUnknown =>
+      'Choose one of your branches.';
+  @override
+  String get refusalAccountMethodUnknown =>
+      'Choose one of your payment methods.';
+  @override
+  String get refusalAccountUnavailable =>
+      'Choose an account that is switched on.';
+  @override
+  String get refusalAccountOtherBranch =>
+      'This account belongs to a different branch.';
+  @override
+  String get refusalAccountIsDefault =>
+      'This account is the default for a payment method. Choose another account for it first.';
+  @override
+  String get paneFinanceAccounts =>
+      'Accounts';
+  @override
+  String get financeAccountsBlurb =>
+      'The places your money lives, and which one each payment method pays into. Nothing is booked to an account yet, so sales, shifts and reports are unchanged.';
+  @override
+  String get accountsAdd =>
+      'Add account';
+  @override
+  String get accountsEdit =>
+      'Edit account';
+  @override
+  String get accountsNone =>
+      'No accounts yet';
+  @override
+  String get accountsNoneHint =>
+      'Add a cash drawer, a bank account or a wallet, then choose which one each payment method pays into.';
+  @override
+  String get accountKindCash =>
+      'Cash';
+  @override
+  String get accountKindBank =>
+      'Bank';
+  @override
+  String get accountKindWallet =>
+      'Wallet';
+  @override
+  String get accountName =>
+      'Account name';
+  @override
+  String get accountType =>
+      'Type';
+  @override
+  String get accountBranch =>
+      'Branch';
+  @override
+  String get accountAllBranches =>
+      'All branches';
+  @override
+  String get accountBranchHint =>
+      'Leave on “All branches” for an account the whole business shares, such as the company bank account.';
+  @override
+  String get accountReferenceLabel =>
+      'Reference (optional)';
+  @override
+  String get accountReferenceHint =>
+      'A short label to tell accounts apart, such as the last four digits. Never the full account number.';
+  @override
+  String get accountSwitchOn =>
+      'Switch on';
+  @override
+  String get accountsComeFromPlatform =>
+      'Accounts are managed on the XOrder platform for this business. Change them in the dashboard and they reach this till at the next sync.';
+  @override
+  String get accountsDefaultsTitle =>
+      'Where each payment method pays in';
+  @override
+  String get accountsDefaultsHint =>
+      'Pick the account for each method. A branch can use its own account instead of the shared one.';
+  @override
+  String get accountsNoMethods =>
+      'Add a payment method first.';
+  @override
+  String get accountsPaysIntoAll =>
+      'All branches';
+  @override
+  String get accountsPaysInto =>
+      'Pays into';
+  @override
+  String get accountsSameAsAll =>
+      'Same as all branches';
+  @override
+  String get accountsNoAccount =>
+      'No account';
+
+  @override
+  String get actBusinessLogoSaved => 'Changed the business logo';
+
+  @override
+  String get actBusinessLogoRemoved => 'Removed the business logo';
+
+  @override
+  String get logoRefusedEmpty => 'That file is empty.';
+
+  @override
+  String get logoRefusedTooLarge =>
+      'That picture is too large. Use one under 2 MB.';
+
+  @override
+  String get logoRefusedUnsupported => 'Use a PNG or JPG picture.';
+
+  @override
+  String get logoRefusedUnreadable =>
+      'That picture could not be read. Try saving it again as a PNG or JPG.';
+
+  @override
+  String get logoRefusedTooSmall =>
+      'That picture is too small. Use one at least 64 × 64 pixels.';
+
+  @override
+  String get logoRefusedTooBig =>
+      'That picture is too big. Use one no larger than 4096 × 4096 pixels.';
+
+  @override
+  String get businessLogoTitle => 'Business logo';
+
+  @override
+  String get businessLogoHint =>
+      'Shown on this till\'s start screen. A PNG or JPG, up to 2 MB.';
+
+  @override
+  String get businessLogoNone =>
+      'No logo yet. The XOrder mark is shown until you add one.';
+
+  @override
+  String get businessLogoChoose => 'Choose a picture…';
+
+  @override
+  String get businessLogoReplace => 'Replace picture';
+
+  @override
+  String get businessLogoRemove => 'Remove logo';
+
+  @override
+  String get businessLogoFromPlatform =>
+      'This logo comes from your XOrder account. Change it on the dashboard and it reaches this till on its next sync.';
+
+  @override
+  String get businessLogoNeedPermission =>
+      'Changing the logo needs the “Change the business logo” permission.';
+
+  @override
+  String get businessLogoReadFailed => 'That file could not be opened.';
+
+  @override
+  String get businessLogoSavedNote => 'Logo saved.';
+
+  @override
+  String get businessLogoRemovedNote => 'Logo removed.';
+
+  @override
+  String get orderTypesNeedPermission =>
+      'Choosing which order types are sold needs permission. Ask the owner.';
+
+  @override
+  String get contentLanguagesTitle => 'Menu languages';
+
+  @override
+  String get contentLanguagesHint =>
+      'The languages your menu is written in. Item and category forms then ask only for these. '
+      'Anything already written in a language you switch off is kept, and comes back if you switch it on again. '
+      "This is separate from the language this till is shown in.";
+
+  @override
+  String get contentLanguagesArabic => 'Arabic only';
+
+  @override
+  String get contentLanguagesEnglish => 'English only';
+
+  @override
+  String get contentLanguagesBoth => 'Arabic and English';
+
+  @override
+  String get contentLanguagesFromPlatform =>
+      'The menu languages come from the platform. Change them in the dashboard.';
+
+  @override
+  String get contentLanguagesNeedPermission =>
+      'Changing the menu languages needs permission. Ask the owner.';
+
+  @override
+  String get actContentLanguagesSaved => 'Changed the menu languages';
 
   @override
   String get customerCreateNotAllowed =>
@@ -6141,7 +6502,7 @@ final class EnStrings extends AppStrings {
   @override
   String get backOffice => 'Back office';
   @override
-  String get tabHome => 'Home';
+  String get tabHome => 'Dashboard';
   @override
   String get tabSales => 'Sales';
   @override
@@ -6155,7 +6516,7 @@ final class EnStrings extends AppStrings {
   @override
   String get tabFinance => 'Finance';
   @override
-  String get tabSystem => 'System';
+  String get tabSystem => 'Management';
   @override
   String get tabSettings => 'Settings';
   @override
@@ -6271,11 +6632,6 @@ final class EnStrings extends AppStrings {
   String get financeRevenueBlurb =>
       'Sales, discounts and refunds by business day — the same figures as '
       'Reports.';
-  @override
-  String get financePayments => 'Payment methods';
-  @override
-  String get financePaymentsBlurb =>
-      "Every payment taken on the period's sales, one row each.";
   @override
   String get financeTaxes => 'Taxes';
   @override
@@ -6632,7 +6988,7 @@ final class EnStrings extends AppStrings {
   @override
   String get backToTill => 'Back to the till';
   @override
-  String get paneStaff => 'Staff';
+  String get paneStaff => 'Employees';
   @override
   String get paneStaffBlurb => 'Who works here, and what they may do';
   @override
@@ -6780,7 +7136,7 @@ final class EnStrings extends AppStrings {
   @override
   String get exportColumnProduct => 'Product';
   @override
-  String get paneMenu => 'Menu';
+  String get paneMenu => 'Products';
   @override
   String get paneMenuBlurb => 'Categories, items and what they cost';
   @override
@@ -6998,7 +7354,9 @@ final class EnStrings extends AppStrings {
   @override
   String get exitAdminMode => 'Exit Admin Mode';
   @override
-  String get adminSignInTitle => 'Admin Mode';
+  String get logOut => 'Log out';
+  @override
+  String get adminSignInTitle => 'Back office';
   @override
   String adminSignInHelp(int minutes) =>
       'Your username and password. Admin Mode locks itself after $minutes '
@@ -7169,7 +7527,7 @@ final class EnStrings extends AppStrings {
   @override
   String get close => 'Close';
   @override
-  String get settingsOrders => 'Orders & invoices';
+  String get settingsOrders => 'Order history';
   @override
   String get settingsPrinter => 'Printer & cash drawer…';
   @override
@@ -8049,6 +8407,9 @@ final class EnStrings extends AppStrings {
   String get refusalCategoryNameMissing => 'A category needs a name.';
   @override
   String get refusalSkuTaken => 'Another item already uses this SKU.';
+  @override
+  String get refusalCategoryUnavailable =>
+      'Pick an active category. This one is archived or no longer exists.';
   @override
   String get refusalSaveFailed =>
       'Could not save this item. Check it and try again.';
@@ -9186,6 +9547,12 @@ final class ArStrings extends AppStrings {
       'ولا تُصغَّر لتناسب الورق.';
 
   @override
+  String get printerPrintLogo => 'طباعة الشعار على الإيصالات';
+  @override
+  String get printerPrintLogoHint =>
+      'عند وجود شعار للمطعم. حوالي 15 مم من الورق لكل إيصال.';
+
+  @override
   String get pickATable => 'اختر طاولة';
   @override
   String get pickATableHelp =>
@@ -9512,6 +9879,11 @@ final class ArStrings extends AppStrings {
   @override
   String get licenceRevokedByPlatform =>
       'تم سحب هذا الترخيص. لا خطأ في المفتاح — تواصل مع مورّدك.';
+  @override
+  String licenceSeatsFull(int? seats) =>
+      'يغطي هذا الترخيص ${seats ?? 'عددًا محددًا من'} جهاز وكلها مستخدمة بالفعل '
+      'على أجهزة أخرى. المفتاح صحيح ولم يُسحب الترخيص — اطلب من مورّدك تحرير '
+      'الجهاز القديم أو إضافة جهاز آخر.';
 
   @override
   String get productWordmark => 'XORDER POS';
@@ -9775,8 +10147,9 @@ final class ArStrings extends AppStrings {
   @override
   String get adminDatabaseUser => 'دور المدير';
   @override
+  String get walkInCustomer => 'عميل عابر';
   @override
-  String get whoIsThisFor => 'لمن هذا الطلب؟';
+  String get selectCustomer => 'اختيار عميل';
   @override
   String get searchNameOrPhone => 'الاسم، أو أي جزء من الرقم';
   @override
@@ -9795,6 +10168,11 @@ final class ArStrings extends AppStrings {
   String get customerNeedsNameAndPhone =>
       'العميل يحتاج اسماً ورقماً — والرقم هو الطريقة التي يُعثر بها عليه مرة '
       'أخرى.';
+  @override
+  String customerPhoneTaken(String name) =>
+      'هذا الرقم مسجَّل بالفعل باسم $name.';
+  @override
+  String useExistingCustomer(String name) => 'اختيار $name';
   @override
   String get customerOnTicket => 'العميل';
   @override
@@ -10410,9 +10788,44 @@ final class ArStrings extends AppStrings {
   @override
   String get floorPlanHint => 'الطاولات التي يمكن للنادل إجلاس الضيوف عليها';
   @override
+  String get paneDining => 'الصالات والطاولات';
+  @override
+  String get tabAccount => 'الحساب';
+  @override
   String get floorComesFromPlatform => 'يأخذ هذا الجهاز مخطط الصالة من المنصة.';
   @override
   String get addTable => 'إضافة طاولة';
+  @override
+  String get addSeveralTables => 'إضافة عدة طاولات';
+  @override
+  String get bulkTablesTitle => 'إضافة عدة طاولات';
+  @override
+  String get bulkTablePrefix => 'الاسم';
+  @override
+  String get bulkTableStart => 'الرقم الأول';
+  @override
+  String get bulkTableQuantity => 'العدد';
+  @override
+  String get bulkTableDefaultPrefix => 'طاولة';
+  @override
+  String bulkTablePreview(String first, String last, int count) =>
+      '$count طاولة: من $first إلى $last';
+  @override
+  String bulkTablesCreated(int count) => 'تمت إضافة $count طاولة';
+  @override
+  String bulkTablesCreate(int count) => 'إضافة $count طاولة';
+  @override
+  String bulkTableQuantityInvalid(int max) => 'أدخل رقمًا من 1 إلى $max.';
+  @override
+  String get bulkTableStartInvalid =>
+      'أدخل رقمًا أول من 1، على ألا يتجاوز آخر طاولة 9999.';
+  @override
+  String get bulkTableSeatsInvalid => 'تتسع الطاولة لشخص واحد على الأقل.';
+  @override
+  String get bulkTablePrefixInvalid => 'الاسم طويل جدًا.';
+  @override
+  String bulkTableClashes(String names) =>
+      'هذه الأسماء موجودة بالفعل في هذا الفرع: $names. غيّر الاسم أو الرقم الأول.';
   @override
   String get tableLabel => 'الاسم';
   @override
@@ -10659,6 +11072,222 @@ final class ArStrings extends AppStrings {
 
   @override
   String get capCustomersCreate => 'إضافة عميل من الطلب';
+
+  @override
+  String get capOrderTypesManage => 'اختيار أنواع الطلبات المتاحة';
+
+  @override
+  String get capBrandingManage => 'تغيير شعار المنشأة';
+  @override
+  String get capFinanceAccounts =>
+      'إدارة الحسابات المالية';
+  @override
+  String get actFinancialAccountSaved =>
+      'تعديل حساب مالي';
+  @override
+  String get actTenderAccountDefaultSaved =>
+      'تغيير الحساب الذي تُودَع فيه وسيلة دفع';
+  @override
+  String get refusalAccountNameMissing =>
+      'يحتاج الحساب إلى اسم.';
+  @override
+  String get refusalAccountNameTaken =>
+      'لديك حساب بهذا الاسم بالفعل.';
+  @override
+  String get refusalAccountReference =>
+      'اكتب وصفًا قصيرًا مثل آخر أربعة أرقام، وليس رقم الحساب كاملًا.';
+
+  @override
+  String get refusalAccountNameNumber =>
+      'لا يجب أن يكون اسم الحساب رقم حساب. اكتب اسمًا قصيرًا، وضع بعض الأرقام في خانة المرجع.';
+  @override
+  String get refusalAccountBranchUnknown =>
+      'اختر فرعًا من فروعك.';
+  @override
+  String get refusalAccountMethodUnknown =>
+      'اختر وسيلة دفع من وسائلك.';
+  @override
+  String get refusalAccountUnavailable =>
+      'اختر حسابًا مفعّلًا.';
+  @override
+  String get refusalAccountOtherBranch =>
+      'هذا الحساب يخص فرعًا آخر.';
+  @override
+  String get refusalAccountIsDefault =>
+      'هذا الحساب هو الافتراضي لوسيلة دفع. اختر حسابًا آخر لها أولًا.';
+  @override
+  String get paneFinanceAccounts =>
+      'الحسابات';
+  @override
+  String get financeAccountsBlurb =>
+      'الأماكن التي تحتفظ فيها بأموالك، والحساب الذي تُودَع فيه كل وسيلة دفع. لا يُقيَّد أي مبلغ في حساب بعد، فلا تتغير المبيعات ولا الورديات ولا التقارير.';
+  @override
+  String get accountsAdd =>
+      'إضافة حساب';
+  @override
+  String get accountsEdit =>
+      'تعديل الحساب';
+  @override
+  String get accountsNone =>
+      'لا توجد حسابات بعد';
+  @override
+  String get accountsNoneHint =>
+      'أضف خزينة نقدية أو حسابًا بنكيًا أو محفظة، ثم اختر الحساب الذي تُودَع فيه كل وسيلة دفع.';
+  @override
+  String get accountKindCash =>
+      'نقدي';
+  @override
+  String get accountKindBank =>
+      'بنكي';
+  @override
+  String get accountKindWallet =>
+      'محفظة';
+  @override
+  String get accountName =>
+      'اسم الحساب';
+  @override
+  String get accountType =>
+      'النوع';
+  @override
+  String get accountBranch =>
+      'الفرع';
+  @override
+  String get accountAllBranches =>
+      'كل الفروع';
+  @override
+  String get accountBranchHint =>
+      'اتركه على «كل الفروع» للحساب الذي يشترك فيه النشاط كله، مثل حساب الشركة البنكي.';
+  @override
+  String get accountReferenceLabel =>
+      'مرجع (اختياري)';
+  @override
+  String get accountReferenceHint =>
+      'وصف قصير للتمييز بين الحسابات، مثل آخر أربعة أرقام. وليس رقم الحساب كاملًا.';
+  @override
+  String get accountSwitchOn =>
+      'تفعيل';
+  @override
+  String get accountsComeFromPlatform =>
+      'تُدار الحسابات لهذا النشاط من منصة XOrder. عدّلها من لوحة التحكم وستصل إلى هذا الجهاز عند المزامنة التالية.';
+  @override
+  String get accountsDefaultsTitle =>
+      'أين تُودَع كل وسيلة دفع';
+  @override
+  String get accountsDefaultsHint =>
+      'اختر الحساب لكل وسيلة. ويمكن لأي فرع أن يستخدم حسابه الخاص بدل الحساب المشترك.';
+  @override
+  String get accountsNoMethods =>
+      'أضف وسيلة دفع أولًا.';
+  @override
+  String get accountsPaysIntoAll =>
+      'كل الفروع';
+  @override
+  String get accountsPaysInto =>
+      'تُودَع في';
+  @override
+  String get accountsSameAsAll =>
+      'مثل كل الفروع';
+  @override
+  String get accountsNoAccount =>
+      'بدون حساب';
+
+  @override
+  String get actBusinessLogoSaved => 'تغيير شعار المنشأة';
+
+  @override
+  String get actBusinessLogoRemoved => 'حذف شعار المنشأة';
+
+  @override
+  String get logoRefusedEmpty => 'الملف فارغ.';
+
+  @override
+  String get logoRefusedTooLarge =>
+      'الصورة كبيرة جدًا. استخدم صورة أقل من 2 ميجابايت.';
+
+  @override
+  String get logoRefusedUnsupported => 'استخدم صورة بصيغة PNG أو JPG.';
+
+  @override
+  String get logoRefusedUnreadable =>
+      'تعذّرت قراءة الصورة. جرّب حفظها مرة أخرى بصيغة PNG أو JPG.';
+
+  @override
+  String get logoRefusedTooSmall =>
+      'الصورة صغيرة جدًا. استخدم صورة لا تقل عن 64 × 64 بكسل.';
+
+  @override
+  String get logoRefusedTooBig =>
+      'الصورة كبيرة جدًا. استخدم صورة لا تتجاوز 4096 × 4096 بكسل.';
+
+  @override
+  String get businessLogoTitle => 'شعار المنشأة';
+
+  @override
+  String get businessLogoHint =>
+      'يظهر في الشاشة الرئيسية لهذه الكاشير. صورة PNG أو JPG حتى 2 ميجابايت.';
+
+  @override
+  String get businessLogoNone =>
+      'لا يوجد شعار بعد. يظهر شعار XOrder إلى أن تضيف شعارك.';
+
+  @override
+  String get businessLogoChoose => 'اختيار صورة…';
+
+  @override
+  String get businessLogoReplace => 'استبدال الصورة';
+
+  @override
+  String get businessLogoRemove => 'حذف الشعار';
+
+  @override
+  String get businessLogoFromPlatform =>
+      'هذا الشعار قادم من حسابك على XOrder. غيّره من لوحة التحكم ويصل إلى هذه الكاشير في المزامنة القادمة.';
+
+  @override
+  String get businessLogoNeedPermission =>
+      'تغيير الشعار يحتاج إلى صلاحية «تغيير شعار المنشأة».';
+
+  @override
+  String get businessLogoReadFailed => 'تعذّر فتح الملف.';
+
+  @override
+  String get businessLogoSavedNote => 'تم حفظ الشعار.';
+
+  @override
+  String get businessLogoRemovedNote => 'تم حذف الشعار.';
+
+  @override
+  String get orderTypesNeedPermission =>
+      'اختيار أنواع الطلبات المتاحة يحتاج صلاحية. اطلب من المالك.';
+
+  @override
+  String get contentLanguagesTitle => 'لغات المنيو';
+
+  @override
+  String get contentLanguagesHint =>
+      'اللغات التي يُكتب بها المنيو. ستطلب نماذج الأصناف والأقسام هذه اللغات فقط. '
+      'ما كُتب مسبقًا بلغة توقفها يبقى محفوظًا ويعود إذا فعّلتها من جديد. '
+      'هذا مستقل عن اللغة التي تُعرض بها هذه الشاشة.';
+
+  @override
+  String get contentLanguagesArabic => 'العربية فقط';
+
+  @override
+  String get contentLanguagesEnglish => 'الإنجليزية فقط';
+
+  @override
+  String get contentLanguagesBoth => 'العربية والإنجليزية';
+
+  @override
+  String get contentLanguagesFromPlatform =>
+      'لغات المنيو تأتي من المنصة. غيّرها من لوحة التحكم.';
+
+  @override
+  String get contentLanguagesNeedPermission =>
+      'تغيير لغات المنيو يحتاج صلاحية. اطلب من المالك.';
+
+  @override
+  String get actContentLanguagesSaved => 'تغيير لغات المنيو';
 
   @override
   String get customerCreateNotAllowed =>
@@ -11342,13 +11971,13 @@ final class ArStrings extends AppStrings {
   @override
   String get backOffice => 'الإدارة';
   @override
-  String get tabHome => 'الرئيسية';
+  String get tabHome => 'لوحة التحكم';
   @override
   String get tabSales => 'المبيعات';
   @override
   String get tabReports => 'التقارير';
   @override
-  String get tabMenu => 'المنيو';
+  String get tabMenu => 'قائمة الطعام';
   @override
   String get tabInventory => 'المخزون';
   @override
@@ -11356,11 +11985,11 @@ final class ArStrings extends AppStrings {
   @override
   String get tabFinance => 'المالية';
   @override
-  String get tabSystem => 'النظام';
+  String get tabSystem => 'الإدارة';
   @override
   String get tabSettings => 'الإعدادات';
   @override
-  String get tabPeople => 'الأفراد';
+  String get tabPeople => 'الموظفون والعملاء';
   @override
   String get reportsSummary => 'ملخص الأعمال';
   @override
@@ -11372,7 +12001,7 @@ final class ArStrings extends AppStrings {
   @override
   String get reportsBranches => 'الفروع والأجهزة';
   @override
-  String get reportsEmployees => 'الموظفين';
+  String get reportsEmployees => 'الموظفون';
   @override
   String get reportsSalesBlurb =>
       'كل يوم عمل في الفترة: الطلبات والإجمالي والخصومات والمرتجعات والصافي';
@@ -11463,10 +12092,6 @@ final class ArStrings extends AppStrings {
   @override
   String get financeRevenueBlurb =>
       'المبيعات والخصومات والمرتجعات لكل يوم عمل، بأرقام التقارير نفسها.';
-  @override
-  String get financePayments => 'طرق الدفع';
-  @override
-  String get financePaymentsBlurb => 'كل دفعة على مبيعات الفترة، كلٌّ في سطر.';
   @override
   String get financeTaxes => 'الضرائب';
   @override
@@ -11953,7 +12578,7 @@ final class ArStrings extends AppStrings {
   @override
   String get exportColumnProduct => 'الصنف';
   @override
-  String get paneMenu => 'المنيو';
+  String get paneMenu => 'المنتجات';
   @override
   String get paneMenuBlurb => 'الأقسام والأصناف وأسعارها';
   @override
@@ -12163,7 +12788,9 @@ final class ArStrings extends AppStrings {
   @override
   String get exitAdminMode => 'الخروج من وضع المسؤول';
   @override
-  String get adminSignInTitle => 'وضع المسؤول';
+  String get logOut => 'تسجيل الخروج';
+  @override
+  String get adminSignInTitle => 'لوحة الإدارة';
   @override
   String adminSignInHelp(int minutes) =>
       'اسم المستخدم وكلمة المرور الخاصة بك. يُقفل وضع المسؤول نفسه بعد '
@@ -12333,7 +12960,7 @@ final class ArStrings extends AppStrings {
   @override
   String get close => 'إغلاق';
   @override
-  String get settingsOrders => 'الطلبات والفواتير';
+  String get settingsOrders => 'سجل الطلبات';
   @override
   String get settingsPrinter => 'الطابعة ودرج النقدية…';
   @override
@@ -13194,8 +13821,10 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalSkuTaken => 'صنف آخر يستخدم رمز الصنف هذا بالفعل.';
   @override
-  String get refusalSaveFailed =>
-      'تعذّر حفظ هذا الصنف. راجعه وحاول مرة أخرى.';
+  String get refusalCategoryUnavailable =>
+      'اختر قسمًا نشطًا. هذا القسم مؤرشف أو لم يعد موجودًا.';
+  @override
+  String get refusalSaveFailed => 'تعذّر حفظ هذا الصنف. راجعه وحاول مرة أخرى.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which

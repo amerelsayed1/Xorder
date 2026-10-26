@@ -205,7 +205,9 @@ void main() {
       // A discount that came off the whole bill has no line to belong to, and
       // drawing it under one would be a claim about what it discounted.
       expect(find.text('Ten off'), findsOneWidget);
-      expect(find.text('-22.50 EGP'), findsOneWidget);
+      // The figure alone; the currency follows it in its own slot, as on every
+      // other totals row.
+      expect(find.text('-22.50'), findsOneWidget);
     });
 
     testWidgets('the total already reflects it', (tester) async {

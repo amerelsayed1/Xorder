@@ -95,7 +95,9 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
     // somebody standing at a new printer is checking.
     final ok = await ref.read(hardwarePortsProvider).testPrint(name);
     if (!mounted) return;
-    setState(() => _note = ok ? strings.testReceiptSent : strings.nothingPrinted);
+    setState(
+      () => _note = ok ? strings.testReceiptSent : strings.nothingPrinted,
+    );
   }
 
   Future<void> _save() async {
@@ -140,11 +142,7 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
       children: [
         Text(
           strings.printerSettingsTitle,
-          style: PosText.ui(
-            size: 18,
-            weight: FontWeight.w800,
-            color: pos.ink,
-          ),
+          style: PosText.ui(size: 18, weight: FontWeight.w800, color: pos.ink),
         ),
         const SizedBox(height: PosSpace.sm),
         Text(
@@ -160,9 +158,7 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
                   ? strings.lookingForPrinters
                   : strings.findPrinters,
               border: Border.fromBorderSide(pos.resting),
-              padding: const EdgeInsets.symmetric(
-                horizontal: PosSpace.lg,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
               onPressed: _scanning ? null : _scan,
             ),
             const SizedBox(width: PosSpace.sm),
@@ -170,9 +166,7 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
               key: const Key('printer-test'),
               label: strings.testPrint,
               border: Border.fromBorderSide(pos.resting),
-              padding: const EdgeInsets.symmetric(
-                horizontal: PosSpace.lg,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
               onPressed: _draft.name == null ? null : _test,
             ),
           ],
@@ -194,10 +188,7 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
                         detail: printer.transport.toUpperCase(),
                         selected: _draft.name == printer.name,
                         onTap: () => setState(
-                          () => _draft = PrinterConfig(
-                            name: printer.name,
-                            paperWidthDots: _draft.paperWidthDots,
-                          ),
+                          () => _draft = _draft.copyWith(name: printer.name),
                         ),
                       ),
                   ],
@@ -218,10 +209,7 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
                   title: label,
                   selected: _draft.paperWidthDots == width,
                   onTap: () => setState(
-                    () => _draft = PrinterConfig(
-                      name: _draft.name,
-                      paperWidthDots: width,
-                    ),
+                    () => _draft = _draft.copyWith(paperWidthDots: width),
                   ),
                 ),
               ),
@@ -229,6 +217,20 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
                 const SizedBox(width: PosSpace.sm),
             ],
           ],
+        ),
+        const SizedBox(height: PosSpace.lg),
+        _Choice(
+          key: const Key('printer-logo'),
+          title: strings.printerPrintLogo,
+          selected: _draft.printLogo,
+          checkbox: true,
+          onTap: () => setState(
+            () => _draft = _draft.copyWith(printLogo: !_draft.printLogo),
+          ),
+        ),
+        Text(
+          strings.printerPrintLogoHint,
+          style: PosText.ui(size: 12, color: pos.muted, height: 1.5),
         ),
         if (_note != null) ...[
           const SizedBox(height: PosSpace.md),
@@ -271,11 +273,15 @@ class _Choice extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.detail,
+    this.checkbox = false,
   });
 
   final String title;
   final String? detail;
   final bool selected;
+
+  /// A tick box rather than one of several round choices.
+  final bool checkbox;
   final VoidCallback onTap;
 
   @override
@@ -294,15 +300,21 @@ class _Choice extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               border: Border.fromBorderSide(
-                selected ? BorderSide(color: pos.accent, width: 2) : pos.resting,
+                selected
+                    ? BorderSide(color: pos.accent, width: 2)
+                    : pos.resting,
               ),
             ),
             child: Row(
               children: [
                 Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
+                  checkbox
+                      ? (selected
+                            ? Icons.check_box
+                            : Icons.check_box_outline_blank)
+                      : (selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked),
                   size: 18,
                   color: selected ? pos.accent : pos.muted,
                 ),

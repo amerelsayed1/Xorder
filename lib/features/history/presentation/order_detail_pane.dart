@@ -604,7 +604,10 @@ class _Detail extends ConsumerWidget {
         children: [
           // Looking costs nothing — no paper, no audit row — so anybody who
           // can open the order can see its receipt.
+          // Weighted by what each says: "Reprint the invoice" is the longest
+          // label and was cut to "إعادة طباعة الفا…" in three equal thirds.
           Expanded(
+            flex: 5,
             child: PosButton(
               key: const Key('order-receipt-preview'),
               label: strings.receiptPreviewAction,
@@ -619,6 +622,7 @@ class _Detail extends ConsumerWidget {
           const SizedBox(width: PosSpace.sm),
           if (mayReprint)
             Expanded(
+              flex: 9,
               child: PosButton(
                 label: strings.receiptReprintAction,
                 border: Border.fromBorderSide(pos.resting),
@@ -628,6 +632,7 @@ class _Detail extends ConsumerWidget {
           if (mayReprint && mayRefund) const SizedBox(width: PosSpace.sm),
           if (mayRefund)
             Expanded(
+              flex: 5,
               child: PosButton(
                 label: strings.refundAction,
                 border: Border.fromBorderSide(

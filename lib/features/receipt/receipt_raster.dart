@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -5,6 +6,7 @@ import 'package:qr/qr.dart';
 
 import '../../core/config/printer_config.dart';
 import '../../core/ui/tokens.dart' show PosFonts;
+import 'logo_bitmap.dart';
 import 'receipt_document.dart';
 import 'receipt_qr.dart';
 import 'slip_style.dart';
@@ -187,6 +189,31 @@ class _Layout {
 
   double _d(double dots) => dots * scale;
 
+  /// How wide the slip's amounts are, as one number.
+  ///
+  /// Every amount row is drawn in a box this wide and its text is right-aligned
+  /// inside it, so the decimal points of a stack of figures share one x. A
+  /// figure measured on its own and pinned to the edge, as these used to be,
+  /// lines up its *first* digit on an Arabic slip, where the edge is the left.
+  late final double _amountWidth = () {
+    final cap = _content * 2 / 3;
+    var widest = 0.0;
+    for (final block in document.blocks) {
+      if (block is! SlipRow || !block.amount) continue;
+      final width = _natural(
+        _text(
+          block.value,
+          size: SlipMetrics.bodySize,
+          width: cap,
+          mono: true,
+          ltr: true,
+        ),
+      );
+      if (width > widest) widest = width;
+    }
+    return widest.clamp(0.0, cap);
+  }();
+
   /// A paragraph in the house faces.
   ///
   /// The families are named because the raster used to name none, and a slip
@@ -249,6 +276,18 @@ class _Layout {
   /// The whole slip, painted black ink on white at [widthDots] across.
   Future<ui.Image> paint() async {
     final placed = <_Placed>[];
+    try {
+      return await _paint(placed);
+    } finally {
+      // Wherever it stopped: a logo decoded before a later block threw is still
+      // a picture held by the engine.
+      for (final item in placed) {
+        if (item is _PlacedLogo) item.image.dispose();
+      }
+    }
+  }
+
+  Future<ui.Image> _paint(List<_Placed> placed) async {
     var y = _d(SlipMetrics.top);
 
     for (final block in document.blocks) {
@@ -261,6 +300,8 @@ class _Layout {
           y = _centre(placed, block, y);
         case SlipStamp(:final text):
           y = _stamp(placed, text, y);
+        case SlipLogo(:final bytes):
+          y = await _logo(placed, bytes, y);
         case SlipRow():
           y = _row(placed, block, y);
         case SlipItemsHeader():
@@ -273,8 +314,6 @@ class _Layout {
           final square = _qr(payload);
           placed.add(_PlacedQr(square, y));
           y += square.size + _d(SlipMetrics.rowGap);
-        case SlipOrnament():
-          y = _ornament(placed, y);
       }
     }
 
@@ -317,6 +356,76 @@ class _Layout {
     }
   }
 
+  /// The restaurant's logo, centred, as black and white dots (XORD-024).
+  ///
+  /// **It cannot fail the slip.** A logo that will not decode, has no size, or
+  /// anything else that throws here is skipped and the slip prints as it would
+  /// without one: nothing in its place, and no XOrder mark either.
+  ///
+  /// Sized to fit the content width and [SlipMetrics.logoMaxHeight] and never
+  /// enlarged past its own pixels, decoded at that size so a 4000-pixel upload
+  /// is not dithered at 4000 pixels, then turned into pure black and white by
+  /// [LogoBitmap] so the packer's plain threshold leaves it as it is.
+  Future<double> _logo(List<_Placed> placed, Uint8List bytes, double y) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? sized;
+    ui.Image? scaled;
+    try {
+      // The size from the file's header: a 4000-pixel upload is not decoded in
+      // full just to find out how big it is.
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final naturalWidth = descriptor.width;
+      final naturalHeight = descriptor.height;
+      if (naturalWidth < 1 || naturalHeight < 1) return y;
+
+      final room = _d(SlipMetrics.logoMaxHeight);
+      var ratio = _content / naturalWidth;
+      if (room / naturalHeight < ratio) ratio = room / naturalHeight;
+      if (ratio > 1) ratio = 1;
+      final width = (naturalWidth * ratio).floor().clamp(1, naturalWidth);
+      final height = (naturalHeight * ratio).floor().clamp(1, naturalHeight);
+
+      sized = await descriptor.instantiateCodec(
+        targetWidth: width,
+        targetHeight: height,
+      );
+      scaled = (await sized.getNextFrame()).image;
+      final pixels = await scaled.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+      if (pixels == null) return y;
+
+      final dots = LogoBitmap.oneBit(
+        pixels.buffer.asUint8List(pixels.offsetInBytes, pixels.lengthInBytes),
+        scaled.width,
+        scaled.height,
+      );
+      final done = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        dots,
+        scaled.width,
+        scaled.height,
+        ui.PixelFormat.rgba8888,
+        done.complete,
+      );
+      final image = await done.future;
+
+      final x = (_left + (_content - image.width) / 2).floorToDouble();
+      final top = y.ceilToDouble();
+      placed.add(_PlacedLogo(image, ui.Offset(x, top)));
+      return top + image.height + _d(SlipMetrics.logoAfter);
+    } on Object {
+      return y;
+    } finally {
+      sized?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
+      scaled?.dispose();
+    }
+  }
+
   double _rule(List<_Placed> placed, SlipRuleWeight weight, double y) {
     final top = (y + _d(SlipMetrics.ruleAbove)).roundToDouble();
     final thickness = _d(SlipMetrics.ruleThickness(weight)).ceilToDouble();
@@ -353,7 +462,13 @@ class _Layout {
     final spacing = _d(SlipMetrics.glyphGap);
     final room = _content - side - spacing;
     final width = _natural(
-      _text(block.text, size: size, width: room, mono: block.numeric, bold: bold),
+      _text(
+        block.text,
+        size: size,
+        width: room,
+        mono: block.numeric,
+        bold: bold,
+      ),
     ).clamp(1.0, room);
     final paragraph = _text(
       block.text,
@@ -371,7 +486,10 @@ class _Layout {
     final height = _max(paragraph.height, side);
 
     placed.add(
-      _PlacedText(paragraph, ui.Offset(textX, y + (height - paragraph.height) / 2)),
+      _PlacedText(
+        paragraph,
+        ui.Offset(textX, y + (height - paragraph.height) / 2),
+      ),
     );
     placed.add(
       _PlacedGlyph(
@@ -405,25 +523,34 @@ class _Layout {
   }
 
   /// A label against a value. Returns where the next block starts.
+  ///
+  /// **Nothing is cut.** A long cashier name, tender name or label wraps onto
+  /// as many lines as it needs; this used to stop at two and end in an
+  /// ellipsis, which on a receipt is a figure or a name that is not there.
+  /// The label and the value sit on one baseline, so a quieter label
+  /// ([SlipRow.secondary]) does not float above the figure beside it.
   double _row(List<_Placed> placed, SlipRow row, double y) {
     // The value is measured at its natural width and pinned to the far edge;
     // the label gets what is left. Sharing the width evenly would wrap a long
     // label while leaving half a line of blank paper beside the figure. Capped
     // at two thirds so a long cashier name cannot push its label off the slip.
     const size = SlipMetrics.bodySize;
+    final labelSize = row.secondary ? SlipMetrics.bodySecondary : size;
     final cap = _content * 2 / 3;
     final gap = _d(SlipMetrics.columnGap);
 
-    final valueWidth = _natural(
-      _text(
-        row.value,
-        size: size,
-        width: cap,
-        mono: row.numeric,
-        ltr: row.numeric,
-        struck: row.struck,
-      ),
-    ).clamp(0.0, cap);
+    final valueWidth = row.amount
+        ? _amountWidth
+        : _natural(
+            _text(
+              row.value,
+              size: size,
+              width: cap,
+              mono: row.numeric,
+              ltr: row.numeric,
+              struck: row.struck,
+            ),
+          ).clamp(0.0, cap);
     final value = _text(
       row.value,
       size: size,
@@ -434,31 +561,60 @@ class _Layout {
       // what they were charged.
       ltr: row.numeric,
       struck: row.struck,
-      align: _outer,
-      maxLines: 2,
+      // An amount ends at the right of its box in either language, so decimals
+      // line up; anything else keeps the slip's own outer edge.
+      align: row.amount ? ui.TextAlign.right : _outer,
     );
 
     final labelWidth = _content - valueWidth - gap;
     final label = _text(
       row.label,
-      size: size,
+      size: labelSize,
       width: labelWidth,
       struck: row.struck,
-      maxLines: 2,
     );
 
     final labelX = _rtl ? _left + valueWidth + gap : _left;
     final valueX = _rtl ? _left : _left + _content - valueWidth;
-    placed.add(_PlacedText(label, ui.Offset(labelX, y)));
-    placed.add(_PlacedText(value, ui.Offset(valueX, y)));
 
-    return y + _max(label.height, value.height) + _d(SlipMetrics.rowGap);
+    // One baseline: the later of the two first baselines, so neither moves up.
+    final baseline = _max(label.alphabeticBaseline, value.alphabeticBaseline);
+    final labelY = y + baseline - label.alphabeticBaseline;
+    final valueY = y + baseline - value.alphabeticBaseline;
+    placed.add(_PlacedText(label, ui.Offset(labelX, labelY)));
+    placed.add(_PlacedText(value, ui.Offset(valueX, valueY)));
+
+    final bottom = _max(labelY + label.height, valueY + value.height);
+    return bottom + _d(SlipMetrics.rowGap);
   }
+
+  /// The price column: [SlipMetrics.priceColumn] dots, wider when a price on
+  /// this slip needs it, so a large figure is printed whole and never cut to
+  /// an ellipsis. At most 45% of the paper; names keep the rest.
+  late final double _priceColumn = () {
+    final reference = _d(SlipMetrics.priceColumn);
+    final cap = _content * 0.45;
+    var widest = 0.0;
+    for (final block in document.blocks) {
+      if (block is! SlipItem) continue;
+      final width = _natural(
+        _text(
+          block.price,
+          size: SlipMetrics.bodySize,
+          width: _content,
+          mono: true,
+          ltr: true,
+        ),
+      );
+      if (width > widest) widest = width;
+    }
+    return widest.clamp(reference, cap < reference ? reference : cap);
+  }();
 
   _Columns _columns() {
     final gap = _d(SlipMetrics.columnGap);
     final qty = _d(SlipMetrics.qtyColumn);
-    final price = _d(SlipMetrics.priceColumn);
+    final price = _priceColumn;
     final name = _content - qty - price - 2 * gap;
     return _rtl
         ? (
@@ -504,7 +660,8 @@ class _Layout {
       size: size,
       width: columns.price,
       bold: true,
-      align: _outer,
+      // Over the end of the figures, which are right-aligned in both languages.
+      align: ui.TextAlign.right,
       maxLines: 1,
     );
 
@@ -521,12 +678,14 @@ class _Layout {
     final columns = _columns();
     const size = SlipMetrics.bodySize;
 
+    // The whole name, over as many lines as it takes (owner's brief, 26 Oct
+    // 2026): it stopped at two with an ellipsis, so a long dish was a different
+    // dish on the paper. The quantity and price stay in their own columns.
     final name = _text(
       item.name,
       size: size,
       width: columns.name,
       struck: item.struck,
-      maxLines: 2,
     );
     final qty = _text(
       item.quantity,
@@ -544,7 +703,7 @@ class _Layout {
       mono: true,
       ltr: true,
       struck: item.struck,
-      align: _outer,
+      align: ui.TextAlign.right,
       maxLines: 1,
     );
 
@@ -552,7 +711,7 @@ class _Layout {
     placed.add(_PlacedText(qty, ui.Offset(columns.qtyX, y)));
     placed.add(_PlacedText(price, ui.Offset(columns.priceX, y)));
     final height = _max(_max(name.height, qty.height), price.height);
-    return y + height + _d(SlipMetrics.rowGap);
+    return y + height + _d(SlipMetrics.itemGap);
   }
 
   double _grandTotal(List<_Placed> placed, SlipGrandTotal total, double y) {
@@ -585,7 +744,8 @@ class _Layout {
       width: amountWidth,
       mono: true,
       ltr: true,
-      align: ui.TextAlign.center,
+      // Under the end of the figure, where the other amounts' codes end.
+      align: ui.TextAlign.right,
       maxLines: 1,
     );
     final figure = amount.height + currency.height;
@@ -595,7 +755,6 @@ class _Layout {
       size: SlipMetrics.totalLabelSize,
       width: _content - amountWidth - gap,
       bold: true,
-      maxLines: 2,
     );
 
     final height = _max(figure, label.height);
@@ -611,34 +770,6 @@ class _Layout {
       _PlacedText(label, ui.Offset(labelX, y + (height - label.height) / 2)),
     );
     return y + height + _d(SlipMetrics.rowGap);
-  }
-
-  double _ornament(List<_Placed> placed, double y) {
-    final line = _d(SlipMetrics.ornamentLine);
-    final gap = _d(SlipMetrics.ornamentGap);
-    final heart = _d(SlipMetrics.ornamentHeart).roundToDouble();
-    final thickness = _d(
-      SlipMetrics.ruleThickness(SlipRuleWeight.solid),
-    ).ceilToDouble();
-
-    final start = (_left + (_content - 2 * line - 2 * gap - heart) / 2)
-        .roundToDouble();
-    final top = y.roundToDouble();
-    final lineY = (top + (heart - thickness) / 2).roundToDouble();
-
-    placed.add(_PlacedFill(ui.Rect.fromLTWH(start, lineY, line, thickness)));
-    placed.add(
-      _PlacedGlyph(
-        SlipGlyph.heart,
-        ui.Rect.fromLTWH(start + line + gap, top, heart, heart),
-      ),
-    );
-    placed.add(
-      _PlacedFill(
-        ui.Rect.fromLTWH(start + line + 2 * gap + heart, lineY, line, thickness),
-      ),
-    );
-    return top + heart + _d(SlipMetrics.lineGap);
   }
 
   /// The QR, in whole dots. See [SlipMetrics.qrModule].
@@ -767,6 +898,25 @@ class _PlacedBox extends _Placed {
       ..strokeWidth = SlipMetrics.stampBorder * layout.scale
       ..isAntiAlias = false,
   );
+}
+
+/// The logo, already black and white dots, drawn 1:1 at whole-dot coordinates
+/// so nothing resamples it back to grey.
+class _PlacedLogo extends _Placed {
+  const _PlacedLogo(this.image, this.at);
+
+  final ui.Image image;
+  final ui.Offset at;
+
+  @override
+  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) =>
+      canvas.drawImage(
+        image,
+        at,
+        ui.Paint()
+          ..filterQuality = ui.FilterQuality.none
+          ..isAntiAlias = false,
+      );
 }
 
 class _PlacedGlyph extends _Placed {

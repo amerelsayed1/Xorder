@@ -126,15 +126,28 @@ class MonoCode extends StatelessWidget {
   /// Null resolves to the palette's `muted` — a code is nearly always meta.
   final Color? color;
 
+  /// The text always reads left to right, but its BOX sits on the screen's own
+  /// start edge.
+  ///
+  /// Forcing `ltr` on the Text alone also made its alignment left, so in an
+  /// Arabic row a short code (a time, a quantity) was pushed to the cell's LEFT
+  /// edge: away from its heading, and against the next column's text — "07:15"
+  /// and "صالة" read as one word. The [Align] puts the box where the language's
+  /// start is (right in Arabic, left in English); the characters inside keep
+  /// their order.
   @override
-  Widget build(BuildContext context) => Directionality(
-    textDirection: TextDirection.ltr,
-    child: Text(
-      text,
-      style: PosText.mono(
-        size: size,
-        weight: weight,
-        color: color ?? context.pos.muted,
+  Widget build(BuildContext context) => Align(
+    // Top, as the bare Text sat before: this fixes the horizontal edge only.
+    alignment: AlignmentDirectional.topStart,
+    child: Directionality(
+      textDirection: TextDirection.ltr,
+      child: Text(
+        text,
+        style: PosText.mono(
+          size: size,
+          weight: weight,
+          color: color ?? context.pos.muted,
+        ),
       ),
     ),
   );

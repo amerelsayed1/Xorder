@@ -29,7 +29,12 @@ void main() {
       id: 1,
       code: 'manager',
       nameEn: 'Manager',
-      capabilities: {PosCapability.staffManage, PosCapability.catalogManage},
+      capabilities: {
+        PosCapability.staffManage,
+        PosCapability.catalogManage,
+        // Choosing order types is its own key since XORD-002.
+        PosCapability.orderTypesManage,
+      },
     ),
   );
 
@@ -142,6 +147,7 @@ class _RecordingCatalogAdmin implements CatalogAdminRepository {
   Future<AdminResult<OrderTypeConfig>> saveOrderType(
     OrderTypeConfig config, {
     required PosStaff by,
+    Set<OrderType>? entitled,
   }) async {
     saved.add(config);
     return AdminResult.done(config);

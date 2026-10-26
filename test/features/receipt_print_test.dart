@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +13,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/hardware/network_printer_ports.dart';
+import 'package:xorder_pos/domain/models/business_logo.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
@@ -74,6 +78,7 @@ void main() {
     TenderMethod method = cash,
     PrintQueueRepository? queue,
     String locale = 'en',
+    Uint8List? logo,
   }) async {
     final ports = FakeHardwarePorts()..reachable = reachable;
     final store = queue is _MemoryQueue ? queue : _MemoryQueue();
@@ -89,6 +94,7 @@ void main() {
           hardwarePortsProvider.overrideWithValue(ports),
           printQueueRepositoryProvider.overrideWithValue(store),
           printerConfigProvider.overrideWith(() => _FixedPrinter(printer)),
+          if (logo != null) _logoOverride(logo),
         ],
         child: MaterialApp(
           locale: Locale(locale),
@@ -301,7 +307,9 @@ void main() {
     expect(find.text(strings.receiptNoPrinter), findsNothing);
   });
 
-  testWidgets('the queue is retried before the receipt in hand', (tester) async {
+  testWidgets('the queue is retried before the receipt in hand', (
+    tester,
+  ) async {
     const strings = EnStrings();
     final queue = _MemoryQueue()
       ..jobs.add(
@@ -340,8 +348,10 @@ void main() {
   group('a reprint', () {
     /// The same dialog the orders list opens, with a printer behind it.
     Future<(FakeHardwarePorts, _MemoryQueue)> openReprint(
-      WidgetTester tester,
-    ) async {
+      WidgetTester tester, {
+      Uint8List? logo,
+      PrinterConfig printer = const PrinterConfig(name: '10.20.30.40:9100'),
+    }) async {
       final ports = FakeHardwarePorts();
       final store = _MemoryQueue();
 
@@ -355,11 +365,10 @@ void main() {
           overrides: [
             hardwarePortsProvider.overrideWithValue(ports),
             printQueueRepositoryProvider.overrideWithValue(store),
-            printerConfigProvider.overrideWith(
-              () => _FixedPrinter(const PrinterConfig(name: '10.20.30.40:9100')),
-            ),
+            printerConfigProvider.overrideWith(() => _FixedPrinter(printer)),
             auditRepositoryProvider.overrideWithValue(FakeAuditRepository()),
             signedInStaffProvider.overrideWith(_SignedIn.new),
+            if (logo != null) _logoOverride(logo),
           ],
           child: MaterialApp(
             theme: buildPosTheme(PosPalette.light),
@@ -429,6 +438,33 @@ void main() {
       expect(job.join(','), isNot(contains(EscPos.openDrawer.join(','))));
       expect(queue.jobs, isEmpty);
     });
+
+    testWidgets('a reprint prints the logo the till holds now', (tester) async {
+      final mark = (await tester.runAsync(_logoPng))!;
+
+      Future<List<int>> reprinted({Uint8List? logo}) async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        final (ports, _) = await openReprint(tester, logo: logo);
+        await tester.tap(find.text(const EnStrings().receiptReprintConfirm));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        for (var i = 0; i < 20 && ports.jobs.isEmpty; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 100)),
+          );
+          await tester.pump();
+        }
+        return ports.jobs.single;
+      }
+
+      final plain = await reprinted();
+      final branded = await reprinted(logo: mark);
+
+      expect(branded.length, greaterThan(plain.length));
+    });
   });
   group('a preview', () {
     testWidgets('shows the slip and sends nothing to the printer', (
@@ -447,7 +483,8 @@ void main() {
           overrides: [
             hardwarePortsProvider.overrideWithValue(ports),
             printerConfigProvider.overrideWith(
-              () => _FixedPrinter(const PrinterConfig(name: '10.20.30.40:9100')),
+              () =>
+                  _FixedPrinter(const PrinterConfig(name: '10.20.30.40:9100')),
             ),
           ],
           child: MaterialApp(
@@ -507,6 +544,138 @@ void main() {
     });
   });
 
+  group('the logo (XORD-024)', () {
+    /// A logo adds two more turns of the real event loop (reading it, then
+    /// decoding it) before a job exists; wait for the job, not for a time.
+    Future<void> settle(WidgetTester tester, FakeHardwarePorts ports) async {
+      for (var i = 0; i < 20 && ports.jobs.isEmpty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump();
+      }
+    }
+
+    /// The bytes the printer was sent for the one receipt this test prints.
+    Future<List<int>> printedSale(
+      WidgetTester tester, {
+      Uint8List? logo,
+      PrinterConfig printer = const PrinterConfig(name: '10.20.30.40:9100'),
+    }) async {
+      // A fresh tree each time: a scope pumped over an old one keeps the old
+      // overrides, and the second sale would be measured against the first's.
+      await tester.pumpWidget(const SizedBox.shrink());
+      final (ports, _) = await open(tester, logo: logo, printer: printer);
+      await printAndNew(tester, const EnStrings());
+      await settle(tester, ports);
+      // A cash sale sends the drawer kick as a job of its own; the receipt is
+      // the long one.
+      return ports.jobs.reduce((a, b) => a.length >= b.length ? a : b);
+    }
+
+    testWidgets('a sale prints it when the till has one', (tester) async {
+      final mark = (await tester.runAsync(_logoPng))!;
+
+      final plain = await printedSale(tester);
+      final branded = await printedSale(tester, logo: mark);
+
+      // The slip is a picture; a logo makes the picture taller, and the job
+      // is the picture. Same start and end: reset, ..., feed, cut.
+      expect(branded.length, greaterThan(plain.length));
+      expect(branded.skip(branded.length - EscPos.cut.length), EscPos.cut);
+    });
+
+    testWidgets('and not when this till is set to leave it off', (
+      tester,
+    ) async {
+      final mark = (await tester.runAsync(_logoPng))!;
+
+      final plain = await printedSale(tester);
+      final off = await printedSale(
+        tester,
+        logo: mark,
+        printer: const PrinterConfig(
+          name: '10.20.30.40:9100',
+          printLogo: false,
+        ),
+      );
+
+      expect(off, plain);
+    });
+
+    testWidgets('a logo nobody can decode costs the sale nothing', (
+      tester,
+    ) async {
+      final plain = await printedSale(tester);
+      final broken = await printedSale(
+        tester,
+        logo: Uint8List.fromList([9, 9, 9]),
+      );
+
+      expect(broken, plain);
+    });
+
+    Future<void> previewing(
+      WidgetTester tester, {
+      Uint8List? logo,
+      PrinterConfig printer = const PrinterConfig(name: '10.20.30.40:9100'),
+    }) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await open(tester, logo: logo, printer: printer);
+    }
+
+    testWidgets('the preview shows it', (tester) async {
+      final mark = (await tester.runAsync(_logoPng))!;
+
+      await previewing(tester, logo: mark);
+
+      expect(find.byKey(const Key('receipt-logo')), findsOneWidget);
+    });
+
+    testWidgets('the preview shows none when this till leaves it off', (
+      tester,
+    ) async {
+      final mark = (await tester.runAsync(_logoPng))!;
+
+      await previewing(
+        tester,
+        logo: mark,
+        printer: const PrinterConfig(
+          name: '10.20.30.40:9100',
+          printLogo: false,
+        ),
+      );
+
+      expect(find.byKey(const Key('receipt-logo')), findsNothing);
+    });
+
+    testWidgets('and none when the restaurant has no logo', (tester) async {
+      await previewing(tester);
+
+      expect(find.byKey(const Key('receipt-logo')), findsNothing);
+    });
+  });
+}
+
+/// The till holds this logo (XORD-024).
+Override _logoOverride(Uint8List bytes) => businessLogoProvider.overrideWith(
+  (ref) async =>
+      BusinessLogo(bytes: bytes, mime: 'image/png', source: LogoSource.local),
+);
+
+/// A PNG, drawn here: a black box 300 x 100.
+Future<Uint8List> _logoPng() async {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawRect(
+    const ui.Rect.fromLTWH(0, 0, 300, 100),
+    ui.Paint()..color = const ui.Color(0xFF000000),
+  );
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(300, 100);
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  picture.dispose();
+  return data!.buffer.asUint8List();
 }
 
 /// A printer config that is simply what the test says it is.

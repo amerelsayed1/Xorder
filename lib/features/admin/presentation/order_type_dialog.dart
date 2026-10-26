@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/order_type_config.dart';
 
 /// What a kind of order requires (§31).
@@ -22,16 +23,24 @@ import '../../../domain/models/order_type_config.dart';
 /// numbered bays turns it on for drive-thru. That was compiled in before this
 /// existed.
 class OrderTypeDialog extends StatefulWidget {
-  const OrderTypeDialog({required this.config, super.key});
+  const OrderTypeDialog({
+    required this.config,
+    super.key,
+    this.languages = ContentLanguages.both,
+  });
 
   final OrderTypeConfig config;
+
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
 
   static Future<OrderTypeConfig?> show(
     BuildContext context, {
     required OrderTypeConfig config,
+    ContentLanguages languages = ContentLanguages.both,
   }) => showDialog<OrderTypeConfig>(
     context: context,
-    builder: (_) => OrderTypeDialog(config: config),
+    builder: (_) => OrderTypeDialog(config: config, languages: languages),
   );
 
   @override
@@ -56,16 +65,28 @@ class _OrderTypeDialogState extends State<OrderTypeDialog> {
   }
 
   void _save() {
-    if (_nameEn.text.trim().isEmpty) {
+    if (!hasRequiredName(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+    )) {
       setState(() => _problem = context.strings.orderTypeNeedsAName);
       return;
     }
 
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.config.nameEn,
+      previousAr: widget.config.nameAr,
+    );
+
     Navigator.of(context).pop(
       OrderTypeConfig(
         type: widget.config.type,
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         requiresTable: _table,
         requiresCustomer: _customer,
         requiresAddress: _address,
@@ -113,22 +134,31 @@ class _OrderTypeDialogState extends State<OrderTypeDialog> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
-                  MicroLabel(strings.orderTypeName),
-                  const SizedBox(height: PosSpace.xs),
-                  TextField(
-                    key: const Key('order-type-name'),
-                    controller: _nameEn,
-                    onChanged: (_) => setState(() => _problem = null),
-                    style: PosText.ui(size: 15, color: palette.ink),
-                  ),
-                  const SizedBox(height: PosSpace.md),
-                  MicroLabel(strings.optionalField(strings.tenderNameAr)),
-                  const SizedBox(height: PosSpace.xs),
-                  TextField(
-                    key: const Key('order-type-name-ar'),
-                    controller: _nameAr,
-                    style: PosText.ui(size: 15, color: palette.ink),
-                  ),
+                  if (widget.languages.showsEnglish) ...[
+                    MicroLabel(strings.orderTypeName),
+                    const SizedBox(height: PosSpace.xs),
+                    TextField(
+                      key: const Key('order-type-name'),
+                      controller: _nameEn,
+                      onChanged: (_) => setState(() => _problem = null),
+                      style: PosText.ui(size: 15, color: palette.ink),
+                    ),
+                    const SizedBox(height: PosSpace.md),
+                  ],
+                  if (widget.languages.showsArabic) ...[
+                    MicroLabel(
+                      widget.languages == ContentLanguages.arabic
+                          ? strings.orderTypeName
+                          : strings.optionalField(strings.tenderNameAr),
+                    ),
+                    const SizedBox(height: PosSpace.xs),
+                    TextField(
+                      key: const Key('order-type-name-ar'),
+                      controller: _nameAr,
+                      onChanged: (_) => setState(() => _problem = null),
+                      style: PosText.ui(size: 15, color: palette.ink),
+                    ),
+                  ],
                   const SizedBox(height: PosSpace.lg),
 
                   _Switch(

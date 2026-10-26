@@ -68,17 +68,15 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   /// to be the paper that was previewed.
   ReceiptData? _data;
 
-  ReceiptData _slip() =>
-      _data ??= ReceiptData.fromTicket(
-        ticket,
-        invoiceNumber: result.invoiceNumber,
-        queued: result.queued,
-        // Whether there is a platform at all. An offline till prints nothing
-        // about sync rather than claiming to have reached something it has
-        // never contacted.
-        cloudBacked:
-            ref.read(deploymentProvider).mode == DeploymentMode.cloud,
-      );
+  ReceiptData _slip() => _data ??= ReceiptData.fromTicket(
+    ticket,
+    invoiceNumber: result.invoiceNumber,
+    queued: result.queued,
+    // Whether there is a platform at all. An offline till prints nothing
+    // about sync rather than claiming to have reached something it has
+    // never contacted.
+    cloudBacked: ref.read(deploymentProvider).mode == DeploymentMode.cloud,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -113,12 +111,14 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
                 child: SingleChildScrollView(
                   child: ReceiptPaper(
                     data: _slip(),
-                    profile: ref.watch(receiptProfileProvider).valueOrNull ??
+                    profile:
+                        ref.watch(receiptProfileProvider).valueOrNull ??
                         const ReceiptProfile(branchId: 0),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
                     cashierName: ref.watch(operatorNameProvider),
                     tenderMethods: _tenderMethods(),
+                    logo: ref.watch(receiptLogoProvider).valueOrNull,
                   ),
                 ),
               ),
@@ -201,11 +201,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
             foreground: Colors.white,
             onPressed: _printing
                 ? null
-                : () => _finish(
-                    context,
-                    ref,
-                    openDrawer: _drawerOpens(),
-                  ),
+                : () => _finish(context, ref, openDrawer: _drawerOpens()),
           ),
         ),
         const SizedBox(width: PosSpace.sm),
@@ -223,9 +219,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
                   border: Border.fromBorderSide(
                     BorderSide(color: _receipt.inkWarm),
                   ),
-                  onPressed: _printing
-                      ? null
-                      : () => _print(context, strings),
+                  onPressed: _printing ? null : () => _print(context, strings),
                 )
               : Tooltip(
                   message: strings.receiptNoPrinterToast,
@@ -252,6 +246,13 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   Future<void> _print(BuildContext context, AppStrings strings) async {
     setState(() => _printing = true);
 
+    // Before anything else is read: the one await ahead of the build. It never
+    // throws, and a logo that is slow or missing is a slip without one.
+    final logo = await ref
+        .read(receiptLogoProvider.future)
+        .catchError((Object _) => null);
+    if (!mounted) return;
+
     final session = ref.read(sessionProvider).valueOrNull;
     final document = ReceiptDocument.of(
       _slip(),
@@ -263,6 +264,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
       terminalCode: session?.terminalCode ?? '',
       cashierName: ref.watch(operatorNameProvider),
       tenderMethods: _tenderMethods(),
+      logo: logo,
     );
 
     final outcome = await ref

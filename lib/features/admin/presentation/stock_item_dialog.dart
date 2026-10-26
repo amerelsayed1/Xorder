@@ -5,6 +5,7 @@ import '../../../core/money/quantity.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/pos_unit.dart';
 import '../../../domain/models/stock_item.dart';
 import 'admin_messages.dart';
@@ -19,6 +20,7 @@ class StockItemDialog extends StatefulWidget {
     required this.units,
     this.item,
     this.initialName,
+    this.languages = ContentLanguages.both,
   });
 
   /// Null adds a new one — bought, counted, not sold.
@@ -31,15 +33,23 @@ class StockItemDialog extends StatefulWidget {
   /// add it as a new item.
   final String? initialName;
 
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
+
   static Future<StockItem?> show(
     BuildContext context, {
     required List<PosUnit> units,
     StockItem? item,
     String? initialName,
+    ContentLanguages languages = ContentLanguages.both,
   }) => showDialog<StockItem>(
     context: context,
-    builder: (_) =>
-        StockItemDialog(units: units, item: item, initialName: initialName),
+    builder: (_) => StockItemDialog(
+      units: units,
+      item: item,
+      initialName: initialName,
+      languages: languages,
+    ),
   );
 
   @override
@@ -66,11 +76,18 @@ class _StockItemDialogState extends State<StockItemDialog> {
   }
 
   void _save() {
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.item?.nameEn,
+      previousAr: widget.item?.nameAr,
+    );
     Navigator.of(context).pop(
       StockItem(
         id: widget.item?.id ?? 0,
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         sku: _sku.text.trim().isEmpty ? null : _sku.text.trim(),
         unit: _unit,
         onMenu: _onMenu,
@@ -123,19 +140,23 @@ class _StockItemDialogState extends State<StockItemDialog> {
                 ),
               ],
               const SizedBox(height: PosSpace.lg),
-              _Field(
-                name: 'name',
-                label: strings.itemName,
-                controller: _nameEn,
-                enabled: !_onMenu,
-              ),
-              _Field(
-                name: 'name_ar',
-                label: strings.itemNameAr,
-                controller: _nameAr,
-                optional: true,
-                enabled: !_onMenu,
-              ),
+              if (widget.languages.showsEnglish)
+                _Field(
+                  name: 'name',
+                  label: strings.itemName,
+                  controller: _nameEn,
+                  enabled: !_onMenu,
+                ),
+              if (widget.languages.showsArabic)
+                _Field(
+                  name: 'name_ar',
+                  label: widget.languages == ContentLanguages.arabic
+                      ? strings.itemName
+                      : strings.itemNameAr,
+                  controller: _nameAr,
+                  optional: widget.languages == ContentLanguages.both,
+                  enabled: !_onMenu,
+                ),
               _Field(
                 name: 'sku',
                 label: strings.fieldSku,

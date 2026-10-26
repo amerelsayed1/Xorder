@@ -40,7 +40,11 @@ class _ManagementTendersPaneState extends ConsumerState<ManagementTendersPane> {
     final repository = ref.read(catalogAdminRepositoryProvider);
     if (repository == null) return;
 
-    final edited = await TenderTypeDialog.show(context, method: method);
+    final edited = await TenderTypeDialog.show(
+      context,
+      method: method,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
 
     setState(() => _busy = true);

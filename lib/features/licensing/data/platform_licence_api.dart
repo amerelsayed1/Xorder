@@ -71,6 +71,12 @@ class PlatformLicenceApi {
   /// when a key minted on one platform is typed into a till built to ask
   /// another, where the key is perfect and the address is wrong. An installer
   /// told "not recognised" then goes looking for a typo that does not exist.
+  static String? _bodyCode(Object? body) =>
+      body is Map ? body['code']?.toString() : null;
+
+  static int? _bodySeats(Object? body) =>
+      body is Map ? int.tryParse('${body['seats']}') : null;
+
   Future<LicenceFetch> fetchByKey(
     String key,
     String terminalFingerprint,
@@ -117,6 +123,11 @@ class PlatformLicenceApi {
           // the address — the key may be fine and this the wrong platform.
           404 => LicenceKeyNotRecognised(base),
           403 => const LicenceRevoked(),
+          // The key is right and nothing is withdrawn: every device seat the
+          // licence sells is in use. Only this code, so any other 409 stays an
+          // unexplained refusal rather than being given a reason it may not have.
+          409 when _bodyCode(response.data) == 'licence_seats_full' =>
+            LicenceSeatsFull(_bodySeats(response.data)),
           // Throttled. An installer retrying a key they believe in will find
           // this, and "not recognised" at that moment is the opposite of true.
           429 => const TooManyLicenceAttempts(),

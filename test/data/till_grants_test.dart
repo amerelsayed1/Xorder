@@ -77,6 +77,22 @@ void main() {
       expect(writesTo(offline, 'pos_receipt_profiles'), isEmpty);
     });
 
+    test('cannot write the accounts or where a payment method pays in', () {
+      // XORD-015. Offline these are the owner's, authored over the
+      // administrator credential; the till only reads them.
+      expect(writesTo(offline, 'pos_financial_accounts'), isEmpty);
+      expect(writesTo(offline, 'pos_tender_account_defaults'), isEmpty);
+      expect(
+        offline.any(
+          (s) =>
+              s.startsWith('GRANT SELECT ON pos_financial_accounts') &&
+              s.contains('pos_tender_account_defaults'),
+        ),
+        isTrue,
+        reason: 'a cloud-less till still has to show them',
+      );
+    });
+
     test('still reads everything a sale screen needs', () {
       expect(
         offline.any(
@@ -222,6 +238,29 @@ void main() {
       // Without this grant the whole seed fails on a real cloud install and
       // passes in every suite here, which all run as the superuser.
       expect(writesTo(cloud, 'pos_receipt_profiles'), isNotEmpty);
+    });
+
+    test('gets the account writes the seeder needs, and never deletes an account',
+        () {
+      // XORD-015. An account is retired, because a payment will one day name
+      // it; the defaults hold no history, so the seeder may replace them.
+      expect(writesTo(cloud, 'pos_financial_accounts'), isNotEmpty);
+      expect(
+        cloud.where(
+          (s) =>
+              s.startsWith('GRANT') &&
+              s.contains('pos_financial_accounts') &&
+              s.contains('DELETE'),
+        ),
+        isEmpty,
+      );
+      expect(
+        cloud.any(
+          (s) =>
+              s.startsWith('GRANT INSERT, UPDATE, DELETE ON pos_tender_account_defaults'),
+        ),
+        isTrue,
+      );
     });
 
     test('and only the till writes them — no DELETE on the receipt profile',

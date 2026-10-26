@@ -378,7 +378,8 @@ void main() {
       }
     });
 
-    test('Settings\' lines are the map\'s six items, General first', () {
+    test('Settings\' lines are four items, General first; User and About are '
+        'the account menu\'s', () {
       final settings = managementBarFor(
         s,
         admin: owner,
@@ -389,8 +390,6 @@ void main() {
         'Printer & cash drawer',
         'Language',
         'Appearance',
-        'User',
-        'About XOrder',
       ]);
       expect([for (final line in settings) line.divider], everyElement(false));
       expect([for (final line in settings) line.open().pane], [
@@ -398,6 +397,13 @@ void main() {
         ManagementPane.printer,
         ManagementPane.language,
         ManagementPane.appearance,
+      ]);
+      final account = managementBarFor(
+        s,
+        admin: owner,
+        authorsItsOwnCatalogue: true,
+      ).firstWhere((menu) => menu.tab == BackOfficeTab.account).lines;
+      expect([for (final line in account) line.open().pane], [
         ManagementPane.user,
         ManagementPane.about,
       ]);

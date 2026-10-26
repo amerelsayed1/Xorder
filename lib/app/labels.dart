@@ -189,6 +189,7 @@ extension LicenceNoticeText on LicenceNotice {
     NoLicenceServer() => s.noLicenceServer,
     NotALicenceFile() => s.notALicenceFile,
     LicenceRevoked() => s.licenceRevokedByPlatform,
+    LicenceSeatsFull(:final seats) => s.licenceSeatsFull(seats),
     LicenceSuspended(:final reason) => s.licenceSuspended(reason),
     LicenceUnconfirmed(:final lastConfirmed) => s.licenceUnconfirmed(
       _shortDate(lastConfirmed.toLocal()),

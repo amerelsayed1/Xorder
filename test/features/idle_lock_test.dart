@@ -65,6 +65,7 @@ void main() {
           PosRoutes.start,
           PosRoutes.lock,
           PosRoutes.sale,
+          PosRoutes.home,
           PosRoutes.floor,
           PosRoutes.orders,
           PosRoutes.management,
@@ -134,6 +135,19 @@ void main() {
     expect(container.read(signedInStaffProvider), isNull);
     // And the lock screen is told why, so it can say so.
     expect(find.text('${PosRoutes.lock} idle'), findsOneWidget);
+  });
+
+  testWidgets('five idle minutes on the home screen lock the till too', (
+    tester,
+  ) async {
+    await pumpTill(tester, at: PosRoutes.home);
+
+    await wait(tester, const Duration(minutes: 4, seconds: 59));
+    expect(location(), PosRoutes.home, reason: 'not a second early');
+
+    await wait(tester, const Duration(seconds: 1));
+    expect(location(), PosRoutes.lock);
+    expect(container.read(signedInStaffProvider), isNull);
   });
 
   testWidgets('a key resets the clock — the sale screen is driven by them', (

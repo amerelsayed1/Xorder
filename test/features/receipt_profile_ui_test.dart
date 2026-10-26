@@ -122,6 +122,44 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets('what General hands in as leading sits above the form, and '
+        'sections below it', (tester) async {
+      final repository = _Profiles(const ReceiptProfile(branchId: 1));
+      await tester.pumpWidget(
+        host(
+          const ManagementReceiptPane(
+            admin: admin,
+            leading: [SizedBox(key: Key('lead'), height: 40)],
+            sections: [SizedBox(key: Key('tail'), height: 40)],
+          ),
+          overrides: [
+            receiptProfileRepositoryProvider.overrideWithValue(repository),
+            etaFilingEnabledProvider.overrideWithValue(false),
+            catalogAdminRepositoryProvider.overrideWithValue(_Catalogue()),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final lead = tester.getTopLeft(find.byKey(const Key('lead'))).dy;
+      final firstField = tester.getTopLeft(find.byType(TextField).first).dy;
+      expect(lead, lessThan(firstField), reason: 'leading is above the form');
+      expect(find.byKey(const Key('lead')), findsOneWidget);
+      // The form's own Save stays the form's: the leading widget is not in it.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('tail')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const Key('tail'))).dy,
+        greaterThan(
+          tester.getTopLeft(find.byKey(const Key('receipt-profile-save'))).dy,
+        ),
+        reason: 'sections stay under the form',
+      );
+    });
+
     testWidgets('a branch nobody has set up says so, rather than complaining', (
       tester,
     ) async {

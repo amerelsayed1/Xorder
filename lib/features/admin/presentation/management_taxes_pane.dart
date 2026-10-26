@@ -75,6 +75,14 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
         : value.toString();
   }
 
+  /// The default group's rate, or null when there is none to read.
+  static int? _defaultRate(List<TaxGroup>? groups) {
+    for (final group in groups ?? const <TaxGroup>[]) {
+      if (group.isDefault && group.isActive) return group.rateBp;
+    }
+    return null;
+  }
+
   /// The inverse. Returns null when the box does not hold a number, so the
   /// caller can say which one.
   static int? _basisPoints(String text) {
@@ -89,7 +97,11 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
     final repository = ref.read(catalogAdminRepositoryProvider);
     if (repository == null) return;
 
-    final edited = await TaxGroupDialog.show(context, group: group);
+    final edited = await TaxGroupDialog.show(
+      context,
+      group: group,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
 
     setState(() {
@@ -153,7 +165,16 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
     // The ticket engine reads `taxConfigProvider`, which reads this. Without
     // the invalidation the next sale would price with the old rates until the
     // app restarted — the same trap the Menu pane has.
-    if (result.refusal == null) ref.invalidate(moneyConfigProvider);
+    //
+    // The groups as well: saving moves the default group's rate, and the ticket
+    // prices from the group, so without these the till would go on charging the
+    // old rate until the app restarted.
+    if (result.refusal == null) {
+      ref
+        ..invalidate(moneyConfigProvider)
+        ..invalidate(taxGroupsProvider)
+        ..invalidate(taxGroupsAllProvider);
+    }
   }
 
   @override
@@ -161,6 +182,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
     final strings = context.strings;
     final authors = ref.watch(catalogAdminRepositoryProvider) != null;
     final config = ref.watch(moneyConfigProvider);
+    final groups = ref.watch(taxGroupsAllProvider);
 
     return config.when(
       loading: () => Center(
@@ -173,11 +195,26 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
       data: (stored) {
         // Seed the boxes once. Re-seeding on every rebuild would fight the
         // operator's typing, and this rebuilds on each keystroke.
+        //
+        // Waits for the named rates too: the VAT box is the default group's
+        // rate, so seeding it from `vatBp` first and correcting it a frame
+        // later would flash the wrong figure at somebody about to type.
+        if (!_loaded && groups.isLoading) {
+          return Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: context.pos.accent,
+            ),
+          );
+        }
         if (!_loaded) {
           _loaded = true;
           final current = stored ?? const TaxConfig();
           _service.text = _percent(current.serviceBp);
-          _vat.text = _percent(current.vatBp);
+          // What the till actually charges. `vatBp` is only the answer while
+          // no default group exists (see `TaxConfig.defaultTaxGroup`); showing
+          // it beside a 14% group is how "I set it to 0" went unnoticed.
+          _vat.text = _percent(_defaultRate(groups.valueOrNull) ?? current.vatBp);
           _dineInOnly = current.serviceDineInOnly;
           _taxMode = current.taxMode;
         }

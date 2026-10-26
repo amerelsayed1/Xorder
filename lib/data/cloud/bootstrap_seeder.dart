@@ -78,7 +78,9 @@ class BootstrapSeeder {
       await _seedIdentity(tx, bundle);
       await _seedReceiptProfiles(tx, bundle);
       await _seedMoney(tx, bundle);
+      await _seedFinancialAccounts(tx, bundle);
       await _seedTenderTypes(tx, bundle);
+      await _seedTenderAccountDefaults(tx, bundle);
       await _seedStaff(tx, bundle);
       await _seedCustomers(tx, bundle);
       await _seedCatalog(tx, bundle);
@@ -103,6 +105,50 @@ class BootstrapSeeder {
     });
   }
 
+  /// Records what the platform says the logo is (XORD-021). The picture itself
+  /// is downloaded afterwards by `LogoSync`: this runs in a transaction that
+  /// must not wait on a network.
+  ///
+  /// No `branding` block at all is an older platform and changes nothing. A
+  /// block with no logo means the restaurant has none: the platform's copy on
+  /// this till is removed, but a logo chosen on the till itself is not, because
+  /// the platform never sent that one and has no say over it.
+  Future<void> _seedLogo(
+    TxSession tx,
+    int restaurantId,
+    BootstrapBranding? branding,
+  ) async {
+    if (branding == null) return;
+    final url = branding.logoUrl;
+    if (url != null) {
+      await tx.execute(
+        Sql.named(
+          'UPDATE pos_restaurants SET logo_remote_url = @url WHERE id = @id',
+        ),
+        parameters: {'id': restaurantId, 'url': url},
+      );
+      return;
+    }
+    await tx.execute(
+      Sql.named(
+        'UPDATE pos_restaurants '
+        '   SET logo_remote_url = NULL, '
+        '       logo_bytes = CASE WHEN logo_source = \'platform\' '
+        '                         THEN NULL ELSE logo_bytes END, '
+        '       logo_mime = CASE WHEN logo_source = \'platform\' '
+        '                        THEN NULL ELSE logo_mime END, '
+        '       logo_fetched_url = CASE WHEN logo_source = \'platform\' '
+        '                               THEN NULL ELSE logo_fetched_url END, '
+        '       logo_updated_at = CASE WHEN logo_source = \'platform\' '
+        '                              THEN now() ELSE logo_updated_at END, '
+        '       logo_source = CASE WHEN logo_source = \'platform\' '
+        '                          THEN NULL ELSE logo_source END '
+        ' WHERE id = @id',
+      ),
+      parameters: {'id': restaurantId},
+    );
+  }
+
   Future<void> _seedIdentity(TxSession tx, BootstrapBundle bundle) async {
     final restaurant = bundle.restaurant!;
     final terminal = bundle.terminal!;
@@ -122,6 +168,20 @@ class BootstrapSeeder {
         'tax': restaurant.taxRegistrationNumber,
       },
     );
+
+    // Which languages the menu is written in (XORD-005). Only when the platform
+    // said: an older platform sends nothing, and the till keeps what it has.
+    if (restaurant.contentLanguages case final languages?) {
+      await tx.execute(
+        Sql.named(
+          'UPDATE pos_restaurants SET content_languages = @languages '
+          'WHERE id = @id',
+        ),
+        parameters: {'id': restaurant.id, 'languages': languages},
+      );
+    }
+
+    await _seedLogo(tx, restaurant.id, bundle.branding);
 
     for (final branch in bundle.branches) {
       await tx.execute(
@@ -308,6 +368,157 @@ class BootstrapSeeder {
         'payload': jsonEncode(bundle.money),
       },
     );
+  }
+
+  /// The platform's financial accounts (XORD-015, stage 1).
+  ///
+  /// **Platform ids are the local primary keys**, like branches and products: no
+  /// local row predates these, so there is nothing for an id to collide with
+  /// (`_bumpSequences` keeps the serial above them).
+  ///
+  /// **An absent key changes nothing** — an older platform. A present key,
+  /// even an empty one, is the platform's whole answer: anything it did not
+  /// name is switched off.
+  ///
+  /// **Retired, never deleted**: stage 2 will name an account on a payment, and
+  /// a DELETE would orphan it. There is no DELETE grant to do it with.
+  ///
+  /// An account tied to a branch this till does not hold is skipped, not
+  /// stored as a shared one: widening "Maadi's drawer" into "everyone's" would
+  /// be a silent change of what it means.
+  Future<void> _seedFinancialAccounts(
+    TxSession tx,
+    BootstrapBundle bundle,
+  ) async {
+    if (!bundle.sendsFinancialAccounts) return;
+
+    final restaurantId = bundle.restaurant!.id;
+    final kept = <int>[];
+
+    for (final account in bundle.financialAccounts) {
+      final branchId = account.branchId;
+      if (branchId != null) {
+        final branch = await tx.execute(
+          Sql.named(
+            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+          ),
+          parameters: {'b': branchId, 'r': restaurantId},
+        );
+        if (branch.isEmpty) continue;
+      }
+
+      // `WHERE … restaurant_id` on the conflict: an id that already belongs to
+      // another restaurant on this database is left alone rather than
+      // overwritten. A branch server holds one restaurant, so this is a belt.
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_financial_accounts (id, restaurant_id, branch_id,
+            name, kind, currency, reference_label, is_active, sort_order)
+          VALUES (@id, @restaurant, @branch, @name, @kind, @currency,
+            @reference, @active, @sort)
+          ON CONFLICT (id) DO UPDATE
+            SET branch_id = @branch, name = @name, kind = @kind,
+                currency = @currency, reference_label = @reference,
+                is_active = @active, sort_order = @sort
+            WHERE pos_financial_accounts.restaurant_id = @restaurant
+        '''),
+        parameters: {
+          'id': account.id,
+          'restaurant': restaurantId,
+          'branch': branchId,
+          'name': account.name,
+          'kind': account.kind.wire,
+          'currency': account.currency,
+          'reference': account.referenceLabel,
+          'active': account.isActive,
+          'sort': account.sortOrder,
+        },
+      );
+      kept.add(account.id);
+    }
+
+    await tx.execute(
+      Sql.named(
+        'UPDATE pos_financial_accounts SET is_active = false '
+        'WHERE restaurant_id = @restaurant AND NOT (id = ANY(@keep))',
+      ),
+      parameters: {'restaurant': restaurantId, 'keep': kept},
+    );
+  }
+
+  /// The account each payment method pays into, per branch (XORD-015).
+  ///
+  /// Replaced wholesale: unlike the accounts they point at, a default carries
+  /// no history (nothing is booked against it in stage 1), so there is nothing
+  /// a DELETE could orphan. The platform names payment methods by ITS id; the
+  /// local row is found through `platform_id`, which is why this runs after
+  /// `_seedTenderTypes`.
+  ///
+  /// A row that cannot be placed — a payment method this till has no row for,
+  /// a branch it does not hold, an account it did not store — is skipped. An
+  /// absent key changes nothing, like the accounts.
+  Future<void> _seedTenderAccountDefaults(
+    TxSession tx,
+    BootstrapBundle bundle,
+  ) async {
+    if (!bundle.sendsTenderAccountDefaults) return;
+
+    final restaurantId = bundle.restaurant!.id;
+
+    await tx.execute(
+      Sql.named(
+        'DELETE FROM pos_tender_account_defaults WHERE restaurant_id = @r',
+      ),
+      parameters: {'r': restaurantId},
+    );
+
+    for (final row in bundle.tenderAccountDefaults) {
+      final tender = await tx.execute(
+        Sql.named(
+          'SELECT id FROM pos_tender_types '
+          'WHERE restaurant_id = @r AND platform_id = @p',
+        ),
+        parameters: {'r': restaurantId, 'p': row.tenderTypeId},
+      );
+      if (tender.isEmpty) continue;
+
+      final branchId = row.branchId;
+      if (branchId != null) {
+        final branch = await tx.execute(
+          Sql.named(
+            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+          ),
+          parameters: {'b': branchId, 'r': restaurantId},
+        );
+        if (branch.isEmpty) continue;
+      }
+
+      final account = await tx.execute(
+        Sql.named(
+          'SELECT 1 FROM pos_financial_accounts '
+          'WHERE id = @a AND restaurant_id = @r',
+        ),
+        parameters: {'a': row.accountId, 'r': restaurantId},
+      );
+      if (account.isEmpty) continue;
+
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_tender_account_defaults (restaurant_id,
+            tender_type_id, branch_id, branch_key, financial_account_id)
+          VALUES (@r, @t, @b, @k, @a)
+          ON CONFLICT (tender_type_id, branch_key) DO UPDATE
+            SET financial_account_id = @a
+        '''),
+        parameters: {
+          'r': restaurantId,
+          't': tender.first[0]! as int,
+          'b': branchId,
+          'k': branchId ?? 0,
+          'a': row.accountId,
+        },
+      );
+    }
   }
 
   /// The platform's payment methods, as the rows the payment screen reads.
@@ -687,6 +898,7 @@ class BootstrapSeeder {
       'pos_modifiers',
       'pos_products',
       'pos_dining_tables',
+      'pos_financial_accounts',
     ];
     for (final table in tables) {
       await tx.execute(

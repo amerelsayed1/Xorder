@@ -212,12 +212,19 @@ class _PriceOverrideDialogState extends ConsumerState<PriceOverrideDialog> {
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
           ],
           textDirection: TextDirection.ltr,
+          textAlign: Directionality.of(context) == TextDirection.rtl
+              ? TextAlign.right
+              : TextAlign.left,
+          textAlignVertical: TextAlignVertical.center,
           onChanged: (_) => setState(() => _message = null),
           style: PosText.mono(size: 20, weight: FontWeight.w700, color: palette.ink),
           decoration: InputDecoration(
             isDense: true,
-            prefixText: '${_line.unitPrice.currency} ',
-            prefixStyle: PosText.mono(size: 13, color: palette.muted),
+            suffixText: _line.unitPrice.currency,
+            suffixStyle: PosText.mono(size: 13, color: palette.muted),
+            constraints: const BoxConstraints.tightFor(
+              height: PosSize.formControl,
+            ),
             contentPadding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.zero,

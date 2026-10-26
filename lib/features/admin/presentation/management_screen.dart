@@ -7,13 +7,11 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
-import '../../../data/cloud/cloud_provisioning_repository.dart'
-    show posAppVersion;
-import '../../../domain/models/order_record.dart' show HistoryPreset;
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
+import '../../history/presentation/history_widgets.dart' show HistoryFilterChip;
 import '../../history/presentation/order_history_screen.dart';
 import '../../history/presentation/refunds_screen.dart';
 import '../application/admin_session.dart';
@@ -41,9 +39,11 @@ import 'management_printer_pane.dart';
 import 'management_taxes_pane.dart';
 import 'management_tenders_pane.dart';
 import 'management_purchasing_pane.dart';
+import 'business_logo_card.dart';
 import 'management_receipt_pane.dart';
 import 'management_reports_pane.dart';
 import 'management_roles_pane.dart';
+import 'management_accounts_pane.dart';
 import 'management_settlements_pane.dart';
 import 'management_shifts_pane.dart';
 import 'management_staff_pane.dart';
@@ -221,7 +221,8 @@ bool _pointsToPlatform(BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.finance ||
   BackOfficeTab.people ||
   BackOfficeTab.system ||
-  BackOfficeTab.settings => false,
+  BackOfficeTab.settings ||
+  BackOfficeTab.account => false,
 };
 
 /// Whether [pane] is absent because this terminal does not author it — as
@@ -289,6 +290,12 @@ enum BackOfficeTab {
 
   /// The restaurant's configuration, and the people who work there.
   settings,
+
+  /// Who is signed in, and what to do about it (XORD-022-D): their name, who
+  /// is in Admin Mode, and About. **Not drawn as a menu of its own word**: the
+  /// bar's account menu carries the person's name, and `app.dart` joins these
+  /// lines to the till's own (Switch user, Lock, Log out).
+  account,
 }
 
 /// Which tab a pane belongs to.
@@ -297,10 +304,7 @@ enum BackOfficeTab {
 /// compile rather than quietly vanishing from the bar.
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home => BackOfficeTab.home,
-  ManagementPane.sales ||
-  ManagementPane.invoices ||
-  ManagementPane.returns ||
-  ManagementPane.voidedOrders => BackOfficeTab.sales,
+  ManagementPane.sales => BackOfficeTab.sales,
   ManagementPane.reports ||
   ManagementPane.reportsSales ||
   ManagementPane.reportsItems ||
@@ -310,25 +314,27 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
-  ManagementPane.combos ||
-  ManagementPane.floor => BackOfficeTab.menu,
+  ManagementPane.combos => BackOfficeTab.menu,
   ManagementPane.items ||
   ManagementPane.stock ||
   ManagementPane.units => BackOfficeTab.inventory,
   ManagementPane.purchasing => BackOfficeTab.purchasing,
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
-  ManagementPane.financePayments ||
   ManagementPane.financeTaxes ||
   ManagementPane.financeExpenses ||
   ManagementPane.financeDrawers ||
   ManagementPane.financeBills ||
   ManagementPane.financeTransactions ||
   ManagementPane.financeProfitLoss ||
+  ManagementPane.financeAccounts ||
   ManagementPane.settlements => BackOfficeTab.finance,
   // Terminal beside Backup and the log rather than in Settings: it wipes the
   // machine, and Settings is where somebody goes to change a tax rate.
   // ETA here too, still hidden while `etaFilingEnabled` is false.
+  // Dining areas & tables came here from Menu (XORD-022-B): where the tables
+  // are is the till's own layout, not what the restaurant sells.
+  ManagementPane.floor ||
   ManagementPane.activity ||
   ManagementPane.backup ||
   ManagementPane.terminal ||
@@ -345,9 +351,10 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.orderTypes ||
   ManagementPane.language ||
   ManagementPane.appearance ||
-  ManagementPane.printer ||
-  ManagementPane.user ||
-  ManagementPane.about => BackOfficeTab.settings,
+  ManagementPane.printer => BackOfficeTab.settings,
+  // Who is signed in, and the version: the account menu's, not Settings'
+  // (XORD-022-D).
+  ManagementPane.user || ManagementPane.about => BackOfficeTab.account,
 };
 
 String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
@@ -361,6 +368,7 @@ String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.people => s.tabPeople,
   BackOfficeTab.system => s.tabSystem,
   BackOfficeTab.settings => s.tabSettings,
+  BackOfficeTab.account => s.tabAccount,
 };
 
 /// Settings' own items, in the owner's map's order: each is a line in the
@@ -385,14 +393,7 @@ String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
 /// Outside Admin Mode the till's two lines are back, opening their dialogs,
 /// because none of this is reachable there (`app.dart`).
 /// In the owner's map's order, which the bar reads.
-enum SettingsSection {
-  ordersAndInvoices,
-  printer,
-  language,
-  appearance,
-  user,
-  about,
-}
+enum SettingsSection { ordersAndInvoices, printer, language, appearance }
 
 String settingsSectionName(AppStrings s, SettingsSection section) =>
     switch (section) {
@@ -400,8 +401,6 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
       SettingsSection.language => s.settingsLanguage,
       SettingsSection.appearance => s.settingsLook,
       SettingsSection.printer => s.printerSettingsTitle,
-      SettingsSection.user => s.paneUser,
-      SettingsSection.about => s.paneAbout,
     };
 
 /// Which of Settings' items a Settings pane sits under.
@@ -419,16 +418,14 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.language => SettingsSection.language,
   ManagementPane.appearance => SettingsSection.appearance,
   ManagementPane.printer => SettingsSection.printer,
-  ManagementPane.user => SettingsSection.user,
-  ManagementPane.about => SettingsSection.about,
+  ManagementPane.user ||
+  ManagementPane.about ||
   ManagementPane.home ||
   ManagementPane.sales ||
-  ManagementPane.invoices ||
-  ManagementPane.returns ||
-  ManagementPane.voidedOrders ||
   ManagementPane.shifts ||
   ManagementPane.customers ||
   ManagementPane.settlements ||
+  ManagementPane.financeAccounts ||
   ManagementPane.sync ||
   ManagementPane.reports ||
   ManagementPane.reportsSales ||
@@ -453,7 +450,6 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.terminal ||
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
-  ManagementPane.financePayments ||
   ManagementPane.financeTaxes ||
   ManagementPane.financeExpenses ||
   ManagementPane.financeDrawers ||
@@ -470,11 +466,8 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
 /// Only ever compared between panes of the same tab.
 int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.home => 0,
-  // الطلبات، الفواتير، المرتجعات، الطلبات الملغاة
+  // المبيعات: one page, with its filters and a Sales/Returns switch inside.
   ManagementPane.sales => 0,
-  ManagementPane.invoices => 1,
-  ManagementPane.returns => 2,
-  ManagementPane.voidedOrders => 3,
   // ملخص الأعمال، المبيعات، الأصناف، طرق الدفع، الفروع والأجهزة، الموظفين
   ManagementPane.reports => 0,
   ManagementPane.reportsSales => 1,
@@ -486,10 +479,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.menu => 0,
   ManagementPane.categories => 1,
   ManagementPane.extras => 2,
-  ManagementPane.floor => 3,
-  // After the owner's four: the map has no word for Combos, so it goes last
-  // rather than between two pages whose order was dictated.
-  ManagementPane.combos => 4,
+  // After the owner's: Combos has no word in the map, so it goes last rather
+  // than between pages whose order was dictated.
+  ManagementPane.combos => 3,
   // أصناف المخزون، المخزون المتاح، الوحدات
   ManagementPane.items => 0,
   ManagementPane.stock => 1,
@@ -507,13 +499,16 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.financeDrawers => 2,
   ManagementPane.financeExpenses => 3,
   ManagementPane.settlements => 4,
-  ManagementPane.financePayments => 5,
-  ManagementPane.financeTaxes => 6,
-  ManagementPane.financeBills => 7,
-  ManagementPane.financeTransactions => 8,
+  ManagementPane.financeTaxes => 5,
+  ManagementPane.financeBills => 6,
+  ManagementPane.financeTransactions => 7,
   // After the owner's: the map has no word for it, so it goes last rather than
   // between pages whose order was dictated.
-  ManagementPane.financeProfitLoss => 9,
+  ManagementPane.financeProfitLoss => 8,
+  // Last in Finance (XORD-015): no existing page moves. The owner's map puts
+  // Financial Accounts first; that is a rename-and-reorder for the owner to
+  // ask for, not something to do to ten pages' positions in the same change.
+  ManagementPane.financeAccounts => 9,
   // الموظفون، الأدوار والصلاحيات، الورديات
   ManagementPane.staff => 0,
   ManagementPane.roles => 1,
@@ -523,11 +518,14 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.customers => 3,
   // السجل، النسخ الاحتياطي، الأجهزة، المزامنة — and ETA, hidden while filing
   // is off.
-  ManagementPane.activity => 0,
-  ManagementPane.backup => 1,
-  ManagementPane.terminal => 2,
-  ManagementPane.sync => 3,
-  ManagementPane.eta => 4,
+  // XORD-022: Dining areas & tables, Devices, Synchronization, Backups,
+  // System logs — then ETA, hidden while filing is off.
+  ManagementPane.floor => 0,
+  ManagementPane.terminal => 1,
+  ManagementPane.sync => 2,
+  ManagementPane.backup => 3,
+  ManagementPane.activity => 4,
+  ManagementPane.eta => 5,
   // General first: it is the company — the name on every slip. Then the
   // rules in the order an order meets them.
   ManagementPane.receipt => 0,
@@ -540,8 +538,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.printer => 5,
   ManagementPane.language => 6,
   ManagementPane.appearance => 7,
-  ManagementPane.user => 8,
-  ManagementPane.about => 9,
+  // The account menu's: the person, then the version.
+  ManagementPane.user => 0,
+  ManagementPane.about => 1,
 };
 
 /// The visible tabs, each with its visible panes in the order it shows them.
@@ -821,14 +820,15 @@ List<ManagementBarMenu> managementBarFor(
 
 /// Whether a tab's word in the bar is a button rather than a menu.
 ///
-/// Only Home: its one item is itself, so a menu under it could only say its
-/// name a second time. Every other tab either holds several items or, on a
-/// cloud till, a pointer whose words are not the tab's. A total switch rather
-/// than a comparison of the menu's word with its line's, so a tab added later
-/// is decided here rather than by whatever two strings happen to match.
+/// Home and Sales: each holds one item, itself, so a menu under it could only
+/// say its name a second time. (Sales' Invoices, Cancelled orders and Returns
+/// are filters and a switch inside its page, not lines of a menu.) Every other
+/// tab either holds several items or, on a cloud till, a pointer whose words
+/// are not the tab's. A total switch rather than a comparison of the menu's
+/// word with its line's, so a tab added later is decided here rather than by
+/// whatever two strings happen to match.
 bool _opensDirectly(BackOfficeTab tab) => switch (tab) {
-  BackOfficeTab.home => true,
-  BackOfficeTab.sales ||
+  BackOfficeTab.home || BackOfficeTab.sales => true,
   BackOfficeTab.reports ||
   BackOfficeTab.menu ||
   BackOfficeTab.inventory ||
@@ -836,7 +836,8 @@ bool _opensDirectly(BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.finance ||
   BackOfficeTab.people ||
   BackOfficeTab.system ||
-  BackOfficeTab.settings => false,
+  BackOfficeTab.settings ||
+  BackOfficeTab.account => false,
 };
 
 /// A tab's lines: one per item, in the tab's order — Purchasing's own lines
@@ -904,87 +905,75 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 /// header and the bar say one word for one place. The panes' own
 /// headings inside still say what they list. Receipt answers General, its
 /// name in Settings' side nav.
-(String, String) managementPaneLabel(AppStrings s, ManagementPane pane) =>
-    switch (pane) {
-      ManagementPane.home => (s.tabHome, s.paneHomeBlurb),
-      ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
-      // Orders, as `/orders` calls the same list: the first of Sales' items.
-      ManagementPane.sales => (s.orderHistoryTitle, s.paneSalesBlurb),
-      ManagementPane.invoices => (s.paneInvoices, s.paneInvoicesBlurb),
-      ManagementPane.returns => (s.paneReturns, s.paneReturnsBlurb),
-      ManagementPane.voidedOrders => (
-        s.paneVoidedOrders,
-        s.paneVoidedOrdersBlurb,
-      ),
-      ManagementPane.shifts => (s.paneShifts, s.shiftsBlurb),
-      ManagementPane.customers => (s.paneCustomers, s.paneCustomersBlurb),
-      ManagementPane.settlements => (s.paneSettlements, s.settlementsBlurb),
-      ManagementPane.sync => (s.paneSync, s.paneSyncBlurb),
-      // Without the till line's ellipsis: here it is a page, not a dialog.
-      ManagementPane.printer => (s.printerSettingsTitle, s.panePrinterBlurb),
-      ManagementPane.user => (s.paneUser, s.paneUserBlurb),
-      ManagementPane.about => (s.paneAbout, s.paneAboutBlurb),
-      ManagementPane.reports => (s.reportsSummary, s.paneReportsBlurb),
-      ManagementPane.reportsSales => (s.reportsSales, s.reportsSalesBlurb),
-      ManagementPane.reportsItems => (s.reportsItems, s.reportsItemsBlurb),
-      ManagementPane.reportsPayments => (
-        s.reportsPaymentMethods,
-        s.reportsPaymentMethodsBlurb,
-      ),
-      ManagementPane.reportsBranches => (
-        s.reportsBranches,
-        s.reportsBranchesBlurb,
-      ),
-      ManagementPane.reportsEmployees => (
-        s.reportsEmployees,
-        s.reportsEmployeesBlurb,
-      ),
-      ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
-      ManagementPane.categories => (s.categories, s.paneSectionsBlurb),
-      ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
-      ManagementPane.combos => (s.combosTitle, s.combosSubtitle),
-      ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
-      ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
-      ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
-      ManagementPane.tenders => (s.tenderTypes, s.tenderTypesHint),
-      ManagementPane.orderTypes => (s.orderTypes, s.orderTypesHint),
-      ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
-      ManagementPane.receipt => (s.settingsGeneral, s.paneReceiptBlurb),
-      ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
-      ManagementPane.roles => (s.rolesAndPermissions, s.paneRolesBlurb),
-      ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
-      ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
-      ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
-      ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
-      ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
-      ManagementPane.terminal => (s.paneDevices, s.paneTerminalBlurb),
-      ManagementPane.language => (s.settingsLanguage, s.paneAppearanceBlurb),
-      ManagementPane.appearance => (s.settingsLook, s.paneAppearanceBlurb),
-      ManagementPane.financeOverview => (
-        s.financeOverview,
-        s.financeOverviewBlurb,
-      ),
-      ManagementPane.financeRevenue => (s.financeRevenue, s.financeRevenueBlurb),
-      ManagementPane.financePayments => (
-        s.financePayments,
-        s.financePaymentsBlurb,
-      ),
-      ManagementPane.financeTaxes => (s.financeTaxes, s.financeTaxesBlurb),
-      ManagementPane.financeExpenses => (
-        s.financeExpenses,
-        s.financeExpensesBlurb,
-      ),
-      ManagementPane.financeDrawers => (s.financeDrawers, s.financeDrawersBlurb),
-      ManagementPane.financeBills => (s.financeBills, s.financeBillsBlurb),
-      ManagementPane.financeTransactions => (
-        s.financeTransactions,
-        s.financeTransactionsBlurb,
-      ),
-      ManagementPane.financeProfitLoss => (
-        s.financeProfitLoss,
-        s.financeProfitLossBlurb,
-      ),
-    };
+(String, String) managementPaneLabel(
+  AppStrings s,
+  ManagementPane pane,
+) => switch (pane) {
+  ManagementPane.home => (s.tabHome, s.paneHomeBlurb),
+  ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
+  // The tab's own word, as the bar says it: Sales is one page now, and the
+  // header and the bar name one place with one word.
+  ManagementPane.sales => (s.tabSales, s.paneSalesBlurb),
+  ManagementPane.shifts => (s.paneShifts, s.shiftsBlurb),
+  ManagementPane.customers => (s.paneCustomers, s.paneCustomersBlurb),
+  ManagementPane.settlements => (s.paneSettlements, s.settlementsBlurb),
+  ManagementPane.financeAccounts => (
+    s.paneFinanceAccounts,
+    s.financeAccountsBlurb,
+  ),
+  ManagementPane.sync => (s.paneSync, s.paneSyncBlurb),
+  // Without the till line's ellipsis: here it is a page, not a dialog.
+  ManagementPane.printer => (s.printerSettingsTitle, s.panePrinterBlurb),
+  ManagementPane.user => (s.paneUser, s.paneUserBlurb),
+  ManagementPane.about => (s.paneAbout, s.paneAboutBlurb),
+  ManagementPane.reports => (s.reportsSummary, s.paneReportsBlurb),
+  ManagementPane.reportsSales => (s.reportsSales, s.reportsSalesBlurb),
+  ManagementPane.reportsItems => (s.reportsItems, s.reportsItemsBlurb),
+  ManagementPane.reportsPayments => (
+    s.reportsPaymentMethods,
+    s.reportsPaymentMethodsBlurb,
+  ),
+  ManagementPane.reportsBranches => (s.reportsBranches, s.reportsBranchesBlurb),
+  ManagementPane.reportsEmployees => (
+    s.reportsEmployees,
+    s.reportsEmployeesBlurb,
+  ),
+  ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
+  ManagementPane.categories => (s.categories, s.paneSectionsBlurb),
+  ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
+  ManagementPane.combos => (s.combosTitle, s.combosSubtitle),
+  ManagementPane.floor => (s.paneDining, s.floorPlanHint),
+  ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
+  ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
+  ManagementPane.tenders => (s.tenderTypes, s.tenderTypesHint),
+  ManagementPane.orderTypes => (s.orderTypes, s.orderTypesHint),
+  ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
+  ManagementPane.receipt => (s.settingsGeneral, s.paneReceiptBlurb),
+  ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
+  ManagementPane.roles => (s.rolesAndPermissions, s.paneRolesBlurb),
+  ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
+  ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
+  ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
+  ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
+  ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
+  ManagementPane.terminal => (s.paneDevices, s.paneTerminalBlurb),
+  ManagementPane.language => (s.settingsLanguage, s.paneAppearanceBlurb),
+  ManagementPane.appearance => (s.settingsLook, s.paneAppearanceBlurb),
+  ManagementPane.financeOverview => (s.financeOverview, s.financeOverviewBlurb),
+  ManagementPane.financeRevenue => (s.financeRevenue, s.financeRevenueBlurb),
+  ManagementPane.financeTaxes => (s.financeTaxes, s.financeTaxesBlurb),
+  ManagementPane.financeExpenses => (s.financeExpenses, s.financeExpensesBlurb),
+  ManagementPane.financeDrawers => (s.financeDrawers, s.financeDrawersBlurb),
+  ManagementPane.financeBills => (s.financeBills, s.financeBillsBlurb),
+  ManagementPane.financeTransactions => (
+    s.financeTransactions,
+    s.financeTransactionsBlurb,
+  ),
+  ManagementPane.financeProfitLoss => (
+    s.financeProfitLoss,
+    s.financeProfitLossBlurb,
+  ),
+};
 
 /// The capabilities a pane needs beyond the door that opened the screen — all
 /// of them. A set since BO-10, whose Bills due is a Finance figure and a
@@ -1020,12 +1009,9 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // on the pane but a scope on its rows — `HistoryScope`, in the provider,
   // exactly as `/orders` scopes them — so a cashier-grade administrator gets
   // the tab and their own sales in it, rather than no tab. Invoices and
-  // Cancelled orders are the same list on a preset, and Returns is scoped
-  // by the sale's seller the same way (`HistoryScope.scopeRefunds`).
-  ManagementPane.sales ||
-  ManagementPane.invoices ||
-  ManagementPane.returns ||
-  ManagementPane.voidedOrders => const {},
+  // Cancelled orders are filters of that list, and the Returns view inside it
+  // is scoped by the sale's seller the same way (`HistoryScope.scopeRefunds`).
+  ManagementPane.sales => const {},
   // The branch's takings (BO-6). Not the only guard: `salesReportProvider`
   // asks the same capability of the person acting before it reads a row, so
   // a screen built on the figures later without this gate still shows none.
@@ -1045,7 +1031,6 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // `reports.view`, so a pane reached round the bar still draws nothing.
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
-  ManagementPane.financePayments ||
   ManagementPane.financeTaxes ||
   ManagementPane.financeExpenses ||
   ManagementPane.financeDrawers ||
@@ -1063,6 +1048,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // the person acting before it reads a shift.
   ManagementPane.shifts => ManagementShiftsPane.requires,
   ManagementPane.settlements => ManagementSettlementsPane.requires,
+  ManagementPane.financeAccounts => ManagementAccountsPane.requires,
   // The gate the till's Settings menu puts on the printer dialog. Like
   // Terminal, nothing in the database refuses it — the printer is a file on
   // this machine — and the pane refuses without it too.
@@ -1158,7 +1144,6 @@ enum ManagementPane {
   /// map's order, not by their places here.
   financeOverview,
   financeRevenue,
-  financePayments,
   financeTaxes,
 
   /// Finance (BO-10). Last, for the same reason as [sales].
@@ -1181,15 +1166,6 @@ enum ManagementPane {
   /// Settings › Language (the owner's map): the language half of the card
   /// [appearance] shows the other half of. Last, for the same reason.
   language,
-
-  /// The map's items `pos/ia-screens` built, all last for the same reason.
-  ///
-  /// Sales › Invoices and Cancelled orders: the order history on a locked
-  /// preset ([HistoryPreset]), not two more screens. Sales › Returns: one row
-  /// per refund, whose "Open the sale" lands on [sales].
-  invoices,
-  returns,
-  voidedOrders,
 
   /// People › Customers: the directory with what each has bought, behind
   /// `reports.view` because it sets a name and a phone number beside spending.
@@ -1215,6 +1191,11 @@ enum ManagementPane {
   reportsPayments,
   reportsBranches,
   reportsEmployees,
+
+  /// Finance › Accounts (XORD-015): the business's cash, bank and wallet
+  /// accounts and the account each payment method pays into. Last, for the same
+  /// reason as [sales]: no other pane's index moves.
+  financeAccounts,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1235,6 +1216,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// choosing a pane, as [_purchasingTab] is, so Orders picked from the bar
   /// afterwards is the plain list and not the last refund's sale.
   SaleToOpen? _openSale;
+
+  /// Which half of the Sales page is showing: the list of sales (false) or the
+  /// refunds (true). Cleared with [_openSale] by every other way of choosing a
+  /// pane, so Sales picked from the bar afterwards is the plain list.
+  bool _showReturns = false;
 
   /// Where Esc is heard. Held rather than anonymous so a text field that took
   /// the first Esc can hand focus back here, and the second one still arrives.
@@ -1326,6 +1312,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         _pane = widget.initialPane;
         _purchasingTab = null;
         _openSale = null;
+        _showReturns = false;
       });
     }
   }
@@ -1337,6 +1324,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     _pane = pane;
     _purchasingTab = null;
     _openSale = null;
+    _showReturns = false;
   });
 
   /// Where a Finance row or card leads, or null when that place is not one of
@@ -1372,6 +1360,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       _pane = pane;
       _purchasingTab = purchasingTab;
       _openSale = null;
+      _showReturns = false;
     });
   }
 
@@ -1484,7 +1473,6 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                     ? managementPaneLabel(strings, showing).$1
                     : backOfficeTabName(strings, tab),
               ),
-              onClose: _exit,
             ),
             // No tabs and no sub-nav under the header: the owner took both
             // away on 15 Sep 2026 ("no need for this, use same design only on
@@ -1530,13 +1518,52 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                     )
                   : content,
             ),
-            _StatusBar(admin: admin),
           ],
         ),
       ),
     );
 
     return AdminActivityWatch(onIdle: _lock, child: screen);
+  }
+
+  /// The Sales page: the list of sales, or the refunds, under one switch.
+  ///
+  /// The list is `/orders`' own widget, filtered by its status chips — Paid and
+  /// Partly refunded are the invoices, Voided the cancelled orders — so there
+  /// is one list to keep right rather than three. Returns stays a view of its
+  /// own because a refund is a row of its own, not a status of a sale.
+  ///
+  /// Keyed by the sale when Returns asked for one: the history reads
+  /// `openSale` once, when it is built, so a second sale needs a new state
+  /// rather than a new argument. "Open the sale" moves to the list here rather
+  /// than through the router, as Finance's links do.
+  Widget _salesPane() {
+    final Widget view = _showReturns
+        ? RefundsScreen(
+            onOpenSale: (sale) => setState(() {
+              _showReturns = false;
+              _openSale = sale;
+            }),
+          )
+        : switch (_openSale) {
+            final sale? => OrderHistoryScreen(
+              key: ValueKey(sale),
+              openSale: sale,
+            ),
+            null => const OrderHistoryScreen(),
+          };
+    return Column(
+      children: [
+        _SalesViewSwitch(
+          returns: _showReturns,
+          onChanged: (returns) => setState(() {
+            _showReturns = returns;
+            _openSale = null;
+          }),
+        ),
+        Expanded(child: view),
+      ],
+    );
   }
 
   Widget _paneBody(
@@ -1552,33 +1579,13 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Whose sales it lists follows [admin] through `actingStaffProvider`, not
     // the cashier who may still be signed in at the till behind this.
     //
-    // Keyed by the sale when Returns asked for one: the history reads
-    // `openSale` once, when it is built, so a second sale needs a new state
-    // rather than a new argument.
-    ManagementPane.sales => switch (_openSale) {
-      final sale? => OrderHistoryScreen(key: ValueKey(sale), openSale: sale),
-      null => const OrderHistoryScreen(),
-    },
-    ManagementPane.invoices => const OrderHistoryScreen(
-      preset: HistoryPreset.invoices,
-    ),
-    ManagementPane.voidedOrders => const OrderHistoryScreen(
-      preset: HistoryPreset.voided,
-    ),
-    // "Open the sale" moves to Orders here rather than through the router, as
-    // Finance's links do: this screen already owns which pane is showing.
-    ManagementPane.returns => RefundsScreen(
-      onOpenSale: panes.contains(ManagementPane.sales)
-          ? (sale) => setState(() {
-              _pane = ManagementPane.sales;
-              _purchasingTab = null;
-              _openSale = sale;
-            })
-          : null,
-    ),
+    // Invoices and Cancelled orders are its status filters, and Returns is the
+    // other half of the switch above it — one page, not a menu of near-copies.
+    ManagementPane.sales => _salesPane(),
     ManagementPane.shifts => ManagementShiftsPane(admin: admin),
     ManagementPane.customers => const ManagementCustomersPane(),
     ManagementPane.settlements => ManagementSettlementsPane(admin: admin),
+    ManagementPane.financeAccounts => ManagementAccountsPane(admin: admin),
     ManagementPane.sync => ManagementSyncPane(admin: admin),
     ManagementPane.printer => ManagementPrinterPane(admin: admin),
     // The pane ends the session itself, so `_exit`'s own end is a no-op and
@@ -1637,6 +1644,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // pane the bar hides would be a door to the landing.
     ManagementPane.receipt => ManagementReceiptPane(
       admin: admin,
+      leading: [BusinessLogoCard(admin: admin)],
       sections: [
         const TerminalAppearanceCard(),
         BackupSummaryCard(
@@ -1647,8 +1655,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ),
       ],
     ),
-    ManagementPane.language => const ManagementAppearancePane(
+    ManagementPane.language => ManagementAppearancePane(
       part: AppearancePart.language,
+      admin: admin,
     ),
     ManagementPane.appearance => const ManagementAppearancePane(
       part: AppearancePart.theme,
@@ -1668,7 +1677,6 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       links: (target) => _financeLink(target, panes),
     ),
     ManagementPane.financeRevenue => const FinanceRevenuePane(),
-    ManagementPane.financePayments => const FinancePaymentsPane(),
     ManagementPane.financeTaxes => const FinanceTaxesPane(),
     ManagementPane.financeExpenses => FinanceExpensesPane(
       links: (target) => _financeLink(target, panes),
@@ -1684,14 +1692,55 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   };
 }
 
+/// Sales / Returns, above the Sales page: the two views of it, as the history's
+/// own filter chips are drawn, so the switch reads as part of the page.
+class _SalesViewSwitch extends StatelessWidget {
+  const _SalesViewSwitch({required this.returns, required this.onChanged});
+
+  final bool returns;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        PosSpace.s18,
+        PosSpace.md,
+        PosSpace.s18,
+        0,
+      ),
+      child: Row(
+        children: [
+          HistoryFilterChip(
+            key: const Key('sales-view-sales'),
+            label: strings.tabSales,
+            selected: !returns,
+            onTap: () => onChanged(false),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          HistoryFilterChip(
+            key: const Key('sales-view-returns'),
+            label: strings.paneReturns,
+            selected: returns,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.onClose});
+  const _Header({required this.title});
 
   /// Which page this is, by the pane's name. With no strip under it, this is
   /// the one thing on screen saying where somebody is — and somebody arriving
   /// from the bar needs the page confirmed, not the menu they chose it from.
+  ///
+  /// No button of its own: the way out of Admin Mode is Log out at the end of
+  /// the window's bar (`app.dart`), Esc, and the User pane.
   final String title;
-  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1713,13 +1762,6 @@ class _Header extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: PosText.screenTitle(color: context.pos.ink),
           ),
-        ),
-        const SizedBox(width: PosSpace.lg),
-        PosButton(
-          key: const Key('admin-exit'),
-          label: context.strings.exitAdminMode,
-          border: Border.fromBorderSide(context.pos.resting),
-          onPressed: onClose,
         ),
       ],
     ),
@@ -1805,137 +1847,6 @@ class _SettingsNav extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// The bottom line of every page: connection, branch, this till, version, who
-/// is in.
-///
-/// **The till's own sources, not new ones** (plan 19 §1.3). The connection is
-/// the same pill the till's top bar draws from the same providers — a sync
-/// state on a cloud till, the branch server on an offline one — so the back
-/// office can never call a till healthy that the till itself calls broken.
-/// The branch and the till are the names the terminal was set up under, as
-/// About prints them; the version is `posAppVersion`, as About prints it.
-/// Support asks for all three over the phone, which is why they are here and
-/// not only in a dialog.
-///
-/// **The only place the back office names them** since the owner took Home's
-/// cards away as duplicates (15 Sep 2026). Branch and connection were already
-/// here; the till's name was only on its card, so it moved here rather than
-/// being lost — a branch with three counters needs to know which one it is
-/// standing at.
-///
-/// Who is in moved here from the header: it is the administrator, not the
-/// till's operator, and it belongs with the other facts about this session.
-class _StatusBar extends ConsumerWidget {
-  const _StatusBar({required this.admin});
-
-  final PosStaff admin;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pos = context.pos;
-    final strings = context.strings;
-    final profile = ref.watch(terminalProfileProvider);
-    final branch = profile.branchName;
-    final terminal = profile.terminalName;
-    final meta = PosText.ui(size: 13, color: pos.body);
-
-    return Container(
-      key: const Key('back-office-status-bar'),
-      height: PosSize.minTouchTarget,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-      decoration: BoxDecoration(
-        color: pos.surface,
-        border: Border(top: pos.resting),
-      ),
-      child: Row(
-        children: [
-          const BackOfficeConnectionPill(),
-          if (branch != null && branch.isNotEmpty) ...[
-            const SizedBox(width: PosSpace.lg),
-            Icon(Icons.storefront_outlined, size: 16, color: pos.muted),
-            const SizedBox(width: PosSpace.xs),
-            Flexible(
-              child: Text(
-                branch,
-                key: const Key('back-office-status-branch'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: meta,
-              ),
-            ),
-          ],
-          // A name somebody typed at setup, in either script — so the UI face,
-          // not mono: it is a word, not a code.
-          if (terminal != null && terminal.trim().isNotEmpty) ...[
-            const SizedBox(width: PosSpace.lg),
-            Icon(Icons.point_of_sale_outlined, size: 16, color: pos.muted),
-            const SizedBox(width: PosSpace.xs),
-            Flexible(
-              child: Text(
-                terminal,
-                key: const Key('back-office-status-terminal'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: meta,
-              ),
-            ),
-          ],
-          const SizedBox(width: PosSpace.lg),
-          // A code, not a word: mono and left to right in both languages.
-          Text(
-            'v$posAppVersion',
-            key: const Key('back-office-status-version'),
-            textDirection: TextDirection.ltr,
-            style: PosText.mono(size: 12, color: pos.muted),
-          ),
-          const Spacer(),
-          Icon(Icons.person_outline, size: 16, color: pos.muted),
-          const SizedBox(width: PosSpace.xs),
-          Text(
-            '${admin.name} · '
-            '${admin.role?.displayName(strings.languageCode) ?? strings.noRole}',
-            key: const Key('back-office-status-user'),
-            maxLines: 1,
-            style: meta,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The connection, as the till's top bar shows it: the sync state on a cloud
-/// till, the branch server on an offline one.
-///
-/// Which pill and why is the till's top bar's decision; see it. Home's
-/// connection card drew this too, until the owner took it away as the status
-/// bar said twice (15 Sep 2026).
-class BackOfficeConnectionPill extends ConsumerWidget {
-  const BackOfficeConnectionPill({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(cloudSyncProvider) case final cloud?) {
-      final sync = ref.watch(pendingSyncCountProvider);
-      return SyncPill(
-        online: ref.watch(posUiProvider).online,
-        queued: sync.valueOrNull,
-        hasError: sync.hasError,
-        onTap: () {
-          cloud.kick();
-          posToast(context, context.strings.syncingWithPlatform);
-        },
-      );
-    }
-    final probe = ref.watch(branchDatabaseProvider);
-    return BranchServerPill(
-      checking: probe.isLoading,
-      reachable: probe.hasValue && probe.value == null,
-      onTap: () => ref.invalidate(branchDatabaseProvider),
     );
   }
 }

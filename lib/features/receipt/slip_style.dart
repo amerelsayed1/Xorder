@@ -1,4 +1,4 @@
-/// How big everything on the slip is, and the three small pictures on it.
+/// How big everything on the slip is, and the two small pictures on it.
 ///
 /// **One table of sizes for two renderers.** The paper is painted in dots by
 /// `ReceiptRaster`; the preview is a widget tree in `receipt_paper.dart`. They
@@ -35,34 +35,81 @@ abstract final class SlipMetrics {
   static const top = 8.0;
   static const tail = 16.0;
 
-  // Type, in dots at 203dpi. 22 dots is about 2.7mm of cap height, which is
-  // what a receipt has been printed at since receipts existed.
-  static const titleSize = 38.0;
+  // ── Spacing ──────────────────────────────────────────────────────────────
+  //
+  // One scale, in dots at the 80mm reference, instead of a number per block.
+  // Every gap on the slip is one of these or a sum of them, so two blocks that
+  // are the same kind of thing sit the same distance apart.
+  static const spaceXs = 4.0;
+  static const spaceSm = 8.0;
+  static const spaceMd = 12.0;
+  static const spaceLg = 16.0;
+
+  /// Between two sections that are not separated by a rule: the money and how
+  /// it was paid, how it was paid and the footer.
+  static const spaceSection = 20.0;
+
+  // ── Type, in dots at 203dpi ──────────────────────────────────────────────
+  //
+  // 22 dots is about 2.7mm of cap height, which is what a receipt has been
+  // printed at since receipts existed. The sizes are few on purpose: the role
+  // names below say what each is FOR, and a slip that needs a seventh size is
+  // saying something the others should.
+  static const titleSize = 34.0;
   static const strongSize = 26.0;
   static const bodySize = 22.0;
   static const smallSize = 18.0;
   static const headerSize = 20.0;
   static const stampSize = 26.0;
-  static const totalLabelSize = 34.0;
-  static const totalAmountSize = 56.0;
+  static const totalLabelSize = 30.0;
+
+  /// Large, and still the largest thing on the slip: 44 dots is twice the body
+  /// text. It was 56, which put a six-figure total across most of a 58mm slip
+  /// and made the rest of the paper look like small print.
+  static const totalAmountSize = 44.0;
   static const currencySize = 18.0;
+
+  // The roles the redesign names (owner's brief, 26 Oct 2026). The sizes above
+  // are the values; these are what a renderer asks for.
+  static const businessTitle = titleSize;
+  static const sectionHeading = headerSize;
+  static const bodyPrimary = bodySize;
+
+  /// The label of a row that is a fact about the sale rather than money — the
+  /// date, the cashier — set smaller than the value beside it.
+  static const bodySecondary = smallSize;
+  static const itemName = bodySize;
+  static const numericValue = bodySize;
+  static const grandTotal = totalAmountSize;
+  static const footerText = strongSize;
+
+  /// The restaurant's logo (XORD-024): at most this tall, in dots at the 80mm
+  /// reference — about 15mm of paper — and never wider than the content.
+  static const logoMaxHeight = 120.0;
+  static const logoAfter = 10.0;
 
   static const glyphSize = 20.0;
   static const glyphGap = 8.0;
 
   // The items table. Fixed columns rather than measured ones, so the prices
-  // on one slip line up under each other whatever their lengths — 140 dots
-  // holds "999,999.99" in the body mono.
+  // on one slip line up under each other whatever their lengths — 190 dots
+  // holds "999,999.99 EGP" in the body mono (XORD-026: the code is printed
+  // beside every figure).
   static const qtyColumn = 64.0;
-  static const priceColumn = 140.0;
+  static const priceColumn = 190.0;
   static const columnGap = 8.0;
   static const headerPad = 6.0;
 
-  static const rowGap = 4.0;
-  static const lineGap = 4.0;
+  static const rowGap = spaceXs;
+  static const lineGap = spaceXs;
 
-  static const ruleAbove = 8.0;
-  static const ruleBelow = 10.0;
+  /// Between two items: a little more than between two rows of money, because
+  /// an item's name can run to several lines and the next item has to read as
+  /// a new one, not as the continuation.
+  static const itemGap = spaceSm;
+
+  static const ruleAbove = spaceSm;
+  static const ruleBelow = spaceSm;
   static const dash = 8.0;
   static const dashGap = 6.0;
 
@@ -70,10 +117,6 @@ abstract final class SlipMetrics {
   static const stampInset = 6.0;
   static const stampBorder = 3.0;
   static const stampAfter = 8.0;
-
-  static const ornamentLine = 48.0;
-  static const ornamentGap = 10.0;
-  static const ornamentHeart = 22.0;
 
   static double centreSize(SlipEmphasis emphasis) => switch (emphasis) {
     SlipEmphasis.title => titleSize,
@@ -150,18 +193,11 @@ void paintSlipGlyph(
         ..cubicTo(x(19), y(14.5), x(12), y(22), x(12), y(22))
         ..close()
         ..addOval(
-          ui.Rect.fromCircle(center: ui.Offset(x(12), y(9)), radius: 2.6 * unit),
+          ui.Rect.fromCircle(
+            center: ui.Offset(x(12), y(9)),
+            radius: 2.6 * unit,
+          ),
         );
-    case SlipGlyph.heart:
-      path
-        ..moveTo(x(12), y(21))
-        ..cubicTo(x(5), y(16), x(2), y(12), x(2), y(8))
-        ..cubicTo(x(2), y(5), x(4.5), y(3), x(7), y(3))
-        ..cubicTo(x(9), y(3), x(11), y(4.2), x(12), y(6))
-        ..cubicTo(x(13), y(4.2), x(15), y(3), x(17), y(3))
-        ..cubicTo(x(19.5), y(3), x(22), y(5), x(22), y(8))
-        ..cubicTo(x(22), y(12), x(19), y(16), x(12), y(21))
-        ..close();
   }
   canvas.drawPath(path, ink);
 }

@@ -132,7 +132,10 @@ class ReceiptPrinter {
           bytes: job.bytes,
         );
         if (!ok) {
-          await store.markAttempted(job.id, error: 'The printer did not answer.');
+          await store.markAttempted(
+            job.id,
+            error: 'The printer did not answer.',
+          );
           break;
         }
         await store.markPrinted(job.id);

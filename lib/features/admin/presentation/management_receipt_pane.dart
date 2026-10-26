@@ -51,11 +51,17 @@ import '../../../core/text/digits.dart';
 class ManagementReceiptPane extends ConsumerStatefulWidget {
   const ManagementReceiptPane({
     required this.admin,
+    this.leading = const [],
     this.sections = const [],
     super.key,
   });
 
   final PosStaff admin;
+
+  /// What opens Settings › General, above the company form: the business logo
+  /// (XORD-021), which somebody looks for first and should not have to scroll
+  /// the whole form to reach. Handed in for the same reasons as [sections].
+  final List<Widget> leading;
 
   /// The rest of Settings › General, under the form (BO-8): this terminal's
   /// appearance and the backup summary.
@@ -261,6 +267,10 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
     final form = ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
+        for (final section in widget.leading) ...[
+          section,
+          const SizedBox(height: PosSpace.s28),
+        ],
         if (authors)
           Text(
             strings.receiptProfileExplain,
@@ -361,6 +371,7 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
             tenantName: session?.tenantName ?? '',
             terminalCode: session?.terminalCode ?? '',
             cashierName: widget.admin.name,
+            logo: ref.watch(receiptLogoProvider).valueOrNull,
           ),
         ),
       ],
@@ -410,11 +421,16 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
   /// A pane with no form still has General's other sections under it: a till
   /// with no database can still change its language, and the appearance card
   /// is the one that does not need one.
-  Widget _withSections(Widget message) => widget.sections.isEmpty
+  Widget _withSections(Widget message) =>
+      widget.sections.isEmpty && widget.leading.isEmpty
       ? message
       : ListView(
           padding: const EdgeInsets.all(PosSpace.xl),
           children: [
+            for (final section in widget.leading) ...[
+              section,
+              const SizedBox(height: PosSpace.s28),
+            ],
             message,
             for (final section in widget.sections) ...[
               const SizedBox(height: PosSpace.s28),

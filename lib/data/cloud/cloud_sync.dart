@@ -9,6 +9,7 @@ import 'bootstrap_seeder.dart';
 import 'cloud_api.dart';
 import 'cloud_provisioning_repository.dart' show posAppVersion;
 import 'device_token_vault.dart';
+import 'logo_sync.dart';
 import 'outbox_drain.dart';
 
 /// One sync pass, as data.
@@ -18,6 +19,7 @@ class SyncOutcome {
     this.reseeded = false,
     this.deviceTokenRejected = false,
     this.heartbeatOk = false,
+    this.logoChanged = false,
   });
 
   final DrainReport drain;
@@ -45,6 +47,10 @@ class SyncOutcome {
   /// The platform's `config_version` moved past ours, so the bundle was
   /// re-fetched and re-seeded — catalog, staff, floor, money rules.
   final bool reseeded;
+
+  /// The business logo stored on this till changed in this pass (XORD-021): a
+  /// new picture was downloaded, or the platform's was removed.
+  final bool logoChanged;
 
   /// `DEVICE_TOKEN_INVALID` came back. The queue is untouched — money is never
   /// discarded over a credential — but the till has to be re-paired, and the
@@ -201,16 +207,33 @@ class CloudSync {
 
     final drain = tokenRejected ? const DrainReport() : await _drain.run();
 
+    // After the bundle, because the bundle is what names the logo; and on every
+    // pass, because a download that failed last time is still owed. Cheap when
+    // there is nothing to fetch: one indexed row read.
+    final logoChanged = tokenRejected ? false : await _syncLogo();
+
     final outcome = SyncOutcome(
       drain: drain,
       reseeded: reseeded,
       deviceTokenRejected: tokenRejected,
       heartbeatOk: heartbeat.ok,
+      logoChanged: logoChanged,
     );
-    if (reseeded || drain.delivered > 0 || tokenRejected) {
+    if (reseeded || logoChanged || drain.delivered > 0 || tokenRejected) {
       onChanged?.call(outcome);
     }
     return outcome;
+  }
+
+  Future<bool> _syncLogo() async {
+    final restaurantId = profile.restaurantId;
+    if (restaurantId == null) return false;
+    return LogoSync(
+      database: _db,
+      config: config,
+      restaurantId: restaurantId,
+      platformBase: api.baseUrl,
+    ).run();
   }
 
   Future<bool> _refreshBootstrap() async {

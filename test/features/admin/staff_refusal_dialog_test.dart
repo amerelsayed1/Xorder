@@ -120,4 +120,47 @@ void main() {
     expect(find.text(strings.notSaved), findsNothing);
     expect(find.byType(ManagementStaffPane), findsOneWidget);
   });
+
+  testWidgets('rapid repeated taps on Close are harmless', (tester) async {
+    tester.view
+      ..physicalSize = const Size(1440, 900)
+      ..devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    addTearDown(container.dispose);
+    final directory =
+        container.read(staffDirectoryRepositoryProvider)
+            as FakeStaffDirectoryRepository;
+    final amer = directory.staff.firstWhere((p) => p.id == 1);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildPosTheme(),
+          home: Scaffold(body: ManagementStaffPane(admin: amer)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    directory.staff.removeWhere((p) => p.id == 2);
+    await tester.tap(find.text(strings.disable).last);
+    await tester.pumpAndSettle();
+    expect(find.text(strings.notSaved), findsOneWidget);
+
+    // Three taps with no frame between them: the second and third land on a
+    // dialog that is already closing. None may throw, and none may pop the
+    // pane's own route (there is none here, so a stray pop would be an error).
+    final close = find.text(strings.close);
+    await tester.tap(close, warnIfMissed: false);
+    await tester.tap(close, warnIfMissed: false);
+    await tester.tap(close, warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text(strings.notSaved), findsNothing);
+    expect(find.byType(ManagementStaffPane), findsOneWidget);
+  });
 }

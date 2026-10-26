@@ -19,6 +19,7 @@ import '../features/lock/idle_lock.dart';
 import 'providers.dart';
 import '../features/admin/presentation/management_screen.dart';
 import 'router.dart';
+import 'till_status_bar.dart';
 
 class XorderPosApp extends ConsumerWidget {
   const XorderPosApp({super.key});
@@ -245,8 +246,15 @@ class XorderPosApp extends ConsumerWidget {
               // Hidden through `enabled` rather than by returning [child]
               // bare: that keeps the tree's shape, so signing in or out never
               // reparents the router's Navigator underneath it.
+              //
+              // **Not for a cashier** (owner, 26 Oct 2026). Somebody signed in
+              // to sell has the till's own bar and the status bar under every
+              // screen; the window's bar — Settings, the account menu — is for
+              // whoever manages the terminal and for Admin Mode, where it is
+              // the back office's only navigation. A cashier who needs to hand
+              // the till over has Lock on the sale screen.
               final visible =
-                  staff != null ||
+                  managesTerminal ||
                   ref.watch(adminSessionProvider) != null ||
                   !ref.watch(setupCompleteProvider);
 
@@ -278,7 +286,29 @@ class XorderPosApp extends ConsumerWidget {
               final tillPrinter =
                   managesTerminal &&
                   !inBackOffice.contains(ManagementPane.printer);
-              final tillAbout = !inBackOffice.contains(ManagementPane.about);
+              // **The account menu (XORD-022-D).** Who is signed in, and what
+              // to do about it, in one place that is not Settings: Switch
+              // user, Lock, Log out and About used to be spread between the
+              // Settings menu and a button of their own. In Admin Mode its
+              // name line and About open the back office's own User and
+              // About pages (the lines `managementBarFor` returns for the
+              // account tab); outside it, the name is a label and About is the
+              // till's dialog.
+              final accountLines = [
+                for (final menu in menus)
+                  if (menu.tab == BackOfficeTab.account) ...menu.lines,
+              ];
+              final userLine = accountLines
+                  .where((line) => line.pane == ManagementPane.user)
+                  .firstOrNull;
+              final aboutLine = accountLines
+                  .where((line) => line.pane == ManagementPane.about)
+                  .firstOrNull;
+              final inAdminMode = ref.watch(adminSessionProvider) != null;
+              final accountName = [
+                ref.watch(adminSessionProvider)?.staff.name ?? '',
+                ref.watch(operatorNameProvider),
+              ].firstWhere((name) => name.isNotEmpty, orElse: () => '');
               return _AfterEachRoute(
                 listenable: router.routerDelegate,
                 builder: (context) => MenuBarWidget(
@@ -317,7 +347,8 @@ class XorderPosApp extends ConsumerWidget {
                     // office: a greyed-out menu is a permanent advertisement for
                     // a door they will never be given.
                     for (final menu in menus)
-                      if (menu.tab != BackOfficeTab.settings)
+                      if (menu.tab != BackOfficeTab.settings &&
+                          menu.tab != BackOfficeTab.account)
                         if (menu.direct)
                           _DirectBarButton(
                             () => _openFromBar(ref, menu.lines.single),
@@ -417,33 +448,10 @@ class XorderPosApp extends ConsumerWidget {
                             onTap: () =>
                                 ref.read(brightnessProvider.notifier).toggle(showing),
                           ),
-                          const MenuDivider(),
-                          // Handing the till over. The lock screen signs in
-                          // whoever's PIN it is, so locking already switches the
-                          // operator — but nobody hands a till to a colleague by
-                          // reaching for a control called Lock. Same door, named
-                          // for what people are actually doing when they use it.
-                          MenuButton(
-                            text: Text(strings.switchUser),
-                            icon: const Icon(Icons.switch_account, size: 16),
-                            onTap: () =>
-                                ref.read(routerProvider).go(PosRoutes.lock),
-                          ),
-                          // Not above nothing: with About the back office's
-                          // and no reset to offer, the foot's own divider is
-                          // the next thing drawn.
-                          if (tillAbout || managesTerminal) const MenuDivider(),
-                          if (tillAbout)
-                            MenuButton(
-                              text: Text(strings.settingsAbout),
-                              icon: const Icon(Icons.info_outline, size: 16),
-                              onTap: () {
-                                final context = rootNavigatorKey.currentContext;
-                                if (context != null) {
-                                  PosAboutDialog.show(context);
-                                }
-                              },
-                            ),
+                          // Switch user and About are the account menu's now
+                          // (XORD-022-D); Settings holds configuration, and the
+                          // one act the machine's installer needs.
+                          if (managesTerminal) const MenuDivider(),
                           if (managesTerminal)
                             MenuButton(
                               text: Text(strings.forceResetConfirm),
@@ -475,8 +483,98 @@ class XorderPosApp extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    // **The account menu, last in the bar (XORD-022-D).** The
+                    // person's name, then what they can do as that person:
+                    // hand the till on, lock it, leave Admin Mode, see the
+                    // version. Log out used to be a button of its own and
+                    // Switch user and About sat in Settings; they are said
+                    // once, here. Switch user and Lock open the same door (the
+                    // lock screen signs in whoever's PIN it is); they are two
+                    // lines because they are two intentions — handing the
+                    // till to a colleague and stepping away — and a person
+                    // looks for the word that names theirs.
+                    // Nobody signed in and nobody in Admin Mode (a till being
+                    // set up keeps its bar for the language switch): there is no
+                    // account to speak of, and Switch user would hand over
+                    // nothing.
+                    if (staff != null || inAdminMode)
+                      BarButton(
+                        text: Text(
+                          accountName.isEmpty
+                              ? strings.tabAccount
+                              : accountName,
+                        ),
+                        submenu: SubMenu(
+                          menuItems: [
+                            MenuButton(
+                              text: Text(
+                                accountName.isEmpty
+                                    ? strings.tabAccount
+                                    : accountName,
+                              ),
+                              icon: const Icon(Icons.person_outline, size: 16),
+                              // A label outside Admin Mode: nothing to open.
+                              onTap: userLine == null
+                                  ? null
+                                  : () => _openFromBar(ref, userLine),
+                            ),
+                            const MenuDivider(),
+                            MenuButton(
+                              text: Text(strings.switchUser),
+                              icon: const Icon(Icons.switch_account, size: 16),
+                              onTap: () =>
+                                  ref.read(routerProvider).go(PosRoutes.lock),
+                            ),
+                            MenuButton(
+                              text: Text(strings.lock),
+                              icon: const Icon(Icons.lock_outline, size: 16),
+                              onTap: () =>
+                                  ref.read(routerProvider).go(PosRoutes.lock),
+                            ),
+                            if (inAdminMode)
+                              MenuButton(
+                                text: Text(strings.logOut),
+                                icon: const Icon(Icons.logout, size: 16),
+                                onTap: () => _logOutOfAdmin(ref),
+                              ),
+                            const MenuDivider(),
+                            MenuButton(
+                              text: Text(strings.settingsAbout),
+                              icon: const Icon(Icons.info_outline, size: 16),
+                              onTap: () {
+                                if (aboutLine != null) {
+                                  _openFromBar(ref, aboutLine);
+                                  return;
+                                }
+                                final context = rootNavigatorKey.currentContext;
+                                if (context != null) {
+                                  PosAboutDialog.show(context);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
-                  child: child,
+                  // **The status bar, once, under every screen** (26 Oct 2026).
+                  // Here and not on each screen so it is the same bar in the
+                  // same place everywhere, and so no screen can forget it or
+                  // draw a second. The Column is always built and the bar is its
+                  // last child, so the router's Navigator keeps its place
+                  // whichever screen is showing.
+                  child: Column(
+                    children: [
+                      Expanded(child: child),
+                      if (_showsStatusBar(
+                        router.routerDelegate.currentConfiguration.uri.path,
+                      ))
+                        TillStatusBar(
+                          showPerson: _showsPerson(
+                            router.routerDelegate.currentConfiguration.uri.path,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -484,6 +582,15 @@ class XorderPosApp extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// Ends Admin Mode and goes back to where the back office was entered from,
+  /// as the header's Exit button did: the same end, the same destination — the
+  /// route's own `returnTo`, or the start screen when it recorded none.
+  void _logOutOfAdmin(WidgetRef ref) {
+    final returnTo = _cameFrom(ref);
+    ref.read(adminSessionProvider.notifier).end(AdminSessionEnd.exited);
+    ref.read(routerProvider).go(returnTo ?? PosRoutes.start);
   }
 
   /// The screens in front of the till: nobody has signed in to sell there yet,
@@ -498,6 +605,19 @@ class XorderPosApp extends ConsumerWidget {
       path == PosRoutes.start ||
       path == PosRoutes.lock ||
       path == PosRoutes.welcome;
+
+  /// Every screen of a set-up till has the status bar. Not the welcome screen
+  /// and the wizard, where the till has no branch, name or person yet — and not
+  /// before the router has said where it is (an empty path), which would flash
+  /// it in front of an unconfigured till for a frame.
+  static bool _showsStatusBar(String path) =>
+      path.isNotEmpty && path != PosRoutes.welcome && path != PosRoutes.setup;
+
+  /// Who is in is left out where nobody is in front of the till yet: a manual
+  /// Lock leaves the last cashier signed in behind the lock screen, and their
+  /// name there would defeat it.
+  static bool _showsPerson(String path) =>
+      path != PosRoutes.start && path != PosRoutes.lock;
 
   /// The bar's back-office menus.
   ///

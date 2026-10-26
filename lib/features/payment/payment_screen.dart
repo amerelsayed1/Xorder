@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import 'customer_dialog.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../core/text/digits.dart';
 import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../core/ui/widgets/fold_digits_formatter.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/tender_method.dart';
@@ -209,6 +212,77 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     Navigator.of(context).pop(SettledSale(ticket: updated, result: result));
   }
 
+  /// The physical keyboard, which the screen ignored: the amount could only be
+  /// built from the on-screen keypad, so a cashier with hands on the keys had to
+  /// reach for the mouse (`docs/pos/12-design-brief.md`: keyboard-first, Enter
+  /// confirms).
+  ///
+  /// 0-9 and the numpad add a digit, `.` and the numpad's decimal key add one
+  /// point, Backspace takes the last character off, Delete clears (the keypad's
+  /// CLR) and Enter collects exactly as the green button does — `_take` refuses
+  /// while a settlement is in flight, so a second Enter is harmless.
+  ///
+  /// **Not while a text field has the keys.** The reference box takes printable
+  /// keys through the text-input channel AND lets the key event bubble up to
+  /// here, so without this check every digit of an authorisation code would also
+  /// land in the amount.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    if (_busy) return KeyEventResult.ignored;
+    final typing =
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>() !=
+        null;
+    if (typing) return KeyEventResult.ignored;
+
+    // Cmd/Ctrl/Alt chords are somebody's shortcut, not an amount.
+    final keyboard = HardwareKeyboard.instance;
+    if (keyboard.isControlPressed ||
+        keyboard.isMetaPressed ||
+        keyboard.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+    // **The character, then the key.** With an Arabic layout on, the digit row
+    // reports the Arabic digit's own logical key rather than `digit5`, so a map
+    // of keys alone ignored exactly the cashier who types in Arabic. What the
+    // key typed is folded to ASCII (as the reference box does) and the key map
+    // stays as the fall-back for an event that carries no character.
+    final typed = event.character == null ? null : foldDigits(event.character!);
+    final digit = amountDigitFor(event.character, key);
+    if (digit != null) {
+      _digit(digit);
+      return KeyEventResult.handled;
+    }
+    if (typed == '.' ||
+        key == LogicalKeyboardKey.period ||
+        key == LogicalKeyboardKey.numpadDecimal) {
+      if (!_entry.contains('.')) _digit(_entry.isEmpty ? '0.' : '.');
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.backspace) {
+      if (_entry.isNotEmpty) {
+        setState(() {
+          _entry = _entry.substring(0, _entry.length - 1);
+          _message = null;
+        });
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.delete) {
+      _clear();
+      return KeyEventResult.handled;
+    }
+    if (event is KeyDownEvent &&
+        (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter)) {
+      _take(ref.read(ticketProvider));
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Rebuild the dialog when configured tenders arrive; event handlers use
@@ -235,7 +309,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       _idleGuard.release(this);
     }
 
-    return Dialog(
+    final dialog = Dialog(
       backgroundColor: context.pos.surface,
       insetPadding: const EdgeInsets.all(PosSpace.s24),
       shape: RoundedRectangleBorder(
@@ -261,6 +335,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         ),
       ),
     );
+    return Focus(autofocus: true, onKeyEvent: _onKey, child: dialog);
   }
 
   Widget _header(AppStrings strings, Ticket ticket) => Container(
@@ -292,14 +367,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         // the cashier asks for it while they are taking the money, not while
         // they are ringing the food up.
         PosButton(
-          label: ticket.customer?.name ?? strings.whoIsThisFor,
+          label: ticket.customer?.name ?? strings.walkInCustomer,
           height: 36,
-          background: ticket.customer == null
-              ? context.pos.shellCard
-              : context.pos.accent,
-          foreground: ticket.customer == null
-              ? context.pos.shellText
-              : Colors.white,
+          background: context.pos.shellCard,
+          foreground: context.pos.shellText,
           fontSize: 12.5,
           onPressed: _chooseCustomer,
         ),
@@ -360,6 +431,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ),
             const SizedBox(height: PosSpace.sm),
             Text(totals.due.format(withCurrency: true), style: PosText.bigNumeric(color: context.pos.ink)),
+            if (_afterEntry(ticket, totals) case final after?) ...[
+              const SizedBox(height: PosSpace.sm),
+              _afterEntryLine(strings, after),
+            ],
             const SizedBox(height: PosSpace.md),
             _progress(totals),
             const SizedBox(height: PosSpace.sm),
@@ -374,6 +449,40 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           ],
         ),
       );
+
+  /// What the typed amount leaves: positive is still owed, negative is
+  /// change to hand back. Null while nothing (or nothing readable) is typed and
+  /// when it is exactly the due, where there is nothing to say.
+  ///
+  /// Display only — the engine still takes the tender and works out `change`
+  /// itself, and the receipt prints the same figure. This is the cashier seeing
+  /// it BEFORE pressing Collect rather than on the receipt after the sale.
+  Money? _afterEntry(Ticket ticket, TicketTotals totals) {
+    final entered = _parsedEntry(ticket);
+    if (entered == null || !entered.isPositive) return null;
+    final after = totals.due - entered;
+    return after.isZero ? null : after;
+  }
+
+  Widget _afterEntryLine(AppStrings strings, Money after) {
+    final change = after.isNegative;
+    return Row(
+      key: const Key('payment-after-entry'),
+      children: [
+        MicroLabel(change ? strings.changeDue : strings.remainingDue),
+        const Spacer(),
+        Text(
+          (change ? -after : after).format(withCurrency: true),
+          key: const Key('payment-after-entry-amount'),
+          style: PosText.mono(
+            size: 20,
+            weight: FontWeight.w700,
+            color: change ? context.pos.ok : context.pos.ink,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _progress(TicketTotals totals) {
     final ratio = totals.total.isZero
@@ -664,7 +773,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       controller: _reference,
       enabled: !_busy,
       maxLength: 80,
+      // An approval code or a receipt number, searched for later by typing it
+      // in again: ASCII whatever the keyboard produced (XORD-004).
+      inputFormatters: const [FoldDigitsFormatter()],
       onChanged: (_) => setState(() => _message = null),
+      onSubmitted: (_) => _take(ref.read(ticketProvider)),
       decoration: InputDecoration(
         labelText: strings.paymentReferenceLabel,
         counterText: '',
@@ -734,4 +847,38 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
     );
   }
+}
+
+/// The ASCII digit a key press means for the amount, or null: the typed
+/// [character] first (folded, so `٥` is `5`), the [key] when it carries none.
+@visibleForTesting
+String? amountDigitFor(String? character, LogicalKeyboardKey key) {
+  if (character != null) {
+    final typed = foldDigits(character);
+    if (typed.length == 1 &&
+        typed.codeUnitAt(0) >= 0x30 &&
+        typed.codeUnitAt(0) <= 0x39) {
+      return typed;
+    }
+  }
+  return _digitForKey(key);
+}
+
+String? _digitForKey(LogicalKeyboardKey key) {
+  const digits = {
+    '0': [LogicalKeyboardKey.digit0, LogicalKeyboardKey.numpad0],
+    '1': [LogicalKeyboardKey.digit1, LogicalKeyboardKey.numpad1],
+    '2': [LogicalKeyboardKey.digit2, LogicalKeyboardKey.numpad2],
+    '3': [LogicalKeyboardKey.digit3, LogicalKeyboardKey.numpad3],
+    '4': [LogicalKeyboardKey.digit4, LogicalKeyboardKey.numpad4],
+    '5': [LogicalKeyboardKey.digit5, LogicalKeyboardKey.numpad5],
+    '6': [LogicalKeyboardKey.digit6, LogicalKeyboardKey.numpad6],
+    '7': [LogicalKeyboardKey.digit7, LogicalKeyboardKey.numpad7],
+    '8': [LogicalKeyboardKey.digit8, LogicalKeyboardKey.numpad8],
+    '9': [LogicalKeyboardKey.digit9, LogicalKeyboardKey.numpad9],
+  };
+  for (final entry in digits.entries) {
+    if (entry.value.contains(key)) return entry.key;
+  }
+  return null;
 }

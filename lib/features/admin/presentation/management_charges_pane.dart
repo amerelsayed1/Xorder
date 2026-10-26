@@ -39,7 +39,11 @@ class _ManagementChargesPaneState extends ConsumerState<ManagementChargesPane> {
   String? _note;
 
   Future<void> _edit(ServiceCharge? charge) async {
-    final edited = await ServiceChargeDialog.show(context, charge: charge);
+    final edited = await ServiceChargeDialog.show(
+      context,
+      charge: charge,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
 
     setState(() => _busy = true);

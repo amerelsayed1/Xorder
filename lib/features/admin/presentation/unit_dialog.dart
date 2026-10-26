@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/pos_unit.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 
@@ -12,16 +13,26 @@ import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 /// The code is asked for once and then fixed: purchase lines and stock rows
 /// store it, so a new name is fine and a new code is not.
 class UnitDialog extends StatefulWidget {
-  const UnitDialog({super.key, this.unit});
+  const UnitDialog({
+    super.key,
+    this.unit,
+    this.languages = ContentLanguages.both,
+  });
 
   /// Null adds a new one.
   final PosUnit? unit;
 
-  static Future<PosUnit?> show(BuildContext context, {PosUnit? unit}) =>
-      showDialog<PosUnit>(
-        context: context,
-        builder: (_) => UnitDialog(unit: unit),
-      );
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
+
+  static Future<PosUnit?> show(
+    BuildContext context, {
+    PosUnit? unit,
+    ContentLanguages languages = ContentLanguages.both,
+  }) => showDialog<PosUnit>(
+    context: context,
+    builder: (_) => UnitDialog(unit: unit, languages: languages),
+  );
 
   @override
   State<UnitDialog> createState() => _UnitDialogState();
@@ -49,21 +60,25 @@ class _UnitDialogState extends State<UnitDialog> {
   }
 
   void _save() {
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.unit?.nameEn,
+      previousAr: widget.unit?.nameAr,
+    );
     // A code from the English name when nobody typed one: "Tray of 30" is
-    // tray_of_30. It stays editable for the case only the operator knows.
+    // tray_of_30. It stays editable for the case only the operator knows; an
+    // Arabic-only name has no Latin letters to make one from.
     if (_isNew && _code.text.trim().isEmpty) {
-      _code.text = _nameEn.text
-          .trim()
-          .toLowerCase()
-          .replaceAll(RegExp('[^a-z0-9]+'), '_')
-          .replaceAll(RegExp(r'^_+|_+$'), '');
+      _code.text = codeFromName(names.nameEn, fallback: 'unit');
     }
     Navigator.of(context).pop(
       PosUnit(
         id: widget.unit?.id ?? 0,
         code: _code.text.trim(),
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         etaUnitType: _eta.text.trim().toUpperCase(),
         allowsFraction: _allowsFraction,
         isActive: _isActive,
@@ -97,17 +112,19 @@ class _UnitDialogState extends State<UnitDialog> {
                 ),
               ),
               const SizedBox(height: PosSpace.lg),
-              _Field(
-                name: 'name',
-                label: strings.unitNameEn,
-                controller: _nameEn,
-              ),
-              _Field(
-                name: 'name_ar',
-                label: strings.unitNameAr,
-                controller: _nameAr,
-                optional: true,
-              ),
+              if (widget.languages.showsEnglish)
+                _Field(
+                  name: 'name',
+                  label: strings.unitNameEn,
+                  controller: _nameEn,
+                ),
+              if (widget.languages.showsArabic)
+                _Field(
+                  name: 'name_ar',
+                  label: strings.unitNameAr,
+                  controller: _nameAr,
+                  optional: widget.languages == ContentLanguages.both,
+                ),
               _Field(
                 name: 'code',
                 label: strings.unitCode,

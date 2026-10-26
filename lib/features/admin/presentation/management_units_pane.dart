@@ -34,7 +34,11 @@ class _ManagementUnitsPaneState extends ConsumerState<ManagementUnitsPane> {
   String? _note;
 
   Future<void> _edit(PosUnit? unit) async {
-    final edited = await UnitDialog.show(context, unit: unit);
+    final edited = await UnitDialog.show(
+      context,
+      unit: unit,
+      languages: ref.read(contentLanguagesNowProvider),
+    );
     if (edited == null || !mounted) return;
 
     setState(() => _busy = true);

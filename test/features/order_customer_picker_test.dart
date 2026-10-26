@@ -183,7 +183,7 @@ void main() {
     expect(find.byKey(const Key('customer-create-denied')), findsOneWidget);
   });
 
-  testWidgets('a number already on file selects that person, not a copy', (
+  testWidgets('a number already on file names that person, not a copy', (
     tester,
   ) async {
     final ref = await sale(tester, _cashier);
@@ -195,6 +195,16 @@ void main() {
     await tester.enterText(dialogField(0), 'Somebody Else');
     await tester.enterText(dialogField(1), '٠١٠١٢٣٤٥٦٧٨');
     await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // Told whose number it is, and nobody is attached until the cashier says so.
+    expect(
+      find.text('This number is already saved for Mona Fathy.'),
+      findsOneWidget,
+    );
+    expect(ref.read(ticketProvider).customer, isNull);
+
+    await tester.tap(find.text('Use Mona Fathy'));
     await tester.pumpAndSettle();
 
     expect(ref.read(ticketProvider).customer?.name, 'Mona Fathy');

@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/tender_method.dart';
 
 /// Authoring one payment method (§40).
@@ -15,17 +16,25 @@ import '../../../domain/models/tender_method.dart';
 /// putting the two on one checkbox is how a cash-up starts reporting a surplus
 /// nobody can explain.
 class TenderTypeDialog extends StatefulWidget {
-  const TenderTypeDialog({super.key, this.method});
+  const TenderTypeDialog({
+    super.key,
+    this.method,
+    this.languages = ContentLanguages.both,
+  });
 
   /// Null creates a new one.
   final TenderMethod? method;
 
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
+
   static Future<TenderMethod?> show(
     BuildContext context, {
     TenderMethod? method,
+    ContentLanguages languages = ContentLanguages.both,
   }) => showDialog<TenderMethod>(
     context: context,
-    builder: (_) => TenderTypeDialog(method: method),
+    builder: (_) => TenderTypeDialog(method: method, languages: languages),
   );
 
   @override
@@ -64,24 +73,27 @@ class _TenderTypeDialogState extends State<TenderTypeDialog> {
   /// setting up a restaurant has an opinion about it. It stays editable because
   /// the one case that matters — matching a code an integration already
   /// expects — is one only the operator knows about.
-  void _suggestCode() {
+  void _suggestCode(String nameEn) {
     if (!_isNew || _code.text.trim().isNotEmpty) return;
-    final slug = _nameEn.text
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp('[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'^_+|_+$'), '');
-    _code.text = slug;
+    // An Arabic-only name has no Latin letters to make a code from.
+    _code.text = codeFromName(nameEn, fallback: 'method');
   }
 
   void _save() {
-    _suggestCode();
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.method?.nameEn,
+      previousAr: widget.method?.nameAr,
+    );
+    _suggestCode(names.nameEn);
     Navigator.of(context).pop(
       TenderMethod(
         id: widget.method?.id ?? 0,
         code: _code.text.trim(),
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         kind: _kind,
         countsAsCash: _countsAsCash,
         opensDrawer: _opensDrawer,
@@ -119,12 +131,19 @@ class _TenderTypeDialogState extends State<TenderTypeDialog> {
               ),
               const SizedBox(height: PosSpace.lg),
 
-              _Field(label: strings.tenderNameEn, controller: _nameEn),
-              _Field(
-                label: strings.tenderNameAr,
-                controller: _nameAr,
-                optional: true,
-              ),
+              if (widget.languages.showsEnglish)
+                _Field(
+                  fieldKey: const Key('tender-name'),
+                  label: strings.tenderNameEn,
+                  controller: _nameEn,
+                ),
+              if (widget.languages.showsArabic)
+                _Field(
+                  fieldKey: const Key('tender-name-ar'),
+                  label: strings.tenderNameAr,
+                  controller: _nameAr,
+                  optional: widget.languages == ContentLanguages.both,
+                ),
               _Field(
                 label: strings.tenderCode,
                 controller: _code,
@@ -220,6 +239,7 @@ class _Field extends StatelessWidget {
   const _Field({
     required this.label,
     required this.controller,
+    this.fieldKey,
     this.optional = false,
     this.mono = false,
     this.enabled = true,
@@ -227,6 +247,7 @@ class _Field extends StatelessWidget {
 
   final String label;
   final TextEditingController controller;
+  final Key? fieldKey;
   final bool optional;
   final bool mono;
   final bool enabled;
@@ -240,6 +261,7 @@ class _Field extends StatelessWidget {
         MicroLabel(optional ? context.strings.optionalField(label) : label),
         const SizedBox(height: PosSpace.xs),
         TextField(
+          key: fieldKey,
           controller: controller,
           enabled: enabled,
           textDirection: mono ? TextDirection.ltr : null,

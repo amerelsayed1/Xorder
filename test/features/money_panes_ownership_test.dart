@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/service_charge.dart';
+import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_tender_types_repository.dart';
@@ -56,6 +57,8 @@ void main() {
     required bool authors,
     required Widget pane,
     TaxConfig? stored,
+    List<TaxGroup>? groups,
+    void Function()? onGroupsRead,
   }) async {
     catalogue = _Catalogue();
     await tester.pumpWidget(
@@ -66,6 +69,11 @@ void main() {
           ),
           if (stored != null)
             moneyConfigProvider.overrideWith((ref) async => stored),
+          if (groups != null)
+            taxGroupsAllProvider.overrideWith((ref) async {
+              onGroupsRead?.call();
+              return groups;
+            }),
           tenderTypesRepositoryProvider.overrideWithValue(
             const UnconfiguredTenderTypesRepository(),
           ),
@@ -214,6 +222,79 @@ void main() {
       catalogue.saved?.taxMode,
       TaxMode.inclusive,
       reason: 'and the mode came through untouched',
+    );
+  });
+
+  // ── XORD-027: the VAT box and the rate the till charges ────────────────────
+  //
+  // `TaxConfig.defaultTaxGroup` prefers the stored default group over `vatBp`,
+  // and every offline setup seeds one at 14%. The box edited only `vatBp`, so a
+  // restaurant that typed 0 went on charging 14% — and the box, which read
+  // `vatBp` back, showed the 0 it had been given.
+  const standard = TaxGroup(id: 1, nameEn: 'VAT', rateBp: 1400, isDefault: true);
+  const zeroGroup = TaxGroup(id: 1, nameEn: 'VAT', rateBp: 0, isDefault: true);
+
+  String boxText(WidgetTester tester) => tester
+      .widget<TextField>(find.byKey(const Key('rate-vat')))
+      .controller!
+      .text;
+
+  testWidgets('the VAT box shows the rate the till charges, the default '
+      "group's, not the stale one beside it", (tester) async {
+    await pump(
+      tester,
+      authors: true,
+      pane: const ManagementTaxesPane(admin: admin),
+      stored: const TaxConfig(serviceBp: 1200, vatBp: 1400),
+      groups: const [zeroGroup],
+    );
+
+    expect(
+      boxText(tester),
+      '0',
+      reason: 'the group is at 0 and that is what a ticket is taxed at',
+    );
+  });
+
+  testWidgets('with no default group the box shows the single rate, as before', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      authors: true,
+      pane: const ManagementTaxesPane(admin: admin),
+      stored: const TaxConfig(serviceBp: 1200, vatBp: 1500),
+      groups: const [],
+    );
+
+    expect(boxText(tester), '15');
+  });
+
+  testWidgets('typing 0 over a 14% group saves 0 and re-reads the groups', (
+    tester,
+  ) async {
+    var reads = 0;
+    await pump(
+      tester,
+      authors: true,
+      pane: const ManagementTaxesPane(admin: admin),
+      stored: const TaxConfig(serviceBp: 1200, vatBp: 1400),
+      groups: const [standard],
+      onGroupsRead: () => reads++,
+    );
+    expect(boxText(tester), '14');
+    expect(reads, 1);
+
+    await tester.enterText(find.byKey(const Key('rate-vat')), '0');
+    await tester.tap(find.byKey(const Key('rates-save')));
+    await tester.pumpAndSettle();
+
+    expect(catalogue.saved?.vatBp, 0);
+    expect(
+      reads,
+      greaterThan(1),
+      reason: 'saving moves the default group, and the running till prices '
+          'from the group — without a re-read it charges 14% until restart',
     );
   });
 

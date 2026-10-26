@@ -91,10 +91,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final container = ProviderContainer(
-      overrides: [
-        ...fakeRepositoryOverrides(),
-        if (offline) offlineTerminal(),
-      ],
+      overrides: [...fakeRepositoryOverrides(), if (offline) offlineTerminal()],
     );
     addTearDown(container.dispose);
 
@@ -162,13 +159,13 @@ void main() {
   ];
 
   /// The bar's own word, not a line of the same name.
-  Finder barButton(String label) => find.byElementPredicate(
-    (e) => onTheBar(e) && labelOf(e.widget) == label,
-  );
+  Finder barButton(String label) =>
+      find.byElementPredicate((e) => onTheBar(e) && labelOf(e.widget) == label);
 
   /// The bar's word only if it opens a menu. Home's does not.
   Finder menuOf(String label) => find.byElementPredicate(
-    (e) => onTheBar(e) && e.widget is SubmenuButton && labelOf(e.widget) == label,
+    (e) =>
+        onTheBar(e) && e.widget is SubmenuButton && labelOf(e.widget) == label,
   );
 
   /// Lines of whichever menu is open.
@@ -202,6 +199,32 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// The account menu is the bar's last word and carries the person's name
+  /// (XORD-022-D): Switch user, Lock, Log out and About live in it, not in
+  /// Settings or on a button of their own.
+  Future<List<String>> accountLines(WidgetTester tester) async {
+    await tester.tap(barButtons().last);
+    await tester.pumpAndSettle();
+    final lines = [
+      for (final element in openLines().evaluate()) labelOf(element.widget),
+    ];
+    await tester.tap(barButtons().last);
+    await tester.pumpAndSettle();
+    return lines;
+  }
+
+  /// Opens the account menu and taps [line].
+  Future<void> inAccountMenu(WidgetTester tester, String line) async {
+    await tester.tap(barButtons().last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, line));
+    await tester.pumpAndSettle();
+  }
+
+  /// Who the account menu names in Admin Mode: the person who entered it.
+  String adminName(ProviderContainer c) =>
+      c.read(adminSessionProvider)!.staff.name;
+
   testWidgets('nobody signed in: no bar at all', (tester) async {
     final container = await pumpApp(tester, staff: null);
 
@@ -222,8 +245,10 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(
       barLabels(tester),
-      ['Settings'],
-      reason: 'the owner signed in at the till is not in Admin Mode',
+      ['Settings', 'Rana A.'],
+      reason:
+          'the owner signed in at the till is not in Admin Mode; the '
+          'account menu names them',
     );
     expect(find.text('Management'), findsNothing);
 
@@ -259,7 +284,7 @@ void main() {
     // there is no bar, whoever is signed in behind it.
     final container = await pumpApp(tester);
     await intoAdminMode(tester, container);
-    expect(barLabels(tester), contains('Home'));
+    expect(barLabels(tester), contains('Dashboard'));
 
     container.read(routerProvider).go(PosRoutes.lock);
     await tester.pumpAndSettle();
@@ -299,33 +324,35 @@ void main() {
     await intoAdminMode(tester, container);
     expect(container.read(signedInStaffProvider), isNull, reason: 'the till');
     expect(barLabels(tester), [
-      'Home',
+      'Dashboard',
       'Sales',
       'Reports',
       'Inventory',
       'Purchasing',
       'Finance',
       'People',
-      'System',
+      'Management',
       'Settings',
+      adminName(container),
     ]);
 
-    // And it moves them: a line, then Home again by its word alone.
+    // And it moves them: a line, then the Dashboard again by its word alone.
     await tester.tap(barButton('People'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Roles & permissions'));
+    await tester.tap(
+      find.widgetWithText(MenuItemButton, 'Roles & permissions'),
+    );
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('back-office-pane-roles')),
       findsOneWidget,
     );
-    await tester.tap(barButton('Home'));
+    await tester.tap(barButton('Dashboard'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('back-office-pane-home')), findsOneWidget);
 
     // Out of Admin Mode, back on the start screen: no bar again.
-    await tester.tap(find.byKey(const Key('admin-exit')));
-    await tester.pumpAndSettle();
+    await inAccountMenu(tester, 'Log out');
     expect(path(), PosRoutes.start);
     expect(find.byType(MenuBar), findsNothing);
   }, variant: desktop);
@@ -352,21 +379,35 @@ void main() {
     expect(find.text('Printer & cash drawer…'), findsNothing);
   }, variant: desktop);
 
-  testWidgets('a cashier gets the till\'s settings and none of the back '
-      'office', (tester) async {
+  testWidgets('a cashier gets no window bar at all: not Settings, not the '
+      'name menu', (tester) async {
     await pumpApp(tester, staff: _cashier);
 
-    expect(barLabels(tester), ['Settings']);
+    // Owner, 26 Oct 2026: somebody signed in to sell has the till's own bar and
+    // the status bar. Settings and the account menu are for whoever manages the
+    // terminal, and for Admin Mode.
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Omar K.'), findsNothing);
     for (final area in _oldAreas) {
       expect(find.text(area), findsNothing, reason: area);
     }
-
-    await openSettings(tester);
-    expect(find.text('Switch user'), findsOneWidget);
-    expect(find.text('Orders & invoices'), findsOneWidget);
-    // Configuring the machine is `terminal.manage`, which a cashier lacks.
     expect(find.text('Printer & cash drawer…'), findsNothing);
-    expect(find.text('⇧⌘S'), findsNothing);
+  }, variant: desktop);
+
+  testWidgets('the bar is back when a manager of the terminal signs in, and '
+      'goes when they sign out', (tester) async {
+    final container = await pumpApp(tester, staff: _cashier);
+    expect(find.byType(MenuBar), findsNothing);
+
+    container.read(signedInStaffProvider.notifier).signIn(_owner);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+
+    container.read(signedInStaffProvider.notifier).signIn(_cashier);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsNothing);
   }, variant: desktop);
 
   testWidgets('the theme item names the theme the next tap would give', (
@@ -413,8 +454,8 @@ void main() {
     expect(find.text('العربية'), findsNothing);
   }, variant: desktop);
 
-  testWidgets('the back office is the owner\'s map: a menu per tab, in the '
-      'map\'s order, listing its items', (tester) async {
+  testWidgets('the back office map: a menu per tab, in order, listing its '
+      'items', (tester) async {
     // Offline, because Purchasing's own lines are what this reads. The cloud
     // bar's pointers are asserted below.
     final container = await pumpApp(tester, offline: true);
@@ -423,7 +464,7 @@ void main() {
     // Settings is the till's own menu, last, with the back office's Settings
     // folded in — not a second الإعدادات.
     expect(barLabels(tester), [
-      'Home',
+      'Dashboard',
       'Sales',
       'Reports',
       'Menu',
@@ -431,21 +472,24 @@ void main() {
       'Purchasing',
       'Finance',
       'People',
-      'System',
+      'Management',
       'Settings',
+      adminName(container),
     ]);
-    expect(find.text('Management'), findsNothing);
     for (final area in _oldAreas) {
       expect(find.text(area), findsNothing, reason: area);
     }
 
-    expect(menuOf('Home'), findsNothing, reason: 'a button, not a menu');
-    expect(await linesOf(tester, 'Sales'), [
-      'Orders',
-      'Invoices',
-      'Returns',
-      'Cancelled orders',
-    ]);
+    expect(menuOf('Dashboard'), findsNothing, reason: 'a button, not a menu');
+    // Sales is one page: Invoices and Cancelled orders are its filters and
+    // Returns a switch inside it, so there is nothing to list under the word.
+    expect(menuOf('Sales'), findsNothing, reason: 'a button, not a menu');
+    expect(barButton('Sales'), findsOneWidget);
+    expect(
+      menuOf(adminName(container)),
+      findsOneWidget,
+      reason: 'the account menu is a menu, and says who is in',
+    );
     expect(await linesOf(tester, 'Reports'), [
       'Business summary',
       'Sales',
@@ -455,10 +499,9 @@ void main() {
       'Employees',
     ]);
     expect(await linesOf(tester, 'Menu'), [
-      'Menu',
+      'Products',
       'Categories',
       'Extras library',
-      'Floor',
       'Combos',
     ]);
     // Each thing buying is, with the "new" that starts one: shortcuts no
@@ -478,23 +521,26 @@ void main() {
       'Treasury',
       'Expenses',
       'Settlements',
-      'Payment methods',
       'Taxes',
       'Bills due',
       'Transactions',
       'Profit & loss',
+      // XORD-015: only for somebody holding `finance.accounts`, the owner here.
+      'Accounts',
     ]);
     expect(await linesOf(tester, 'People'), [
-      'Staff',
+      'Employees',
       'Roles & permissions',
       'Shifts',
       'Customers',
     ]);
-    expect(await linesOf(tester, 'System'), [
-      'Activity',
-      'Backup',
+    // Dining areas & tables came from Menu, first, as the epic lists them.
+    expect(await linesOf(tester, 'Management'), [
+      'Dining areas & tables',
       'Devices',
       'Sync',
+      'Backup',
+      'Activity',
     ]);
   }, variant: desktop);
 
@@ -514,11 +560,17 @@ void main() {
       );
       expect(barLabels(tester), [
         for (final menu in bar)
-          if (menu.tab != BackOfficeTab.settings) menu.label,
+          if (menu.tab != BackOfficeTab.settings &&
+              menu.tab != BackOfficeTab.account)
+            menu.label,
         'Settings',
+        adminName(container),
       ]);
       for (final menu in bar) {
-        if (menu.tab == BackOfficeTab.settings) continue;
+        if (menu.tab == BackOfficeTab.settings ||
+            menu.tab == BackOfficeTab.account) {
+          continue;
+        }
         // A direct word has no lines to read: it is its one line.
         if (menu.direct) {
           expect(menuOf(menu.label), findsNothing, reason: menu.label);
@@ -532,23 +584,29 @@ void main() {
       // Settings: everything it held before Admin Mode, in the same order,
       // less the till's own line for each place the back office now offers
       // as a page — then the back office's Settings items. The owner holds
-      // `terminal.manage`, so both Printer and About are pages here.
+      // `terminal.manage`, so Printer is a page here. About is the account
+      // menu's, not Settings'.
       final settings = [
         for (final menu in bar)
           if (menu.tab == BackOfficeTab.settings) ...menu.lines,
       ];
       final replaced = {
         for (final line in settings)
-          if (line.pane == ManagementPane.printer)
-            'Printer & cash drawer…'
-          else if (line.pane == ManagementPane.about)
-            'About XOrder POS',
+          if (line.pane == ManagementPane.printer) 'Printer & cash drawer…',
       };
-      expect(replaced, hasLength(2));
+      expect(replaced, hasLength(1));
       expect(await linesOf(tester, 'Settings'), [
         for (final line in till)
           if (!replaced.contains(line)) line,
         for (final line in settings) line.label,
+      ]);
+      // The account menu: who, the till's own acts, Log out, the version.
+      expect(await accountLines(tester), [
+        adminName(container),
+        'Switch user',
+        'Lock',
+        'Log out',
+        'About XOrder POS',
       ]);
     }, variant: desktop);
   }
@@ -565,15 +623,16 @@ void main() {
     await intoAdminMode(tester, container);
 
     expect(barLabels(tester), [
-      'Home',
+      'Dashboard',
       'Sales',
       'Reports',
       'Inventory',
       'Purchasing',
       'Finance',
       'People',
-      'System',
+      'Management',
       'Settings',
+      adminName(container),
     ], reason: 'no Menu: the platform authors it');
     for (final menu in ['Inventory', 'Purchasing']) {
       expect(await linesOf(tester, menu), [
@@ -589,13 +648,11 @@ void main() {
     final till = await linesOf(tester, 'Settings');
     expect(
       till,
-      containsAllInOrder([
-        'Orders & invoices',
-        'Printer & cash drawer…',
-        'Switch user',
-        'About XOrder POS',
-      ]),
+      containsAllInOrder(['Order history', 'Printer & cash drawer…']),
     );
+    // Configuration only: the person's own acts are the account menu's.
+    expect(till, isNot(contains('Switch user')));
+    expect(till, isNot(contains('About XOrder POS')));
     // Outside Admin Mode the back office's Settings are nowhere.
     for (final item in [
       'Orders & invoices settings',
@@ -609,26 +666,20 @@ void main() {
       expect(till, isNot(contains(item)), reason: item);
     }
 
-    // In Admin Mode the till's Printer and About lines step aside for the
-    // pages of the same name, rather than the menu saying each twice — a
-    // dialog and a page. Switch user stays: it hands the till over, and is
-    // not the map's User.
+    // In Admin Mode the till's Printer line steps aside for the page of the
+    // same name, rather than the menu saying it twice — a dialog and a page.
     await intoAdminMode(tester, container);
     expect(await linesOf(tester, 'Settings'), [
       for (final line in till)
-        if (line != 'Printer & cash drawer…' && line != 'About XOrder POS')
-          line,
+        if (line != 'Printer & cash drawer…') line,
       'Orders & invoices settings',
       'Printer & cash drawer',
       'Language',
       'Appearance',
-      'User',
-      'About XOrder',
     ]);
 
     // And back the moment Admin Mode ends.
-    await tester.tap(find.byKey(const Key('admin-exit')));
-    await tester.pumpAndSettle();
+    await inAccountMenu(tester, 'Log out');
     expect(await linesOf(tester, 'Settings'), till);
   }, variant: desktop);
 
@@ -646,7 +697,9 @@ void main() {
     await intoAdminMode(tester, container);
     await openSettings(tester);
     expect(find.text('Printer & cash drawer…'), findsNothing);
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Printer & cash drawer'));
+    await tester.tap(
+      find.widgetWithText(MenuItemButton, 'Printer & cash drawer'),
+    );
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('back-office-pane-printer')),
@@ -655,8 +708,8 @@ void main() {
     expect(find.byType(PrinterSettingsDialog), findsNothing);
   }, variant: desktop);
 
-  testWidgets('a line opens its page, and the header\'s Exit leaves Admin '
-      'Mode for where it began', (tester) async {
+  testWidgets('a line opens its page, and Log out leaves Admin Mode for where '
+      'it began', (tester) async {
     final container = await pumpApp(tester);
     await intoAdminMode(tester, container);
 
@@ -666,15 +719,10 @@ void main() {
       ('Settings', 'Language', ManagementPane.language),
       // The items `pos/ia-screens` built, one per tab it touched and all
       // three of Settings'.
-      ('Sales', 'Invoices', ManagementPane.invoices),
-      ('Sales', 'Returns', ManagementPane.returns),
-      ('Sales', 'Cancelled orders', ManagementPane.voidedOrders),
       ('Finance', 'Settlements', ManagementPane.settlements),
       ('People', 'Shifts', ManagementPane.shifts),
-      ('System', 'Sync', ManagementPane.sync),
+      ('Management', 'Sync', ManagementPane.sync),
       ('Settings', 'Printer & cash drawer', ManagementPane.printer),
-      ('Settings', 'User', ManagementPane.user),
-      ('Settings', 'About XOrder', ManagementPane.about),
     ]) {
       await tester.tap(barButton(menu));
       await tester.pumpAndSettle();
@@ -687,25 +735,45 @@ void main() {
       );
     }
 
-    await tester.tap(find.byKey(const Key('admin-exit')));
-    await tester.pumpAndSettle();
+    // The account menu's two pages: the person (its first line) and About.
+    await inAccountMenu(tester, adminName(container));
+    expect(
+      find.byKey(const ValueKey('back-office-pane-user')),
+      findsOneWidget,
+      reason: 'account › the person',
+    );
+    await inAccountMenu(tester, 'About XOrder POS');
+    expect(
+      find.byKey(const ValueKey('back-office-pane-about')),
+      findsOneWidget,
+      reason: 'account › About',
+    );
+
+    await inAccountMenu(tester, 'Log out');
     expect(container.read(adminSessionProvider), isNull);
-    // Back to Orders, where Admin Mode began: twelve bar lines later, the
+    // Back to Orders, where Admin Mode began: nine bar lines later, the
     // way back is still the one it was entered by.
     expect(
-      container.read(routerProvider).routerDelegate.currentConfiguration.uri
+      container
+          .read(routerProvider)
+          .routerDelegate
+          .currentConfiguration
+          .uri
           .path,
       PosRoutes.orders,
     );
-    expect(barLabels(tester), ['Settings'], reason: 'the till\'s bar again');
+    expect(barLabels(tester), [
+      'Settings',
+      'Rana A.',
+    ], reason: 'the till\'s bar again');
   }, variant: desktop);
 
   // The way out is where the chord was pressed, however the back office was
   // moved about in since. Every bar line used to name its pane and no way
   // back, so the first line chosen from the bar replaced the route's memory
   // of where Admin Mode was entered — and Exit went to the start screen
-  // instead of the till the manager had come from. The header's Exit is the
-  // only one since 15 Sep 2026: the bar's, under Home, went as a duplicate.
+  // instead of the till the manager had come from. Log out, last in the bar,
+  // is the only one since the header's Exit button went.
   testWidgets('entered by the chord from Orders, a pane chosen from the bar '
       'still exits to Orders', (tester) async {
     final container = await pumpApp(tester);
@@ -730,7 +798,7 @@ void main() {
     // pane: the memory has to survive being carried, not only made.
     for (final (menu, line) in [
       ('People', 'Roles & permissions'),
-      ('System', 'Activity'),
+      ('Management', 'Activity'),
     ]) {
       await tester.tap(barButton(menu));
       await tester.pumpAndSettle();
@@ -739,19 +807,33 @@ void main() {
     }
     expect(path(), PosRoutes.management);
 
-    await tester.tap(find.byKey(const Key('admin-exit')));
-    await tester.pumpAndSettle();
+    await inAccountMenu(tester, 'Log out');
     expect(container.read(adminSessionProvider), isNull);
     expect(path(), PosRoutes.orders, reason: 'where the chord was pressed');
   }, variant: desktop);
 
   testWidgets('handing the till over is named for what it is', (tester) async {
-    await pumpApp(tester);
+    final container = await pumpApp(tester);
+    String path() => container
+        .read(routerProvider)
+        .routerDelegate
+        .currentConfiguration
+        .uri
+        .path;
 
-    await openSettings(tester);
-    // The lock screen signs in whoever's PIN it is, so this is the same door as
-    // Lock — but nobody hands a till to a colleague by reaching for Lock.
-    expect(find.text('Switch user'), findsOneWidget);
+    // Not in Settings: that is configuration (XORD-022-D).
+    expect(await linesOf(tester, 'Settings'), isNot(contains('Switch user')));
+
+    // The lock screen signs in whoever's PIN it is, so Switch user and Lock
+    // are the same door — but nobody hands a till to a colleague by reaching
+    // for Lock, and nobody stepping away looks for Switch user. Two lines,
+    // two intentions, one destination: a documented duplicate (022-A).
+    for (final line in ['Switch user', 'Lock']) {
+      container.read(routerProvider).go(PosRoutes.orders);
+      await tester.pumpAndSettle();
+      await inAccountMenu(tester, line);
+      expect(path(), PosRoutes.lock, reason: line);
+    }
   }, variant: desktop);
 
   testWidgets('the reset names its chord, and nothing names Admin Mode\'s', (
@@ -770,27 +852,37 @@ void main() {
 
   // The owner, 15 Sep 2026: "there is duplication here". Exit was the header's
   // button and a line under Home; Home was a menu whose one other line was
-  // Home again. Now Exit is said once and Home is a word that opens Home.
-  testWidgets('Exit Admin Mode is said once, by the header, and Home is a '
-      'button straight to the landing', (tester) async {
+  // Home again. Then the header's button went too: the way out is Log out, a
+  // button last in the bar, and Home is a word that opens Home. Since
+  // XORD-022-D Log out is a line of the account menu, still said once.
+  testWidgets('Log out is said once, by the account menu, and the Dashboard is '
+      'a button straight to the landing', (tester) async {
     final container = await pumpApp(tester, offline: true);
     await intoAdminMode(tester, container);
 
-    expect(find.text('Exit Admin Mode'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const Key('admin-exit')),
-        matching: find.text('Exit Admin Mode'),
-      ),
-      findsOneWidget,
-      reason: 'the one is the header\'s',
+      find.byKey(const Key('admin-exit')),
+      findsNothing,
+      reason: 'the header carries no button of its own',
     );
-    // Under no menu of the bar, each opened in turn.
-    for (final label in barLabels(tester)) {
+    expect(find.text('Exit Admin Mode'), findsNothing);
+    expect(find.text('Log out'), findsNothing, reason: 'no button of its own');
+    expect(
+      barLabels(tester).last,
+      adminName(container),
+      reason: 'the account menu is last in the bar',
+    );
+    expect(
+      (await accountLines(tester)).where((line) => line == 'Log out'),
+      hasLength(1),
+    );
+    // Under no other menu of the bar, each opened in turn.
+    final labels = barLabels(tester);
+    for (final label in labels.sublist(0, labels.length - 1)) {
       if (menuOf(label).evaluate().isEmpty) continue;
       expect(
         await linesOf(tester, label),
-        isNot(contains('Exit Admin Mode')),
+        isNot(contains('Log out')),
         reason: label,
       );
     }
@@ -798,18 +890,55 @@ void main() {
     // Somewhere else, then Home by its word alone: no menu opens on the way.
     await tester.tap(barButton('People'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Staff'));
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Employees'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('back-office-pane-staff')), findsOneWidget);
-    expect(menuOf('Home'), findsNothing);
-    await tester.tap(barButton('Home'));
+    expect(
+      find.byKey(const ValueKey('back-office-pane-staff')),
+      findsOneWidget,
+    );
+    expect(menuOf('Dashboard'), findsNothing);
+    await tester.tap(barButton('Dashboard'));
     await tester.pumpAndSettle();
-    expect(openLines(), findsNothing, reason: 'no menu under Home');
+    expect(openLines(), findsNothing, reason: 'no menu under Dashboard');
     expect(find.byKey(const ValueKey('back-office-pane-home')), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
-      'Home',
+      'Dashboard',
     );
+  }, variant: desktop);
+
+  testWidgets('Sales is one page: a button in the bar, its filters and a '
+      'Returns switch inside', (tester) async {
+    final container = await pumpApp(tester, offline: true);
+    await intoAdminMode(tester, container);
+
+    await tester.tap(barButton('Sales'));
+    await tester.pumpAndSettle();
+    expect(openLines(), findsNothing, reason: 'no menu under Sales');
+    expect(
+      find.byKey(const ValueKey('back-office-pane-sales')),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      'Sales',
+    );
+    // Invoices and Cancelled orders are the list's own chips, not pages.
+    expect(find.text('Paid'), findsOneWidget);
+    expect(find.text('Voided'), findsOneWidget);
+    expect(find.text('Part refunded'), findsOneWidget);
+
+    // Returns is the other half of the switch, on the same pane.
+    await tester.tap(find.byKey(const Key('sales-view-returns')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('back-office-pane-sales')),
+      findsOneWidget,
+    );
+    expect(find.text('Voided'), findsNothing, reason: 'the refunds view');
+    await tester.tap(find.byKey(const Key('sales-view-sales')));
+    await tester.pumpAndSettle();
+    expect(find.text('Voided'), findsOneWidget);
   }, variant: desktop);
 
   testWidgets('and the same in Arabic, the map\'s own words', (tester) async {
@@ -820,43 +949,49 @@ void main() {
 
     // A cloud till: no المنيو, and one الإعدادات.
     expect(barLabels(tester), [
-      'الرئيسية',
+      'لوحة التحكم',
       'المبيعات',
       'التقارير',
       'المخزون',
       'المشتريات',
       'المالية',
-      'الأفراد',
-      'النظام',
+      'الموظفون والعملاء',
+      'الإدارة',
       'الإعدادات',
+      adminName(container),
     ]);
-    // الرئيسية a button, and the way out said once — by the header.
-    expect(menuOf('الرئيسية'), findsNothing);
-    expect(barButton('الرئيسية'), findsOneWidget);
-    expect(find.text('الخروج من وضع المسؤول'), findsOneWidget);
+    // لوحة التحكم a button, and the way out said once — in the account menu.
+    expect(menuOf('لوحة التحكم'), findsNothing);
+    expect(barButton('لوحة التحكم'), findsOneWidget);
+    expect(menuOf('المبيعات'), findsNothing);
+    expect(barButton('المبيعات'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byType(MenuBar),
-        matching: find.text('الخروج من وضع المسؤول'),
-      ),
+      find.text('تسجيل الخروج'),
       findsNothing,
+      reason: 'no button of its own',
     );
-    expect(await linesOf(tester, 'الأفراد'), [
+    expect(find.text('الخروج من وضع المسؤول'), findsNothing);
+    expect(await accountLines(tester), [
+      adminName(container),
+      'تبديل المستخدم',
+      'قفل',
+      'تسجيل الخروج',
+      'حول XOrder POS',
+    ]);
+    expect(await linesOf(tester, 'الموظفون والعملاء'), [
       'الموظفون',
       'الأدوار والصلاحيات',
       'الورديات',
       'العملاء',
     ]);
-    // Each of the map's six once, in its words — no second printer or about
-    // line from the till's own.
+    // Each of Settings' four once, in its words — no second printer line from
+    // the till's own, and no About: that is the account menu's.
     final settings = await linesOf(tester, 'الإعدادات');
     for (final item in [
       'إعدادات الطلبات والفواتير',
       'اللغة',
       'المظهر',
       'الطابعة ودرج النقدية',
-      'المستخدم',
-      'حول XOrder',
     ]) {
       expect(settings.where((l) => l == item), hasLength(1), reason: item);
     }
@@ -884,7 +1019,11 @@ void main() {
         await tester.pumpAndSettle();
 
         final labels = barLabels(tester);
-        expect(labels, hasLength(10), reason: 'the map\'s ten words');
+        expect(
+          labels,
+          hasLength(11),
+          reason: 'the ten words of the map, and the account menu',
+        );
         final rects = [
           for (var i = 0; i < labels.length; i++)
             tester.getRect(barButtons().at(i)),
@@ -914,9 +1053,8 @@ void main() {
 
   testWidgets('About names the version support will ask for', (tester) async {
     await pumpApp(tester);
-    await openSettings(tester);
-    await tester.tap(find.text('About XOrder POS'));
-    await tester.pumpAndSettle();
+    // The account menu's, outside Admin Mode: the till's own dialog.
+    await inAccountMenu(tester, 'About XOrder POS');
 
     expect(find.text('1.0.0'), findsOneWidget);
   }, variant: desktop);

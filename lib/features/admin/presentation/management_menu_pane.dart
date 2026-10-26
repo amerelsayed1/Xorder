@@ -11,6 +11,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../data/postgres/pos_database.dart' show PosDbException;
 import '../../../domain/models/catalog.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/tax.dart';
 import '../../../domain/models/shift.dart';
@@ -82,6 +83,10 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
 
   @override
   Widget build(BuildContext context) {
+    // Watched, not read, so the menu languages are resolved by the time a dialog
+    // opens and asks for them (XORD-005); a read in the dialog's builder would
+    // find the provider still loading and fall back to "both".
+    ref.watch(contentLanguagesProvider);
     final repository = ref.watch(catalogAdminRepositoryProvider);
     final catalog = ref.watch(catalogProvider);
 
@@ -234,7 +239,10 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
   ) async {
     final edited = await showDialog<Category>(
       context: context,
-      builder: (context) => _CategoryDialog(category: existing),
+      builder: (context) => _CategoryDialog(
+        category: existing,
+        languages: ref.read(contentLanguagesNowProvider),
+      ),
     );
     if (edited == null) return;
     await _write(() => repository.saveCategory(edited, by: widget.admin));
@@ -260,6 +268,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     await showDialog<bool>(
       context: context,
       builder: (context) => _ProductDialog(
+        languages: ref.read(contentLanguagesNowProvider),
         product: existing,
         categoryId: categoryId,
         taxGroups: taxGroups,
@@ -581,9 +590,16 @@ class _ProductList extends StatelessWidget {
 }
 
 class _CategoryDialog extends StatefulWidget {
-  const _CategoryDialog({this.category});
+  const _CategoryDialog({
+    this.category,
+    this.languages = ContentLanguages.both,
+  });
 
   final Category? category;
+
+  /// The languages the menu is written in (XORD-005): which name fields to ask
+  /// for. The other one keeps whatever it holds.
+  final ContentLanguages languages;
 
   @override
   State<_CategoryDialog> createState() => _CategoryDialogState();
@@ -603,27 +619,45 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => MenuDialog(
-    title: widget.category == null
-        ? context.strings.newCategory
-        : context.strings.renameCategory,
-    onSave: () => Navigator.of(context).pop(
-      (widget.category ?? const Category(id: 0, nameEn: '')).copyWith(
-        nameEn: _name.text,
-        nameAr: _nameAr.text,
-      ),
-    ),
-    children: [
-      MenuInput(controller: _name, label: context.strings.fieldName),
-      const SizedBox(height: PosSpace.md),
-      MenuInput(
-        controller: _nameAr,
-        label: context.strings.fieldNameArabic,
-        optional: true,
-        arabic: true,
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final languages = widget.languages;
+    return MenuDialog(
+      title: widget.category == null
+          ? context.strings.newCategory
+          : context.strings.renameCategory,
+      onSave: () {
+        final names = resolveNames(
+          languages: languages,
+          typedEn: _name.text,
+          typedAr: _nameAr.text,
+          previousEn: widget.category?.nameEn,
+          previousAr: widget.category?.nameAr,
+        );
+        Navigator.of(context).pop(
+          (widget.category ?? const Category(id: 0, nameEn: '')).copyWith(
+            nameEn: names.nameEn,
+            nameAr: names.nameAr,
+          ),
+        );
+      },
+      children: [
+        if (languages.showsEnglish) ...[
+          MenuInput(controller: _name, label: context.strings.fieldName),
+          const SizedBox(height: PosSpace.md),
+        ],
+        if (languages.showsArabic)
+          MenuInput(
+            controller: _nameAr,
+            // Required when it is the only language; optional beside English.
+            label: languages == ContentLanguages.arabic
+                ? context.strings.fieldName
+                : context.strings.fieldNameArabic,
+            optional: languages == ContentLanguages.both,
+            arabic: true,
+          ),
+      ],
+    );
+  }
 }
 
 /// What saving the item came to: the item as stored — kept by the dialog even
@@ -660,6 +694,7 @@ final class _InlineEntry extends _Entry {
 
 class _ProductDialog extends StatefulWidget {
   const _ProductDialog({
+    this.languages = ContentLanguages.both,
     required this.categoryId,
     required this.taxGroups,
     required this.onSave,
@@ -672,6 +707,9 @@ class _ProductDialog extends StatefulWidget {
 
   final Product? product;
   final int categoryId;
+
+  /// The languages the menu is written in (XORD-005).
+  final ContentLanguages languages;
 
   /// The units in use, for counting it in when it is tracked.
   final List<PosUnit> units;
@@ -877,7 +915,10 @@ class _ProductDialogState extends State<_ProductDialog> {
           case _SharedEntry(:final groupId):
             groups.add(OptionGroupRef.shared(groupId));
           case _InlineEntry(:final group):
-            final (:draft, :error) = group.toDraft(strings);
+            final (:draft, :error) = group.toDraft(
+              strings,
+              languages: widget.languages,
+            );
             if (draft == null) {
               setState(() => _error = error);
               return;
@@ -891,9 +932,16 @@ class _ProductDialogState extends State<_ProductDialog> {
         _saved ??
         widget.product ??
         Product(id: 0, categoryId: widget.categoryId, nameEn: '', price: price);
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _name.text,
+      typedAr: _nameAr.text,
+      previousEn: base.nameEn,
+      previousAr: base.nameAr,
+    );
     final product = base.copyWith(
-      nameEn: _name.text,
-      nameAr: _nameAr.text,
+      nameEn: names.nameEn,
+      nameAr: names.nameAr,
       price: price,
       discountedPrice: offer,
       // A cleared box means "no offer", which `copyWith` cannot infer from a
@@ -952,15 +1000,21 @@ class _ProductDialogState extends State<_ProductDialog> {
       maxWidth: 720,
       onSave: _save,
       children: [
-        MenuInput(controller: _name, label: context.strings.fieldName),
-        const SizedBox(height: PosSpace.md),
-        MenuInput(
-          controller: _nameAr,
-          label: context.strings.fieldNameArabic,
-          optional: true,
-          arabic: true,
-        ),
-        const SizedBox(height: PosSpace.md),
+        if (widget.languages.showsEnglish) ...[
+          MenuInput(controller: _name, label: context.strings.fieldName),
+          const SizedBox(height: PosSpace.md),
+        ],
+        if (widget.languages.showsArabic) ...[
+          MenuInput(
+            controller: _nameAr,
+            label: widget.languages == ContentLanguages.arabic
+                ? context.strings.fieldName
+                : context.strings.fieldNameArabic,
+            optional: widget.languages == ContentLanguages.both,
+            arabic: true,
+          ),
+          const SizedBox(height: PosSpace.md),
+        ],
         // Once the item has sizes these two are no longer the owner's to set:
         // they mirror the default size, which is what the tile quotes and what
         // an untouched add charges. See [_mirror].
@@ -1314,22 +1368,25 @@ class _ProductDialogState extends State<_ProductDialog> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: _groupName(
-                  Key('$prefix-name'),
-                  group.nameEn,
-                  s.itemGroupNameEn,
+              if (widget.languages.showsEnglish)
+                Expanded(
+                  child: _groupName(
+                    Key('$prefix-name'),
+                    group.nameEn,
+                    s.itemGroupNameEn,
+                  ),
                 ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              Expanded(
-                child: _groupName(
-                  Key('$prefix-name-ar'),
-                  group.nameAr,
-                  s.itemGroupNameAr,
-                  arabic: true,
+              if (widget.languages == ContentLanguages.both)
+                const SizedBox(width: PosSpace.sm),
+              if (widget.languages.showsArabic)
+                Expanded(
+                  child: _groupName(
+                    Key('$prefix-name-ar'),
+                    group.nameAr,
+                    s.itemGroupNameAr,
+                    arabic: true,
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: PosSpace.sm),
@@ -1351,6 +1408,7 @@ class _ProductDialogState extends State<_ProductDialog> {
             keyPrefix: prefix,
             onChanged: _changed,
             markDefault: markDefault,
+            languages: widget.languages,
           ),
         ],
       ),

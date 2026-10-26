@@ -789,6 +789,11 @@ class LocalBootstrap {
     // invent either.
     'GRANT SELECT ON pos_tender_types, pos_service_charges, '
         'pos_order_types TO "$role"',
+    // Where money goes (XORD-015, stage 1): the accounts and which one each
+    // payment method pays into. Read-only here, for the same reason as the
+    // payment methods themselves. Nothing is posted to an account yet.
+    'GRANT SELECT ON pos_financial_accounts, pos_tender_account_defaults '
+        'TO "$role"',
     // The tax breakdown a filing needs, written with the sale (§17, ETA).
     // INSERT and SELECT, never UPDATE: the rates a customer was charged are
     // part of the record of what they paid.
@@ -895,6 +900,20 @@ class LocalBootstrap {
       'GRANT INSERT, UPDATE ON pos_tender_types TO "$role"',
       'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_tender_types_id_seq '
           'TO "$role"',
+      // Financial accounts, since XORD-015 delivers them in the bundle's
+      // `money` block. No DELETE on the accounts: one the platform stopped
+      // sending is retired, because a payment will name it. The defaults hold
+      // no history (nothing is posted against them), so the seeder may replace
+      // them wholesale and gets DELETE there. UPDATE on the sequences is for
+      // the `setval` that keeps new rows above the platform's ids.
+      'GRANT INSERT, UPDATE ON pos_financial_accounts TO "$role"',
+      'GRANT INSERT, UPDATE, DELETE ON pos_tender_account_defaults TO "$role"',
+      // UPDATE only where `setval` needs it: the accounts keep platform ids,
+      // so `_bumpSequences` moves that serial; the defaults take `nextval`.
+      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE '
+          'pos_financial_accounts_id_seq TO "$role"',
+      'GRANT USAGE, SELECT ON SEQUENCE '
+          'pos_tender_account_defaults_id_seq TO "$role"',
       // Who the receipt says sold the food, since A3 delivers it in the bundle
       // (`receipt_profiles[]`). The SELECT above is unconditional — every till
       // prints a slip — and this adds the seeder's upsert on top.
@@ -950,6 +969,14 @@ class LocalBootstrap {
       // AFTER this list, so the REVOKE cannot take it from an administrator.
       'REVOKE INSERT, UPDATE ON pos_tender_types FROM "$role"',
       'REVOKE UPDATE ON SEQUENCE pos_tender_types_id_seq FROM "$role"',
+      // The same for the accounts: offline they are Management's to author
+      // over the admin credential, and a till that was once cloud must not
+      // keep the seeder's writes.
+      'REVOKE INSERT, UPDATE ON pos_financial_accounts FROM "$role"',
+      'REVOKE INSERT, UPDATE, DELETE ON pos_tender_account_defaults '
+          'FROM "$role"',
+      'REVOKE UPDATE ON SEQUENCE pos_financial_accounts_id_seq, '
+          'pos_tender_account_defaults_id_seq FROM "$role"',
       // Offline, this row is not a cache of anything: it is the trade name and
       // the tax registration number on a legal document, and the till keeps
       // SELECT and nothing else. `till_grants_enforced_test` applies the cloud
@@ -1107,6 +1134,15 @@ class LocalBootstrap {
         'pos_order_types TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_tender_types_id_seq, '
         'pos_service_charges_id_seq, pos_order_types_id_seq TO "$role"',
+    // Financial accounts (XORD-015). Offline only, in practice: on a cloud till
+    // the platform authors them and the administrator pane is read-only. No
+    // DELETE on the accounts — they are retired. The defaults carry no history
+    // and are replaced or cleared by the owner, so they may be deleted.
+    'GRANT SELECT, INSERT, UPDATE ON pos_financial_accounts TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_tender_account_defaults '
+        'TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_financial_accounts_id_seq, '
+        'pos_tender_account_defaults_id_seq TO "$role"',
     // Who the restaurant buys from. No DELETE: a supplier is retired, because
     // their invoices name them.
     'GRANT SELECT, INSERT, UPDATE ON pos_suppliers TO "$role"',

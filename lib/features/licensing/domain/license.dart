@@ -412,6 +412,20 @@ final class LicenceRevoked extends LicenceNotice {
   const LicenceRevoked();
 }
 
+/// The platform knows this licence and it is not withdrawn, but it covers a
+/// fixed number of devices and every seat is already used by another device.
+///
+/// Not [LicenceRevoked] (nothing was withdrawn) and not "key not recognised"
+/// (the key is right): an installer told either goes looking for a problem that
+/// is not there. The fix is commercial or administrative — release the old
+/// device, or buy another seat — so the words say whom to ask.
+final class LicenceSeatsFull extends LicenceNotice {
+  const LicenceSeatsFull(this.seats);
+
+  /// How many devices the licence covers, when the platform said.
+  final int? seats;
+}
+
 /// Throttled. The activation endpoint allows a handful of attempts per key per
 /// minute, so an installer retrying a key they believe in will hit it — and
 /// being told "not recognised" at that point is the opposite of the truth.

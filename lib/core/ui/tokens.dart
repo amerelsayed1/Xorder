@@ -79,6 +79,7 @@ enum PosPalette {
     shellDangerBg: Color(0xFFFDEEEC),
     shellDangerText: Color(0xFFC0392B),
     ctaDisabled: Color(0xFF6B6053),
+    logoPlate: Color(0xFFFFFFFF),
   ),
 
   /// The body flipped dark, and the shell taken deeper than it.
@@ -142,6 +143,7 @@ enum PosPalette {
     shellDangerBg: Color(0xFF3A1512),
     shellDangerText: Color(0xFFF2A79E),
     ctaDisabled: Color(0xFF4A3F31),
+    logoPlate: Color(0xFFFFFFFF),
   );
 
   const PosPalette({
@@ -186,6 +188,7 @@ enum PosPalette {
     required this.shellDangerBg,
     required this.shellDangerText,
     required this.ctaDisabled,
+    required this.logoPlate,
   });
 
   /// Which theme this is. Handed to Material so its own defaults agree.
@@ -295,6 +298,13 @@ enum PosPalette {
   /// button. Dark enough to carry white in both themes, because the label
   /// stays white while the fill goes grey.
   final Color ctaDisabled;
+
+  /// The ground a tenant's logo is drawn on (XORD-021). White in BOTH themes,
+  /// like [accent] it does not move: a logo is made for white paper, and on the
+  /// dark theme's ground a dark mark on a transparent PNG would simply vanish.
+  /// A token rather than a literal because screens may not name a colour, and
+  /// because this is the one place that decision is written down.
+  final Color logoPlate;
 
   bool get isDark => brightness == Brightness.dark;
 

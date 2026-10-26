@@ -75,6 +75,7 @@ class ReceiptPreviewDialog extends ConsumerWidget {
                     tenderMethods:
                         ref.watch(tenderTypesProvider).valueOrNull ??
                         TenderMethod.seeded,
+                    logo: ref.watch(receiptLogoProvider).valueOrNull,
                   ),
                 ),
               ),

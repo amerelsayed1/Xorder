@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
+import 'package:xorder_pos/domain/models/ticket.dart';
 
 import '../support/fakes.dart';
 
@@ -24,11 +26,12 @@ void main() {
   );
   const zero = TaxGroup(id: 2, nameEn: 'Zero-rated', rateBp: 0);
 
-  ProviderContainer withGroups(List<TaxGroup> groups) {
+  ProviderContainer withGroups(List<TaxGroup> groups, {TaxConfig? stored}) {
     final container = ProviderContainer(
       overrides: [
         ...fakeRepositoryOverrides(),
         taxGroupsProvider.overrideWith((ref) async => groups),
+        if (stored != null) moneyConfigProvider.overrideWith((ref) async => stored),
       ],
     );
     addTearDown(container.dispose);
@@ -97,5 +100,70 @@ void main() {
     final config = container.read(taxConfigProvider);
     expect(config.taxGroups, hasLength(2));
     expect(config.serviceBp, isNotNull, reason: 'the rate survived');
+  });
+
+  group('what a ticket is taxed at (XORD-027)', () {
+    // 100.00 of food, no service, so the VAT is the whole story.
+    Future<int> vatFor(
+      List<TaxGroup> groups, {
+      required TaxConfig stored,
+    }) async {
+      final container = withGroups(groups, stored: stored);
+      await container.read(taxGroupsProvider.future);
+      await container.read(moneyConfigProvider.future);
+      return Ticket(
+        id: 'txn-1',
+        orderType: OrderType.takeaway,
+        taxConfig: container.read(taxConfigProvider),
+        lines: [
+          TicketLine(
+            product: const Product(
+              id: 1,
+              categoryId: 1,
+              nameEn: 'Item',
+              price: Money(10000),
+            ),
+            quantity: 1,
+          ),
+        ],
+      ).totals.vat.minor;
+    }
+
+    test('a default group at 0 charges nothing, whatever vatBp says', () async {
+      expect(
+        await vatFor(
+          const [TaxGroup(id: 1, nameEn: 'VAT', rateBp: 0, isDefault: true)],
+          stored: const TaxConfig(serviceBp: 0, vatBp: 1400),
+        ),
+        0,
+      );
+    });
+
+    test('and vatBp at 0 does not override a default group at 14%', () async {
+      // The mechanism behind the bug, pinned so nobody rediscovers it: the
+      // group wins. This is why `saveMoneyConfig` has to move the group, and
+      // why the pane reads its figure from the group.
+      expect(
+        await vatFor(
+          const [standard],
+          stored: const TaxConfig(serviceBp: 0, vatBp: 0),
+        ),
+        1400,
+      );
+    });
+
+    test('with no groups, vatBp is the rate', () async {
+      expect(
+        await vatFor(const [], stored: const TaxConfig(serviceBp: 0, vatBp: 0)),
+        0,
+      );
+      expect(
+        await vatFor(
+          const [],
+          stored: const TaxConfig(serviceBp: 0, vatBp: 1500),
+        ),
+        1500,
+      );
+    });
   });
 }

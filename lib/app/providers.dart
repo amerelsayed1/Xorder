@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +38,7 @@ import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
+import '../data/postgres/postgres_business_logo_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
 import '../data/postgres/postgres_customers_repository.dart';
@@ -67,6 +69,8 @@ import '../data/postgres/postgres_supplier_invoices_repository.dart';
 import '../data/postgres/postgres_purchase_orders_repository.dart';
 import '../data/postgres/postgres_receiving_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
+import '../data/postgres/postgres_financial_accounts_admin_repository.dart';
+import '../data/postgres/postgres_financial_accounts_repository.dart';
 import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
@@ -107,6 +111,8 @@ import '../domain/models/refund_history.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
 import '../domain/models/order_type_config.dart';
+import '../domain/models/business_logo.dart';
+import '../domain/models/content_languages.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/purchase_order.dart';
 import '../domain/models/tax.dart';
@@ -114,6 +120,7 @@ import '../domain/models/supplier.dart';
 import '../domain/models/supplier_invoice.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/models/service_charge.dart';
+import '../domain/models/financial_account.dart';
 import '../domain/models/tender_method.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
@@ -1163,6 +1170,11 @@ void applySyncOutcome(ProviderContainer container, SyncOutcome outcome) {
     rejected.state = outcome.deviceTokenRejected;
   }
 
+  // A new or removed logo, whether it arrived with a bundle or alone.
+  if (outcome.reseeded || outcome.logoChanged) {
+    container.invalidate(businessLogoProvider);
+  }
+
   if (outcome.reseeded) {
     // The platform re-authored the till's world; every cache of it is stale
     // at once.
@@ -1283,6 +1295,108 @@ final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
     restaurantId: context.restaurantId,
   );
 });
+
+/// Which languages the menu is written in (XORD-005).
+///
+/// Read from the restaurant row, where an offline install authors it and a cloud
+/// till's bundle writes it. `both` while the query is in flight and on a till
+/// with no database: asking for more fields than necessary is the safe way to
+/// be wrong, and it is exactly how every till behaved before this existed.
+final contentLanguagesProvider = FutureProvider<ContentLanguages>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return ContentLanguages.both;
+  }
+  final rows = await ref
+      .watch(posDatabaseProvider)
+      .query(
+        config,
+        'SELECT content_languages FROM pos_restaurants WHERE id = @r',
+        parameters: {'r': context.restaurantId},
+      );
+  return rows.isEmpty
+      ? ContentLanguages.both
+      : ContentLanguages.fromWire(rows.first[0] as String?);
+});
+
+/// The business logo this till shows (XORD-021), or null for "none yet".
+///
+/// Read from the restaurant row on the till's own credential, so it is the copy
+/// stored on the branch server: no network is involved and a restart changes
+/// nothing. **Never throws.** A missing database, an unreadable row or a bad
+/// column is "no logo", because the start screen that draws this must open
+/// whatever the logo does: a failure here is the bundled mark, not an error.
+final businessLogoProvider = FutureProvider<BusinessLogo?>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+  try {
+    final rows = await ref
+        .watch(posDatabaseProvider)
+        .query(
+          config,
+          'SELECT logo_bytes, logo_mime, logo_source, logo_updated_at '
+          'FROM pos_restaurants WHERE id = @r AND logo_bytes IS NOT NULL',
+          parameters: {'r': context.restaurantId},
+        );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final bytes = row[0];
+    final source = LogoSource.fromWire(row[2] as String?);
+    if (bytes is! Uint8List || bytes.isEmpty || source == null) return null;
+    return BusinessLogo(
+      bytes: bytes,
+      mime: row[1] as String? ?? '',
+      source: source,
+      updatedAt: row[3] as DateTime?,
+    );
+  } on Object {
+    return null;
+  }
+});
+
+/// The logo a receipt carries (XORD-024): the restaurant's, as bytes, or null.
+///
+/// Null when this till is set not to print it (Settings › Printer) and null
+/// when there is none. **Never throws**, like [businessLogoProvider] beneath
+/// it: a logo that cannot be read is a receipt without one, never a receipt
+/// that does not print. Offline and cloud tills read the same row.
+final receiptLogoProvider = FutureProvider<Uint8List?>((ref) async {
+  if (!ref.watch(printerConfigProvider).printLogo) return null;
+  try {
+    return (await ref.watch(businessLogoProvider.future))?.bytes;
+  } on Object {
+    return null;
+  }
+});
+
+/// Where the owner changes the logo: offline installs only, on the
+/// administrator connection like every other authoring repository. Null on a
+/// cloud till, whose logo is the platform's.
+final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (config.mode != DeploymentMode.offline) return null;
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  return PostgresBusinessLogoRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    offline: true,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    terminalId: context.terminalId,
+  );
+});
+
+/// The same answer, synchronously, for a form that cannot wait on a future.
+final contentLanguagesNowProvider = Provider<ContentLanguages>(
+  (ref) =>
+      ref.watch(contentLanguagesProvider).valueOrNull ?? ContentLanguages.both,
+);
 
 /// The order types THIS branch actually offers the cashier (POS-BE-005, §31).
 ///
@@ -3137,6 +3251,66 @@ final tenderTypesProvider = FutureProvider<List<TenderMethod>>(
 final tenderTypesAllProvider = FutureProvider<List<TenderMethod>>(
   (ref) => ref.watch(tenderTypesRepositoryProvider).all(includeInactive: true),
 );
+
+// ── Financial accounts (XORD-015, stage 1) ─────────────────────────────────
+//
+// Where the business keeps its money, and which account each payment method
+// pays into. Nothing reads them to move money yet.
+
+final financialAccountsRepositoryProvider =
+    Provider<FinancialAccountsRepository>((ref) {
+      final config = ref.watch(deploymentProvider);
+      final context = ref.watch(posWriteContextProvider);
+      if (context == null || PosDatabase.hostFor(config) == null) {
+        return const UnconfiguredFinancialAccountsRepository();
+      }
+      return PostgresFinancialAccountsRepository(
+        database: ref.watch(posDatabaseProvider),
+        config: config,
+        restaurantId: context.restaurantId,
+      );
+    });
+
+/// Every account including switched-off ones, for the back office, which has
+/// to show a retired one to let somebody bring it back.
+final financialAccountsProvider = FutureProvider<List<FinancialAccount>>(
+  (ref) => ref
+      .watch(financialAccountsRepositoryProvider)
+      .accounts(includeInactive: true),
+);
+
+/// The branches an account can be tied to.
+final accountBranchesProvider = FutureProvider<List<PosBranch>>(
+  (ref) => ref.watch(financialAccountsRepositoryProvider).branches(),
+);
+
+final tenderAccountDefaultsProvider =
+    FutureProvider<List<TenderAccountDefault>>(
+      (ref) => ref.watch(financialAccountsRepositoryProvider).defaults(),
+    );
+
+/// Authoring accounts. Null on a CLOUD till: the platform is the single author
+/// there and `BootstrapSeeder` replaces these rows from the bundle, so an
+/// account made here would last until the next sync. Null is also "no
+/// database", and the pane reads both as "read, do not offer to write".
+final financialAccountsAdminRepositoryProvider =
+    Provider<FinancialAccountsAdminRepository?>((ref) {
+      final config = ref.watch(deploymentProvider);
+      final context = ref.watch(posWriteContextProvider);
+
+      if (config.mode != DeploymentMode.offline) return null;
+      if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+      return PostgresFinancialAccountsAdminRepository(
+        database: ref.watch(adminPosDatabaseProvider),
+        config: ref.watch(adminDeploymentProvider),
+        adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+        offline: true,
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+      );
+    });
 
 /// Whether e-receipts are filed on this build. See [etaFilingEnabled].
 ///

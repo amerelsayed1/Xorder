@@ -6,7 +6,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
 
-/// 186px rail on surface with a 2px ink right border.
+/// 186px rail on surface with a 2px ink border on the side facing the grid.
 class CategoryRail extends StatelessWidget {
   const CategoryRail({
     super.key,
@@ -39,7 +39,11 @@ class CategoryRail extends StatelessWidget {
       width: PosSize.categoryRail,
       decoration: BoxDecoration(
         color: context.pos.surface,
-        border: Border(right: context.pos.emphasis),
+        // The side facing the grid — the right in English, the left in Arabic,
+        // where the rail sits on the right of the screen. A physical `right`
+        // drew this on the window's outer edge in Arabic and left the rail
+        // with no divider from the products.
+        border: BorderDirectional(end: context.pos.emphasis),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,7 +78,11 @@ class CategoryRail extends StatelessWidget {
               border: Border(top: context.pos.emphasis),
             ),
             padding: const EdgeInsets.all(PosSpace.sm),
+            // Stretched, so Tables and Orders are one width. Centred, the
+            // Tables button shrank to its label and floated in the middle of
+            // the rail above a full-width Orders.
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // "Open tickets" used to sit here, above Tables, toasting
                 // "not built yet". It was a second door to the same room: an
@@ -93,7 +101,9 @@ class CategoryRail extends StatelessWidget {
                             color: context.pos.danger,
                           ),
                         ),
-                  alignLeft: openTicketCount > 0,
+                  // Label at the start, as Orders' is: the count, when there
+                  // is one, takes the end where Orders has its key chip.
+                  alignLeft: true,
                   foreground: context.pos.body,
                   border: Border.fromBorderSide(context.pos.hairline),
                   onPressed: onTables,

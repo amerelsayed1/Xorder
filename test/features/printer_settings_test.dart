@@ -128,11 +128,98 @@ void main() {
   testWidgets('the saved printer is offered before any scan', (tester) async {
     // Switched off today, or on another floor: still the one this till uses,
     // and still choosable without finding it again first.
-    await open(
-      tester,
-      current: const PrinterConfig(name: '10.20.30.40:9100'),
-    );
+    await open(tester, current: const PrinterConfig(name: '10.20.30.40:9100'));
     expect(find.byKey(const Key('printer-10.20.30.40:9100')), findsOneWidget);
+  });
+
+  group('print logo on receipts (XORD-024)', () {
+    IconData tick(WidgetTester tester) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('printer-logo')),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+
+    testWidgets('is on by default', (tester) async {
+      await open(tester);
+
+      expect(find.text(strings.printerPrintLogo), findsOneWidget);
+      expect(tick(tester), Icons.check_box);
+    });
+
+    testWidgets('turned off, it is off in use and after a restart', (
+      tester,
+    ) async {
+      final (container, store) = await open(tester);
+
+      await tester.tap(find.byKey(const Key('printer-logo')));
+      await tester.pump();
+      expect(tick(tester), Icons.check_box_outline_blank);
+      await tester.tap(find.byKey(const Key('printer-save')));
+      await tester.pumpAndSettle();
+
+      expect(container.read(printerConfigProvider).printLogo, isFalse);
+      expect(store.saved!.printer.printLogo, isFalse);
+    });
+
+    testWidgets('survives choosing a printer and a paper width afterwards', (
+      tester,
+    ) async {
+      // The form used to rebuild the whole config from the two fields it knew
+      // about, so every new field went back to its default on the next tap.
+      final (container, store) = await open(tester);
+
+      await tester.tap(find.byKey(const Key('printer-logo')));
+      await tester.tap(find.byKey(const Key('printer-find')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('printer-EPSON TM-T20III')));
+      await tester.tap(find.byKey(const Key('printer-paper-384')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('printer-save')));
+      await tester.pumpAndSettle();
+
+      expect(container.read(printerConfigProvider).printLogo, isFalse);
+      expect(store.saved!.printer.printLogo, isFalse);
+      expect(store.saved!.printer.paperWidthDots, PrinterConfig.width58mm);
+    });
+
+    testWidgets('a saved off is shown as off when the pane opens', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        current: const PrinterConfig(name: 'X', printLogo: false),
+      );
+
+      expect(tick(tester), Icons.check_box_outline_blank);
+    });
+
+    test('the file reads and writes it, and an old file reads as on', () {
+      expect(const PrinterConfig().printLogo, isTrue);
+      expect(
+        PrinterConfig.fromJson(const PrinterConfig(printLogo: false).toJson())
+            .printLogo,
+        isFalse,
+      );
+      // Written by a build that did not know the key, or by hand.
+      expect(PrinterConfig.fromJson(const {'name': 'X'}).printLogo, isTrue);
+      expect(
+        PrinterConfig.fromJson(const {'print_logo': 'no'}).printLogo,
+        isTrue,
+      );
+      expect(
+        PrinterConfig.fromJson(const {'print_logo': null}).printLogo,
+        isTrue,
+      );
+      expect(
+        const PrinterConfig(printLogo: false).copyWith(name: 'Y').printLogo,
+        isFalse,
+      );
+      expect(const PrinterConfig().toJson()['print_logo'], isTrue);
+    });
   });
 }
 

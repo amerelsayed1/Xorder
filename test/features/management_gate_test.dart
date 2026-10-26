@@ -934,7 +934,10 @@ void main() {
     expect(offersPurchasing(), isTrue, reason: 'the owner buys');
 
     // Nour: a supervisor the owner let into Admin Mode, who does not buy.
-    await tester.tap(find.byKey(const Key('admin-exit')));
+    // The owner leaves as Log out does — this harness has no window bar.
+    await container
+        .read(adminSessionProvider.notifier)
+        .end(AdminSessionEnd.exited);
     await tester.pumpAndSettle();
     await enter(tester, 'nour', pin: '2468');
 
@@ -947,12 +950,18 @@ void main() {
     // `initialPane` comes from a menu item somebody may have had every right to
     // use last week. The rail hiding it while the body still rendered it would
     // be the gate saying no and the screen saying yes.
-    await open(tester, pane: ManagementPane.purchasing, offline: true);
+    final container = await open(
+      tester,
+      pane: ManagementPane.purchasing,
+      offline: true,
+    );
     await enter(tester, 'amer');
     expect(find.text('New order'), findsOneWidget);
 
     // The same deep link, and somebody else through the door.
-    await tester.tap(find.byKey(const Key('admin-exit')));
+    await container
+        .read(adminSessionProvider.notifier)
+        .end(AdminSessionEnd.exited);
     await tester.pumpAndSettle();
     await enter(tester, 'nour', pin: '2468');
 

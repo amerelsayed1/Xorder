@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -108,7 +109,7 @@ class _LicenceScreenState extends ConsumerState<LicenceScreen> {
     final entitlement = ref.watch(licenceEntitlementProvider);
     final strings = context.strings;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: context.pos.page,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -186,6 +187,13 @@ class _LicenceScreenState extends ConsumerState<LicenceScreen> {
           ),
         ],
       ),
+    );
+    // Escape is the back button, as on every screen that has one.
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): widget.onClose,
+      },
+      child: Focus(autofocus: true, child: scaffold),
     );
   }
 

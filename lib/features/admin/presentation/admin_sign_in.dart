@@ -219,7 +219,7 @@ class _AdminSignInViewState extends ConsumerState<AdminSignInView> {
       obscureText: true,
       enabled: !_busy,
       onSubmitted: (_) => onSubmitted(),
-      textAlign: TextAlign.center,
+      textAlign: TextAlign.start,
       style: PosText.mono(size: 16, color: pos.shellText),
       cursorColor: pos.accent,
       decoration: shellInputDecoration(pos),
@@ -278,6 +278,7 @@ class _AdminSignInViewState extends ConsumerState<AdminSignInView> {
             UsernameField(
               key: const Key('admin-username'),
               controller: _username,
+              textAlign: TextAlign.start,
               onSubmitted: _secretFocus.requestFocus,
             ),
             const SizedBox(height: PosSpace.lg),
@@ -331,6 +332,21 @@ class _AdminSignInViewState extends ConsumerState<AdminSignInView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // The product's mark above the door (owner, 26 Oct 2026). A
+                // missing asset is better absent than a broken-image glyph.
+                Padding(
+                  padding: const EdgeInsets.only(bottom: PosSpace.xl),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/icons/xorder_logo_official.png',
+                      key: const Key('admin-sign-in-logo'),
+                      width: 160,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stack) =>
+                          const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
                 ...children,
                 // Reserved, not conditional, so the button does not jump
                 // under a finger already on its way to it.
@@ -500,6 +516,7 @@ class _TechnicianResetDialogState
               UsernameField(
                 key: const Key('technician-username'),
                 controller: _username,
+                textAlign: TextAlign.start,
                 onSubmitted: _passwordFocus.requestFocus,
               ),
               const SizedBox(height: PosSpace.lg),
@@ -512,7 +529,7 @@ class _TechnicianResetDialogState
                 obscureText: true,
                 enabled: !_busy,
                 onSubmitted: (_) => _submit(),
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.start,
                 style: PosText.mono(size: 16, color: pos.shellText),
                 cursorColor: pos.accent,
                 decoration: shellInputDecoration(pos),

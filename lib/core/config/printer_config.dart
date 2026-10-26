@@ -6,7 +6,11 @@
 /// the branch database — a till that cannot reach PostgreSQL still has to be
 /// able to print the slip it is holding.
 class PrinterConfig {
-  const PrinterConfig({this.name, this.paperWidthDots = width80mm});
+  const PrinterConfig({
+    this.name,
+    this.paperWidthDots = width80mm,
+    this.printLogo = true,
+  });
 
   /// Nothing configured. What a till has before anybody has run the wizard's
   /// hardware step, and what a till with no printer keeps for ever.
@@ -78,17 +82,32 @@ class PrinterConfig {
   /// number nobody standing at a counter knows.
   final int paperWidthDots;
 
+  /// Whether the restaurant's logo is printed (and previewed) at the top of the
+  /// receipt, when it has one (XORD-024).
+  ///
+  /// On by default: a till that already holds a logo prints it after the
+  /// update, and an owner who would rather save the roll turns it off here.
+  /// A property of the till like the paper width, because the paper is the
+  /// till's, so it lives in the config file and not in the branch database.
+  final bool printLogo;
+
   /// True when there is somewhere to send bytes.
   bool get isConfigured => (name?.trim().isNotEmpty ?? false);
 
-  PrinterConfig copyWith({String? name, int? paperWidthDots}) => PrinterConfig(
+  PrinterConfig copyWith({
+    String? name,
+    int? paperWidthDots,
+    bool? printLogo,
+  }) => PrinterConfig(
     name: name ?? this.name,
     paperWidthDots: paperWidthDots ?? this.paperWidthDots,
+    printLogo: printLogo ?? this.printLogo,
   );
 
   Map<String, Object?> toJson() => {
     'name': name,
     'paper_width_dots': paperWidthDots,
+    'print_logo': printLogo,
   };
 
   /// Tolerant, like every other reader of the config file: a terminal must boot
@@ -102,6 +121,9 @@ class PrinterConfig {
       paperWidthDots: width == null || width < 128 || width > 2048
           ? width80mm
           : width,
+      // Absent, or anything but a plain false, reads as on: a file written by a
+      // build that did not know the key must not switch the logo off.
+      printLogo: json['print_logo'] != false,
     );
   }
 }

@@ -65,11 +65,17 @@ class SaleScreen extends ConsumerStatefulWidget {
     required this.onCloseShift,
     this.onTablesToCollect,
     this.onChangeTable,
+    this.onBack,
     this.collectOnOpen = false,
   });
 
   final VoidCallback onLock;
   final VoidCallback onTables;
+
+  /// Escape, with nothing to clear: one step back — the floor for a seated
+  /// order, otherwise the home screen. Null or a no-op where there is nowhere
+  /// to go back to (pos-home-screen).
+  final VoidCallback? onBack;
 
   /// To the floor because a collect needs a table first — carrying
   /// [SaleIntent.collect], so the floor sends the cashier back here into
@@ -692,7 +698,18 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
             if (_searchController.text.isNotEmpty) {
               _searchController.clear();
               ref.read(posUiProvider.notifier).setQuery('');
+              return;
             }
+            // Nothing to clear: back one step. Not while somebody is typing in
+            // some other box — Escape there means "stop editing", and leaving
+            // the screen under their cursor would lose what they were doing.
+            final focus = FocusManager.instance.primaryFocus;
+            final typingElsewhere =
+                focus != null &&
+                focus != _searchFocus &&
+                focus.context?.findAncestorWidgetOfExactType<EditableText>() !=
+                    null;
+            if (!typingElsewhere) widget.onBack?.call();
           },
         },
         child: Focus(autofocus: true, child: child),

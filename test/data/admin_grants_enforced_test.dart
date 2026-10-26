@@ -177,6 +177,27 @@ void main() {
     );
   });
 
+  test('Management can author the accounts, and retire them rather than delete',
+      () async {
+    // XORD-015. The administrator is how an OFFLINE till writes these; the
+    // superuser suite proves the repository, and only a real role proves the
+    // grant.
+    expect(await refusalFor('SELECT 1 FROM pos_financial_accounts'), isNull);
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_financial_accounts (restaurant_id, name, kind) '
+        "VALUES (1, 'probe', 'cash')",
+      ),
+      isNot('42501'),
+    );
+    expect(await refusalFor("UPDATE pos_financial_accounts SET name = 'x'"), isNull);
+    expect(await refusalFor('DELETE FROM pos_financial_accounts'), '42501',
+        reason: 'a payment will name an account, so it is retired');
+    // The defaults carry no history: replacing or clearing one is a DELETE.
+    expect(await refusalFor('SELECT 1 FROM pos_tender_account_defaults'), isNull);
+    expect(await refusalFor('DELETE FROM pos_tender_account_defaults'), isNull);
+  });
+
   test('Management still cannot delete a person or a sale', () async {
     // The rule the administrative list opens with: no DELETE anywhere. Staff
     // are disabled, roles are edited and the catalogue is archived, because a

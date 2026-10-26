@@ -36,7 +36,11 @@ void main() {
       id: 1,
       code: 'manager',
       nameEn: 'Manager',
-      capabilities: {PosCapability.settingsManage},
+      capabilities: {
+        PosCapability.settingsManage,
+        // Choosing order types is its own key since XORD-002.
+        PosCapability.orderTypesManage,
+      },
     ),
   );
   const cashier = PosStaff(
@@ -318,6 +322,55 @@ void main() {
       final result = await admin.saveOrderType(of('dine_in'), by: cashier);
       expect(result.refusal, isA<NotPermitted>());
       expect((await current('dine_in')).nameEn, 'Dine in');
+    });
+
+    test('settings.manage alone no longer chooses order types (XORD-002)', () async {
+      const settingsOnly = PosStaff(
+        id: 0,
+        name: 'Omar',
+        role: PosRole(
+          id: 3,
+          code: 'settings-only',
+          nameEn: 'Settings only',
+          capabilities: {PosCapability.settingsManage},
+        ),
+      );
+      final result = await admin.saveOrderType(of('dine_in'), by: settingsOnly);
+      expect((result.refusal! as NotPermitted).capability, PosCapability.orderTypesManage);
+    });
+
+    test('a type outside the licence cannot be switched ON', () async {
+      // Delivery is off first; the licence covers dine-in and takeaway only.
+      await admin.saveOrderType(
+        const OrderTypeConfig(type: OrderType.delivery, nameEn: 'Delivery', isActive: false),
+        by: manager,
+      );
+      final on = await admin.saveOrderType(
+        const OrderTypeConfig(type: OrderType.delivery, nameEn: 'Delivery'),
+        by: manager,
+        entitled: {OrderType.dineIn, OrderType.takeaway},
+      );
+      expect((on.refusal! as CatalogInvalid).reason, contains('licence'));
+      expect((await current('delivery')).isActive, isFalse);
+    });
+
+    test('a type the licence no longer covers can still be switched OFF', () async {
+      final off = await admin.saveOrderType(
+        const OrderTypeConfig(type: OrderType.delivery, nameEn: 'Delivery', isActive: false),
+        by: manager,
+        entitled: {OrderType.dineIn},
+      );
+      expect(off.succeeded, isTrue, reason: '${off.refusal}');
+      expect((await current('delivery')).isActive, isFalse);
+    });
+
+    test('and one already on stays savable (a rename) when the licence lapses from it', () async {
+      final rename = await admin.saveOrderType(
+        const OrderTypeConfig(type: OrderType.delivery, nameEn: 'Home delivery'),
+        by: manager,
+        entitled: {OrderType.dineIn},
+      );
+      expect(rename.succeeded, isTrue, reason: '${rename.refusal}');
     });
 
     test('a cloud till is refused — the platform owns these', () async {

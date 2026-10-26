@@ -4,7 +4,9 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/fold_digits_formatter.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/option_group.dart';
 
 /// The pieces the menu's editors share: the dialog frame, the labelled input,
@@ -149,6 +151,9 @@ class MenuInput extends StatelessWidget {
         controller: controller,
         readOnly: readOnly,
         onChanged: onChanged,
+        // Numbers are Latin (see [_direction]): a manager typing on an Arabic
+        // keyboard gets 150, not ١٥٠, in the price they are about to save.
+        inputFormatters: mono ? const [FoldDigitsFormatter()] : null,
         textDirection: _direction(mono: mono, arabic: arabic),
         style: mono
             ? PosText.mono(
@@ -239,6 +244,8 @@ class EditableOption {
   EditableOption.from(OptionDraft option)
     : id = option.id,
       isAvailable = option.isAvailable,
+      storedNameEn = option.nameEn,
+      storedNameAr = option.nameAr,
       nameEn = TextEditingController(text: option.nameEn),
       nameAr = TextEditingController(text: option.nameAr ?? ''),
       price = TextEditingController(text: option.price.format()),
@@ -249,6 +256,8 @@ class EditableOption {
   EditableOption.blank()
     : id = 0,
       isAvailable = true,
+      storedNameEn = null,
+      storedNameAr = null,
       nameEn = TextEditingController(),
       nameAr = TextEditingController(),
       price = TextEditingController(),
@@ -261,6 +270,11 @@ class EditableOption {
   /// Not editable here — the cloud's editors do not offer it either — but
   /// carried, because the first *available* size is the default.
   final bool isAvailable;
+
+  /// The names as stored when the row was opened. A language the editor does
+  /// not show is saved as it was, never blanked (XORD-005).
+  final String? storedNameEn;
+  final String? storedNameAr;
 
   final TextEditingController nameEn;
   final TextEditingController nameAr;
@@ -286,6 +300,10 @@ class EditableGroup {
       isRequired = group.isRequired,
       scope = group.scope,
       categoryIds = {...group.categoryIds},
+      storedNameEn = group.nameEn,
+      storedNameAr = group.nameAr,
+      storedDisplayEn = group.displayNameEn,
+      storedDisplayAr = group.displayNameAr,
       nameEn = TextEditingController(text: group.nameEn),
       nameAr = TextEditingController(text: group.nameAr ?? ''),
       displayEn = TextEditingController(text: group.displayNameEn ?? ''),
@@ -309,6 +327,13 @@ class EditableGroup {
   bool isRequired;
   OptionGroupScope scope;
   final Set<int> categoryIds;
+
+  /// The names as stored when the group was opened; see
+  /// [EditableOption.storedNameEn].
+  final String? storedNameEn;
+  final String? storedNameAr;
+  final String? storedDisplayEn;
+  final String? storedDisplayAr;
 
   final TextEditingController nameEn;
   final TextEditingController nameAr;
@@ -334,7 +359,14 @@ class EditableGroup {
   /// is zero, and only a size keeps a sale price. The repository normalises
   /// the same way; doing it here as well is what makes a blank price a zero
   /// rather than a "not a number".
-  ({OptionGroupDraft? draft, String? error}) toDraft(AppStrings s) {
+  ///
+  /// [languages] is which names the editor showed (XORD-005): a language it did
+  /// not show keeps its stored value, and the English column of an Arabic-only
+  /// restaurant mirrors the Arabic name (see `resolveNames`).
+  ({OptionGroupDraft? draft, String? error}) toDraft(
+    AppStrings s, {
+    ContentLanguages languages = ContentLanguages.both,
+  }) {
     final drafts = <OptionDraft>[];
     for (final option in options) {
       final priceText = option.price.text.trim();
@@ -347,11 +379,22 @@ class EditableGroup {
         sale = Money.tryParse(saleText);
         if (sale == null) return (draft: null, error: s.offerPriceIsNotANumber);
       }
+      final optionNames = resolveNames(
+        languages: languages,
+        typedEn: option.nameEn.text,
+        typedAr: option.nameAr.text,
+        previousEn: option.storedNameEn,
+        previousAr: option.storedNameAr,
+      );
       drafts.add(
         OptionDraft(
           id: option.id,
-          nameEn: option.nameEn.text,
-          nameAr: option.nameAr.text,
+          nameEn: languages == ContentLanguages.both
+              ? option.nameEn.text
+              : optionNames.nameEn,
+          nameAr: languages == ContentLanguages.both
+              ? option.nameAr.text
+              : optionNames.nameAr,
           price: price,
           salePrice: sale,
           isAvailable: option.isAvailable,
@@ -360,14 +403,26 @@ class EditableGroup {
     }
 
     final required = isVariant || isRequired;
+    final groupNames = resolveNames(
+      languages: languages,
+      typedEn: nameEn.text,
+      typedAr: nameAr.text,
+      previousEn: storedNameEn,
+      previousAr: storedNameAr,
+    );
+    final both = languages == ContentLanguages.both;
     return (
       draft: OptionGroupDraft(
         id: id,
         revision: revision,
-        nameEn: nameEn.text,
-        nameAr: nameAr.text,
-        displayNameEn: displayEn.text,
-        displayNameAr: displayAr.text,
+        nameEn: both ? nameEn.text : groupNames.nameEn,
+        nameAr: both ? nameAr.text : groupNames.nameAr,
+        displayNameEn: languages.showsEnglish
+            ? displayEn.text
+            : (storedDisplayEn ?? ''),
+        displayNameAr: languages.showsArabic
+            ? displayAr.text
+            : (storedDisplayAr ?? ''),
         isVariant: isVariant,
         isRequired: required,
         maxSelect: isVariant ? 1 : (int.tryParse(maxSelect.text.trim()) ?? 1),
@@ -505,12 +560,16 @@ class OptionRows extends StatelessWidget {
     required this.keyPrefix,
     required this.onChanged,
     this.markDefault = false,
+    this.languages = ContentLanguages.both,
     super.key,
   });
 
   final EditableGroup group;
   final String keyPrefix;
   final VoidCallback onChanged;
+
+  /// Which name cells to draw (XORD-005).
+  final ContentLanguages languages;
 
   /// Put "Default" on the size the item's price mirrors. Only the item editor
   /// asks — in the library the default depends on nothing but order, and the
@@ -532,25 +591,29 @@ class OptionRows extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: PosSpace.sm),
             child: Row(
               children: [
-                Expanded(
-                  child: _Cell(
-                    key: Key('$keyPrefix-option-$i-name'),
-                    controller: option.nameEn,
-                    hint: s.itemOptionEn,
-                    onChanged: onChanged,
+                if (languages.showsEnglish) ...[
+                  Expanded(
+                    child: _Cell(
+                      key: Key('$keyPrefix-option-$i-name'),
+                      controller: option.nameEn,
+                      hint: s.itemOptionEn,
+                      onChanged: onChanged,
+                    ),
                   ),
-                ),
-                const SizedBox(width: PosSpace.sm),
-                Expanded(
-                  child: _Cell(
-                    key: Key('$keyPrefix-option-$i-name-ar'),
-                    controller: option.nameAr,
-                    hint: s.itemOptionAr,
-                    arabic: true,
-                    onChanged: onChanged,
+                  const SizedBox(width: PosSpace.sm),
+                ],
+                if (languages.showsArabic) ...[
+                  Expanded(
+                    child: _Cell(
+                      key: Key('$keyPrefix-option-$i-name-ar'),
+                      controller: option.nameAr,
+                      hint: s.itemOptionAr,
+                      arabic: true,
+                      onChanged: onChanged,
+                    ),
                   ),
-                ),
-                const SizedBox(width: PosSpace.sm),
+                  const SizedBox(width: PosSpace.sm),
+                ],
                 SizedBox(
                   width: 90,
                   child: _Cell(

@@ -38,7 +38,8 @@ import '../../../domain/models/profit_report.dart';
 import '../../../domain/models/sales_report.dart';
 import '../application/report_export.dart';
 import '../application/reports_view.dart';
-import 'management_finance_panes.dart' show formatMarginBp, formatShareBp;
+import 'management_finance_panes.dart'
+    show PaymentLedgerSection, formatMarginBp, formatShareBp;
 import 'management_reports_pane.dart';
 import 'report_charts.dart';
 
@@ -853,6 +854,13 @@ class ReportPaymentsPane extends ConsumerWidget {
           child: report.tenderShares.isEmpty && report.onAccount.isZero
               ? ReportNote(context.strings.reportNoPayments)
               : _MethodsTable(report: report),
+        ),
+        // Every payment behind the table, which Finance's own Payment methods
+        // page used to hold (XORD-022-A: merged into the report).
+        ReportSection(
+          key: const Key('reports-payment-ledger'),
+          title: context.strings.financeLedgerTitle,
+          child: PaymentLedgerSection(filter: filter),
         ),
       ],
     ),

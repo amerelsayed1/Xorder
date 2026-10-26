@@ -2,8 +2,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
 import '../../../core/security/pin_hash.dart';
 import '../../../domain/models/backup.dart';
+import '../../../domain/models/business_logo.dart';
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/combo_draft.dart';
+import '../../../domain/models/financial_account.dart';
 import '../../../domain/models/held_sync.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/purchase_order.dart';
@@ -59,6 +61,9 @@ abstract final class AdminText {
         PosCapability.adminEnter => s.capAdminEnter,
         PosCapability.paymentRemove => s.capPaymentRemove,
         PosCapability.customersCreate => s.capCustomersCreate,
+        PosCapability.orderTypesManage => s.capOrderTypesManage,
+        PosCapability.brandingManage => s.capBrandingManage,
+        PosCapability.financeAccounts => s.capFinanceAccounts,
         // A capability from a newer build. Shown rather than hidden: a manager
         // seeing a permission they do not recognise is better informed than one
         // looking at a list that quietly omits it. Untranslated of course —
@@ -121,7 +126,12 @@ abstract final class AdminText {
     AuditAction.supplierPaymentVoided => s.actSupplierPaymentVoided,
     AuditAction.serviceChargeSaved => s.actServiceChargeSaved,
     AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
+    AuditAction.financialAccountSaved => s.actFinancialAccountSaved,
+    AuditAction.tenderAccountDefaultSaved => s.actTenderAccountDefaultSaved,
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
+    AuditAction.contentLanguagesSaved => s.actContentLanguagesSaved,
+    AuditAction.businessLogoSaved => s.actBusinessLogoSaved,
+    AuditAction.businessLogoRemoved => s.actBusinessLogoRemoved,
     AuditAction.taxGroupSaved => s.actTaxGroupSaved,
     AuditAction.comboSaved => s.actComboSaved,
     AuditAction.stockCostSet => s.actStockCostSet,
@@ -351,6 +361,14 @@ abstract final class AdminText {
           _list(s, staffNames),
         ),
         RoleIsSystemDefined() => s.refusalRoleIsSystemDefined,
+        LogoRejected(:final reason) => switch (reason) {
+          LogoRefusal.empty => s.logoRefusedEmpty,
+          LogoRefusal.tooLarge => s.logoRefusedTooLarge,
+          LogoRefusal.unsupported => s.logoRefusedUnsupported,
+          LogoRefusal.unreadable => s.logoRefusedUnreadable,
+          LogoRefusal.tooSmall => s.logoRefusedTooSmall,
+          LogoRefusal.tooBig => s.logoRefusedTooBig,
+        },
         RoleNotAllowed(:final reason) => _roleReason(s, reason),
         UserSeatsExhausted(:final maxUsers) => s.refusalUserSeatsExhausted(
           maxUsers,
@@ -370,6 +388,7 @@ abstract final class AdminText {
         // itself; there is nothing here to translate it into.
         CatalogInvalid(:final reason) => reason,
         CatalogRefused(:final problem) => catalogProblem(s, problem),
+        AccountRefused(:final problem) => accountProblem(s, problem),
         ComboRefused(:final problem) => comboProblem(s, problem),
         OpeningCostRefused(:final problem) => switch (problem) {
           OpeningCostProblem.notPositive => s.refusalOpeningCostNotPositive,
@@ -404,6 +423,23 @@ abstract final class AdminText {
         CatalogProblem.offerAbovePrice => s.refusalOfferAbovePrice,
         CatalogProblem.categoryNameMissing => s.refusalCategoryNameMissing,
         CatalogProblem.skuTaken => s.refusalSkuTaken,
+        CatalogProblem.categoryUnavailable => s.refusalCategoryUnavailable,
+      };
+
+  /// Why an account, or the account a payment method pays into, could not be
+  /// saved. Keyed by the enum, so a reason added to [AccountProblem] is a
+  /// compile error here rather than a blank on an Arabic back office.
+  static String accountProblem(AppStrings s, AccountProblem problem) =>
+      switch (problem) {
+        AccountProblem.nameMissing => s.refusalAccountNameMissing,
+        AccountProblem.nameTaken => s.refusalAccountNameTaken,
+        AccountProblem.referenceLooksLikeNumber => s.refusalAccountReference,
+        AccountProblem.nameLooksLikeNumber => s.refusalAccountNameNumber,
+        AccountProblem.branchUnknown => s.refusalAccountBranchUnknown,
+        AccountProblem.methodUnknown => s.refusalAccountMethodUnknown,
+        AccountProblem.accountUnavailable => s.refusalAccountUnavailable,
+        AccountProblem.accountOfAnotherBranch => s.refusalAccountOtherBranch,
+        AccountProblem.accountIsDefault => s.refusalAccountIsDefault,
       };
 
   /// Why a size or extra could not be saved.

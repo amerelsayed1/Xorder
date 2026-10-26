@@ -335,7 +335,11 @@ void main() {
       expect(container.read(actingStaffProvider)?.username, 'nour');
       expect(container.read(signedInStaffProvider)?.username, 'rana');
 
-      await tester.tap(find.byKey(const Key('admin-exit')));
+      // Log out is the window bar's, which this harness does not mount: the
+      // controller ends the session as it does.
+      await container
+          .read(adminSessionProvider.notifier)
+          .end(AdminSessionEnd.exited);
       await tester.pumpAndSettle();
       expect(container.read(adminSessionProvider), isNull);
       expect(container.read(actingStaffProvider)?.username, 'rana');
@@ -343,7 +347,7 @@ void main() {
   });
 
   group('the widget, re-hosted', () {
-    testWidgets('no way out of its own: the back office\'s Exit, and its Esc '
+    testWidgets('no way out of its own: the back office\'s Log out, and its Esc '
         'that leaves the field first', (tester) async {
       var closed = 0;
       await _salesTab(
@@ -355,18 +359,18 @@ void main() {
       );
       const s = EnStrings();
       expect(find.text(s.close), findsNothing);
-      // "Orders" once — the header, which names the page alone — and no
-      // second: the history draws no title bar of its own in here, and since
-      // 15 Sep 2026 no sub-nav under the header says the item's word again.
-      expect(find.text(s.orderHistoryTitle), findsOneWidget);
-      expect(find.byKey(const Key('admin-exit')), findsOneWidget);
-      // The map's word for the page in the header (14 Sep 2026) — Orders,
-      // as the history calls itself — and the history's own title bar not
-      // drawn at all.
+      // The history draws no title bar of its own in here: the header names
+      // the page alone, and has no Exit button — the window bar's Log out is
+      // the way out.
+      expect(find.text(s.orderHistoryTitle), findsNothing);
+      expect(find.byKey(const Key('admin-exit')), findsNothing);
+      // The tab's own word for the page in the header: Sales is one page, with
+      // the history under a Sales / Returns switch.
       expect(
         tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
-        s.adminTitle(s.orderHistoryTitle),
+        s.adminTitle(s.tabSales),
       );
+      expect(find.byKey(const Key('sales-view-returns')), findsOneWidget);
 
       await tester.tap(find.byType(TextField));
       await tester.pump();
@@ -472,7 +476,7 @@ void main() {
       const s = ArStrings();
       expect(
         tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
-        s.adminTitle(s.orderHistoryTitle),
+        s.adminTitle(s.tabSales),
       );
       expect(find.byKey(OrderHistoryScreen.sidewaysKey), findsOneWidget);
       // The first rows in view, from the start edge — the right.

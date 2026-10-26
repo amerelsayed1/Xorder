@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/tax.dart';
 import 'admin_pane_bits.dart';
 import '../../../core/text/digits.dart';
@@ -15,15 +16,25 @@ import '../../../core/text/digits.dart';
 /// what the group is called — because that is what an accountant reconciles
 /// against. So the name is required and the hint says why.
 class TaxGroupDialog extends StatefulWidget {
-  const TaxGroupDialog({super.key, this.group});
+  const TaxGroupDialog({
+    super.key,
+    this.group,
+    this.languages = ContentLanguages.both,
+  });
 
   final TaxGroup? group;
 
-  static Future<TaxGroup?> show(BuildContext context, {TaxGroup? group}) =>
-      showDialog<TaxGroup>(
-        context: context,
-        builder: (_) => TaxGroupDialog(group: group),
-      );
+  /// Which name fields the restaurant writes its content in (XORD-005).
+  final ContentLanguages languages;
+
+  static Future<TaxGroup?> show(
+    BuildContext context, {
+    TaxGroup? group,
+    ContentLanguages languages = ContentLanguages.both,
+  }) => showDialog<TaxGroup>(
+    context: context,
+    builder: (_) => TaxGroupDialog(group: group, languages: languages),
+  );
 
   @override
   State<TaxGroupDialog> createState() => _TaxGroupDialogState();
@@ -58,7 +69,11 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
 
   void _save() {
     final strings = context.strings;
-    if (_nameEn.text.trim().isEmpty) {
+    if (!hasRequiredName(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+    )) {
       setState(() => _problem = strings.taxGroupNeedsAName);
       return;
     }
@@ -69,11 +84,19 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
       return;
     }
 
+    final names = resolveNames(
+      languages: widget.languages,
+      typedEn: _nameEn.text,
+      typedAr: _nameAr.text,
+      previousEn: widget.group?.nameEn,
+      previousAr: widget.group?.nameAr,
+    );
+
     Navigator.of(context).pop(
       TaxGroup(
         id: widget.group?.id ?? 0,
-        nameEn: _nameEn.text.trim(),
-        nameAr: _nameAr.text.trim().isEmpty ? null : _nameAr.text.trim(),
+        nameEn: names.nameEn,
+        nameAr: names.nameAr.isEmpty ? null : names.nameAr,
         rateBp: (typed * 100).round(),
         isDefault: _isDefault,
         isActive: _isActive,
@@ -127,22 +150,33 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
-                  MicroLabel(strings.taxGroupName),
-                  const SizedBox(height: PosSpace.xs),
-                  TextField(
-                    key: const Key('tax-group-name'),
-                    controller: _nameEn,
-                    onChanged: (_) => setState(() => _problem = null),
-                    style: PosText.ui(size: 15, color: palette.ink),
-                  ),
-                  const SizedBox(height: PosSpace.md),
-                  MicroLabel(strings.optionalField(strings.tenderNameAr)),
-                  const SizedBox(height: PosSpace.xs),
-                  TextField(
-                    key: const Key('tax-group-name-ar'),
-                    controller: _nameAr,
-                    style: PosText.ui(size: 15, color: palette.ink),
-                  ),
+                  if (widget.languages.showsEnglish) ...[
+                    MicroLabel(strings.taxGroupName),
+                    const SizedBox(height: PosSpace.xs),
+                    TextField(
+                      key: const Key('tax-group-name'),
+                      controller: _nameEn,
+                      onChanged: (_) => setState(() => _problem = null),
+                      style: PosText.ui(size: 15, color: palette.ink),
+                    ),
+                    const SizedBox(height: PosSpace.md),
+                  ],
+                  if (widget.languages.showsArabic) ...[
+                    // Required when it is the only language; optional beside
+                    // English.
+                    MicroLabel(
+                      widget.languages == ContentLanguages.arabic
+                          ? strings.taxGroupName
+                          : strings.optionalField(strings.tenderNameAr),
+                    ),
+                    const SizedBox(height: PosSpace.xs),
+                    TextField(
+                      key: const Key('tax-group-name-ar'),
+                      controller: _nameAr,
+                      onChanged: (_) => setState(() => _problem = null),
+                      style: PosText.ui(size: 15, color: palette.ink),
+                    ),
+                  ],
                   const SizedBox(height: PosSpace.lg),
                   RateBox(
                     boxKey: const Key('tax-group-rate'),

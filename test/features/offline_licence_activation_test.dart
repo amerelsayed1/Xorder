@@ -199,6 +199,25 @@ void main() {
       );
     });
 
+    test('a full licence is its own answer: right key, nothing withdrawn', () async {
+      // 409 with the platform's code. Not "revoked" (403) and not "not
+      // recognised" (404): an installer told either would hunt for a problem
+      // that is not there, when the fix is to release or add a device.
+      final notice = await noticeFor(
+        _CapturingAdapter('{"code":"licence_seats_full","seats":1}', status: 409),
+      );
+
+      expect(notice, isA<LicenceSeatsFull>());
+      expect((notice! as LicenceSeatsFull).seats, 1);
+    });
+
+    test('any other 409 stays an unexplained refusal, not a guess', () async {
+      final notice = await noticeFor(_CapturingAdapter('{"code":"other"}', status: 409));
+
+      expect(notice, isA<LicenceServerRefused>());
+      expect((notice! as LicenceServerRefused).status, 409);
+    });
+
     test('a server error carries its status so it can be diagnosed', () async {
       final notice = await noticeFor(
         _CapturingAdapter('oops', status: 502, contentType: 'text/plain'),

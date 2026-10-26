@@ -4550,6 +4550,188 @@ const posMigrations = <PosMigration>[
     'ALTER TABLE pos_staff ADD CONSTRAINT pos_staff_password_set_together '
         'CHECK ((password_hash IS NULL) = (password_set_at IS NULL))',
   ]),
+  // `pos.settings.order_types.manage` — choosing which order types are sold
+  // (XORD-002). That pane used to answer to `settings.manage`, so the people who
+  // could do it before are exactly the roles holding that key: every one of them
+  // gets the new key, the seeded roles AND a restaurant's own. Keyed on the
+  // capability rather than on the role code for that reason — a custom role
+  // that managed settings must not lose the order-types switch on the day of
+  // the update.
+  //
+  // Additive and idempotent: a role that already holds it is left alone, and
+  // nothing is removed from anybody.
+  //
+  // 56, not 54: main shipped 54 (terminal identity) and 55 (Admin Mode password)
+  // while this was in progress, and the migrator silently skips a version it has
+  // already recorded.
+  PosMigration(56, 'whoever managed settings may choose the order types', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['pos.settings.order_types.manage']::text[]))
+     WHERE capabilities @> ARRAY['settings.manage']::text[]
+       AND NOT (capabilities @> ARRAY['pos.settings.order_types.manage']::text[])
+    ''',
+    // …and a person granted `settings.manage` directly, beside their role.
+    '''
+    UPDATE pos_staff
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['pos.settings.order_types.manage']::text[]))
+     WHERE capabilities @> ARRAY['settings.manage']::text[]
+       AND NOT (capabilities @> ARRAY['pos.settings.order_types.manage']::text[])
+    ''',
+  ]),
+  // `content_languages` — which languages the menu is written in (XORD-005).
+  // Three values; the default is `both`, which is exactly how every till behaves
+  // today, so adding the column changes nothing until somebody chooses.
+  // Additive: a defaulted column on a table of a handful of rows, no rewrite
+  // worth the name, and no read of it is required for the old build to run.
+  PosMigration(
+    57,
+    'the restaurant says which languages its menu is written in',
+    [
+      '''
+    ALTER TABLE pos_restaurants
+      ADD COLUMN IF NOT EXISTS content_languages text NOT NULL DEFAULT 'both'
+    ''',
+      'ALTER TABLE pos_restaurants '
+          'DROP CONSTRAINT IF EXISTS pos_restaurants_content_languages_known',
+      "ALTER TABLE pos_restaurants ADD CONSTRAINT "
+          "pos_restaurants_content_languages_known "
+          "CHECK (content_languages IN ('ar', 'en', 'both'))",
+    ],
+  ),
+  // The business logo (XORD-021), kept on the restaurant row.
+  //
+  // The IMAGE, not a link: a link dies the moment the till is offline, and the
+  // start screen must not depend on a server it cannot reach. The branch
+  // database is shared by every till on the LAN, so one copy serves them all.
+  //
+  //   logo_bytes / logo_mime   the image and what it really is
+  //   logo_source              'local' (chosen in this till's back office) or
+  //                            'platform' (downloaded because the bundle named it)
+  //   logo_remote_url          what the platform last SAID the logo is
+  //   logo_fetched_url         the URL the stored bytes came from
+  //
+  // The last two are separate on purpose: the bundle is seeded inside a
+  // transaction that must not wait on the network, so the seeder records what
+  // the platform wants and a later step fetches it. A fetch that fails leaves
+  // the old logo in place and the difference between the two columns is what
+  // says "still to fetch".
+  //
+  // Additive: every column nullable and nothing reads them until the new build
+  // runs, so the previous build is unaffected. The till role already holds
+  // INSERT and UPDATE on the table (`local_bootstrap`), which covers new
+  // columns. The checks keep a half-written row from existing: bytes always
+  // come with a type and a source, and the source is one of the two.
+  PosMigration(58, 'the restaurant keeps its logo on the till', [
+    'ALTER TABLE pos_restaurants ADD COLUMN IF NOT EXISTS logo_bytes bytea',
+    'ALTER TABLE pos_restaurants ADD COLUMN IF NOT EXISTS logo_mime text',
+    'ALTER TABLE pos_restaurants ADD COLUMN IF NOT EXISTS logo_source text',
+    'ALTER TABLE pos_restaurants ADD COLUMN IF NOT EXISTS logo_remote_url text',
+    'ALTER TABLE pos_restaurants ADD COLUMN IF NOT EXISTS logo_fetched_url text',
+    'ALTER TABLE pos_restaurants '
+        'ADD COLUMN IF NOT EXISTS logo_updated_at timestamptz',
+    'ALTER TABLE pos_restaurants DROP CONSTRAINT IF EXISTS pos_restaurants_logo_whole',
+    "ALTER TABLE pos_restaurants ADD CONSTRAINT pos_restaurants_logo_whole "
+        "CHECK ((logo_bytes IS NULL) = (logo_mime IS NULL) "
+        "AND (logo_bytes IS NULL) = (logo_source IS NULL))",
+    'ALTER TABLE pos_restaurants DROP CONSTRAINT IF EXISTS pos_restaurants_logo_known',
+    "ALTER TABLE pos_restaurants ADD CONSTRAINT pos_restaurants_logo_known "
+        "CHECK (logo_mime IS NULL OR logo_mime IN "
+        "('image/png', 'image/jpeg', 'image/webp'))",
+  ]),
+  // `business.branding.manage` — the owner keeps authority over the logo
+  // (XORD-021). Seeded to the owner role only, by code: the logo is the face of
+  // the restaurant, and anybody else is given the key in Roles. The owner role
+  // must hold every capability (the role editor refuses to save one that does
+  // not), so an install that predates the key needs this row for the owner to
+  // be able to save their own role at all. Idempotent.
+  PosMigration(59, 'the owner holds the branding key', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['business.branding.manage']::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY['business.branding.manage']::text[])
+    ''',
+  ]),
+  // Financial accounts (XORD-015, stage 1): the places the business keeps its
+  // money — a cash drawer, a bank account, an e-wallet — and which one each
+  // payment method pays into, per branch. Nothing is posted to an account yet:
+  // payments, refunds and the cash-up are untouched.
+  //
+  // On a cloud till the platform authors both tables and the seeder writes them
+  // from the bundle's `money` block, with the platform's account id kept as the
+  // primary key (like branches and products). On an offline till the owner
+  // authors them here, and they never leave the machine.
+  //
+  // **Accounts are retired, never deleted**: stage 2 will name an account on a
+  // payment, and a payment has to keep a row to point at. `branch_id` is NULL
+  // for an account the whole business shares; it has no ON DELETE action, so a
+  // removed branch cannot quietly turn its drawer into a shared account.
+  // `currency` is NULL on an offline till — this database has no restaurant
+  // currency to read it from — and the platform's value on a cloud one; it is
+  // shown, not compared.
+  //
+  // The default is one row per (payment method, branch). `branch_key` is the
+  // branch id as a NON-null number, 0 meaning "the whole business", because a
+  // UNIQUE over a nullable column lets duplicate NULLs in. `tender_type_id` is
+  // the LOCAL payment-method id (the seeder translates the platform's).
+  PosMigration(60, 'financial accounts and the account a payment method pays into', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_financial_accounts (
+      id              bigserial   PRIMARY KEY,
+      restaurant_id   bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id       bigint      REFERENCES pos_branches(id),
+      name            text        NOT NULL,
+      kind            text        NOT NULL,
+      currency        text,
+      reference_label text,
+      is_active       boolean     NOT NULL DEFAULT true,
+      sort_order      integer     NOT NULL DEFAULT 0,
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_financial_accounts_kind_known CHECK (
+        kind IN ('cash', 'bank', 'wallet')
+      ),
+      CONSTRAINT pos_financial_accounts_name_present CHECK (btrim(name) <> '')
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_financial_accounts_restaurant_idx
+      ON pos_financial_accounts (restaurant_id, branch_id)
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS pos_tender_account_defaults (
+      id                   bigserial   PRIMARY KEY,
+      restaurant_id        bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      tender_type_id       bigint      NOT NULL REFERENCES pos_tender_types(id) ON DELETE CASCADE,
+      branch_id            bigint      REFERENCES pos_branches(id),
+      branch_key           bigint      NOT NULL DEFAULT 0,
+      financial_account_id bigint      NOT NULL REFERENCES pos_financial_accounts(id),
+      created_at           timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_tender_account_defaults_unique UNIQUE (tender_type_id, branch_key),
+      CONSTRAINT pos_tender_account_defaults_key_matches CHECK (
+        branch_key = COALESCE(branch_id, 0)
+      )
+    )
+    ''',
+    // `finance.accounts` — the owner manages the accounts, and everyone else is
+    // given the key in Roles (same shape as migrations 56 and 59). The owner role
+    // must hold every capability, so an install that predates the key needs this
+    // row for the owner to be able to save their own role at all. Idempotent.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['finance.accounts']::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY['finance.accounts']::text[])
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

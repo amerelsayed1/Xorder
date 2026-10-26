@@ -8,6 +8,7 @@ import '../../../core/ui/widgets/item_name.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/discount.dart';
 import '../../../domain/models/ticket.dart';
+import '../../receipt/receipt_document.dart' show receiptPercent;
 
 /// How tightly the cart draws its lines.
 ///
@@ -196,7 +197,9 @@ class CartPanel extends StatelessWidget {
       width: PosSize.cartPanel,
       decoration: BoxDecoration(
         color: context.pos.shell,
-        border: Border(left: context.pos.emphasis),
+        // The side facing the products — the left in English, the right in
+        // Arabic, where the cart sits on the left of the screen.
+        border: BorderDirectional(start: context.pos.emphasis),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -228,8 +231,10 @@ class CartPanel extends StatelessWidget {
 
   /// Who the order is for, and the way to change it, without leaving the sale.
   ///
-  /// Always one line: the name once somebody is chosen, "Who is this for?"
+  /// Always one line: the name once somebody is chosen, "Walk-in customer"
   /// until then — a walk-in is a valid order and nothing here asks for more.
+  /// Flush to the start like everything else in the panel, and the same colour
+  /// either way: the name says who is chosen, the fill need not.
   Widget _customerRow(AppStrings s, {required PosPalette pos}) => Container(
     padding: const EdgeInsets.symmetric(
       horizontal: PosSpace.lg,
@@ -238,11 +243,13 @@ class CartPanel extends StatelessWidget {
     decoration: BoxDecoration(border: Border(bottom: pos.shellBorder)),
     child: PosButton(
       key: const Key('cart-customer'),
-      label: ticket.customer?.name ?? s.whoIsThisFor,
+      label: ticket.customer?.name ?? s.walkInCustomer,
       height: 36,
-      background: ticket.customer == null ? pos.shellCard : pos.accent,
-      foreground: ticket.customer == null ? pos.shellText : Colors.white,
+      background: pos.shellCard,
+      foreground: pos.shellText,
       fontSize: 12.5,
+      alignLeft: true,
+      trailing: Icon(Icons.expand_more, size: 18, color: pos.shellMuted),
       onPressed: onChooseCustomer,
     ),
   );
@@ -385,14 +392,14 @@ class CartPanel extends StatelessWidget {
     decoration: BoxDecoration(border: Border(top: pos.accentBorder)),
     child: Column(
       children: [
-        _totalRow(s.subtotal, totals.subtotal.format(withCurrency: true), pos: pos),
+        _totalRow(s.subtotal, totals.subtotal.format(), pos: pos),
         // **Order-level discounts live here, never inside a line.** A discount
         // that came off the whole bill has no line to belong to, and drawing it
         // under one would be a claim about what it discounted.
         for (final discount in ticket.orderDiscounts)
           _totalRow(
             discount.nameSnapshot,
-            '-${discount.amount.format(withCurrency: true)}',
+            '-${discount.amount.format()}',
             pos: pos,
             emphasis: pos.accent,
           ),
@@ -411,13 +418,18 @@ class CartPanel extends StatelessWidget {
             s.servicePercent(
               (ticket.taxConfig.serviceBp / 100).toStringAsFixed(0),
             ),
-            totals.service.format(withCurrency: true),
+            totals.service.format(),
             pos: pos,
           ),
-        if (ticket.taxConfig.vatBp != 0 || !totals.vat.isZero)
+        // The rate the ticket is actually taxed at — the default group's once
+        // one exists, which `vatBp` stops being. Labelling from `vatBp` printed
+        // "VAT 0%" beside 164.64, and "VAT 14%" beside nothing.
+        if (ticket.taxConfig.defaultTaxGroup.rateBp != 0 || !totals.vat.isZero)
           _totalRow(
-            s.vatPercent((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
-            totals.vat.format(withCurrency: true),
+            s.vatPercent(
+              receiptPercent(ticket.taxConfig.defaultTaxGroup.rateBp),
+            ),
+            totals.vat.format(),
             pos: pos,
           ),
         Padding(
@@ -430,11 +442,16 @@ class CartPanel extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Flexible, because the word for "total" is longer in some
+            // Expanded, because the word for "total" is longer in some
             // languages than in English and the figure beside it is the
             // largest type in the product. The label yields; the number never
             // does.
-            Flexible(
+            //
+            // Not `Flexible` + `Spacer`: those share the free space between
+            // them, and whatever half the label did not need was left empty,
+            // so the figure stopped short of the rows above it by up to the
+            // width of the word.
+            Expanded(
               child: Text(
                 s.totalCaps,
                 overflow: TextOverflow.ellipsis,
@@ -445,19 +462,19 @@ class CartPanel extends StatelessWidget {
                 ),
               ),
             ),
-            const Spacer(),
             Text(
               totals.total.format(),
               style: PosText.displayTotal(color: pos.accent),
             ),
-            Padding(
-              // Directional: the currency sits after the figure, which is the
-              // right of it in English and the left of it in Arabic.
-              padding: const EdgeInsetsDirectional.only(bottom: 3, start: 4),
-              child: Text(
-                ticket.currency,
-                style: PosText.ui(size: 14, color: pos.shellMuted),
-              ),
+            // A slot of fixed width, the same one every row above reserves
+            // (`_totalRow`), so the figures end on one edge: with the currency
+            // only here, the big total's figure stopped short of the rows
+            // above it by the width of "EGP".
+            _currencyAfterFigure(
+              ticket.currency,
+              size: 14,
+              bottom: 3,
+              pos: pos,
             ),
           ],
         ),
@@ -493,9 +510,39 @@ class CartPanel extends StatelessWidget {
             style: PosText.mono(size: 13, color: emphasis ?? pos.shellText),
           ),
         ),
+        // The currency sits after the figure, exactly as on the total row, so
+        // every figure in the block ends on the same edge.
+        _currencyAfterFigure(ticket.currency, size: 12, bottom: 0, pos: pos),
       ],
     ),
   );
+
+  /// The currency code in its fixed-width slot beside a figure. Directional:
+  /// "after the figure" is the right of it in English and the left of it in
+  /// Arabic, so a row reads the same way as the grand total in both.
+  Widget _currencyAfterFigure(
+    String currency, {
+    required double size,
+    required double bottom,
+    required PosPalette pos,
+  }) => SizedBox(
+    width: _currencySlot,
+    child: Padding(
+      padding: EdgeInsetsDirectional.only(bottom: bottom, start: 4),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          currency,
+          style: PosText.ui(size: size, color: pos.shellMuted),
+        ),
+      ),
+    ),
+  );
+
+  /// The width reserved after each figure in the totals block for the currency
+  /// code the grand total draws beside its own.
+  static const _currencySlot = 40.0;
 
   Widget _actions(
     AppStrings s,

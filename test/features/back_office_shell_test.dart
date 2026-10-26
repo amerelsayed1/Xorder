@@ -7,10 +7,6 @@ import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/data/cloud/cloud_provisioning_repository.dart'
-    show posAppVersion;
-import 'package:xorder_pos/data/cloud/cloud_sync.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/combo_draft.dart';
 import 'package:xorder_pos/domain/models/option_group.dart';
@@ -21,7 +17,8 @@ import 'package:xorder_pos/domain/models/refund_history.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
-import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnabled;
+import 'package:xorder_pos/domain/services/eta_filing.dart'
+    show etaFilingEnabled;
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
@@ -101,19 +98,20 @@ const _fixtures = <String, PosStaff>{
 const _later = <BackOfficeTab>[];
 
 /// Finance's panes, in the order its bar menu lists them: Overview and Revenue,
-/// then the owner's map's الخزينة، المصروفات، التسويات، طرق الدفع، الضرائب, in
-/// its order, then Bills due and Transactions (BO-9, BO-10, `pos/ia-screens`).
+/// then the owner's map's الخزينة، المصروفات، التسويات، الضرائب, in its order
+/// (payments left for Reports, XORD-022-A), then Bills due and Transactions (BO-9, BO-10, `pos/ia-screens`).
 const _finance = [
   ManagementPane.financeOverview,
   ManagementPane.financeRevenue,
   ManagementPane.financeDrawers,
   ManagementPane.financeExpenses,
   ManagementPane.settlements,
-  ManagementPane.financePayments,
   ManagementPane.financeTaxes,
   ManagementPane.financeBills,
   ManagementPane.financeTransactions,
   ManagementPane.financeProfitLoss,
+  // Last, and only for somebody holding `finance.accounts` (XORD-015).
+  ManagementPane.financeAccounts,
 ];
 
 /// Reports' panes, in the order its bar menu lists them: Business summary and
@@ -132,13 +130,17 @@ const _reports = [
 /// due otherwise (BO-10).
 List<ManagementPane> _financeFor(PosStaff admin, {required bool authors}) => [
   for (final pane in _finance)
-    if (pane != ManagementPane.financeBills ||
-        (authors &&
-            Authorization.check(admin, PosCapability.purchaseManage).isAllowed))
+    if ((pane != ManagementPane.financeBills ||
+            (authors &&
+                Authorization.check(
+                  admin,
+                  PosCapability.purchaseManage,
+                ).isAllowed)) &&
+        (pane != ManagementPane.financeAccounts ||
+            Authorization.check(admin, PosCapability.financeAccounts)
+                .isAllowed))
       pane,
 ];
-
-class _Sync extends Mock implements CloudSync {}
 
 /// An offline till's catalogue administrator that can be LOOKED at.
 ///
@@ -157,13 +159,16 @@ class _OfflineCatalogue extends Mock implements CatalogAdminRepository {
 
 /// The panes on screen right now, read off the key the shell puts on each.
 Set<ManagementPane> _showing(WidgetTester tester) => {
-  for (final element in find
-      .byWidgetPredicate(
-        (w) =>
-            w.key is ValueKey<String> &&
-            (w.key! as ValueKey<String>).value.startsWith('back-office-pane-'),
-      )
-      .evaluate())
+  for (final element
+      in find
+          .byWidgetPredicate(
+            (w) =>
+                w.key is ValueKey<String> &&
+                (w.key! as ValueKey<String>).value.startsWith(
+                  'back-office-pane-',
+                ),
+          )
+          .evaluate())
     ManagementPane.values.byName(
       (element.widget.key! as ValueKey<String>).value.substring(
         'back-office-pane-'.length,
@@ -224,13 +229,12 @@ Future<(ProviderContainer, BarRoute)> _open(
 }
 
 /// The bar's menus as whoever is in Admin Mode has them, on this till.
-List<ManagementBarMenu> _barOf(ProviderContainer container) =>
-    managementBarFor(
-      const EnStrings(),
-      admin: container.read(adminSessionProvider)!.staff,
-      authorsItsOwnCatalogue:
-          container.read(catalogAdminRepositoryProvider) != null,
-    );
+List<ManagementBarMenu> _barOf(ProviderContainer container) => managementBarFor(
+  const EnStrings(),
+  admin: container.read(adminSessionProvider)!.staff,
+  authorsItsOwnCatalogue:
+      container.read(catalogAdminRepositoryProvider) != null,
+);
 
 /// Every line of the window's bar, followed as the bar follows it, and every
 /// row of Settings' side nav under the page it lands on — what a person can
@@ -311,10 +315,10 @@ void main() {
             // keeps as pointers to the platform.
             if (own.isEmpty) {
               expect(authors, isFalse, reason: tab.name);
-              expect(tab, isIn(const [
-                BackOfficeTab.inventory,
-                BackOfficeTab.purchasing,
-              ]));
+              expect(
+                tab,
+                isIn(const [BackOfficeTab.inventory, BackOfficeTab.purchasing]),
+              );
             }
           }
           for (final tab in _later) {
@@ -324,21 +328,16 @@ void main() {
               reason: '${tab.name} has no pane until its slice lands',
             );
           }
-          // Sales for everybody past the door (BO-2): Orders, Invoices,
-          // Returns and Cancelled orders, in the map's order — whose sales is
-          // the rows' scope, not a gate.
+          // Sales for everybody past the door (BO-2): one page, holding the
+          // list with its filters and the Returns view — whose sales is the
+          // rows' scope, not a gate.
           expect(
             [
               for (final (t, own) in tabs)
                 if (t == BackOfficeTab.sales) own,
             ],
             [
-              [
-                ManagementPane.sales,
-                ManagementPane.invoices,
-                ManagementPane.returns,
-                ManagementPane.voidedOrders,
-              ],
+              [ManagementPane.sales],
             ],
             reason: '$name, $where',
           );
@@ -366,9 +365,6 @@ void main() {
             (ManagementPane.shifts, reads),
             (ManagementPane.settlements, reads),
             (ManagementPane.printer, machine),
-            (ManagementPane.invoices, true),
-            (ManagementPane.returns, true),
-            (ManagementPane.voidedOrders, true),
             (ManagementPane.sync, true),
             (ManagementPane.user, true),
             (ManagementPane.about, true),
@@ -420,13 +416,26 @@ void main() {
             [for (final menu in bar) menu.tab],
             [for (final (tab, _) in tabs) tab],
           );
-          // Home is a word that opens itself (15 Sep 2026); every other word
-          // is a menu. Its one line is still the model's, and it is Home.
+          // Home is a word that opens itself (15 Sep 2026), and so is Sales
+          // (one page, with filters and a Returns switch); every other word is
+          // a menu. Their one line each is still the model's.
           expect(
-            [for (final menu in bar) if (menu.direct) menu.tab],
-            [BackOfficeTab.home],
+            [
+              for (final menu in bar)
+                if (menu.direct) menu.tab,
+            ],
+            [BackOfficeTab.home, BackOfficeTab.sales],
           );
           expect(bar.first.lines.single.open().pane, ManagementPane.home);
+          expect(
+            bar
+                .firstWhere((m) => m.tab == BackOfficeTab.sales)
+                .lines
+                .single
+                .open()
+                .pane,
+            ManagementPane.sales,
+          );
           for (final menu in bar) {
             for (final line in menu.lines) {
               final to = line.open().pane!;
@@ -511,12 +520,11 @@ void main() {
     }
   });
 
-  testWidgets('Finance: ten lines of its bar menu, in the map\'s order, each '
+  testWidgets('Finance: eleven lines of its bar menu, in the map\'s order, each '
       'opening its own page', (tester) async {
     final (container, bar) = await _open(tester, offline: true);
-    final finance = _barOf(
-      container,
-    ).firstWhere((menu) => menu.tab == BackOfficeTab.finance);
+    final finance = _barOf(container)
+        .firstWhere((menu) => menu.tab == BackOfficeTab.finance);
 
     expect([for (final line in finance.lines) line.pane], _finance);
     for (final line in finance.lines) {
@@ -534,14 +542,10 @@ void main() {
     );
     expect(_showing(tester), {ManagementPane.home});
     // Not the platform pointer either: Finance is not a tab that points.
-    expect(
-      find.byKey(const Key('management-platform-pointer')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('management-platform-pointer')), findsNothing);
 
-    final finance = _barOf(
-      container,
-    ).firstWhere((menu) => menu.tab == BackOfficeTab.finance);
+    final finance = _barOf(container)
+        .firstWhere((menu) => menu.tab == BackOfficeTab.finance);
     final lines = [for (final line in finance.lines) line.pane];
     expect(lines, isNot(contains(ManagementPane.financeBills)));
     expect(lines, contains(ManagementPane.financeExpenses));
@@ -549,8 +553,8 @@ void main() {
     expect(_showing(tester), {ManagementPane.financeExpenses});
   });
 
-  testWidgets('Returns\' "Open the sale" lands on Orders, open on that sale '
-      '— a fresh list for each, and the plain one from the bar', (
+  testWidgets('Returns\' "Open the sale" lands on the sales list, open on that '
+      'sale — a fresh list for each, and the plain one from the bar', (
     tester,
   ) async {
     // Today, so both are in Returns' first window.
@@ -567,7 +571,7 @@ void main() {
     );
     final (_, bar) = await _open(
       tester,
-      pane: ManagementPane.returns,
+      pane: ManagementPane.sales,
       overrides: [
         orderHistoryRepositoryProvider.overrideWithValue(
           FakeOrderHistoryRepository(refunds: [refund(1, 11), refund(2, 12)]),
@@ -581,13 +585,17 @@ void main() {
     OrderHistoryScreen orders() =>
         tester.widget<OrderHistoryScreen>(find.byType(OrderHistoryScreen));
     Future<void> openSaleOf(String row) async {
-      await bar.open(tester, ManagementPane.returns);
-      expect(_showing(tester), {ManagementPane.returns});
+      // Returns is a view of the Sales page, behind its switch.
+      await tester.tap(find.byKey(const Key('sales-view-returns')));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrderHistoryScreen), findsNothing, reason: row);
+      expect(_showing(tester), {ManagementPane.sales});
       await tester.tap(find.text(row));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(RefundDetailPane.openSaleKey));
       await tester.pumpAndSettle();
       expect(_showing(tester), {ManagementPane.sales}, reason: row);
+      expect(find.byType(OrderHistoryScreen), findsOneWidget, reason: row);
     }
 
     await openSaleOf('#1');
@@ -603,12 +611,12 @@ void main() {
     expect(orders().key, const ValueKey(second));
 
     await bar.open(tester, ManagementPane.sales);
-    expect(orders().openSale, isNull, reason: 'Orders, not the last sale');
+    expect(orders().openSale, isNull, reason: 'the list, not the last sale');
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Settings › User\'s Exit leaves the back office, as the '
-      'header\'s does', (tester) async {
+  testWidgets('Settings › User\'s Exit leaves the back office, as Log out '
+      'does', (tester) async {
     var closed = 0;
     final (container, _) = await _open(
       tester,
@@ -661,8 +669,8 @@ void main() {
   group('Home says nothing the rest of the screen already does', () {
     for (final offline in [true, false]) {
       final where = offline ? 'offline' : 'cloud';
-      testWidgets('$where: no cards, no shortcuts, Exit once, and this till '
-          'named in the status bar', (tester) async {
+      testWidgets('$where: no cards, no shortcuts, Exit once, and no status '
+          'bar of Management\'s own', (tester) async {
         final (container, _) = await _open(tester, offline: offline);
         container
             .read(terminalProfileProvider.notifier)
@@ -675,7 +683,6 @@ void main() {
         await tester.pumpAndSettle();
         expect(_showing(tester), {ManagementPane.home});
         final home = find.byKey(const Key('home-pane'));
-        final status = find.byKey(const Key('back-office-status-bar'));
 
         for (final key in [
           'home-card-branch',
@@ -695,33 +702,18 @@ void main() {
           reason: 'no way out of Home but the bar',
         );
 
-        // Exit once on screen, and that once is the header's.
-        expect(find.text(const EnStrings().exitAdminMode), findsOneWidget);
-        expect(find.byKey(const Key('admin-exit')), findsOneWidget);
+        // No Exit on the page: the way out is Log out, in the window's bar.
+        expect(find.text(const EnStrings().exitAdminMode), findsNothing);
+        expect(find.byKey(const Key('admin-exit')), findsNothing);
 
-        // Branch, till and connection: in the status bar, not on Home.
-        expect(
-          find.descendant(of: status, matching: find.text('Counter 1')),
-          findsOneWidget,
-        );
-        expect(
-          tester
-              .widget<Text>(find.byKey(const Key('back-office-status-terminal')))
-              .data,
-          'Counter 1',
-        );
-        expect(
-          find.descendant(of: status, matching: find.text('Maadi')),
-          findsOneWidget,
-        );
+        // Branch, till and connection are the status bar's, under every screen
+        // (26 Oct 2026) — not on Home, and not drawn a second time by this
+        // screen: the bar is mounted once, by the app, and `till_status_bar_test`
+        // owns what it says.
         for (final said in [find.text('Counter 1'), find.text('Maadi')]) {
           expect(find.descendant(of: home, matching: said), findsNothing);
         }
-        expect(
-          find.descendant(of: status, matching: find.byType(BackOfficeConnectionPill)),
-          findsOneWidget,
-        );
-        expect(find.byType(BackOfficeConnectionPill), findsOneWidget);
+        expect(find.byKey(const Key('till-status-bar')), findsNothing);
         expect(tester.takeException(), isNull);
       });
     }
@@ -730,10 +722,9 @@ void main() {
       tester,
     ) async {
       final (container, _) = await _open(tester, username: 'nour', pin: '2468');
-      expect(
-        [for (final menu in _barOf(container)) menu.tab],
-        isNot(contains(BackOfficeTab.reports)),
-      );
+      expect([
+        for (final menu in _barOf(container)) menu.tab,
+      ], isNot(contains(BackOfficeTab.reports)));
     });
   });
 
@@ -742,10 +733,9 @@ void main() {
     final (container, bar) = await _open(tester);
     final menus = _barOf(container);
 
-    expect(
-      [for (final menu in menus) menu.tab],
-      isNot(contains(BackOfficeTab.menu)),
-    );
+    expect([
+      for (final menu in menus) menu.tab,
+    ], isNot(contains(BackOfficeTab.menu)));
     const s = EnStrings();
     for (final tab in [BackOfficeTab.inventory, BackOfficeTab.purchasing]) {
       final line = menus.firstWhere((menu) => menu.tab == tab).lines.single;
@@ -765,8 +755,12 @@ void main() {
     }
   });
 
-  group("the owner's map (14 Sep 2026)", () {
-    test('ten tabs, in its order, in its words', () {
+  // XORD-022 replaced the owner's map of 14 Sep 2026 (owner's decision,
+  // 2026-10-25): Home is Dashboard, System is Management and took Dining areas
+  // & tables from Menu, Finance's Payment methods went into Reports, and the
+  // account menu is a tab of its own that the bar draws as the person's name.
+  group('the back office map (XORD-022)', () {
+    test('eleven tabs, in order, in their words', () {
       expect(BackOfficeTab.values, [
         BackOfficeTab.home,
         BackOfficeTab.sales,
@@ -778,6 +772,7 @@ void main() {
         BackOfficeTab.people,
         BackOfficeTab.system,
         BackOfficeTab.settings,
+        BackOfficeTab.account,
       ]);
       expect(
         [
@@ -785,18 +780,56 @@ void main() {
             backOfficeTabName(const ArStrings(), tab),
         ],
         [
-          'الرئيسية',
+          'لوحة التحكم',
           'المبيعات',
           'التقارير',
-          'المنيو',
+          'قائمة الطعام',
           'المخزون',
           'المشتريات',
           'المالية',
-          'الأفراد',
-          'النظام',
+          'الموظفون والعملاء',
+          'الإدارة',
           'الإعدادات',
+          'الحساب',
         ],
       );
+    });
+
+    test('every pane has a label in both languages, never two of one label '
+        'in one menu, and only the documented labels repeat across menus', () {
+      // XORD-022-A: a repeated word is allowed only where the two pages do
+      // different jobs and sit under different words — each says why.
+      //  · Sales — the page of sales, and Reports' breakdown of them.
+      //  · Payment methods — Reports' analysis, and Settings' management.
+      //  · Employees — People's management, and Reports' breakdown.
+      const allowed = {
+        'en': {'Sales', 'Payment methods', 'Employees'},
+        'ar': {'المبيعات', 'طرق الدفع', 'الموظفون'},
+      };
+      for (final (code, strings) in [
+        ('en', const EnStrings() as AppStrings),
+        ('ar', const ArStrings() as AppStrings),
+      ]) {
+        final byLabel = <String, List<ManagementPane>>{};
+        for (final pane in ManagementPane.values) {
+          final label = managementPaneLabel(strings, pane).$1;
+          expect(label, isNotEmpty, reason: '${pane.name}, $code');
+          byLabel.putIfAbsent(label, () => []).add(pane);
+        }
+        for (final MapEntry(key: label, value: panes) in byLabel.entries) {
+          if (panes.length < 2) continue;
+          expect(
+            allowed[code],
+            contains(label),
+            reason: '"$label" ($code) names ${[for (final p in panes) p.name]}',
+          );
+          expect(
+            {for (final pane in panes) tabOf(pane)},
+            hasLength(panes.length),
+            reason: '"$label" ($code) twice in one menu',
+          );
+        }
+      }
     });
 
     test('every tab\'s items, for the owner offline — all of the map but '
@@ -814,26 +847,22 @@ void main() {
             menu.tab: [for (final line in menu.lines) line.label],
         },
         {
-          BackOfficeTab.home: ['الرئيسية'],
-          BackOfficeTab.sales: [
-            'الطلبات',
-            'الفواتير',
-            'المرتجعات',
-            'الطلبات الملغاة',
-          ],
+          BackOfficeTab.home: ['لوحة التحكم'],
+          // One page, a button in the bar: the invoices and cancelled orders
+          // are its filters, and the returns a switch inside it.
+          BackOfficeTab.sales: ['المبيعات'],
           BackOfficeTab.reports: [
             'ملخص الأعمال',
             'المبيعات',
             'الأصناف',
             'طرق الدفع',
             'الفروع والأجهزة',
-            'الموظفين',
+            'الموظفون',
           ],
           BackOfficeTab.menu: [
-            'المنيو',
+            'المنتجات',
             'الأقسام',
             'مكتبة الإضافات',
-            'الصالة',
             'الكومبو',
           ],
           BackOfficeTab.inventory: [
@@ -857,11 +886,11 @@ void main() {
             'الخزينة',
             'المصروفات',
             'التسويات',
-            'طرق الدفع',
             'الضرائب',
             'الفواتير المستحقة',
             'الحركات',
             'الأرباح والخسائر',
+            'الحسابات',
           ],
           BackOfficeTab.people: [
             'الموظفون',
@@ -870,22 +899,24 @@ void main() {
             'العملاء',
           ],
           // ETA only while filing is on.
+          // Dining areas & tables first, as the epic lists them.
           BackOfficeTab.system: [
-            'السجل',
-            'النسخ الاحتياطي',
+            'الصالات والطاولات',
             'الأجهزة',
             'المزامنة',
+            'النسخ الاحتياطي',
+            'السجل',
             if (etaFilingEnabled) ar.paneEta,
           ],
-          // All six of the map's, printer, user and about among them.
           BackOfficeTab.settings: [
             'إعدادات الطلبات والفواتير',
             'الطابعة ودرج النقدية',
             'اللغة',
             'المظهر',
-            'المستخدم',
-            'حول XOrder',
           ],
+          // The account menu's two pages; the till's own lines (Switch user,
+          // Lock, Log out) are added by the bar, not by `managementBarFor`.
+          BackOfficeTab.account: ['المستخدم', 'حول XOrder'],
         },
       );
     });
@@ -927,6 +958,34 @@ void main() {
         s.settingsGeneral,
       );
       expect(tabOf(ManagementPane.eta), BackOfficeTab.system);
+    });
+
+    testWidgets('General opens with the business logo, above the company form '
+        '(XORD-021): in view on arrival, not found by scrolling', (
+      tester,
+    ) async {
+      await _open(tester, pane: ManagementPane.receipt);
+
+      final card = find.byKey(const Key('business-logo'));
+      expect(card, findsOneWidget);
+      expect(
+        tester.getRect(card).bottom,
+        lessThan(900),
+        reason: 'the whole card is on the first screen',
+      );
+      // This harness has no receipt-profile repository, so the pane shows its
+      // "no database" line and General's other cards under it; the logo is
+      // above all of them. Its place over the real form is pinned in
+      // `receipt_profile_ui_test`.
+      expect(
+        tester.getTopLeft(card).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.text(const EnStrings().receiptProfileNoDatabase))
+              .dy,
+        ),
+        reason: 'above the pane\'s own content, not under it',
+      );
     });
 
     testWidgets('Orders & invoices settings has a side nav of its five — '
@@ -981,9 +1040,10 @@ void main() {
     const s = EnStrings();
 
     List<String> strayKeys() => [
-      for (final element in find
-          .byWidgetPredicate((w) => w.key is ValueKey<String>)
-          .evaluate())
+      for (final element
+          in find
+              .byWidgetPredicate((w) => w.key is ValueKey<String>)
+              .evaluate())
         if ((element.widget.key! as ValueKey<String>).value case final key
             when key == 'back-office-tabs' ||
                 key == 'back-office-subnav' ||
@@ -1011,14 +1071,15 @@ void main() {
       await bar.open(tester, pane);
       expect(_showing(tester), {pane});
       expect(strayKeys(), isEmpty, reason: pane.name);
-      // The header, the page and the status bar, and nothing between.
+      // The header and the page, and nothing between. (The status bar is the
+      // app's, under every screen.)
       expect(
         tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
         managementPaneLabel(s, pane).$1,
         reason: pane.name,
       );
-      expect(find.byKey(const Key('admin-exit')), findsOneWidget);
-      expect(find.byKey(const Key('back-office-status-bar')), findsOneWidget);
+      expect(find.byKey(const Key('admin-exit')), findsNothing);
+      expect(find.byKey(const Key('till-status-bar')), findsNothing);
       expect(
         find.byKey(const Key('back-office-settings-nav')),
         pane == ManagementPane.receipt ? findsOneWidget : findsNothing,
@@ -1068,65 +1129,6 @@ void main() {
         }
       });
     }
-  });
-
-  group('the status bar', () {
-    testWidgets('an offline-style till: the branch server, the branch, the '
-        'version and who is in', (tester) async {
-      final (container, _) = await _open(tester);
-      container
-          .read(terminalProfileProvider.notifier)
-          .apply(const TerminalProfile(branchName: 'Maadi'));
-      await tester.pumpAndSettle();
-
-      final bar = find.byKey(const Key('back-office-status-bar'));
-      Finder inBar(Finder f) => find.descendant(of: bar, matching: f);
-
-      // No platform to sync with, so the branch server — as the till shows.
-      expect(inBar(find.byType(BranchServerPill)), findsOneWidget);
-      expect(inBar(find.byType(SyncPill)), findsNothing);
-      expect(
-        inBar(find.text(const EnStrings().branchDatabaseReady)),
-        findsOneWidget,
-      );
-      expect(inBar(find.text('Maadi')), findsOneWidget);
-      expect(inBar(find.text('v$posAppVersion')), findsOneWidget);
-      expect(inBar(find.text('Amer M. · Owner')), findsOneWidget);
-    });
-
-    testWidgets('a cloud till: the sync state instead', (tester) async {
-      await _open(
-        tester,
-        overrides: [cloudSyncProvider.overrideWithValue(_Sync())],
-      );
-
-      final bar = find.byKey(const Key('back-office-status-bar'));
-      expect(
-        find.descendant(of: bar, matching: find.byType(SyncPill)),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: bar, matching: find.byType(BranchServerPill)),
-        findsNothing,
-      );
-    });
-
-    testWidgets('in Arabic the role is Arabic and the version stays a code', (
-      tester,
-    ) async {
-      await _open(tester, language: 'ar');
-
-      final bar = find.byKey(const Key('back-office-status-bar'));
-      expect(
-        find.descendant(of: bar, matching: find.text('Amer M. · المالك')),
-        findsOneWidget,
-      );
-      final version = tester.widget<Text>(
-        find.byKey(const Key('back-office-status-version')),
-      );
-      expect(version.textDirection, TextDirection.ltr);
-      expect(version.data, 'v$posAppVersion');
-    });
   });
 
   test('every tab is named in both languages, never the same word twice', () {

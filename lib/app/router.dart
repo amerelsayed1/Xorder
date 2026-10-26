@@ -8,12 +8,14 @@ import '../features/admin/presentation/cloud_back_office_screen.dart';
 import '../features/admin/presentation/management_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/history/presentation/order_history_screen.dart';
+import '../features/home/home_screen.dart';
 import '../features/licensing/presentation/licence_screen.dart';
 import '../features/setup/presentation/setup_wizard.dart';
 import '../features/setup/presentation/welcome_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/sale/sale_screen.dart';
 import '../features/start/start_screen.dart';
+import '../domain/models/ticket.dart' show OrderType;
 import 'providers.dart';
 
 abstract final class PosRoutes {
@@ -22,6 +24,7 @@ abstract final class PosRoutes {
   static const licence = '/licence';
   static const start = '/';
   static const lock = '/lock';
+  static const home = '/home';
   static const floor = '/floor';
   static const sale = '/sale';
   static const orders = '/orders';
@@ -50,7 +53,29 @@ bool needsSignIn({
   required bool signedIn,
   required bool shiftOpen,
 }) =>
-    (at == PosRoutes.sale || at == PosRoutes.floor) && !signedIn && shiftOpen;
+    (at == PosRoutes.sale || at == PosRoutes.floor || at == PosRoutes.home) &&
+    !signedIn &&
+    shiftOpen;
+
+/// The lock screen, remembering which selling screen sent the till to it.
+///
+/// A till restarted mid-service has its shift open and nobody signed in, so
+/// Resume goes to Home (or the floor, or the sale) and the guard above turns it
+/// round to the lock screen. Unlocking used to land on the sale screen whatever
+/// the till had been heading for, which skipped the home screen for the most
+/// ordinary way a shift is resumed (pos-home-screen). The destination travels
+/// in the location, where a redirect can put it.
+String lockLocationFrom(String at) =>
+    Uri(path: PosRoutes.lock, queryParameters: {'next': at}).toString();
+
+/// Where unlocking goes: the selling screen the till was heading for, or the
+/// sale screen — where a cashier who pressed Lock was, and the answer for
+/// anything this does not name (a `next` is a string in a URL, never trusted
+/// to be a route).
+String unlockTarget(String? next) =>
+    const {PosRoutes.sale, PosRoutes.floor, PosRoutes.home}.contains(next)
+    ? next!
+    : PosRoutes.sale;
 
 /// Top-level navigation.
 ///
@@ -66,6 +91,72 @@ bool needsSignIn({
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
+  // ── Where a shift goes, and where an order type goes (pos-home-screen) ────
+  //
+  // **One place for both**, so Start, the home screen and the floor's way back
+  // cannot disagree. A type that needs a table opens the floor to pick one;
+  // any other starts a sale of that type, through the same `setOrderType` the
+  // sale screen's own switch uses, so every rule of switching type applies.
+  void openType(BuildContext context, OrderType type) {
+    if (ref.read(orderTypeRulesProvider).requiresTable(type)) {
+      context.go(PosRoutes.floor);
+      return;
+    }
+    ref.read(ticketProvider.notifier).setOrderType(type);
+    context.go(PosRoutes.sale);
+  }
+
+  // The home screen is for a branch that sells more than one way. With one, it
+  // is a screen with a single button, and a café, a food truck or a
+  // delivery-only kitchen would pay a tap for nothing: they go where Start sent
+  // them before.
+  bool hasChoice() => ref.read(branchOrderTypesProvider).length > 1;
+
+  /// Escape on the sale screen or the floor goes back to Home — only for a
+  /// branch that has one. A seated ticket with lines is parked on its table on
+  /// the way out, exactly as leaving for the floor does, so a dine-in bill is
+  /// never converted into another type or lost by the next button pressed on
+  /// Home; an unseated ticket stays in the cart (the sale screen's own rule).
+  Future<void> leaveSaleTo(BuildContext context, String location) async {
+    // Leaving a seated, non-empty ticket parks it on its table — the floor
+    // then shows the table busy with its running total, and the live ticket
+    // clears so the next table starts fresh.
+    //
+    // **Seated only, still.** An unseated ticket on the way to the floor is a
+    // ticket somebody is going to seat: parking it as a held ticket and
+    // clearing the screen would take the order away from the cashier at the
+    // exact moment they were choosing its table. Putting an unseated ticket
+    // down is what Park is for, and it is one key away.
+    final ticket = ref.read(ticketProvider);
+    if (ticket.isSeated && ticket.lines.isNotEmpty) {
+      final saved = await ref.read(openTicketsProvider.notifier).park(ticket);
+      if (!saved || !context.mounted) return;
+      ref.read(ticketProvider.notifier).reset();
+    }
+    if (context.mounted) context.go(location);
+  }
+
+  Future<void> afterShift(BuildContext context) async {
+    // **Decided on the restaurant's answer, not on the fallback.** Nothing has
+    // asked for the order-type configuration or the branch's supported types
+    // by the time Start is pressed, so a bare read would see the seeded four
+    // and send a one-way branch to a home screen it then has to leave. Start
+    // warms both while the shift opens; this waits for whatever is left, and
+    // falls back to what the till already believes if either cannot be read.
+    try {
+      await ref.read(orderTypeConfigProvider.future);
+      await ref.read(branchesProvider.future);
+    } on Object {
+      // The providers' own fallbacks apply.
+    }
+    if (!context.mounted) return;
+    if (hasChoice()) {
+      context.go(PosRoutes.home);
+      return;
+    }
+    openType(context, ref.read(branchOrderTypesProvider).single);
+  }
+
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: PosRoutes.start,
@@ -87,7 +178,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         signedIn: ref.read(signedInStaffProvider) != null,
         shiftOpen: ref.read(shiftProvider).valueOrNull != null,
       )) {
-        return PosRoutes.lock;
+        return lockLocationFrom(at);
       }
       // A branch that does not seat anybody has no floor. Sending a takeaway
       // counter to a table picker asks a question it has no answer to.
@@ -178,7 +269,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PosRoutes.start,
         builder: (context, state) => StartScreen(
-          onStart: () => context.go(PosRoutes.floor),
+          onStart: () => afterShift(context),
           onManageLicence: () => context.go(PosRoutes.licence),
           onManage: (pane) =>
               context.go(PosRoutes.management, extra: pane),
@@ -190,18 +281,34 @@ final routerProvider = Provider<GoRouter>((ref) {
           // The idle lock says why it came here; Lock and the redirect above
           // carry nothing, and the screen says nothing extra.
           afterInactivity: state.extra == LockReason.inactivity,
-          // Unlocking returns to the sale screen: the shift stayed open and the
-          // ticket is still in memory, so the cashier lands where they left off.
-          onUnlocked: () => context.go(PosRoutes.sale),
+          // Unlocking returns to where the till was: the shift stayed open and
+          // the ticket is still in memory, so the cashier lands where they
+          // left off — the sale screen after Lock, and the screen a restarted
+          // till was heading for (Home, the floor) after a resume.
+          onUnlocked: () =>
+              context.go(unlockTarget(state.uri.queryParameters['next'])),
           // The screen signs out first, so resuming the shift from the start
           // screen is sent straight back here for a name and a PIN.
           onBack: () => context.go(PosRoutes.start),
         ),
       ),
       GoRoute(
+        path: PosRoutes.home,
+        builder: (context, state) =>
+            HomeScreen(
+              onPick: (type) => openType(context, type),
+              // Escape: back to Start, where the shift was opened or resumed.
+              onBack: () => context.go(PosRoutes.start),
+            ),
+      ),
+      GoRoute(
         path: PosRoutes.floor,
         builder: (context, state) => FloorScreen(
-          onClose: () => context.go(PosRoutes.start),
+          // Home carries what the header's two buttons did (pos-home-screen).
+          hasHome: hasChoice(),
+          // Back to the screen it was reached from: Home when there is one.
+          onClose: () =>
+              context.go(hasChoice() ? PosRoutes.home : PosRoutes.start),
           // Carried back to the sale screen whichever way the floor resolves,
           // so a collect that came here for a table goes on into payment.
           onSellWithoutTable: () async {
@@ -264,25 +371,20 @@ final routerProvider = Provider<GoRouter>((ref) {
               context.go(PosRoutes.floor, extra: SaleIntent.collect),
           onChangeTable: () =>
               context.go(PosRoutes.floor, extra: SaleIntent.moveTable),
-          onTables: () async {
-            // Leaving a seated, non-empty ticket parks it on its table — the
-            // floor then shows the table busy with its running total, and the
-            // live ticket clears so the next table starts fresh.
-            //
-            // **Seated only, still.** An unseated ticket on the way to the floor
-            // is a ticket somebody is going to seat: parking it as a held ticket
-            // and clearing the screen would take the order away from the cashier
-            // at the exact moment they were choosing its table. Putting an
-            // unseated ticket down is what Park is for, and it is one key away.
-            final ticket = ref.read(ticketProvider);
-            if (ticket.isSeated && ticket.lines.isNotEmpty) {
-              final saved = await ref
-                  .read(openTicketsProvider.notifier)
-                  .park(ticket);
-              if (!saved || !context.mounted) return;
-              ref.read(ticketProvider.notifier).reset();
+          onTables: () => leaveSaleTo(context, PosRoutes.floor),
+          // Escape, one step back along the way here: the floor for an order
+          // that is seated, otherwise Home. A branch with neither (one way of
+          // selling, no tables) has nothing before the sale but Start, and
+          // leaving a selling screen for it is Close shift's deliberate act,
+          // not a key (pos-home-screen).
+          onBack: () {
+            final type = ref.read(ticketProvider).orderType;
+            if (ref.read(orderTypeRulesProvider).requiresTable(type) &&
+                ref.read(orderTypeRulesProvider).hasSeating) {
+              leaveSaleTo(context, PosRoutes.floor);
+            } else if (hasChoice()) {
+              leaveSaleTo(context, PosRoutes.home);
             }
-            context.go(PosRoutes.floor);
           },
           onOrders: () => context.go(PosRoutes.orders),
           onCloseShift: () => context.go(PosRoutes.start),

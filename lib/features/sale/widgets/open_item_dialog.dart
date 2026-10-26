@@ -113,7 +113,7 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
                   controller: _price,
                   palette: palette,
                   numeric: true,
-                  prefix: 'EGP ',
+                  suffix: 'EGP',
                 ),
                 const SizedBox(height: PosSpace.md),
                 Row(
@@ -177,7 +177,7 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
     bool autofocus = false,
     bool numeric = false,
     String? hint,
-    String? prefix,
+    String? suffix,
   }) => SizedBox(
     height: PosSize.formControl,
     child: TextField(
@@ -193,6 +193,15 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
             ]
           : null,
       textDirection: numeric ? TextDirection.ltr : null,
+      // Digits read left to right, but the figure sits on the start edge with
+      // the label and the name above it: `ltr` alone put it on the left of an
+      // Arabic form, with the currency on the opposite side of the box.
+      textAlign: numeric
+          ? (Directionality.of(context) == TextDirection.rtl
+                ? TextAlign.right
+                : TextAlign.left)
+          : TextAlign.start,
+      textAlignVertical: TextAlignVertical.center,
       maxLength: numeric ? null : 60,
       buildCounter:
           (_, {required currentLength, required isFocused, maxLength}) => null,
@@ -205,8 +214,13 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
         isDense: true,
         hintText: hint,
         hintStyle: PosText.ui(size: 14, color: palette.muted),
-        prefixText: prefix,
-        prefixStyle: PosText.mono(size: 13, color: palette.muted),
+        suffixText: suffix,
+        suffixStyle: PosText.mono(size: 13, color: palette.muted),
+        // Tight, so the field fills its [PosSize.formControl] box. Left to its
+        // own height it sat at the top of the box, a different height for each
+        // type size, and left a gap under it that the next label then
+        // stacked its own gap on.
+        constraints: const BoxConstraints.tightFor(height: PosSize.formControl),
         contentPadding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.zero,
