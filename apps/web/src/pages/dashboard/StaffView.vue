@@ -195,70 +195,81 @@ async function remove(u) {
 </script>
 
 <template>
-    <SettingsHeader :title="t('team.staff_title')" :desc="t('team.staff_sub')">
+    <SettingsHeader class="staff-head" :title="t('team.staff_title')" :desc="t('team.staff_sub')">
         <template #actions>
-            <RouterLink v-if="canCreate" :to="{ name: 'dashboard.staff.create' }" class="set-btn-primary">
+            <RouterLink v-if="canCreate" :to="{ name: 'dashboard.staff.create' }" class="set-btn-primary act">
                 <Icon name="plus" :size="15" />{{ t('team.add_staff') }}
             </RouterLink>
         </template>
     </SettingsHeader>
 
-    <!-- Skeletons keep the row height so the page does not jump on load. -->
-    <div v-if="loading" class="set-stack">
-        <div v-for="n in 3" :key="n" class="set-skel" style="height: 79px"></div>
-    </div>
-
-    <div v-else-if="!rows.length" class="set-card">
-        <div class="set-empty">
-            <span class="set-empty-title">{{ t('team.staff_empty') }}</span>
+    <!-- Skeleton keeps the row height so the page does not jump on load. -->
+    <div v-if="loading" class="card">
+        <div v-for="n in 3" :key="n" class="skel-row">
+            <div class="set-skel" style="width:44px;height:44px;border-radius:13px;flex:none"></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                <div class="set-skel" style="height:14px;width:38%;border-radius:6px"></div>
+                <div class="set-skel" style="height:11px;width:22%;border-radius:6px"></div>
+            </div>
+            <div class="set-skel" style="height:26px;width:72px;border-radius:999px"></div>
         </div>
     </div>
 
-    <div v-else class="set-stack">
-        <div v-for="u in rows" :key="u.id" class="set-row">
-            <div class="set-avatar" :class="{ 'set-avatar-owner': u.is_owner }" aria-hidden="true">{{ initials(u.name) }}</div>
+    <div v-else-if="!rows.length" class="card empty">
+        <span class="empty-ico" aria-hidden="true"><i class="pi pi-users" style="font-size:22px" aria-hidden="true"></i></span>
+        <p class="empty-text">{{ t('team.staff_empty') }}</p>
+        <RouterLink v-if="canCreate" :to="{ name: 'dashboard.staff.create' }" class="set-btn-primary act">
+            <Icon name="plus" :size="15" />{{ t('team.add_staff') }}
+        </RouterLink>
+    </div>
 
-            <div class="set-row-id">
-                <div class="set-row-name">
-                    <strong>{{ u.name }}</strong>
-                    <span class="set-chip" :class="u.is_owner ? 'set-chip-accent' : 'set-chip-amber'">{{ roleLabel(u) }}</span>
+    <ul v-else class="card list">
+        <li v-for="u in rows" :key="u.id" class="row">
+            <div class="row-top">
+                <div class="avatar-tile" :class="{ 'avatar-owner': u.is_owner }" aria-hidden="true">{{ initials(u.name) }}</div>
+
+                <div class="row-id">
+                    <div class="row-name">
+                        <strong class="truncate">{{ u.name }}</strong>
+                        <span class="chip" :class="u.is_owner ? 'chip-owner' : 'chip-role'">{{ roleLabel(u) }}</span>
+                    </div>
+                    <span class="row-sub" dir="ltr">@{{ u.username }}</span>
                 </div>
-                <span class="set-row-sub" dir="ltr">@{{ u.username }}</span>
+
+                <div class="row-status">
+                    <span class="chip" :class="u.status === 'ACTIVE' ? 'chip-green' : (u.status === 'SUSPENDED' ? 'chip-red' : 'chip-gray')">
+                        <span class="dot"></span>{{ t(`status.${u.status}`) }}
+                    </span>
+                    <!-- Only rendered once this session has actually been told the
+                         answer: the PIN is write-only and no read endpoint reports
+                         whether one exists, so an unconditional chip would be a guess. -->
+                    <span v-if="pinState[u.id] !== undefined" class="note">
+                        {{ pinState[u.id] ? t('pos_pin.state_set') : t('pos_pin.state_none') }}
+                    </span>
+                </div>
             </div>
 
-            <div class="set-row-status">
-                <span class="set-chip" :class="u.status === 'ACTIVE' ? 'set-chip-green' : ''">
-                    <span class="dot"></span>{{ t(`status.${u.status}`) }}
-                </span>
-                <!-- Only rendered once this session has actually been told the
-                     answer: the PIN is write-only and no read endpoint reports
-                     whether one exists, so an unconditional chip would be a guess. -->
-                <span v-if="pinState[u.id] !== undefined" class="set-note">
-                    {{ pinState[u.id] ? t('pos_pin.state_set') : t('pos_pin.state_none') }}
-                </span>
-            </div>
-
-            <div class="set-row-actions">
-                <button v-if="canSetPin(u)" type="button" class="set-btn" :title="t('pos_pin.explainer')" @click="openPin(u)">
+            <div class="row-actions">
+                <button v-if="canSetPin(u)" type="button" class="set-btn act" :title="t('pos_pin.explainer')" @click="openPin(u)">
                     {{ t('pos_pin.action') }}
-                    <i class="pi pi-info-circle" style="font-size: 12px; opacity: .6" aria-hidden="true"></i>
+                    <i class="pi pi-info-circle" style="font-size: 12px" aria-hidden="true"></i>
                 </button>
                 <!-- The owner is listed, never actioned: the API 404s on every
                      write against that account, so offering the controls here
                      would only produce dead buttons. -->
-                <span v-if="u.is_owner" class="set-note">{{ t('team.owner_not_editable') }}</span>
-                <RouterLink v-else-if="canUpdate" :to="{ name: 'dashboard.staff.edit', params: { id: u.id } }" class="set-btn">{{ t('common.edit') }}</RouterLink>
-                <button v-if="hasMenu(u)" type="button" class="set-btn set-btn-icon"
+                <span v-if="u.is_owner" class="note">{{ t('team.owner_not_editable') }}</span>
+                <RouterLink v-else-if="canUpdate" :to="{ name: 'dashboard.staff.edit', params: { id: u.id } }" class="set-btn act">{{ t('common.edit') }}</RouterLink>
+                <button v-if="hasMenu(u)" type="button" class="set-btn set-btn-icon act-icon"
                     :title="t('common.more')" :aria-label="t('common.more')"
                     :aria-expanded="openMenu === u.id" @click="toggleMenu(u)">⋯</button>
             </div>
 
-            <div v-if="openMenu === u.id" class="set-row-more">
-                <button v-if="canUpdate" type="button" class="set-btn" :disabled="busy === u.id" @click="resetPassword(u)">{{ t('team.reset_password') }}</button>
-                <button v-if="canDelete" type="button" class="set-btn set-btn-danger" :disabled="busy === u.id" @click="remove(u)">{{ t('team.delete_staff') }}</button>
+            <div v-if="openMenu === u.id" class="row-more">
+                <button v-if="canUpdate" type="button" class="set-btn act" :disabled="busy === u.id" @click="resetPassword(u)">{{ t('team.reset_password') }}</button>
+                <button v-if="canDelete" type="button" class="set-btn set-btn-danger act" :disabled="busy === u.id" @click="remove(u)">{{ t('team.delete_staff') }}</button>
             </div>
-        </div>
-    </div>
+        </li>
+    </ul>
 
     <!--
         Set / reset a till PIN. Write-only in both directions: the field is
@@ -269,13 +280,13 @@ async function remove(u) {
     <Modal v-if="pinModal" :title="t('pos_pin.title')" :subtitle="t('pos_pin.subtitle', { name: pinModal.name })" @close="closePin">
         <form @submit.prevent="savePin" class="space-y-4">
             <p class="text-sm" style="color:var(--body)">{{ t('pos_pin.explainer') }}</p>
-            <p class="text-sm" style="color:var(--muted)">{{ t('pos_pin.state_unknown') }}</p>
+            <p class="text-sm" style="color:var(--body)">{{ t('pos_pin.state_unknown') }}</p>
 
             <label class="block">
                 <span class="label">{{ t('pos_pin.new_pin') }}</span>
                 <input v-model="pinValue" type="password" class="input mono" dir="ltr" inputmode="numeric"
                     autocomplete="new-password" maxlength="4" data-en-digits placeholder="••••" />
-                <p class="text-xs mt-1" style="color:var(--muted)">{{ t('pos_pin.rule') }}</p>
+                <p class="text-sm mt-1" style="color:var(--body)">{{ t('pos_pin.rule') }}</p>
                 <FormError :errors="pinErrors" field="pin" />
             </label>
 
@@ -283,20 +294,68 @@ async function remove(u) {
                 <span class="label">{{ t('pos_pin.confirm_pin') }}</span>
                 <input v-model="pinConfirm" type="password" class="input mono" dir="ltr" inputmode="numeric"
                     autocomplete="new-password" maxlength="4" data-en-digits placeholder="••••" />
-                <p v-if="pinMismatch" class="text-xs mt-1" style="color:var(--red)">{{ t('pos_pin.mismatch') }}</p>
+                <p v-if="pinMismatch" class="text-sm mt-1" style="color:var(--red)">{{ t('pos_pin.mismatch') }}</p>
             </label>
 
-            <p class="rounded-lg p-3 text-sm" style="background:var(--amber-soft);color:var(--amber)">{{ t('pos_pin.once_note') }}</p>
+            <p class="rounded-lg p-3 text-sm" style="background:var(--amber-soft);color:var(--p-primary-800)">{{ t('pos_pin.once_note') }}</p>
 
             <div class="flex flex-wrap items-center gap-3 pt-1">
-                <button type="submit" class="btn btn-accent" :disabled="pinSaving || !pinValid">{{ pinSaving ? t('common.saving') : t('pos_pin.save') }}</button>
-                <button type="button" class="btn btn-ghost" @click="closePin">{{ t('common.cancel') }}</button>
-                <button type="button" class="btn btn-ghost" style="color:var(--red);margin-inline-start:auto" @click="clearPin(pinModal)">{{ t('pos_pin.clear') }}</button>
+                <button type="submit" class="btn btn-accent act" :disabled="pinSaving || !pinValid">{{ pinSaving ? t('common.saving') : t('pos_pin.save') }}</button>
+                <button type="button" class="btn btn-ghost act" @click="closePin">{{ t('common.cancel') }}</button>
+                <button type="button" class="btn btn-ghost act" style="color:var(--red);margin-inline-start:auto" @click="clearPin(pinModal)">{{ t('pos_pin.clear') }}</button>
             </div>
         </form>
     </Modal>
 </template>
 
 <style scoped>
-.set-row-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 96px; }
+/* Colours come from the shared theme variables only. The settings shell's
+   own text is nudged to --body so secondary copy stays readable. */
+.staff-head :deep(.set-desc), .staff-head :deep(.set-crumb) { color: var(--body); font-size: 14px; }
+
+.list { list-style: none; margin: 0; padding: 0; overflow: hidden; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 20px; min-height: 72px;
+    border-top: 1px solid var(--line); transition: background .15s; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--page); }
+.row-top { display: flex; align-items: center; gap: 14px; flex: 1 1 320px; min-width: 0; flex-wrap: wrap; }
+.row-id { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.row-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.row-name strong { font-size: 15.5px; font-weight: 700; color: var(--ink); min-width: 0; }
+.row-sub { font-family: var(--font-mono); font-size: 13px; color: var(--body); }
+.row-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 96px; }
+.row-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+.row-more { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.note { font-size: 13px; color: var(--body); }
+
+.avatar-tile { width: 44px; height: 44px; flex: none; border-radius: 13px; display: grid; place-items: center;
+    font-size: 14.5px; font-weight: 700; background: var(--accent-soft); color: var(--p-primary-800); }
+.avatar-owner { background: var(--ink); color: var(--card); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: var(--gray-soft); color: var(--body); }
+.chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.chip-role { background: var(--accent-soft); color: var(--p-primary-800); }
+.chip-owner { background: var(--ink); color: var(--card); }
+.chip-green { background: var(--green-soft); color: var(--green); }
+.chip-red { background: var(--red-soft); color: var(--red); }
+.chip-gray { background: var(--gray-soft); color: var(--body); }
+
+.act { min-height: 40px; font-size: 14px; justify-content: center; }
+.act-icon { width: 40px; height: 40px; }
+
+.skel-row { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.skel-row:first-child { border-top: 0; }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.empty-text { font-size: 15.5px; font-weight: 600; color: var(--ink); max-width: 420px; }
+
+@media (max-width: 640px) {
+    .row { padding-inline: 14px; }
+    .row-actions { width: 100%; justify-content: flex-end; }
+    .act { min-height: 44px; }
+    .act-icon { width: 44px; height: 44px; }
+}
 </style>

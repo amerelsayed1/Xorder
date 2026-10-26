@@ -5,6 +5,7 @@ import { alert } from '@xorder/ui/alert.js'
 import api from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import ApexChart from '../../components/ApexChart.vue'
 import { barChart } from '../../lib/charts.js'
 import { useReportFilters } from '../../composables/useReportFilters.js'
@@ -53,92 +54,107 @@ function areaOrdersOptions(c) {
     <div class="space-y-5">
         <div>
             <h1 class="page-title">{{ t('rep.areas_title') }}</h1>
-            <p class="page-sub">{{ t('rep.areas_sub') }}</p>
+            <p class="page-sub" style="color:var(--body)">{{ t('rep.areas_sub') }}</p>
         </div>
 
         <!-- Filters -->
         <ReportFilters :ctx="rf" @apply="load" />
 
+        <!-- Loading skeleton: same blocks as the loaded page -->
         <template v-if="loading">
-            <div class="card p-4 space-y-3">
-                <Skeleton h="16px" w="30%" />
-                <Skeleton v-for="n in 5" :key="'s' + n" h="14px" w="90%" />
+            <div class="space-y-5" aria-busy="true">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Skeleton v-for="n in 2" :key="n" w="100%" h="96px" rounded="15px" />
+                </div>
+                <Skeleton w="100%" h="300px" rounded="15px" />
+                <Skeleton w="100%" h="260px" rounded="15px" />
             </div>
         </template>
 
+        <!-- No report was ever received: the load failed (an alert has also been shown) -->
+        <ErrorState v-else-if="!areaReport" @retry="load" />
+
+        <div v-else-if="!hasAreas" class="card px-5 py-12 text-center" style="color:var(--body)">
+            <i class="pi pi-map block mb-2" style="font-size:26px" aria-hidden="true"></i>
+            {{ t('rep.no_areas') }}
+        </div>
+
         <template v-else>
-            <div class="card p-4 space-y-3">
-                <div v-if="!hasAreas" class="py-8 text-center" style="color:var(--muted)">
-                    {{ t('rep.no_areas') }}
+            <!-- Indoor vs outdoor roll-up -->
+            <section v-if="(areaReport.by_type || []).length" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div v-for="ty in areaReport.by_type" :key="'ty' + ty.type" class="stat">
+                    <div class="stat-label" style="color:var(--body)">{{ typeLabel(ty.type) }}</div>
+                    <div class="stat-num">{{ ty.total_orders }}</div>
+                    <div class="text-sm mt-1.5" style="color:var(--body)">{{ t('rep.orders') }} · <strong style="color:var(--ink)">{{ money(ty.total_sales) }}</strong></div>
                 </div>
+            </section>
 
-                <template v-else>
-                    <!-- Indoor vs outdoor roll-up -->
-                    <div class="rep-rollups">
-                        <div v-for="ty in (areaReport.by_type || [])" :key="'ty' + ty.type" class="rep-rollup">
-                            <div class="rep-rollup-label">{{ typeLabel(ty.type) }}</div>
-                            <div class="rep-rollup-val">{{ ty.total_orders }}</div>
-                            <div class="rep-rollup-sub">{{ t('rep.orders') }} · {{ money(ty.total_sales) }}</div>
-                        </div>
-                    </div>
+            <!-- Orders per area (chart) -->
+            <section v-if="chartAreas.length" class="card p-5" aria-labelledby="ac-chart">
+                <h2 id="ac-chart" class="h-card mb-2">{{ t('rep.orders') }} · {{ t('rep.area') }}</h2>
+                <ApexChart :build="areaOrdersOptions" :redraw="[areaReport, locale]" />
+            </section>
 
-                    <!-- Orders per area (chart) -->
-                    <div v-if="chartAreas.length">
-                        <div class="label mb-2">{{ t('rep.orders') }} · {{ t('rep.area') }}</div>
-                        <ApexChart :build="areaOrdersOptions" :redraw="[areaReport, locale]" />
-                    </div>
-
-                    <div class="rep-table-wrap">
-                        <table class="rep-table">
-                            <thead>
-                                <tr>
-                                    <th>{{ t('rep.area') }}</th>
-                                    <th>{{ t('rep.branch') }}</th>
-                                    <th>{{ t('rep.type') }}</th>
-                                    <th class="num">{{ t('rep.orders') }}</th>
-                                    <th class="num">{{ t('rep.sales') }}</th>
-                                    <th class="num">{{ t('rep.aov') }}</th>
-                                    <th class="num">{{ t('rep.bill_requests') }}</th>
-                                    <th class="num">{{ t('rep.response_time') }}</th>
-                                    <th class="num">{{ t('rep.completion_time') }}</th>
-                                    <th class="num">{{ t('rep.rating') }}</th>
-                                    <th class="num">{{ t('rep.negatives') }}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="a in areaReport.areas" :key="a.id">
-                                    <td>{{ localName(a, 'name') }}</td>
-                                    <td>{{ localName(a, 'branch_name') }}</td>
-                                    <td>{{ typeLabel(a.type) }}</td>
-                                    <td class="num">{{ a.total_orders }}</td>
-                                    <td class="num">{{ money(a.total_sales) }}</td>
-                                    <td class="num">{{ money(a.avg_order_value) }}</td>
-                                    <td class="num">{{ a.bill_requests }}</td>
-                                    <td class="num">{{ fmtSecs(a.avg_response_seconds) }}</td>
-                                    <td class="num">{{ fmtSecs(a.avg_completion_seconds) }}</td>
-                                    <td class="num">{{ a.avg_review_rating != null ? a.avg_review_rating + '★' : t('rep.na') }}</td>
-                                    <td class="num">{{ a.negative_review_count }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </template>
-            </div>
+            <!-- Detail table: scrolls inside its card, area name stays pinned -->
+            <section class="card" aria-labelledby="ac-table">
+                <h2 id="ac-table" class="h-card px-5 pt-5 pb-3">{{ t('rep.area') }}</h2>
+                <div class="rep-table-wrap">
+                    <table class="rep-table">
+                        <thead>
+                            <tr>
+                                <th class="sticky-col">{{ t('rep.area') }}</th>
+                                <th>{{ t('rep.branch') }}</th>
+                                <th>{{ t('rep.type') }}</th>
+                                <th class="num">{{ t('rep.orders') }}</th>
+                                <th class="num">{{ t('rep.sales') }}</th>
+                                <th class="num">{{ t('rep.aov') }}</th>
+                                <th class="num">{{ t('rep.bill_requests') }}</th>
+                                <th class="num">{{ t('rep.response_time') }}</th>
+                                <th class="num">{{ t('rep.completion_time') }}</th>
+                                <th class="num">{{ t('rep.rating') }}</th>
+                                <th class="num">{{ t('rep.negatives') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="a in areaReport.areas" :key="a.id">
+                                <td class="sticky-col name-cell">{{ localName(a, 'name') }}</td>
+                                <td>{{ localName(a, 'branch_name') }}</td>
+                                <td>{{ typeLabel(a.type) }}</td>
+                                <td class="num strong">{{ a.total_orders }}</td>
+                                <td class="num strong">{{ money(a.total_sales) }}</td>
+                                <td class="num">{{ money(a.avg_order_value) }}</td>
+                                <td class="num">{{ a.bill_requests }}</td>
+                                <td class="num">{{ fmtSecs(a.avg_response_seconds) }}</td>
+                                <td class="num">{{ fmtSecs(a.avg_completion_seconds) }}</td>
+                                <td class="num">{{ a.avg_review_rating != null ? a.avg_review_rating + '★' : t('rep.na') }}</td>
+                                <td class="num">
+                                    <span v-if="a.negative_review_count > 0" class="badge badge-red"><i class="pi pi-exclamation-triangle" style="font-size:11px" aria-hidden="true"></i>{{ a.negative_review_count }}</span>
+                                    <template v-else>{{ a.negative_review_count }}</template>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </template>
     </div>
 </template>
 
 <style scoped>
+/* Colours come only from the shared theme variables and the PrimeVue primary
+   scale; nothing here introduces a new hex value. */
 .rep-table-wrap { overflow-x: auto; }
-.rep-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.rep-table th, .rep-table td { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.rep-table th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.rep-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.rep-table th, .rep-table td { text-align: start; padding: 11px 14px; border-top: 1px solid var(--line); white-space: nowrap; }
+.rep-table th { color: var(--body); font-weight: 600; font-size: 13px; background: var(--page); }
 .rep-table td { color: var(--body); }
+.rep-table tbody tr { transition: background .15s; }
+.rep-table tbody tr:hover { background: var(--page); }
+.rep-table tbody tr:hover .sticky-col { background: var(--page); }
 .rep-table .num { text-align: end; font-variant-numeric: tabular-nums; }
-
-.rep-rollups { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
-.rep-rollup { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.rep-rollup-label { font-size: 12.5px; color: var(--muted); }
-.rep-rollup-val { font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1.2; }
-.rep-rollup-sub { font-size: 12px; color: var(--muted); }
+.rep-table .strong, .rep-table .name-cell { color: var(--ink); font-weight: 600; }
+.rep-table td:first-child, .rep-table th:first-child { padding-inline-start: 20px; }
+.rep-table td:last-child, .rep-table th:last-child { padding-inline-end: 20px; }
+.sticky-col { position: sticky; inset-inline-start: 0; background: var(--card); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.rep-table th.sticky-col { background: var(--page); }
 </style>

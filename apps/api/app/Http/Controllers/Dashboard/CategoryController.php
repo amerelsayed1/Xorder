@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\BulkDeleteCategoriesRequest;
+use App\Http\Requests\Dashboard\BulkStoreCategoriesRequest;
 use App\Http\Requests\Dashboard\ReorderRequest;
 use App\Http\Requests\Dashboard\StoreCategoryRequest;
 use App\Http\Requests\Dashboard\UpdateCategoryRequest;
@@ -53,6 +54,59 @@ class CategoryController extends Controller
         return response()->json([
             'data' => CategoryResource::make($result['category']),
             'message' => __('xorder.messages.category_created'),
+        ], 201);
+    }
+
+    /**
+     * Create several categories in one request (XORD-007), all-or-nothing.
+     *
+     * Validation has already refused duplicates (against the menu and within
+     * the batch) and rows with no name. What is left is the plan cap, counted
+     * for the whole batch under the same tenant row lock `store()` takes, and
+     * the insert itself, one transaction: an exception rolls every row back.
+     * New rows are appended after the current last one, in the order sent.
+     */
+    public function bulkStore(BulkStoreCategoriesRequest $request, PlanLimitService $limits): JsonResponse
+    {
+        $restaurant = $request->user()->restaurant;
+        // validated() lists a row where its first matching rule found it, not
+        // where it was sent (a row with only name_ar comes before one with
+        // name_en), so restore the order the owner typed them in.
+        $rows = $request->validated('categories');
+        ksort($rows);
+        $rows = array_values($rows);
+
+        $result = DB::transaction(function () use ($restaurant, $limits, $rows) {
+            Restaurant::whereKey($restaurant->getKey())->lockForUpdate()->first();
+
+            if (($limit = $limits->categoryLimitWouldBeExceeded($restaurant, count($rows))) !== null) {
+                return ['limit' => $limit];
+            }
+
+            $next = ((int) Category::query()->max('display_order')) + 1;
+            $created = [];
+            foreach ($rows as $offset => $row) {
+                // restaurant_id is stamped by the BelongsToRestaurant trait.
+                $created[] = Category::create([
+                    'name_ar' => $row['name_ar'] ?? null,
+                    'name_en' => $row['name_en'] ?? null,
+                    'is_active' => $row['is_active'] ?? true,
+                    'display_order' => $next + $offset,
+                ]);
+            }
+
+            return ['categories' => $created];
+        });
+
+        if (isset($result['limit'])) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_categories', ['limit' => $result['limit']]),
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => CategoryResource::collection(collect($result['categories'])),
+            'message' => trans_choice('xorder.messages.categories_created', count($result['categories']), ['count' => count($result['categories'])]),
         ], 201);
     }
 

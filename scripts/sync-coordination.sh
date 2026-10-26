@@ -9,13 +9,13 @@
 # owning repo and copied out, never clobbered in the wrong direction.
 #
 # Ownership (from the files' own headers):
-#   POS_TO_BACKEND.md      owner: POS      -> source xorder-pos, dest xorder-new
-#   BACKEND_TO_POS.md      owner: backend  -> source xorder-new, dest xorder-pos
-#   BACKOFFICE_TO_CLOUD.md owner: cloud    -> source xorder-new, dest xorder-pos
+#   POS_TO_BACKEND.md      owner: POS      -> source xorder-pos, dest xorder-cloud
+#   BACKEND_TO_POS.md      owner: backend  -> source xorder-cloud, dest xorder-pos
+#   BACKOFFICE_TO_CLOUD.md owner: cloud    -> source xorder-cloud, dest xorder-pos
 #
-# This copy is identical in both repos (xorder-new/scripts/ and xorder-pos/scripts/).
+# This copy is identical in both repos (xorder-cloud/scripts/ and xorder-pos/scripts/).
 # It assumes the two repos are checked out as siblings under one parent folder, e.g.
-# ~/Projects/Xorder/{xorder-new,xorder-pos}. If the sibling repo is not present it
+# ~/Projects/Xorder/{xorder-cloud,xorder-pos}. If the sibling repo is not present it
 # exits 0 with a note, so a single-repo clone or CI job is never broken by it.
 #
 # Usage (from either repo):
@@ -27,12 +27,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WS_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
-NEW="$WS_ROOT/xorder-new/docs/coordination"
+NEW="$WS_ROOT/xorder-cloud/docs/coordination"
 POS="$WS_ROOT/xorder-pos/docs/coordination"
 
-if [[ ! -d "$WS_ROOT/xorder-new" || ! -d "$WS_ROOT/xorder-pos" ]]; then
+if [[ ! -d "$WS_ROOT/xorder-cloud" || ! -d "$WS_ROOT/xorder-pos" ]]; then
   echo "sync-coordination: sibling repo not found next to $REPO_ROOT — nothing to sync." >&2
-  echo "  expected both xorder-new/ and xorder-pos/ under $WS_ROOT" >&2
+  echo "  expected both xorder-cloud/ and xorder-pos/ under $WS_ROOT" >&2
   exit 0
 fi
 

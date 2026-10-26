@@ -64,49 +64,48 @@ const targetLocaleName = () => t(locale.value === 'ar' ? 'languages.en' : 'langu
 </script>
 
 <template>
-    <div class="theme-warm portal min-h-screen flex items-center justify-center p-4">
+    <div class="theme-warm portal login min-h-screen flex items-center justify-center p-4">
         <div class="w-full max-w-sm">
-            <div class="flex justify-end mb-4">
-                <button class="text-sm" style="color:var(--muted)" @click="toggleLang">
+            <div class="flex justify-end mb-3">
+                <button type="button" class="lang-btn" @click="toggleLang">
                     {{ targetLocaleName() }}
                 </button>
             </div>
 
-            <div class="card p-7">
-                <div class="mb-5">
+            <div class="card login-card">
+                <div class="mb-6">
                     <div v-if="branding && branding.logo_url" class="flex items-center gap-3">
                         <img :src="branding.logo_url" :alt="brandName" style="height:46px;width:46px;border-radius:11px;object-fit:cover;display:block" />
                         <span class="page-title" style="font-size:20px">{{ brandName }}</span>
                     </div>
                     <XorderLogo v-else style="height:34px;width:auto;color:var(--ink);display:block" />
-                    <div class="page-sub" style="margin-top:10px">{{ t('auth.welcome') }}</div>
+                    <div class="page-sub" style="margin-top:12px;color:var(--body);font-size:15.5px">{{ t('auth.welcome') }}</div>
                 </div>
 
                 <form @submit.prevent="submit" class="space-y-4">
                     <label class="block">
                         <span class="label">{{ t('auth.username') }}</span>
-                        <input v-model="form.username" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false" class="input" />
+                        <input v-model="form.username" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false" class="input fld" />
                     </label>
                     <label class="block">
                         <span class="label">{{ t('auth.password') }}</span>
                         <div style="position:relative">
-                            <input v-model="form.password" :type="showPassword ? 'text' : 'password'" required autocomplete="current-password" class="input" style="padding-inline-end:2.75rem" />
-                            <button type="button" @click="showPassword = !showPassword"
+                            <input v-model="form.password" :type="showPassword ? 'text' : 'password'" required autocomplete="current-password" class="input fld" style="padding-inline-end:3rem" />
+                            <button type="button" @click="showPassword = !showPassword" class="pw-toggle"
                                 :aria-label="showPassword ? t('auth.hide_password') : t('auth.show_password')"
-                                :title="showPassword ? t('auth.hide_password') : t('auth.show_password')"
-                                style="position:absolute;inset-inline-end:0;top:0;bottom:0;display:flex;align-items:center;padding-inline:0.75rem;color:var(--muted);background:none;border:0;cursor:pointer">
-                                <svg v-if="showPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                :title="showPassword ? t('auth.hide_password') : t('auth.show_password')">
+                                <svg v-if="showPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
                         </div>
                     </label>
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
+                    <label class="remember">
                         <input v-model="form.remember" type="checkbox" /> {{ t('auth.remember') }}
                     </label>
 
-                    <p v-if="error" class="text-sm" style="color:#c0392b">{{ error }}</p>
+                    <p v-if="error" class="login-error" role="alert">{{ error }}</p>
 
-                    <button type="submit" :disabled="loading" class="btn btn-accent w-full justify-center">
+                    <button type="submit" :disabled="loading" class="btn btn-accent w-full justify-center submit">
                         {{ loading ? t('auth.signing_in') : t('auth.login') }}
                     </button>
                 </form>
@@ -114,3 +113,19 @@ const targetLocaleName = () => t(locale.value === 'ar' ? 'languages.en' : 'langu
         </div>
     </div>
 </template>
+
+<style scoped>
+.login-card { padding: 28px; }
+.lang-btn { min-height: 44px; padding-inline: 12px; font-size: 14px; font-weight: 500; color: var(--body); background: none; border: 0;
+    border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
+.lang-btn:hover { background: var(--card); color: var(--ink); }
+.fld { min-height: 46px; }
+.fld:focus { box-shadow: 0 0 0 3px var(--accent-soft); }
+.pw-toggle { position: absolute; inset-inline-end: 0; top: 6px; bottom: 0; width: 46px; height: 46px; display: flex; align-items: center;
+    justify-content: center; color: var(--body); background: none; border: 0; border-radius: 10px; cursor: pointer; }
+.pw-toggle:hover { color: var(--ink); }
+.remember { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14.5px; color: var(--body); cursor: pointer; }
+.remember input { width: 18px; height: 18px; accent-color: var(--accent); }
+.login-error { font-size: 14px; color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 10px 12px; }
+.submit { min-height: 48px; font-size: 15.5px; }
+</style>

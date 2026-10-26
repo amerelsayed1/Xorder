@@ -135,12 +135,13 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
 -->
 <template>
     <div class="max-w-2xl">
-        <RouterLink :to="{ name: 'admin.licences.new' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-        <h1 class="page-title my-3">{{ t('licence.offline_issue') }}</h1>
-        <p class="page-sub mb-4">{{ t('licence.offline_issue_sub') }}</p>
+        <RouterLink :to="{ name: 'admin.licences.new' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+        <h1 class="page-title">{{ t('licence.offline_issue') }}</h1>
+        <p class="page-sub mb-4" style="color:var(--body)">{{ t('licence.offline_issue_sub') }}</p>
 
         <form @submit.prevent="submit" class="space-y-5">
-            <div class="card p-6 space-y-4">
+            <section class="card p-5 space-y-4">
+                <div class="sec-head"><h2 class="h-card">{{ t('licence.sec_customer') }}</h2></div>
                 <label class="block">
                     <span class="label">{{ t('licence.customer_name') }}</span>
                     <input v-model="form.customer_name" class="input" :placeholder="t('licence.customer_name_hint')" />
@@ -150,7 +151,7 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                 <label class="block">
                     <span class="label">{{ t('licence.customer_slug') }}</span>
                     <input v-model="form.customer_slug" class="input mono" dir="ltr" @input="slugTouched = true" />
-                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.customer_slug_hint') }}</p>
+                    <p class="help">{{ t('licence.customer_slug_hint') }}</p>
                     <FormError :errors="errors" field="customer_slug" />
                 </label>
 
@@ -162,7 +163,7 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                     </label>
                     <label class="block">
                         <span class="label">{{ t('licence.contact_phone') }}</span>
-                        <input v-model="form.contact_phone" class="input" dir="ltr" />
+                        <input v-model="form.contact_phone" class="input" dir="ltr" inputmode="tel" />
                         <FormError :errors="errors" field="contact_phone" />
                     </label>
                 </div>
@@ -170,12 +171,13 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                 <label class="block">
                     <span class="label">{{ t('licence.contact_email') }}</span>
                     <input v-model="form.contact_email" type="email" class="input" dir="ltr" />
-                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.contact_hint') }}</p>
+                    <p class="help">{{ t('licence.contact_hint') }}</p>
                     <FormError :errors="errors" field="contact_email" />
                 </label>
-            </div>
+            </section>
 
-            <div class="card p-6 space-y-4">
+            <section class="card p-5 space-y-4">
+                <div class="sec-head"><h2 class="h-card">{{ t('licence.sec_term') }}</h2></div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block">
                         <span class="label">{{ t('licence.issued_at') }}</span>
@@ -189,31 +191,33 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                     </label>
                 </div>
 
-                <label class="flex items-start gap-2 text-sm cursor-pointer" style="color:var(--ink)">
+                <label class="opt text-sm cursor-pointer">
                     <input type="checkbox" v-model="form.lifetime" class="h-4 w-4 mt-0.5" />
                     <span>
                         {{ t('licence.lifetime') }}
-                        <span class="block text-xs" style="color:var(--muted)">{{ t('licence.lifetime_hint') }}</span>
+                        <span class="opt-hint">{{ t('licence.lifetime_hint') }}</span>
                     </span>
                 </label>
-            </div>
+            </section>
 
-            <div class="card p-6 space-y-4">
+            <section class="card p-5 space-y-4">
                 <!-- What this licence sells. Not features — capacity. -->
-                <p class="label" style="margin-bottom:0">{{ t('licence.capacity') }}</p>
-                <p class="text-xs" style="color:var(--muted);margin-top:-8px">{{ t('licence.capacity_hint') }}</p>
+                <div class="sec-head">
+                    <h2 class="h-card">{{ t('licence.capacity') }}</h2>
+                    <p>{{ t('licence.capacity_hint') }}</p>
+                </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block">
                         <span class="label">{{ t('licence.max_terminals') }}</span>
                         <input v-model="form.max_terminals" type="number" min="1" class="input" />
-                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.max_terminals_offline_hint') }}</p>
+                        <p class="help">{{ t('licence.max_terminals_offline_hint') }}</p>
                         <FormError :errors="errors" field="max_terminals" />
                     </label>
                     <label class="block">
                         <span class="label">{{ t('licence.max_users') }}</span>
                         <input v-model="form.max_users" type="number" min="1" class="input" :placeholder="t('licence.unlimited')" />
-                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.max_users_hint') }}</p>
+                        <p class="help">{{ t('licence.max_users_hint') }}</p>
                         <FormError :errors="errors" field="max_users" />
                     </label>
                 </div>
@@ -221,7 +225,7 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                 <label class="block">
                     <span class="label">{{ t('licence.max_offline_days') }}</span>
                     <input v-model="form.max_offline_days" type="number" min="1" class="input" :placeholder="t('licence.never')" />
-                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.max_offline_days_offline_hint') }}</p>
+                    <p class="help">{{ t('licence.max_offline_days_offline_hint') }}</p>
                     <FormError :errors="errors" field="max_offline_days" />
                 </label>
 
@@ -229,13 +233,13 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                     <label class="block">
                         <span class="label">{{ t('licence.grace_days') }}</span>
                         <input v-model="form.grace_days" type="number" min="0" class="input" />
-                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.grace_days_hint') }}</p>
+                        <p class="help">{{ t('licence.grace_days_hint') }}</p>
                         <FormError :errors="errors" field="grace_days" />
                     </label>
                     <label class="block">
                         <span class="label">{{ t('licence.warn_days') }}</span>
                         <input v-model="form.warn_days" type="number" min="0" class="input" />
-                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.warn_days_hint') }}</p>
+                        <p class="help">{{ t('licence.warn_days_hint') }}</p>
                         <FormError :errors="errors" field="warn_days" />
                     </label>
                 </div>
@@ -243,24 +247,24 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
                 <label class="block">
                     <span class="label">{{ t('licence.notes') }}</span>
                     <textarea v-model="form.notes" rows="2" class="input"></textarea>
-                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.notes_hint') }}</p>
+                    <p class="help">{{ t('licence.notes_hint') }}</p>
                 </label>
-            </div>
+            </section>
 
             <!-- Both stated, not chosen. The mode: cloud means syncing to a
                  tenant and this customer is deliberately not one. The features:
                  gating them on a machine we do not run is a promise we cannot
                  keep, so the customer gets the whole product and the licence
                  sells capacity instead. -->
-            <div class="card p-4 flex items-start gap-3" style="border-inline-start:3px solid var(--line)">
-                <Icon name="info" :size="18" style="color:var(--muted);flex:none;margin-top:1px" />
+            <div class="note">
+                <Icon name="info" :size="18" class="note-ico" />
                 <p class="text-sm" style="color:var(--body)">
                     {{ t('licence.offline_all_features') }}
-                    <span class="block mt-1" style="color:var(--muted)">{{ t('licence.offline_mode_fixed') }}</span>
+                    <span class="block mt-1">{{ t('licence.offline_mode_fixed') }}</span>
                 </p>
             </div>
 
-            <div class="flex gap-3">
+            <div class="form-bar">
                 <button type="submit" class="btn btn-accent" :disabled="saving || !canSubmit">{{ t('licence.issue') }}</button>
                 <RouterLink :to="{ name: 'admin.licences' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
             </div>
@@ -274,14 +278,14 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
         -->
         <Modal v-if="issued" :title="t('licence.issued_title')" :subtitle="t('licence.offline_issued_subtitle')" @close="() => {}">
             <div class="space-y-5">
-                <div class="rounded-lg border p-4" style="border-color:var(--amber);background:var(--amber-soft)">
+                <div class="warn-box">
                     <p class="text-sm" style="color:var(--ink)">{{ t('licence.key_once_warning') }}</p>
                 </div>
 
                 <div>
                     <span class="label">{{ t('licence.activation_key') }}</span>
-                    <div class="flex items-center gap-2">
-                        <code class="mono flex-1 rounded-lg border px-3 py-2.5" style="border-color:var(--line);font-size:16px;letter-spacing:.08em;color:var(--ink)">{{ issued.activation_key }}</code>
+                    <div class="flex flex-wrap items-stretch gap-2 mt-1.5">
+                        <code class="mono key-box" dir="ltr">{{ issued.activation_key }}</code>
                         <button type="button" class="btn btn-ghost" @click="copyKey">
                             <Icon :name="copied ? 'check' : 'copy'" :size="15" />{{ copied ? t('common.copied') : t('common.copy') }}
                         </button>
@@ -290,13 +294,13 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
 
                 <div>
                     <span class="label">{{ t('licence.offline_delivery') }}</span>
-                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('licence.offline_delivery_hint') }}</p>
+                    <p class="help" style="margin-top:0;margin-bottom:8px">{{ t('licence.offline_delivery_hint') }}</p>
                     <button type="button" class="btn btn-ghost" @click="downloadFile">
                         <Icon name="download" :size="15" />{{ t('licence.download') }}
                     </button>
                 </div>
 
-                <label class="flex items-start gap-2 text-sm cursor-pointer" style="color:var(--ink)">
+                <label class="opt text-sm cursor-pointer">
                     <input type="checkbox" v-model="acknowledged" class="h-4 w-4 mt-0.5" />
                     <span>{{ t('licence.key_acknowledge') }}</span>
                 </label>
@@ -306,3 +310,38 @@ const canSubmit = computed(() => form.customer_name.trim() !== '' && form.custom
         </Modal>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables and the PrimeVue primary scale. */
+.back-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; font-weight: 500; color: var(--body); }
+.back-link:hover { color: var(--ink); }
+
+/* Modal labels are block-level here (the theme's .label is inline, written for forms) */
+.label { display: block; margin-bottom: 2px; }
+.help { display: block; margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--body); }
+
+.sec-head { display: flex; flex-direction: column; gap: 2px; }
+.sec-head p { font-size: 13.5px; color: var(--body); }
+
+/* Checkbox / radio rows as selectable tiles */
+.opt { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line);
+    border-radius: 12px; color: var(--ink); background: var(--card); min-height: 48px; }
+.opt:hover { border-color: var(--muted); }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt-hint { display: block; margin-top: 2px; font-size: 13px; color: var(--body); }
+
+/* Sticky action row: the submit button stays in reach on a long form */
+.form-bar { position: sticky; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; padding: 14px 0;
+    background: var(--page); border-top: 1px solid var(--line); }
+.form-bar .btn { min-height: 44px; }
+
+.note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px;
+    background: var(--card); border: 1px solid var(--line); }
+.note-ico { color: var(--body); flex: none; margin-top: 1px; }
+
+/* Issued-key modal */
+.warn-box { padding: 12px 14px; border-radius: 12px; background: var(--amber-soft); border: 1px solid var(--accent); }
+.key-box { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--page); font-size: 16px; letter-spacing: .08em; color: var(--ink);
+    overflow-wrap: anywhere; }
+</style>

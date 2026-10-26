@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\StoreOfflineLicenceRequest;
 use App\Http\Resources\PosLicenceResource;
 use App\Http\Resources\PosTerminalResource;
 use App\Models\PosLicence;
+use App\Models\PosLicenceActivation;
 use App\Models\PosTerminal;
 use App\Models\Restaurant;
 use App\Services\AuditLogger;
@@ -174,6 +175,19 @@ class LicenceController extends Controller
      */
     public function renew(RenewLicenceRequest $request, PosLicence $licence): JsonResponse
     {
+        // Renewal is also how a licence is upgraded, so it must start from the
+        // licence that is actually in force. A revoked licence was withdrawn on
+        // purpose (renewing it would undo that without a word), and one already
+        // replaced has a newer row that carries the current terms (renewing the
+        // old one would fork two live licences under one key). The screen has
+        // never offered Renew on either; the API now agrees with it.
+        if ($licence->revoked_at !== null || $licence->superseded_by_id !== null) {
+            return response()->json([
+                'code' => 'LICENCE_NOT_LIVE',
+                'message' => __('xorder.errors.licence_not_renewable'),
+            ], 422);
+        }
+
         $result = $this->issuer->renew($licence, $request->validated(), $request->user());
 
         return response()->json([
@@ -266,6 +280,83 @@ class LicenceController extends Controller
             ->get();
 
         return response()->json(['data' => PosTerminalResource::collection($terminals)]);
+    }
+
+    /**
+     * The devices that have used this licence's activation key (Super Admin).
+     *
+     * For an offline customer this is the whole picture: they have no tenant and
+     * no terminals here, so whether the key ever reached a machine, which one
+     * and when it last came back is told only by this. Keyed on the key, so a
+     * renewal (which keeps it) shows the same history, and a rotated key starts
+     * a new one. `pinned` says whether the device is on the licence's own list
+     * of locked devices, which is empty for a licence that is not locked.
+     *
+     * Licences activated before devices were recorded have `activated_at` and no
+     * rows; the page says so rather than inventing a device.
+     */
+    public function activations(PosLicence $licence): JsonResponse
+    {
+        $locked = array_map('strval', (array) ($licence->fingerprints ?? []));
+
+        $rows = PosLicenceActivation::query()
+            ->where('key_hash', $licence->key_hash)
+            ->orderByDesc('last_seen_at')
+            ->get()
+            ->map(fn (PosLicenceActivation $a) => [
+                'id' => $a->id,
+                'fingerprint' => $a->fingerprint,
+                'reported' => $a->fingerprint !== '',
+                'first_seen_at' => $a->first_seen_at?->toIso8601String(),
+                'last_seen_at' => $a->last_seen_at?->toIso8601String(),
+                'times' => $a->times,
+                'pinned' => $locked === [] ? null : in_array($a->fingerprint, $locked, true),
+            ])->values();
+
+        return response()->json([
+            'data' => $rows,
+            'activated_at' => $licence->activated_at?->toIso8601String(),
+            'locked' => $locked !== [],
+            // Whether the count is HELD for this licence, how many devices it
+            // covers and how many are in use: "1 of 1 devices".
+            'seats_enforced' => app(\App\Services\LicenceActivator::class)->seatsAreSold($licence),
+            'seats' => (int) $licence->max_terminals,
+            'in_use' => $rows->count(),
+        ]);
+    }
+
+    /**
+     * Release a device from this licence's key, freeing its seat.
+     *
+     * For the machine that died, was replaced or was reinstalled under a new
+     * id — otherwise a one-device licence could never move. The row goes; the
+     * device is not locked out (it simply counts as new next time), and the
+     * licence file it holds keeps verifying offline: releasing a seat is
+     * bookkeeping, not revocation, and the page says so.
+     */
+    public function releaseDevice(PosLicence $licence, int $activation): JsonResponse
+    {
+        $row = PosLicenceActivation::query()
+            ->where('key_hash', $licence->key_hash)
+            ->whereKey($activation)
+            ->firstOrFail();
+
+        $head = $row->fingerprint === '' ? null : substr($row->fingerprint, 0, 8);
+        $row->delete();
+
+        AuditLogger::record('pos_licence.device_released', [
+            'restaurant_id' => $licence->restaurant_id,
+            'actor' => request()->user(),
+            'auditable' => $licence,
+            'description' => "Released a device from POS licence {$licence->licence_ref}",
+            'properties' => [
+                'licence_ref' => $licence->licence_ref,
+                'key_last_four' => $licence->key_last_four,
+                'fingerprint_head' => $head,
+            ],
+        ]);
+
+        return response()->json(['message' => __('xorder.messages.licence_device_released')]);
     }
 
     private function whenLive(PosLicence $licence, \Closure $action): JsonResponse

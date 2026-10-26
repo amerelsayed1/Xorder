@@ -155,6 +155,10 @@ async function addNote() {
         savingNote.value = false
     }
 }
+
+// Display-only: the summary endpoint already returns the per-star counts.
+const ratingDist = computed(() => [5, 4, 3, 2, 1].map((star) => ({ star, n: summary.value.by_rating?.[star] || 0 })))
+const distMax = computed(() => Math.max(1, ...ratingDist.value.map((d) => d.n)))
 </script>
 
 <template>
@@ -162,92 +166,108 @@ async function addNote() {
         <!-- Header -->
         <div>
             <h1 class="page-title">{{ t('rev.title') }}</h1>
-            <p class="page-sub">{{ t('rev.subtitle') }}</p>
+            <p class="page-sub" style="color:var(--body)">{{ t('rev.subtitle') }}</p>
         </div>
 
-        <!-- Summary tiles -->
-        <div class="rev-tiles">
-            <div class="card rev-tile">
-                <div class="rev-tile-val">{{ summary.average }} <span class="rev-tile-star">★</span></div>
-                <div class="rev-tile-label">{{ t('rev.avg') }}</div>
+        <!-- Summary. Low-rated leads: it is the one figure that asks for a reply. -->
+        <section class="rev-summary" :aria-label="t('rev.title')">
+            <div class="stat rev-low" :class="{ 'rev-low-hot': summary.low_count > 0 }">
+                <div class="stat-label"><i class="pi pi-exclamation-triangle me-1.5" aria-hidden="true"></i>{{ t('rev.low') }}</div>
+                <div class="stat-num">{{ summary.low_count }}</div>
             </div>
-            <div class="card rev-tile">
-                <div class="rev-tile-val">{{ summary.count }}</div>
-                <div class="rev-tile-label">{{ t('rev.total') }}</div>
+            <div class="stat">
+                <div class="stat-label">{{ t('rev.total') }}</div>
+                <div class="stat-num">{{ summary.count }}</div>
             </div>
-            <div class="card rev-tile rev-tile--low">
-                <div class="rev-tile-val">{{ summary.low_count }}</div>
-                <div class="rev-tile-label">{{ t('rev.low') }}</div>
+            <div class="stat rev-avg">
+                <div class="stat-label">{{ t('rev.avg') }}</div>
+                <div class="rev-avg-body">
+                    <div class="stat-num rev-avg-num">{{ summary.average }}<span class="rev-avg-star" aria-hidden="true">★</span></div>
+                    <ul class="rev-dist" :aria-label="t('rev.avg')">
+                        <li v-for="d in ratingDist" :key="d.star">
+                            <span class="rev-dist-star">{{ d.star }} ★</span>
+                            <span class="bar-track"><span class="bar-fill" :style="{ width: Math.round((d.n / distMax) * 100) + '%' }" /></span>
+                            <span class="rev-dist-n">{{ d.n }}</span>
+                        </li>
+                    </ul>
+                </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Filters -->
-        <div class="space-y-2">
-            <div class="flex items-center gap-2 flex-wrap">
-                <select v-model="ratingFilter" class="chip chip-select" @change="applyFilters">
+        <!-- Filters: status is the one staff use all day, so it is a tab strip
+             with New first; the rest sit in a labelled row beneath it. -->
+        <section class="card rev-filters" :aria-label="t('common.status')">
+            <div class="segmented rev-status" role="group" :aria-label="t('common.status')">
+                <button type="button" :class="{ active: statusFilter === '' }" :aria-pressed="statusFilter === ''" @click="statusFilter = ''; applyFilters()">{{ t('common.all') }}</button>
+                <button v-for="s in STATUSES" :key="s" type="button" :class="{ active: statusFilter === s }" :aria-pressed="statusFilter === s" @click="statusFilter = s; applyFilters()">{{ t('rev.status.' + s) }}</button>
+            </div>
+            <div class="rev-controls">
+                <select v-model="ratingFilter" class="ctl" :aria-label="t('rev.all_ratings')" @change="applyFilters">
                     <option value="">{{ t('rev.all_ratings') }}</option>
                     <option v-for="r in [5, 4, 3, 2, 1]" :key="r" :value="r">{{ r }} ★</option>
                 </select>
-                <select v-model="statusFilter" class="chip chip-select" @change="applyFilters">
-                    <option value="">{{ t('common.all') }}</option>
-                    <option v-for="s in STATUSES" :key="s" :value="s">{{ t('rev.status.' + s) }}</option>
-                </select>
-                <select v-model="areaFilter" class="chip chip-select" @change="applyFilters">
+                <select v-model="areaFilter" class="ctl" :aria-label="t('rev.all_areas')" @change="applyFilters">
                     <option value="">{{ t('rev.all_areas') }}</option>
                     <option v-for="a in areas" :key="a.id" :value="a.id">{{ locale === 'ar' ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar) }}</option>
                 </select>
-                <input v-model="dateFrom" type="date" class="chip chip-select" @change="applyFilters" />
-                <input v-model="dateTo" type="date" class="chip chip-select" @change="applyFilters" />
-                <label class="chip rev-check">
+                <input v-model="dateFrom" type="date" class="ctl" :aria-label="t('rep.date_from')" @change="applyFilters" />
+                <input v-model="dateTo" type="date" class="ctl" :aria-label="t('rep.date_to')" @change="applyFilters" />
+                <label class="ctl rev-check">
                     <input v-model="contactOnly" type="checkbox" @change="applyFilters" />
                     <span>{{ t('rev.contact_only') }}</span>
                 </label>
             </div>
-        </div>
+        </section>
 
         <!-- List -->
         <template v-if="loading">
-            <div class="space-y-2">
-                <div v-for="n in 4" :key="'sk' + n" class="card p-4 space-y-2">
-                    <Skeleton h="14px" w="30%" />
-                    <Skeleton h="12px" w="80%" />
+            <div class="space-y-2" aria-busy="true">
+                <div v-for="n in 4" :key="'sk' + n" class="card p-4 space-y-3">
+                    <Skeleton h="18px" w="30%" />
+                    <Skeleton h="14px" w="80%" />
+                    <Skeleton h="12px" w="50%" />
                 </div>
             </div>
         </template>
         <ErrorState v-else-if="error" @retry="load" />
-        <div v-else-if="!rows.length" class="card px-5 py-10 text-center" style="color:var(--muted)">
+        <div v-else-if="!rows.length" class="card px-5 py-12 text-center" style="color:var(--body)">
+            <i class="pi pi-comments block mb-2" style="font-size:26px" aria-hidden="true"></i>
             {{ t('rev.none') }}
         </div>
-        <div v-else class="space-y-2">
-            <button v-for="row in rows" :key="row.id" class="card rev-row" :class="{ 'rev-row--low': row.is_low }" @click="openReview(row)">
-                <div class="rev-row-main">
-                    <div class="rev-row-top">
-                        <span class="rev-row-stars" :class="{ 'rev-row-stars--low': row.is_low }">{{ stars(row.rating) }}</span>
-                        <span class="badge" :class="badgeClass[row.status]">{{ t('rev.status.' + row.status) }}</span>
-                        <span v-if="row.is_low" class="badge badge-red">{{ t('rev.low_badge') }}</span>
-                    </div>
-                    <p v-if="row.comment" class="rev-row-comment">{{ row.comment }}</p>
-                    <div class="rev-row-meta">
-                        <span>{{ row.customer_name || t('rev.anonymous') }}</span>
-                        <span v-if="row.table_label">· {{ t('rev.table') }} {{ row.table_label }}</span>
-                        <span v-if="areaName(row)">· {{ areaName(row) }}</span>
-                        <span>· {{ fmtDate(row.created_at) }}</span>
-                    </div>
-                </div>
-            </button>
-        </div>
+        <ul v-else class="space-y-2">
+            <li v-for="row in rows" :key="row.id">
+                <button type="button" class="card rev-row" :class="{ 'rev-row--low': row.is_low, 'rev-row--new': !row.is_low && row.status === 'NEW' }" @click="openReview(row)">
+                    <span class="rev-row-main">
+                        <span class="rev-row-top">
+                            <span class="rev-row-score" :class="{ 'rev-row-score--low': row.is_low }">{{ row.rating }}</span>
+                            <span class="rev-row-stars" :class="{ 'rev-row-stars--low': row.is_low }" aria-hidden="true">{{ stars(row.rating) }}</span>
+                            <span class="badge" :class="badgeClass[row.status]">{{ t('rev.status.' + row.status) }}</span>
+                            <span v-if="row.is_low" class="badge badge-red"><i class="pi pi-exclamation-triangle" style="font-size:11px" aria-hidden="true"></i>{{ t('rev.low_badge') }}</span>
+                        </span>
+                        <span v-if="row.comment" class="rev-row-comment">{{ row.comment }}</span>
+                        <span class="rev-row-meta">
+                            <span>{{ row.customer_name || t('rev.anonymous') }}</span>
+                            <span v-if="row.table_label">· {{ t('rev.table') }} {{ row.table_label }}</span>
+                            <span v-if="areaName(row)">· {{ areaName(row) }}</span>
+                            <span>· {{ fmtDate(row.created_at) }}</span>
+                        </span>
+                    </span>
+                    <i class="pi pi-angle-right rev-go dir-flip" aria-hidden="true"></i>
+                </button>
+            </li>
+        </ul>
 
         <!-- Pagination -->
         <div v-if="!error && meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-sm" style="color:var(--muted)">
+            <span class="text-sm" style="color:var(--body)">
                 {{ t('common.showing_range', { from: meta.from, to: meta.to, total: meta.total }) }}
             </span>
             <div class="flex items-center gap-2">
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
+                <button class="btn btn-ghost btn-sm touch" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
                     {{ t('common.previous') }}
                 </button>
-                <span class="text-sm" style="color:var(--muted)">{{ meta.current_page }} / {{ meta.last_page }}</span>
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
+                <span class="text-sm" style="color:var(--body)">{{ meta.current_page }} / {{ meta.last_page }}</span>
+                <button class="btn btn-ghost btn-sm touch" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
                     {{ t('common.next') }}
                 </button>
             </div>
@@ -256,8 +276,8 @@ async function addNote() {
         <!-- Detail dialog -->
         <Dialog v-if="active" :title="stars(active.rating)" :subtitle="t('rev.detail_sub')" @close="closeReview">
             <div class="space-y-4">
-                <p v-if="active.comment" class="text-sm" style="color:var(--body)">{{ active.comment }}</p>
-                <p v-else class="text-sm" style="color:var(--muted)">{{ t('rev.no_comment') }}</p>
+                <p v-if="active.comment" class="rev-quote">{{ active.comment }}</p>
+                <p v-else class="text-sm" style="color:var(--body)">{{ t('rev.no_comment') }}</p>
 
                 <div class="grid grid-cols-2 gap-3 text-sm">
                     <div><div class="label">{{ t('rev.customer') }}</div><div style="color:var(--ink)">{{ active.customer_name || t('rev.anonymous') }}</div></div>
@@ -265,7 +285,7 @@ async function addNote() {
                     <div v-if="active.table_label"><div class="label">{{ t('rev.table') }}</div><div style="color:var(--ink)">{{ active.table_label }}</div></div>
                     <div v-if="active.order_id"><div class="label">{{ t('rev.order_ref') }}</div><div style="color:var(--ink)">#{{ active.order_id }}</div></div>
                 </div>
-                <p v-if="active.contact_permission" class="text-sm" style="color:var(--green)">{{ t('rev.contact_ok') }}</p>
+                <p v-if="active.contact_permission" class="flex items-center gap-2 text-sm" style="color:var(--green)"><i class="pi pi-check-circle" aria-hidden="true"></i>{{ t('rev.contact_ok') }}</p>
 
                 <hr style="border-color:var(--line)" />
 
@@ -273,10 +293,11 @@ async function addNote() {
                 <div v-if="canUpdate">
                     <div class="label mb-1.5">{{ t('common.status') }}</div>
                     <div class="flex flex-wrap gap-2">
-                        <button v-for="s in STATUSES" :key="s"
-                            class="btn btn-sm" :class="active.status === s ? 'btn-accent' : 'btn-ghost'"
+                        <button v-for="s in STATUSES" :key="s" type="button"
+                            class="btn btn-sm touch" :class="active.status === s ? 'btn-accent st-on' : 'btn-ghost'"
+                            :aria-pressed="active.status === s"
                             :disabled="savingStatus" @click="changeStatus(s)">
-                            {{ t('rev.status.' + s) }}
+                            <i v-if="active.status === s" class="pi pi-check" style="font-size:12px" aria-hidden="true"></i>{{ t('rev.status.' + s) }}
                         </button>
                     </div>
                 </div>
@@ -286,17 +307,17 @@ async function addNote() {
                 <!-- Internal notes -->
                 <div>
                     <div class="label">{{ t('rev.notes') }}</div>
-                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('rev.notes_hint') }}</p>
+                    <p class="text-sm mb-2" style="color:var(--body)">{{ t('rev.notes_hint') }}</p>
                     <ul v-if="active.notes && active.notes.length" class="space-y-2 mb-3">
                         <li v-for="n in active.notes" :key="n.id" class="rev-note">
-                            <div style="color:var(--body)">{{ n.note }}</div>
-                            <div class="text-xs mt-1" style="color:var(--muted)">{{ n.user_name || '—' }} · {{ fmtDate(n.created_at) }}</div>
+                            <div style="color:var(--ink)">{{ n.note }}</div>
+                            <div class="text-xs mt-1" style="color:var(--body)">{{ n.user_name || '—' }} · {{ fmtDate(n.created_at) }}</div>
                         </li>
                     </ul>
-                    <p v-else class="text-sm mb-3" style="color:var(--muted)">{{ t('rev.no_notes') }}</p>
-                    <textarea v-if="canUpdate" v-model="noteText" rows="2" class="input" :placeholder="t('rev.note_ph')"></textarea>
+                    <p v-else class="text-sm mb-3" style="color:var(--body)">{{ t('rev.no_notes') }}</p>
+                    <textarea v-if="canUpdate" v-model="noteText" rows="2" class="input" :placeholder="t('rev.note_ph')" :aria-label="t('rev.notes')"></textarea>
                     <div v-if="canUpdate" class="flex justify-end mt-2">
-                        <button class="btn btn-accent btn-sm" :disabled="savingNote || !noteText.trim()" @click="addNote">
+                        <button class="btn btn-accent btn-sm touch" :disabled="savingNote || !noteText.trim()" @click="addNote">
                             {{ savingNote ? t('common.saving') : t('rev.add_note') }}
                         </button>
                     </div>
@@ -307,27 +328,61 @@ async function addNote() {
 </template>
 
 <style scoped>
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 20px;
-    border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.chip-select { padding-inline-end: 10px; }
-.rev-check { cursor: pointer; }
-.rev-check input { width: 15px; height: 15px; }
-.btn-sm { padding: 5px 11px; font-size: 12px; }
-.rev-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.rev-tile { padding: 16px 18px; }
-.rev-tile-val { font-size: 26px; font-weight: 800; color: var(--ink); line-height: 1.1; }
-.rev-tile-star { color: #f5b301; font-size: 20px; }
-.rev-tile-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
-.rev-tile--low .rev-tile-val { color: #c0392b; }
-.rev-row { display: block; width: 100%; text-align: start; padding: 14px 16px; cursor: pointer; border: 1px solid var(--line); }
-.rev-row:hover { border-color: var(--accent); }
-.rev-row--low { border-inline-start: 3px solid #e0a106; }
+/* Colours come only from the shared theme variables and the PrimeVue primary
+   scale; nothing here introduces a new hex value. */
+.touch { min-height: 44px; }
+[dir=rtl] .dir-flip { transform: scaleX(-1); }
+.st-on { color: var(--ink); }
+
+/* Summary */
+.rev-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rev-summary .stat-label { color: var(--body); font-size: 14.5px; }
+.rev-summary .stat-num { font-size: clamp(28px, 7vw, 34px); }
+.rev-low-hot { background: var(--red-soft); border-color: var(--red); }
+.rev-low-hot .stat-label { color: var(--ink); font-weight: 700; }
+.rev-low-hot .stat-num { color: var(--red); }
+.rev-avg { grid-column: 1 / -1; }
+@media (min-width: 1024px) {
+    .rev-summary { grid-template-columns: 1fr 1fr 2fr; }
+    .rev-avg { grid-column: auto; }
+}
+.rev-avg-body { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.rev-avg-num { display: inline-flex; align-items: baseline; gap: 6px; margin-top: 0; }
+.rev-avg-star { color: var(--accent); font-size: 24px; }
+.rev-dist { list-style: none; margin: 0; padding: 0; flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.rev-dist li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--body); }
+.rev-dist-star { width: 34px; flex: none; font-variant-numeric: tabular-nums; }
+.rev-dist-n { width: 32px; flex: none; text-align: end; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar-track { display: block; flex: 1; height: 8px; border-radius: 4px; background: var(--gray-soft); }
+.bar-fill { display: block; height: 8px; border-radius: 4px; background: var(--accent); }
+
+/* Filters */
+.rev-filters { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.rev-status { max-width: 100%; overflow-x: auto; align-self: flex-start; }
+.rev-status button { min-height: 40px; white-space: nowrap; font-size: 14.5px; }
+.rev-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.ctl { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+.ctl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rev-check { cursor: pointer; color: var(--body); }
+.rev-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Review rows */
+.rev-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 14px 16px; min-height: 64px; cursor: pointer;
+    border: 1px solid var(--line); border-inline-start-width: 5px; border-inline-start-color: var(--line);
+    transition: border-color .15s, background .15s; }
+.rev-row:hover { background: var(--page); border-color: var(--accent); }
+.rev-row--new { border-inline-start-color: var(--accent); }
+.rev-row--low { border-inline-start-color: var(--red); }
+.rev-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .rev-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rev-row-stars { color: #f5b301; font-size: 15px; letter-spacing: 1px; }
-.rev-row-stars--low { color: #e0a106; }
-.rev-row-comment { font-size: 14px; color: var(--body); margin: 6px 0 4px; }
-.rev-row-meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 5px; flex-wrap: wrap; }
-.rev-note { background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
-@media (max-width: 640px) { .rev-tiles { grid-template-columns: 1fr; } }
+.rev-row-score { font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1; color: var(--ink); min-width: 18px; }
+.rev-row-score--low { color: var(--red); }
+.rev-row-stars { color: var(--accent); font-size: 15px; letter-spacing: 1px; }
+.rev-row-stars--low { color: var(--red); }
+.rev-row-comment { font-size: 15.5px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.rev-row-meta { font-size: 13.5px; color: var(--body); display: flex; gap: 5px; flex-wrap: wrap; }
+.rev-go { color: var(--body); font-size: 14px; flex: none; }
+.rev-quote { font-size: 16px; color: var(--ink); background: var(--page); border-radius: 12px; padding: 12px 14px; }
+.rev-note { background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
 </style>

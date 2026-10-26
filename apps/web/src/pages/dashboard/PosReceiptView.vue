@@ -178,10 +178,10 @@ async function saveTrn() {
                         <span class="label">{{ t('pos_receipt.registration_number') }}</span>
                         <input v-model="trn" class="input" dir="ltr" inputmode="numeric" data-en-digits
                             maxlength="32" placeholder="123456789" :disabled="!canUpdate" />
-                        <p class="page-sub" style="margin-top:4px">{{ t('pos_receipt.registration_number_hint') }}</p>
+                        <p class="set-help" style="margin-top: 4px">{{ t('pos_receipt.registration_number_hint') }}</p>
                         <FormError :errors="trnErrors" field="tax_registration_number" />
                     </label>
-                    <div v-if="canUpdate" class="flex gap-3">
+                    <div v-if="canUpdate" class="rc-actions">
                         <button type="button" class="btn btn-accent" :disabled="trnSaving || trn === trnSaved" @click="saveTrn">
                             {{ trnSaving ? t('common.saving') : t('common.save') }}
                         </button>
@@ -221,7 +221,7 @@ async function saveTrn() {
                             <span class="label">{{ t('pos_receipt.trade_name') }}</span>
                             <input v-model="form.trade_name" class="input" maxlength="150"
                                 :placeholder="t('pos_receipt.trade_name_placeholder')" :disabled="!canUpdate" />
-                            <p class="page-sub" style="margin-top:4px">{{ t('pos_receipt.trade_name_hint') }}</p>
+                            <p class="set-help" style="margin-top: 4px">{{ t('pos_receipt.trade_name_hint') }}</p>
                             <FormError :errors="errors" field="trade_name" />
                         </label>
 
@@ -229,7 +229,7 @@ async function saveTrn() {
                             <span class="label">{{ t('pos_receipt.activity_code') }}</span>
                             <input v-model="form.activity_code" class="input" dir="ltr" inputmode="numeric"
                                 data-en-digits maxlength="4" placeholder="5610" :disabled="!canUpdate" />
-                            <p class="page-sub" style="margin-top:4px">{{ t('pos_receipt.activity_code_hint') }}</p>
+                            <p class="set-help" style="margin-top: 4px">{{ t('pos_receipt.activity_code_hint') }}</p>
                             <FormError :errors="errors" field="activity_code" />
                         </label>
 
@@ -240,19 +240,21 @@ async function saveTrn() {
                             <span class="label">{{ t('pos_receipt.branch_code') }}</span>
                             <input v-model="form.branch_code" class="input" dir="ltr" maxlength="32"
                                 placeholder="0042" :disabled="!canUpdate" />
-                            <p class="page-sub" style="margin-top:4px">{{ t('pos_receipt.branch_code_hint') }}</p>
+                            <p class="set-help" style="margin-top: 4px">{{ t('pos_receipt.branch_code_hint') }}</p>
                             <FormError :errors="errors" field="branch_code" />
                         </label>
 
                         <label class="block">
                             <span class="label">{{ t('pos_receipt.phone') }}</span>
-                            <input v-model="form.phone" class="input" dir="ltr" maxlength="32" :disabled="!canUpdate" />
+                            <input v-model="form.phone" class="input" dir="ltr" inputmode="tel" maxlength="32" :disabled="!canUpdate" />
                             <FormError :errors="errors" field="phone" />
                         </label>
                     </div>
 
-                    <p class="set-card-title" style="margin:8px 0 0">{{ t('pos_receipt.address') }}</p>
-                    <p class="page-sub" style="margin:0">{{ t('pos_receipt.address_hint') }}</p>
+                    <div class="rc-section">
+                        <h3 class="set-card-title">{{ t('pos_receipt.address') }}</h3>
+                        <p class="set-help">{{ t('pos_receipt.address_hint') }}</p>
+                    </div>
 
                     <div class="set-grid-2">
                         <label class="block">
@@ -308,8 +310,10 @@ async function saveTrn() {
                         </label>
                     </div>
 
-                    <p class="set-card-title" style="margin:8px 0 0">{{ t('pos_receipt.notes') }}</p>
-                    <p class="page-sub" style="margin:0">{{ t('pos_receipt.notes_hint') }}</p>
+                    <div class="rc-section">
+                        <h3 class="set-card-title">{{ t('pos_receipt.notes') }}</h3>
+                        <p class="set-help">{{ t('pos_receipt.notes_hint') }}</p>
+                    </div>
 
                     <div class="set-grid-2">
                         <label class="block">
@@ -324,7 +328,7 @@ async function saveTrn() {
                         </label>
                     </div>
 
-                    <div v-if="canUpdate" class="flex gap-3">
+                    <div v-if="canUpdate" class="rc-actions">
                         <button type="submit" class="btn btn-accent" :disabled="saving">
                             {{ saving ? t('common.saving') : t('common.save') }}
                         </button>
@@ -340,7 +344,25 @@ async function saveTrn() {
    this page reads right-to-left in Arabic. */
 .set-grid-2 {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 14px 18px;
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    gap: 16px 18px;
+}
+/* Sub-heading that starts a new group of fields inside the branch form. */
+.rc-section {
+    display: flex; flex-direction: column; gap: 3px;
+    margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line);
+}
+/* Save row: full-bleed strip at the foot of its card, clearly apart from the
+   fields. (Not sticky: the card clips overflow, which would pin it to the card.) */
+.rc-actions {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin: 4px -18px -16px; padding: 14px 18px;
+    background: var(--page); border-top: 1px solid var(--line);
+}
+.rc-actions .btn { min-height: 44px; }
+.input:disabled { background: var(--page); color: var(--body); cursor: not-allowed; }
+@media (max-width: 640px) {
+    .rc-actions { margin-inline: -14px; padding-inline: 14px; }
+    .rc-actions .btn { flex: 1 1 auto; }
 }
 </style>

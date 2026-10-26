@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\GeofenceValidation;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
@@ -50,9 +51,7 @@ class StoreBranchRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.restaurant_name_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.restaurant_name_required');
             GeofenceValidation::check($this, $validator);
         });
     }

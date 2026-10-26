@@ -4,14 +4,27 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
 use App\Enums\Feature;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdatePlanRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+
     public function authorize(): bool
     {
         return $this->user()?->can('plans.manage') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'price',
+        ];
     }
 
     public function rules(): array

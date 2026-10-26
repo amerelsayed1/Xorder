@@ -169,7 +169,7 @@ async function submit({ reason, note }) {
         @close="emit('close')"
     >
         <div class="space-y-4">
-            <div v-if="!opening" class="flex flex-wrap gap-2" role="group" :aria-label="t('purchasing.kind')">
+            <div v-if="!opening" class="mode-btns flex flex-wrap gap-2" role="group" :aria-label="t('purchasing.kind')">
                 <button
                     v-for="m in MODES"
                     :key="m"
@@ -200,7 +200,7 @@ async function submit({ reason, note }) {
                 </label>
             </div>
 
-            <p v-if="item && branch && !levelLoading" class="text-sm" style="color:var(--muted)">
+            <p v-if="item && branch && !levelLoading" class="text-sm" style="color:var(--body)">
                 <template v-if="hasHistory">
                     {{ t('purchasing.adj_recorded_now') }}:
                     <span class="mono" dir="ltr" style="color:var(--ink)">{{ qty(held, item.unit_code) }}</span>
@@ -219,30 +219,30 @@ async function submit({ reason, note }) {
                 <label v-if="showCost" class="block">
                     <span class="label">{{ t('purchasing.adj_cost_per', { unit: unitLabel }) }}</span>
                     <input v-model="unitCost" class="input mono" dir="ltr" inputmode="decimal" autocomplete="off" :placeholder="costRequired ? '' : minorToAmount(average, exponent)" />
-                    <p v-if="costRequired && mode !== 'opening'" class="text-xs mt-1" style="color:var(--muted)">{{ t('purchasing.adj_cost_required_hint') }}</p>
-                    <p v-else-if="!costRequired" class="text-xs mt-1" style="color:var(--muted)">
+                    <p v-if="costRequired && mode !== 'opening'" class="text-xs mt-1" style="color:var(--body)">{{ t('purchasing.adj_cost_required_hint') }}</p>
+                    <p v-else-if="!costRequired" class="text-xs mt-1" style="color:var(--body)">
                         {{ t('purchasing.adj_cost_default_hint') }}: <span class="mono">{{ cost(average) }}</span>
                     </p>
                     <FormError :errors="errors" field="unit_cost_minor" />
                 </label>
             </div>
 
-            <div v-if="item && branch && delta !== null" class="card p-3 text-sm space-y-1" style="background:var(--page)">
-                <div v-if="mode === 'count' && delta === 0" style="color:var(--muted)">{{ t('purchasing.adj_count_same') }}</div>
+            <div v-if="item && branch && delta !== null" class="adj-preview text-sm space-y-1" aria-live="polite">
+                <div v-if="mode === 'count' && delta === 0" style="color:var(--body)">{{ t('purchasing.adj_count_same') }}</div>
                 <template v-else>
                     <div v-if="mode === 'count'" class="flex justify-between gap-3">
-                        <span style="color:var(--muted)">{{ t('purchasing.adj_count_difference') }}</span>
+                        <span style="color:var(--body)">{{ t('purchasing.adj_count_difference') }}</span>
                         <span class="mono" dir="ltr" style="color:var(--ink)">{{ signed(delta) }}</span>
                     </div>
                     <div v-if="delta < 0" class="flex justify-between gap-3">
-                        <span style="color:var(--muted)">{{ t('purchasing.adj_leaves_at') }}</span>
+                        <span style="color:var(--body)">{{ t('purchasing.adj_leaves_at') }}</span>
                         <span class="mono" style="color:var(--ink)">{{ cost(costAt(-delta, average)) }}</span>
                     </div>
                     <div class="flex justify-between gap-3">
-                        <span style="color:var(--muted)">{{ t('purchasing.adj_after') }}</span>
+                        <span style="color:var(--body)">{{ t('purchasing.adj_after') }}</span>
                         <span class="mono" dir="ltr" style="color:var(--ink)">{{ qty(held + delta, item.unit_code) }}</span>
                     </div>
-                    <div v-if="held + delta < 0" class="pt-1" style="color:var(--amber)">{{ t('purchasing.adj_goes_negative') }}</div>
+                    <div v-if="held + delta < 0" class="pt-1 adj-warn"><i class="pi pi-exclamation-triangle" aria-hidden="true" /> {{ t('purchasing.adj_goes_negative') }}</div>
                 </template>
             </div>
 
@@ -250,3 +250,11 @@ async function submit({ reason, note }) {
         </div>
     </ReasonDialog>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+
+.mode-btns .btn { min-height: 40px; }
+.adj-preview { padding: 12px 14px; border-radius: 12px; background: var(--page); border: 1px solid var(--line); }
+.adj-warn { font-weight: 600; color: var(--p-primary-800); }
+</style>

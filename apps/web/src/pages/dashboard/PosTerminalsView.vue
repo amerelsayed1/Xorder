@@ -222,6 +222,9 @@ async function destroyTerminal(terminal) {
         <div class="set-empty">
             <span class="set-empty-title">{{ t('pos_terminals.none') }}</span>
             <span class="set-empty-hint">{{ t('pos_terminals.subtitle') }}</span>
+            <button v-if="canWrite" type="button" class="set-btn-primary" style="margin-top: 8px" @click="openCreate">
+                <Icon name="plus" :size="15" />{{ t('pos_terminals.add') }}
+            </button>
         </div>
     </div>
 
@@ -309,11 +312,11 @@ async function destroyTerminal(terminal) {
                     <option value="dynamic">{{ t('pos_terminals.sync.dynamic') }}</option>
                     <option value="manual">{{ t('pos_terminals.sync.manual') }}</option>
                 </select>
-                <p class="text-xs mt-1" style="color:var(--muted)">{{ t('pos_terminals.sync_hint') }}</p>
+                <p class="set-help" style="margin-top: 4px">{{ t('pos_terminals.sync_hint') }}</p>
                 <FormError :errors="errors" field="sync_policy" />
             </label>
 
-            <div class="flex gap-3 pt-1">
+            <div class="set-form-actions">
                 <button type="submit" class="btn btn-accent" :disabled="saving || !form.name || !form.branch_id">{{ t('common.create') }}</button>
                 <button type="button" class="btn btn-ghost" @click="creating = false">{{ t('common.cancel') }}</button>
             </div>

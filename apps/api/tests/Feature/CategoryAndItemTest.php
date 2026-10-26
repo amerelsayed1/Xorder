@@ -51,6 +51,34 @@ class CategoryAndItemTest extends TestCase
         $this->assertSoftDeleted('menu_items', ['id' => $item->id]);
     }
 
+    public function test_an_item_cannot_be_created_in_or_moved_to_a_deleted_category(): void
+    {
+        // XORD-014: Rule::exists() does not skip soft-deleted rows, so a live
+        // item could be parked under a deleted category. It is invisible in the
+        // dashboard and the POS bootstrap drops it (its category is not in the
+        // bundle), so it is a product the owner believes is on the menu.
+        $admin = $this->admin();
+        $gone = Category::factory()->for($admin->restaurant)->create();
+        $live = Category::factory()->for($admin->restaurant)->create();
+        $item = MenuItem::factory()->for($admin->restaurant)->for($live)->create();
+        $this->actingAs($admin)->deleteJson("/api/dashboard/categories/{$gone->id}")->assertOk();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $gone->id,
+            'name_en' => 'Ghost',
+            'price' => 10,
+        ])->assertStatus(422)->assertJsonValidationErrors('category_id');
+
+        $this->actingAs($admin)->putJson("/api/dashboard/items/{$item->id}", [
+            'category_id' => $gone->id,
+            'name_en' => $item->name_en,
+            'price' => 10,
+        ])->assertStatus(422)->assertJsonValidationErrors('category_id');
+
+        $this->assertDatabaseMissing('menu_items', ['name_en' => 'Ghost']);
+        $this->assertSame($live->id, $item->fresh()->category_id);
+    }
+
     public function test_category_name_can_be_reused_after_delete(): void
     {
         $admin = $this->admin();

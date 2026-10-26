@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use App\Rules\MobileNumber;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,9 +14,22 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateRestaurantProfileRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+    use PreservesDisabledLanguages;
+
     public function authorize(): bool
     {
         return $this->user()?->can('settings.update') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'minimum_order',
+        ];
     }
 
     public function rules(): array
@@ -59,25 +75,27 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'social_links.instagram' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.facebook' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.tiktok' => ['nullable', 'string', 'url', 'max:2048'],
-            // Branding (brand_color, secondary_color), default_language and the
-            // ordering channel (ordering_mode) are NOT editable here — they are
-            // set by the Super Admin per the restaurant's plan. Any such keys in
-            // the payload are ignored (never reach ->update(validated())).
+            // Content languages (XORD-005): which languages the restaurant writes
+            // its menu in. Editable here since 2026-10-25; before that only the
+            // Super Admin could change them. The three choices the form offers
+            // are bilingual+primary, Arabic only and English only; a request
+            // that sends neither key leaves them alone.
+            'bilingual' => ['sometimes', 'boolean'],
+            'default_language' => ['sometimes', 'in:ar,en'],
+            // Branding (brand_color, secondary_color) and the ordering channel
+            // (ordering_mode) are NOT editable here — they are set by the Super
+            // Admin per the restaurant's plan. Any such keys in the payload are
+            // ignored (never reach ->update(validated())).
         ];
     }
 
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if ($this->has('name_ar') || $this->has('name_en')) {
-                if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                    // Report on the default-language name field — the one the
-                    // profile form always renders — so single-language
-                    // restaurants see the error instead of a silent failure.
-                    $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                    $validator->errors()->add("name_{$lang}", __('xorder.validation.restaurant_name_still_required'));
-                }
-            }
+            // On the field the profile form renders for the restaurant's content
+            // languages — read BEFORE any language change in this same request
+            // takes effect, which is what the form on screen was showing.
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.restaurant_name_still_required', partial: true, primaryWhenBilingual: true);
         });
     }
 }

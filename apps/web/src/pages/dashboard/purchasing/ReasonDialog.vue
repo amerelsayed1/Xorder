@@ -48,12 +48,12 @@ function submit() {
 <template>
     <Dialog :title="title" :subtitle="subtitle" @close="emit('close')">
         <form class="space-y-4" @submit.prevent="submit">
-            <p v-if="message" class="text-sm" style="color:var(--muted)">{{ message }}</p>
+            <p v-if="message" class="text-sm" style="color:var(--body)">{{ message }}</p>
             <!-- Slice d: a stock entry's own fields (item, quantity, cost). -->
             <slot />
-            <fieldset class="space-y-2">
+            <fieldset class="reason-set">
                 <legend class="label">{{ t('purchasing.reason') }}</legend>
-                <label v-for="r in reasons" :key="r" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
+                <label v-for="r in reasons" :key="r" class="reason-opt" :class="reason === r ? 'is-on' : ''">
                     <input v-model="reason" type="radio" name="reason" :value="r" class="h-4 w-4" />
                     {{ t(labelPrefix + '.' + r) }}
                 </label>
@@ -64,7 +64,7 @@ function submit() {
                 <textarea v-model="note" class="input" rows="2" maxlength="1000"></textarea>
                 <FormError :errors="shown" field="note" />
             </label>
-            <div class="flex justify-end gap-2 pt-2">
+            <div class="reason-actions">
                 <button type="button" class="btn btn-ghost" :disabled="busy" @click="emit('close')">{{ t('common.cancel') }}</button>
                 <button type="submit" class="btn btn-accent" :disabled="busy">
                     <Icon v-if="busy" name="loading" :size="16" class="animate-spin" />
@@ -74,3 +74,16 @@ function submit() {
         </form>
     </Dialog>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.note { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.5; }
+.note > i { margin-top: 3px; flex: none; }
+.reason-set { display: grid; gap: 8px; }
+.reason-opt { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; color: var(--ink); cursor: pointer; transition: background .15s, border-color .15s; }
+.reason-opt:hover { background: var(--page); }
+.reason-opt.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.reason-opt input { accent-color: var(--accent); }
+.reason-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+.reason-actions .btn { min-height: 44px; }
+</style>

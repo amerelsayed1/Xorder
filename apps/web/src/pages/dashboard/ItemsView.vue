@@ -424,37 +424,64 @@ async function submitImport() {
     <div class="items-page">
         <!-- Page heading + the actions that apply to the menu as a whole. -->
         <div class="flex flex-wrap items-end justify-between gap-4">
-            <div>
+            <div class="min-w-0">
                 <h1 class="page-title">{{ t('nav.items') }}</h1>
-                <p class="page-sub">
+                <p class="page-sub" style="color:var(--body)">
                     {{ t('item.subtitle', { items: items.length, categories: categories.length }) }}
                     <template v-if="hiddenCount"> · {{ t('item.hidden_count', { n: hiddenCount }) }}</template>
                 </p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <!-- Export is a read: available even in read-only mode. -->
                 <div class="relative">
-                    <button @click="showExportMenu = !showExportMenu" :disabled="!!exporting || !items.length" class="btn btn-ghost">
+                    <button @click="showExportMenu = !showExportMenu" :disabled="!!exporting || !items.length" class="btn btn-ghost head-btn"
+                        aria-haspopup="menu" :aria-expanded="showExportMenu">
                         <Icon name="download" :size="16" />{{ exporting ? t('import.exporting') : t('import.export') }}
                     </button>
                     <template v-if="showExportMenu">
                         <div class="fixed inset-0 z-10" @click="showExportMenu = false"></div>
-                        <div class="absolute z-20 mt-1 min-w-[9rem] rounded-xl py-1 inset-inline-end-0" style="background:var(--card, #fff);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.12)">
-                            <button @click="doExport('csv')" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-start hover:opacity-80"><Icon name="download" :size="15" />{{ t('import.export_csv') }}</button>
-                            <button @click="doExport('xlsx')" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-start hover:opacity-80"><Icon name="download" :size="15" />{{ t('import.export_xlsx') }}</button>
+                        <div class="export-pop" role="menu">
+                            <button @click="doExport('csv')" class="export-opt" role="menuitem"><Icon name="download" :size="15" />{{ t('import.export_csv') }}</button>
+                            <button @click="doExport('xlsx')" class="export-opt" role="menuitem"><Icon name="download" :size="15" />{{ t('import.export_xlsx') }}</button>
                         </div>
                     </template>
                 </div>
-                <button v-if="canCreate" @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
-                <button v-if="canCreate" @click="goCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+                <button v-if="canCreate" @click="openImport" class="btn btn-ghost head-btn"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
+                <button v-if="canCreate" @click="goCreate" :disabled="!categories.length" class="btn btn-accent head-btn"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
         </div>
-        <p v-if="!categories.length && !loading" class="text-sm" style="color:var(--amber)">{{ t('item.create_category_first') }}</p>
+
+        <!-- Menu exists but no category is active: items are hidden until one is. -->
+        <div v-if="!categories.length && !loading && items.length" class="notice" role="status">
+            <Icon name="alert" :size="18" class="notice-ico" />
+            <span class="flex-1 min-w-0">{{ t('item.create_category_first') }}</span>
+            <button v-if="canCreate" class="btn btn-ghost btn-sm" @click="goCategories">{{ t('item.new_category') }}</button>
+        </div>
+
+        <!-- Brand-new menu: one sentence and the primary action, no empty rail/toolbar. -->
+        <section v-if="!loading && !items.length" class="card empty-card">
+            <span class="empty-ico"><Icon name="items" :size="28" /></span>
+            <template v-if="categories.length">
+                <h2 class="empty-title">{{ t('item.empty_title') }}</h2>
+                <p class="empty-body">{{ t('item.empty_body') }}</p>
+                <div v-if="canCreate" class="empty-actions">
+                    <button class="btn btn-accent head-btn" @click="goCreate"><Icon name="plus" :size="16" />{{ t('item.add_first') }}</button>
+                    <button class="btn btn-ghost head-btn" @click="openImport"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
+                </div>
+            </template>
+            <template v-else>
+                <h2 class="empty-title">{{ t('item.empty_title') }}</h2>
+                <p class="empty-body">{{ t('item.create_category_first') }}</p>
+                <div v-if="canCreate" class="empty-actions">
+                    <button class="btn btn-accent head-btn" @click="goCategories"><Icon name="plus" :size="16" />{{ t('item.new_category') }}</button>
+                </div>
+            </template>
+        </section>
 
         <!-- Category rail + the item list it selects. Below 900px the rail
              becomes a horizontal strip above the list. -->
-        <div class="items-layout">
-            <aside class="cat-rail card">
+        <div v-else class="items-layout">
+            <aside class="cat-rail card" :aria-label="t('nav.categories')">
                 <div class="cat-rail-head">
                     <span class="cat-rail-title">{{ t('nav.categories') }}</span>
                     <button v-if="canCreate" class="cat-add" :title="t('item.new_category')"
@@ -462,7 +489,7 @@ async function submitImport() {
                 </div>
                 <div class="cat-rail-search">
                     <span class="cat-rail-search-ico"><Icon name="search" :size="14" /></span>
-                    <input v-model="catSearch" :placeholder="t('item.search_categories')" class="cat-rail-input" />
+                    <input v-model="catSearch" :placeholder="t('item.search_categories')" :aria-label="t('item.search_categories')" class="cat-rail-input" />
                 </div>
                 <p v-if="railEmpty" class="cat-rail-empty">{{ t('item.no_categories_match') }}</p>
                 <div v-else class="cat-rail-list">
@@ -480,28 +507,28 @@ async function submitImport() {
             </aside>
 
             <div class="items-main">
-                <div class="flex items-baseline gap-3">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <h2 class="cat-title">{{ catTitle }}</h2>
-                    <span class="text-sm" style="color:var(--muted)">{{ t('item.count_label', { n: filtered.length }) }}</span>
+                    <span class="text-sm" style="color:var(--body)">{{ t('item.count_label', { n: filtered.length }) }}</span>
                 </div>
 
                 <!-- Toolbar: item search, availability filter, view switch. -->
                 <div class="items-toolbar">
                     <div class="relative items-search">
                         <span class="absolute top-1/2 -translate-y-1/2 pointer-events-none" style="inset-inline-start:12px;color:var(--muted)"><Icon name="search" :size="17" /></span>
-                        <input v-model="search" :placeholder="t('item.search_placeholder')" class="input" style="padding-inline-start:38px;margin-top:0" />
+                        <input v-model="search" :placeholder="t('item.search_placeholder')" :aria-label="t('item.search_placeholder')" class="input search-input" />
                     </div>
-                    <div class="seg">
-                        <button class="seg-btn" :class="{ on: avail === 'all' }" @click="avail = 'all'">{{ t('item.avail_all') }}</button>
-                        <button class="seg-btn" :class="{ on: avail === 'on' }" @click="avail = 'on'">{{ t('item.avail_on') }}</button>
-                        <button class="seg-btn" :class="{ on: avail === 'off' }" @click="avail = 'off'">{{ t('item.avail_off') }}</button>
+                    <div class="seg" role="group" :aria-label="t('common.available')">
+                        <button class="seg-btn" :class="{ on: avail === 'all' }" :aria-pressed="avail === 'all'" @click="avail = 'all'">{{ t('item.avail_all') }}</button>
+                        <button class="seg-btn" :class="{ on: avail === 'on' }" :aria-pressed="avail === 'on'" @click="avail = 'on'">{{ t('item.avail_on') }}</button>
+                        <button class="seg-btn" :class="{ on: avail === 'off' }" :aria-pressed="avail === 'off'" @click="avail = 'off'">{{ t('item.avail_off') }}</button>
                     </div>
                     <div class="toolbar-gap"></div>
                     <div class="seg">
                         <button class="seg-btn seg-ico" :class="{ on: view === 'table' }" :title="t('item.view_table')"
-                            :aria-label="t('item.view_table')" @click="view = 'table'"><Icon name="menu" :size="16" /></button>
+                            :aria-label="t('item.view_table')" :aria-pressed="view === 'table'" @click="view = 'table'"><Icon name="menu" :size="16" /></button>
                         <button class="seg-btn seg-ico" :class="{ on: view === 'grid' }" :title="t('item.view_grid')"
-                            :aria-label="t('item.view_grid')" @click="view = 'grid'"><Icon name="grid" :size="16" /></button>
+                            :aria-label="t('item.view_grid')" :aria-pressed="view === 'grid'" @click="view = 'grid'"><Icon name="grid" :size="16" /></button>
                     </div>
                 </div>
 
@@ -524,7 +551,8 @@ async function submitImport() {
                           Both use `.items-row`, whose `grid-template-columns`
                           comes from the one `--items-cols` token on
                           `.items-table`. Change a width once and the header and
-                          all rows update together.
+                          all rows update together. On a phone the same cells are
+                          re-flowed into a two-line card row (see the media query).
                         -->
                         <div class="items-table" :class="{ 'select-mode': canDelete }"
                             :style="{ '--items-cols-wide': colsWide, '--items-cols-narrow': colsNarrow, '--items-min': tableMin }" role="table">
@@ -535,15 +563,15 @@ async function submitImport() {
                                         :disabled="!filtered.length" @change="toggleAll" />
                                 </div>
                                 <div role="columnheader" class="col-order">#</div>
-                                <div role="columnheader">{{ t('item.item') }}</div>
+                                <div role="columnheader" class="col-product">{{ t('item.item') }}</div>
                                 <div v-if="showCat" role="columnheader" class="col-cat">{{ t('item.category') }}</div>
-                                <div role="columnheader">{{ t('item.price') }}</div>
-                                <div role="columnheader" class="col-feat col-center">★</div>
-                                <div role="columnheader" class="col-center">{{ t('common.available') }}</div>
-                                <div role="columnheader" class="col-actions">{{ t('common.actions') }}</div>
+                                <div role="columnheader" class="col-price">{{ t('item.price') }}</div>
+                                <div role="columnheader" class="col-feat col-center"><span aria-hidden="true">★</span><span class="sr-only">{{ t('common.featured') }}</span></div>
+                                <div role="columnheader" class="col-avail col-center">{{ t('common.available') }}</div>
+                                <div role="columnheader" class="col-actions"><span class="sr-only">{{ t('common.actions') }}</span></div>
                             </div>
                             <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row"
-                                :class="{ 'row-selected': selected.has(it.id), 'row-dragging': dragIndex === idx, 'row-drop': overIndex === idx && dragIndex !== null && dragIndex !== idx }"
+                                :class="{ 'row-selected': selected.has(it.id), 'row-off': !it.is_available, 'row-dragging': dragIndex === idx, 'row-drop': overIndex === idx && dragIndex !== null && dragIndex !== idx }"
                                 :draggable="reorderable && dragReady"
                                 @dragstart="onDragStart(idx, $event)"
                                 @dragover.prevent="onDragOver(idx)"
@@ -567,29 +595,32 @@ async function submitImport() {
                                             :aria-label="t('item.move_down')"><Icon name="chevronDown" :size="14" /></button>
                                     </div>
                                 </div>
-                                <div role="cell">
+                                <div role="cell" class="col-product">
                                     <div class="flex items-center gap-3 min-w-0 product-cell">
                                         <img v-if="hasImage(it)" :src="it.image_url" @error="onImgError(it.id)" class="row-thumb object-cover" alt="" />
-                                        <div v-else class="row-thumb row-thumb-blank">{{ itemInitial(it) }}</div>
-                                        <div class="min-w-0 product-info">
-                                            <div class="font-medium truncate" style="color:var(--ink)">{{ itemName(it) }}</div>
-                                            <div v-if="itemAltName(it)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
-                                            <div v-if="itemDescription(it)" class="text-xs truncate" style="color:var(--body)">{{ itemDescription(it) }}</div>
+                                        <div v-else class="row-thumb row-thumb-blank" aria-hidden="true">{{ itemInitial(it) }}</div>
+                                        <div class="min-w-0 flex-1 product-info">
+                                            <div class="row-name truncate">{{ itemName(it) }}</div>
+                                            <div v-if="itemAltName(it)" class="row-alt truncate"><bdi :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</bdi></div>
+                                            <div v-if="itemDescription(it)" class="row-desc truncate">{{ itemDescription(it) }}</div>
+                                            <div v-if="showCat" class="cat-inline truncate">{{ catName(it.category_id) }}</div>
                                         </div>
                                     </div>
                                 </div>
                                 <div v-if="showCat" role="cell" class="col-cat">
                                     <span class="cat-tag">{{ catName(it.category_id) }}</span>
                                 </div>
-                                <div role="cell" class="whitespace-nowrap">
+                                <div role="cell" class="col-price">
                                     <span class="price tabular">{{ it.discounted_price || it.price }} {{ cur }}</span>
-                                    <span v-if="it.discounted_price" class="text-xs line-through ms-1" style="color:var(--muted)">{{ it.price }} {{ cur }}</span>
+                                    <span v-if="it.discounted_price" class="was tabular">{{ it.price }} {{ cur }}</span>
                                 </div>
                                 <div role="cell" class="col-feat col-center">
-                                    <button v-if="canUpdate" class="star" :class="{ on: it.is_featured }" :title="t('common.featured')" @click="toggleFeatured(it)">★</button>
+                                    <button v-if="canUpdate" class="star star-btn" :class="{ on: it.is_featured }" :title="t('common.featured')"
+                                        :aria-label="t('common.featured')" :aria-pressed="!!it.is_featured" @click="toggleFeatured(it)">★</button>
                                 </div>
-                                <div role="cell" class="col-center">
-                                    <button v-if="canUpdate" class="avail-toggle" @click="toggleAvail(it)">
+                                <div role="cell" class="col-avail col-center">
+                                    <button v-if="canUpdate" class="avail-toggle" role="switch" :aria-checked="!!it.is_available"
+                                        :aria-label="itemName(it) + ' — ' + t('common.available')" @click="toggleAvail(it)">
                                         <span class="switch" :class="{ on: it.is_available }"></span>
                                         <span class="avail-label" :class="{ on: it.is_available }">{{ it.is_available ? t('common.available') : t('item.hidden') }}</span>
                                     </button>
@@ -597,17 +628,16 @@ async function submitImport() {
                                 </div>
                                 <div role="cell" class="col-actions whitespace-nowrap">
                                     <div class="inline-flex items-center gap-1">
-                                        <button v-if="canUpdate" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                                        <button v-if="canDelete" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                                        <button v-if="canUpdate" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                                        <button v-if="canDelete" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')"><Icon name="trash" :size="17" /></button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div v-if="!filtered.length" class="items-empty">{{ items.length ? t('item.no_match') : t('common.none') }}</div>
-                    <div class="items-foot">
+                    <div v-if="reorderHint" class="items-foot">
                         <span>{{ reorderHint }}</span>
-                        <span>{{ t('item.count_label', { n: filtered.length }) }}</span>
                     </div>
                 </div>
 
@@ -615,27 +645,32 @@ async function submitImport() {
                 <template v-else>
                     <div v-if="!filtered.length" class="card items-empty">{{ items.length ? t('item.no_match') : t('common.none') }}</div>
                     <div v-else class="items-grid">
-                        <div v-for="it in filtered" :key="it.id" class="item-card" :class="{ selected: selected.has(it.id) }">
+                        <div v-for="it in filtered" :key="it.id" class="item-card" :class="{ selected: selected.has(it.id), 'card-off': !it.is_available }">
                             <div class="item-card-media">
                                 <img v-if="hasImage(it)" :src="it.image_url" @error="onImgError(it.id)" alt="" />
-                                <span v-else class="item-card-initial">{{ itemInitial(it) }}</span>
+                                <span v-else class="item-card-initial" aria-hidden="true">{{ itemInitial(it) }}</span>
                                 <input v-if="canDelete" type="checkbox" class="row-check item-card-check"
                                     :checked="selected.has(it.id)" :aria-label="itemName(it)" @change="toggleSelect(it.id)" />
                                 <button v-if="canUpdate" class="item-card-star" :class="{ on: it.is_featured }"
-                                    :title="t('common.featured')" @click="toggleFeatured(it)"><Icon name="star" :size="16" :fill="it.is_featured" /></button>
+                                    :title="t('common.featured')" :aria-label="t('common.featured')" :aria-pressed="!!it.is_featured" @click="toggleFeatured(it)"><Icon name="star" :size="16" :fill="it.is_featured" /></button>
+                                <span v-if="!it.is_available" class="badge off-badge item-card-off">{{ t('item.hidden') }}</span>
                             </div>
                             <div class="item-card-body">
                                 <div class="item-card-cat">{{ catName(it.category_id) }}</div>
                                 <div class="item-card-name">{{ itemName(it) }}</div>
-                                <div v-if="itemAltName(it)" class="item-card-alt" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
+                                <div v-if="itemAltName(it)" class="item-card-alt"><bdi :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</bdi></div>
                             </div>
                             <div class="item-card-foot">
-                                <span class="price tabular">{{ it.discounted_price || it.price }} {{ cur }}</span>
+                                <span class="min-w-0">
+                                    <span class="price tabular block">{{ it.discounted_price || it.price }} {{ cur }}</span>
+                                    <span v-if="it.discounted_price" class="was tabular block">{{ it.price }} {{ cur }}</span>
+                                </span>
                                 <div class="flex items-center gap-1">
-                                    <button v-if="canUpdate" class="switch" :class="{ on: it.is_available }"
+                                    <button v-if="canUpdate" class="switch card-switch" :class="{ on: it.is_available }" role="switch" :aria-checked="!!it.is_available"
+                                        :aria-label="itemName(it) + ' — ' + t('common.available')"
                                         :title="it.is_available ? t('common.available') : t('item.hidden')" @click="toggleAvail(it)"></button>
-                                    <button v-if="canUpdate" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="16" /></button>
-                                    <button v-if="canDelete" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="16" /></button>
+                                    <button v-if="canUpdate" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')"><Icon name="edit" :size="16" /></button>
+                                    <button v-if="canDelete" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')"><Icon name="trash" :size="16" /></button>
                                 </div>
                             </div>
                         </div>
@@ -648,7 +683,7 @@ async function submitImport() {
         <Modal v-if="showImport" :title="t('import.title')" @close="showImport = false">
             <div class="space-y-4">
                 <p class="text-sm" style="color:var(--body)">{{ t('import.help') }}</p>
-                <div class="rounded-xl p-3 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--muted)">
+                <div class="rounded-xl p-3 text-sm" style="background:var(--page);border:1px solid var(--line);color:var(--body)">
                     {{ t('import.columns_help') }}
                 </div>
                 <button type="button" class="btn btn-ghost btn-sm" @click="downloadTemplate">
@@ -658,10 +693,10 @@ async function submitImport() {
                 <label class="block">
                     <span class="label">{{ t('import.choose_file') }}</span>
                     <input type="file" accept=".csv,.xlsx,.xls,text/csv" class="input" @change="onImportFile" />
-                    <span class="text-xs" style="color:var(--muted)">{{ t('import.formats') }}</span>
+                    <span class="text-xs" style="color:var(--body)">{{ t('import.formats') }}</span>
                 </label>
 
-                <p v-if="importError" class="text-sm" style="color:var(--red, #dc2626)">{{ importError }}</p>
+                <p v-if="importError" class="text-sm" style="color:var(--red)" role="alert">{{ importError }}</p>
 
                 <!-- Result summary -->
                 <div v-if="importResult" class="rounded-xl p-3 space-y-2" style="background:var(--page);border:1px solid var(--line)">
@@ -671,8 +706,8 @@ async function submitImport() {
                         <span v-if="importResult.categories_created">＋ {{ t('import.cats_created', { n: importResult.categories_created }) }}</span>
                         <span v-if="importResult.skipped">⊘ {{ t('import.skipped', { n: importResult.skipped }) }}</span>
                     </div>
-                    <div v-if="importResult.errors?.length" class="text-xs space-y-1" style="color:var(--muted);max-height:150px;overflow:auto">
-                        <div class="font-medium" style="color:var(--amber)">{{ t('import.errors') }}</div>
+                    <div v-if="importResult.errors?.length" class="text-xs space-y-1" style="color:var(--body);max-height:150px;overflow:auto">
+                        <div class="font-medium" style="color:var(--p-primary-800)">{{ t('import.errors') }}</div>
                         <div v-for="(er, i) in importResult.errors" :key="i">{{ t('import.row', { n: er.row }) }}: {{ er.message }}</div>
                     </div>
                 </div>
@@ -690,7 +725,38 @@ async function submitImport() {
 </template>
 
 <style scoped>
+/* All colours come from the shared theme variables and the PrimeVue primary
+   scale; nothing here introduces a new hex value. */
 .items-page { display: flex; flex-direction: column; gap: 20px; }
+.head-btn { min-height: 44px; }
+
+/* Export dropdown (anchored to the end edge in both directions) */
+.export-pop {
+    position: absolute; z-index: 20; margin-top: 4px; min-width: 10rem; inset-inline-end: 0;
+    padding: 4px; border-radius: 12px; background: var(--card); border: 1px solid var(--line);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+.export-opt {
+    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px;
+    border: 0; border-radius: 8px; background: transparent; color: var(--ink);
+    font-family: inherit; font-size: 14.5px; text-align: start; cursor: pointer;
+}
+.export-opt:hover { background: var(--page); }
+
+/* Inline notice (amber) */
+.notice {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;
+    background: var(--amber-soft); color: var(--p-primary-800); font-size: 14.5px;
+}
+.notice-ico { flex: none; }
+
+/* Empty state for a brand-new menu */
+.empty-card { padding: 56px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+.empty-ico { width: 60px; height: 60px; border-radius: 16px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); margin-bottom: 8px; }
+.empty-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--ink); margin: 0; }
+.empty-body { font-size: 15px; color: var(--body); max-width: 420px; margin: 0; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 12px; }
 
 /* ── Page shell ───────────────────────────────────────────────────
    Category rail beside the list on desktop; stacked on narrow screens,
@@ -704,7 +770,7 @@ async function submitImport() {
 @media (min-width: 900px) {
     .items-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 16px 20px; }
 }
-.items-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.items-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .cat-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--ink); margin: 0; }
 
 /* ── Category rail ──────────────────────────────────────────────── */
@@ -721,13 +787,13 @@ async function submitImport() {
 }
 .cat-rail-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 12px 8px 10px;
+    padding: 12px 12px 8px 12px;
 }
-.cat-rail-title { font-size: 13px; font-weight: 600; color: var(--body); }
+.cat-rail-title { font-size: 13.5px; font-weight: 600; color: var(--body); }
 .cat-add {
-    width: 28px; height: 28px; border: 0; border-radius: 8px; cursor: pointer;
+    width: 32px; height: 32px; border: 0; border-radius: 8px; cursor: pointer;
     display: grid; place-items: center;
-    background: var(--accent-soft); color: var(--accent);
+    background: var(--accent-soft); color: var(--p-primary-700);
     transition: filter .15s;
 }
 .cat-add:hover { filter: brightness(.95); }
@@ -737,12 +803,12 @@ async function submitImport() {
     inset-inline-start: 10px; color: var(--muted); pointer-events: none; display: flex;
 }
 .cat-rail-input {
-    width: 100%; height: 34px; padding-inline: 30px 10px;
+    width: 100%; height: 38px; padding-inline: 30px 10px;
     border: 1px solid var(--line); border-radius: 8px;
-    background: var(--page); color: var(--ink); font-size: 13px; font-family: inherit;
+    background: var(--page); color: var(--ink); font-size: 14px; font-family: inherit;
 }
 .cat-rail-input:focus { outline: none; border-color: var(--accent); background: var(--card); }
-.cat-rail-empty { padding: 14px; font-size: 13px; color: var(--muted); text-align: center; margin: 0; }
+.cat-rail-empty { padding: 14px; font-size: 13.5px; color: var(--body); text-align: center; margin: 0; }
 .cat-rail-list {
     overflow: auto;
     padding: 0 8px 8px;
@@ -756,15 +822,15 @@ async function submitImport() {
 .cat-row {
     flex: none;
     display: flex; align-items: center; gap: 10px;
-    width: auto;
+    width: auto; min-height: 44px;
     padding: 9px 10px;
     border: 0; border-radius: 8px;
     background: transparent;
-    font-family: inherit; font-size: 14px; color: var(--body);
+    font-family: inherit; font-size: 14.5px; color: var(--body);
     cursor: pointer; text-align: start;
     transition: background .15s, color .15s;
 }
-@media (min-width: 900px) { .cat-row { width: 100%; } }
+@media (min-width: 900px) { .cat-row { width: 100%; min-height: 40px; } }
 .cat-row:hover { background: var(--page); color: var(--ink); }
 .cat-row.active { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
 .cat-row-line { width: 3px; height: 16px; border-radius: 2px; background: transparent; flex: none; }
@@ -773,51 +839,55 @@ async function submitImport() {
 .cat-row-count {
     font-family: var(--font-mono); font-size: 11.5px; font-weight: 600;
     padding: 1px 7px; border-radius: 999px;
-    background: var(--gray-soft); color: var(--muted);
+    background: var(--gray-soft); color: var(--body);
 }
-.cat-row.active .cat-row-count { background: var(--accent); color: #fff; }
+.cat-row.active .cat-row-count { background: var(--accent); color: var(--ink); }
 
 /* ── Toolbar ────────────────────────────────────────────────────── */
 .items-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .items-search { flex: 1 1 220px; max-width: 380px; }
+.search-input { padding-inline-start: 38px; margin-top: 0; min-height: 44px; }
 .toolbar-gap { flex: 1 1 0; }
 .seg {
     display: flex; gap: 2px; padding: 3px;
     background: var(--gray-soft); border-radius: 10px;
 }
 .seg-btn {
-    height: 34px; padding: 0 14px; border: 0; border-radius: 8px;
+    height: 38px; padding: 0 14px; border: 0; border-radius: 8px;
     background: transparent; color: var(--body);
-    font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center;
     transition: background .15s, color .15s, box-shadow .15s;
 }
 .seg-btn:hover { color: var(--ink); }
-.seg-btn.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
-.seg-ico { width: 38px; padding: 0; }
+.seg-btn.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.seg-ico { width: 42px; padding: 0; }
 
 /* ── Bulk action bar ────────────────────────────────────────────── */
 .bulk-bar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 10px 10px 12px;
+    position: sticky; top: 72px; z-index: 5;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 10px 10px 10px 14px;
     border-radius: 12px;
     background: var(--ink); color: #fff;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
 }
-.bulk-count { font-weight: 600; font-size: 14px; margin-inline-end: auto; }
+[dir="rtl"] .bulk-bar { padding: 10px 14px 10px 10px; }
+.bulk-count { font-weight: 600; font-size: 14.5px; margin-inline-end: auto; }
 .bulk-btn {
-    height: 34px; padding: 0 12px; border-radius: 8px; cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, .22);
+    height: 38px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, .28);
     background: transparent; color: #fff;
-    font-family: inherit; font-size: 13.5px;
+    font-family: inherit; font-size: 14px;
     transition: background .15s;
 }
 .bulk-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
 .bulk-btn:disabled { opacity: .5; cursor: not-allowed; }
-.bulk-btn-danger { background: var(--red); border-color: var(--red); font-weight: 500; }
+.bulk-btn-danger { background: var(--red); border-color: var(--red); font-weight: 600; }
 .bulk-btn-danger:hover:not(:disabled) { background: var(--red); filter: brightness(1.1); }
 .bulk-close {
-    width: 34px; height: 34px; border: 0; border-radius: 8px; cursor: pointer;
-    background: transparent; color: rgba(255, 255, 255, .65);
+    width: 38px; height: 38px; border: 0; border-radius: 8px; cursor: pointer;
+    background: transparent; color: rgba(255, 255, 255, .8);
     display: grid; place-items: center;
 }
 .bulk-close:hover { color: #fff; background: rgba(255, 255, 255, .12); }
@@ -837,7 +907,7 @@ async function submitImport() {
     column-gap: 8px;
 }
 .items-row > * {
-    padding: 12px;
+    padding: 10px 12px;
     min-width: 0;            /* let cells shrink + truncate instead of forcing overflow */
     text-align: start;       /* logical alignment → correct in both LTR and RTL */
 }
@@ -846,26 +916,32 @@ async function submitImport() {
 .items-head {
     background: var(--page);
     border-bottom: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: .06em;
+    color: var(--body);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
     text-transform: uppercase;
 }
-.items-body-row { border-top: 1px solid var(--line); }
+[dir="rtl"] .items-head { letter-spacing: 0; }
+.items-body-row { border-top: 1px solid var(--line); min-height: 68px; transition: background .15s; }
 .items-head + .items-body-row { border-top: 0; }
-.items-body-row:hover { background: var(--accent-soft); }
+.items-body-row:hover { background: var(--page); }
 .col-center  { text-align: center; }
 .col-actions { text-align: end; }
+.items-row > .col-price { text-align: end; white-space: nowrap; }
 
 .row-thumb {
-    flex: none; width: 48px; height: 48px; border-radius: 10px;
+    flex: none; width: 52px; height: 52px; border-radius: 10px;
 }
 .row-thumb-blank {
     display: grid; place-items: center;
-    background: var(--gray-soft); color: var(--muted);
-    font-family: var(--font-display); font-weight: 600; font-size: 17px;
+    background: var(--gray-soft); color: var(--body);
+    font-family: var(--font-display); font-weight: 600; font-size: 18px;
 }
+.row-name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.row-alt { font-size: 12.5px; color: var(--body); }
+.row-desc { font-size: 12.5px; color: var(--body); }
+.cat-inline { display: none; font-size: 12.5px; color: var(--p-primary-800); font-weight: 500; }
 .cat-tag {
     display: inline-block; max-width: 100%;
     font-size: 12.5px; padding: 3px 10px; border-radius: 999px;
@@ -873,55 +949,83 @@ async function submitImport() {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tabular { font-variant-numeric: tabular-nums; }
+/* The global .price is orange (about 2:1 on white); on a list that is scanned
+   for numbers it has to be the ink colour. */
+.price { color: var(--ink); font-size: 15.5px; }
+.was { display: block; font-size: 12.5px; color: var(--body); text-decoration: line-through; }
 
 /* Availability reads as a switch plus the word for its state, so the
-   meaning does not rest on colour alone. */
+   meaning does not rest on colour alone. A hidden item dims its row. */
 .avail-toggle {
-    display: inline-flex; align-items: center; gap: 8px;
-    border: 0; background: transparent; padding: 0; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+    border: 0; background: transparent; padding: 0 4px; cursor: pointer;
     font-family: inherit;
 }
-.avail-label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.avail-label { font-size: 13.5px; font-weight: 600; color: var(--body); }
 .avail-label.on { color: var(--green); }
+.row-off .row-thumb, .row-off .product-info { opacity: .55; }
+.star-btn { min-width: 36px; min-height: 36px; }
 
-.items-empty { padding: 56px 24px; text-align: center; color: var(--muted); font-size: 14px; }
+.items-empty { padding: 56px 24px; text-align: center; color: var(--body); font-size: 15px; }
 .items-foot {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px;
+    padding: 12px 20px;
     background: var(--page);
     border-top: 1px solid var(--line);
-    font-size: 12.5px; color: var(--muted);
+    font-size: 13px; color: var(--body);
 }
 
-/* Product info column follows the active language / page direction: the
-   name(s) + description align to the reading edge, never centered. */
-.product-info { display: flex; flex-direction: column; }
-/* Plain `row` + the inherited direction mirrors correctly: in RTL the image
-   (first DOM child) lands at the right reading edge with the text to its left;
-   in LTR it stays on the left. The group packs to the reading edge on its own. */
-[dir="rtl"] .product-cell { flex-direction: row; direction: rtl; justify-content: flex-start; }
-[dir="ltr"] .product-cell { flex-direction: row; direction: ltr; justify-content: flex-start; }
-/* Every line takes the full column width so its own text-align is what
-   decides the edge — not the flex item's content-sized cross position. */
-.product-info > * { width: 100%; max-width: 100%; }
-[dir="rtl"] .product-info { direction: rtl; align-items: flex-end; }
-[dir="rtl"] .product-info > * { text-align: right !important; }
-[dir="ltr"] .product-info { direction: ltr; align-items: flex-start; }
-[dir="ltr"] .product-info > * { text-align: left !important; }
+/* Product info column: every line takes the column width and aligns to the
+   reading edge. The opposite-language alt name carries its own direction on an
+   inner <bdi>, so no physical left/right is needed here. */
+.product-info { display: flex; flex-direction: column; gap: 1px; }
+.product-info > * { width: 100%; max-width: 100%; text-align: start; }
 
 @media (max-width: 639px) {
-    /* Category + Featured collapse; the remaining columns stay aligned. */
-    .items-table { --items-cols: var(--items-cols-narrow); min-width: 0; }
+    /* Phone: each item is a two-line card row. Line 1 = image, name, availability;
+       line 2 = price, row actions. Category (shown under the name in the "all"
+       view) replaces the dropped Category column; Featured stays in the editor. */
+    .items-table { min-width: 0; }
+    .items-table .items-row {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas: "ord prod avail" "ord price act";
+        column-gap: 4px; row-gap: 0; padding-block: 6px;
+    }
+    .items-table.select-mode .items-row {
+        grid-template-columns: 40px auto minmax(0, 1fr) auto;
+        grid-template-areas: "sel ord prod avail" "sel ord price act";
+    }
+    .items-table .items-row > * { padding: 4px 6px; }
+    .items-table .items-row > *:first-child { padding-inline-start: 10px; }
+    .items-table .items-row > *:last-child  { padding-inline-end: 10px; }
+    .items-table .col-select { grid-area: sel; }
+    .items-table .col-order { grid-area: ord; }
+    .items-table .col-product { grid-area: prod; }
+    .items-table .col-price { grid-area: price; text-align: start; }
+    .items-table .col-avail { grid-area: avail; text-align: end; }
+    .items-table .col-actions { grid-area: act; }
     .col-cat, .col-feat { display: none; }
-    .avail-label { display: none; }
-    .row-thumb { width: 40px; height: 40px; }
+    .cat-inline { display: block; }
+    .row-desc { display: none; }
+    .row-thumb { width: 48px; height: 48px; }
+    .col-order .row-num { display: none; }
+    .items-table .col-price .was { display: inline; margin-inline-start: 6px; }
+    .col-actions .icon-btn { width: 44px; height: 44px; }
+    .order-arrows .icon-btn { width: 36px; height: 28px; }
+
+    /* The header collapses to the select-all checkbox (or disappears). */
+    .items-table.select-mode .items-row.items-head { grid-template-columns: 40px; grid-template-areas: "sel"; padding-block: 0; }
+    .items-table .items-head > :not(.col-select) { display: none; }
+    .items-table:not(.select-mode) .items-head { display: none; }
+    .seg-btn { height: 40px; }
+    .bulk-bar { top: 68px; }
 }
 
 /* ── Multi-select ──────────────────────────────────────────────── */
 .col-select { padding-inline: 8px; }
 .row-check {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     accent-color: var(--accent);
     cursor: pointer;
     vertical-align: middle;
@@ -935,8 +1039,8 @@ async function submitImport() {
     flex: none;
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 26px;
+    width: 24px;
+    height: 32px;
     border: 0;
     background: transparent;
     border-radius: 6px;
@@ -952,11 +1056,11 @@ async function submitImport() {
     text-align: center;
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--body);
     font-variant-numeric: tabular-nums;
 }
 .order-arrows { display: flex; flex-direction: column; flex: none; }
-.order-arrows .icon-btn { width: 22px; height: 15px; }
+.order-arrows .icon-btn { width: 24px; height: 18px; }
 
 .items-body-row.row-dragging { opacity: .5; }
 .items-body-row.row-drop { box-shadow: inset 0 2px 0 0 var(--accent); }
@@ -974,9 +1078,12 @@ async function submitImport() {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: border-color .15s;
+    transition: border-color .15s, box-shadow .15s;
 }
+.item-card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .08); }
 .item-card.selected { border-color: var(--accent); }
+.item-card.card-off .item-card-media > img,
+.item-card.card-off .item-card-body { opacity: .55; }
 /* Fixed height, not an aspect ratio: menu photos arrive at every shape, and
    a ratio still let each card size itself from its own image, so no two cards
    in a row lined up. A fixed box crops them all to the same window. */
@@ -993,23 +1100,27 @@ async function submitImport() {
    row and wins over `aspect-ratio`, so cards ended up as tall as their
    photos and no two were the same height. */
 .item-card-media > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.item-card-initial { font-family: var(--font-display); font-size: 40px; font-weight: 600; color: var(--muted); }
-.item-card-check { position: absolute; top: 12px; inset-inline-end: 12px; width: 17px; height: 17px; }
+.item-card-initial { font-family: var(--font-display); font-size: 40px; font-weight: 600; color: var(--body); }
+.item-card-check { position: absolute; top: 12px; inset-inline-end: 12px; width: 20px; height: 20px; }
 .item-card-star {
     position: absolute; top: 8px; inset-inline-start: 8px;
-    width: 32px; height: 32px; border: 0; border-radius: 50%; cursor: pointer;
-    background: var(--card); color: var(--muted);
+    width: 36px; height: 36px; border: 0; border-radius: 50%; cursor: pointer;
+    background: var(--card); color: var(--body);
     display: grid; place-items: center;
     box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
 }
-.item-card-star.on { color: #e0a82e; }
+.item-card-star.on { color: var(--p-primary-600); }
+.off-badge { background: var(--card); color: var(--body); border: 1px solid var(--line); }
+.item-card-off { position: absolute; bottom: 8px; inset-inline-start: 8px; }
 .item-card-body { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 3px; flex: 1 0 auto; min-width: 0; }
-.item-card-cat { font-size: 12px; color: var(--muted); }
-.item-card-name { font-size: 15px; font-weight: 600; color: var(--ink); }
-.item-card-alt { font-size: 12px; color: var(--muted); text-align: start; }
+.item-card-cat { font-size: 12.5px; color: var(--body); }
+.item-card-name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.item-card-alt { font-size: 12.5px; color: var(--body); text-align: start; }
 .item-card-foot {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 10px 12px;
     border-top: 1px solid var(--line);
 }
+.card-switch { margin-inline: 4px; }
+.item-card-foot .icon-btn { width: 38px; height: 38px; }
 </style>

@@ -89,20 +89,20 @@ function saved() {
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.stock_title') }}</h1>
-                <p class="page-sub">{{ t('purchasing.stock_sub') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('purchasing.stock_sub') }}</p>
             </div>
-            <div v-if="canOpenDialog" class="flex flex-wrap gap-2">
+            <div v-if="canOpenDialog" class="head-actions flex flex-wrap gap-2">
                 <button type="button" class="btn btn-ghost" @click="openDialog(true)">{{ t('purchasing.adj_opening') }}</button>
                 <button type="button" class="btn btn-accent" @click="openDialog(false)">{{ t('purchasing.adj_stock') }}</button>
             </div>
         </div>
 
-        <div class="card p-3 text-sm flex items-start gap-2" style="background:var(--amber-soft);color:var(--ink)">
-            <i class="pi pi-info-circle mt-0.5" style="color:var(--amber)" aria-hidden="true"></i>
+        <div class="note note-amber" role="note">
+            <i class="pi pi-info-circle" aria-hidden="true"></i>
             <span>{{ t('purchasing.stock_not_on_hand') }}</span>
         </div>
 
-        <div v-if="branches.length > 1" class="flex flex-wrap items-center gap-3">
+        <div v-if="branches.length > 1" class="filters">
             <select v-model="branchId" class="input" style="max-width: 260px" :aria-label="t('purchasing.branch')">
                 <option value="">{{ t('purchasing.all_branches') }}</option>
                 <option v-for="b in branches" :key="b.id" :value="b.id">{{ nameOf(b) }}</option>
@@ -112,49 +112,48 @@ function saved() {
         <ErrorState v-if="failed" :message="t('common.error')" @retry="load" />
 
         <div v-else class="card overflow-hidden">
-            <div v-if="!loading && !rows.length" class="p-8 text-center space-y-3">
-                <div class="space-y-1">
-                    <div class="font-medium" style="color:var(--ink)">{{ t('purchasing.none_stock') }}</div>
-                    <div class="text-sm" style="color:var(--muted)">{{ t('purchasing.none_stock_hint') }}</div>
-                </div>
-                <button v-if="canOpenDialog" type="button" class="btn btn-ghost btn-sm" @click="openDialog(true)">{{ t('purchasing.adj_opening') }}</button>
+            <div v-if="!loading && !rows.length" class="empty">
+                <div class="empty-ico"><i class="pi pi-box" aria-hidden="true" /></div>
+                <div class="empty-title">{{ t('purchasing.none_stock') }}</div>
+                <p class="empty-text">{{ t('purchasing.none_stock_hint') }}</p>
+                <button v-if="canOpenDialog" type="button" class="btn btn-accent mt-4" @click="openDialog(true)">{{ t('purchasing.adj_opening') }}</button>
             </div>
             <div v-else class="overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="dtable">
                     <thead>
-                        <tr class="text-start" style="color:var(--muted)">
-                            <th class="px-5 py-3 text-start font-medium">{{ t('purchasing.item') }}</th>
-                            <th v-if="showBranch" class="px-5 py-3 text-start font-medium">{{ t('purchasing.branch') }}</th>
-                            <th class="px-5 py-3 text-end font-medium">{{ t('purchasing.recorded_stock_col') }}</th>
-                            <th class="px-5 py-3 text-end font-medium">{{ t('purchasing.average_cost') }}</th>
-                            <th class="px-5 py-3 text-end font-medium">{{ t('purchasing.value') }}</th>
-                            <th v-if="canWrite" class="px-5 py-3"><span class="sr-only">{{ t('purchasing.adj_action') }}</span></th>
+                        <tr>
+                            <th>{{ t('purchasing.item') }}</th>
+                            <th v-if="showBranch">{{ t('purchasing.branch') }}</th>
+                            <th class="num">{{ t('purchasing.recorded_stock_col') }}</th>
+                            <th class="num">{{ t('purchasing.average_cost') }}</th>
+                            <th class="num">{{ t('purchasing.value') }}</th>
+                            <th v-if="canWrite"><span class="sr-only">{{ t('purchasing.adj_action') }}</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         <TableSkeleton v-if="loading" :cols="(showBranch ? 5 : 4) + (canWrite ? 1 : 0)" />
                         <template v-else>
-                            <tr v-for="r in rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.02]" style="border-color:var(--line)" @click="openMovements(r)">
-                                <td class="px-5 py-3" style="color:var(--ink)">
+                            <tr v-for="r in rows" :key="r.id" class="row-link" tabindex="0" @click="openMovements(r)" @keydown.enter.self="openMovements(r)">
+                                <td class="primary">
                                     <span class="font-medium">{{ nameOf(r.stock_item) }}</span>
-                                    <span v-if="r.stock_item && !r.stock_item.is_active" class="text-xs" style="color:var(--muted)"> {{ t('purchasing.retired_suffix') }}</span>
+                                    <span v-if="r.stock_item && !r.stock_item.is_active" class="text-sm" style="color:var(--body)"> {{ t('purchasing.retired_suffix') }}</span>
                                 </td>
-                                <td v-if="showBranch" class="px-5 py-3" style="color:var(--body)">{{ branchName(r.branch_id) }}</td>
-                                <td class="px-5 py-3 text-end">
+                                <td v-if="showBranch">{{ branchName(r.branch_id) }}</td>
+                                <td class="num">
                                     <span class="mono" dir="ltr" :style="recorded(r) < 0 ? 'color:var(--red)' : ''">{{ qty(recorded(r), r.unit_code) }}</span>
                                 </td>
-                                <td class="px-5 py-3 text-end"><span class="mono">{{ cost(r.average_cost_minor) }}</span></td>
-                                <td class="px-5 py-3 text-end"><span class="mono">{{ cost(r.value_minor) }}</span></td>
-                                <td v-if="canWrite" class="px-5 py-3 text-end">
+                                <td class="num"><span class="mono">{{ cost(r.average_cost_minor) }}</span></td>
+                                <td class="num strong"><span class="mono">{{ cost(r.value_minor) }}</span></td>
+                                <td v-if="canWrite" class="num">
                                     <button type="button" class="btn btn-ghost btn-sm" @click.stop="openDialog(false, r)">{{ t('purchasing.adj_action') }}</button>
                                 </td>
                             </tr>
                         </template>
                     </tbody>
                     <tfoot v-if="!loading && rows.length">
-                        <tr class="border-t font-medium" style="border-color:var(--line);color:var(--ink)">
-                            <td class="px-5 py-3" :colspan="showBranch ? 4 : 3">{{ t('purchasing.total_value') }}</td>
-                            <td class="px-5 py-3 text-end"><span class="mono">{{ cost(meta.value_minor) }}</span></td>
+                        <tr class="tfoot-row">
+                            <td class="foot-label" :colspan="showBranch ? 4 : 3">{{ t('purchasing.total_value') }}</td>
+                            <td class="num foot-total"><span class="mono">{{ cost(meta.value_minor) }}</span></td>
                             <td v-if="canWrite"></td>
                         </tr>
                     </tfoot>
@@ -177,3 +176,31 @@ function saved() {
         />
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.note { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.5; }
+.note > i { margin-top: 3px; flex: none; }
+.note-amber { background: var(--amber-soft); color: var(--p-primary-800); }
+.dtable { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 15px; }
+.dtable th { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--body); background: var(--page); text-align: start; white-space: nowrap; }
+.dtable td { padding: 14px 16px; border-top: 1px solid var(--line); color: var(--body); vertical-align: middle; }
+.dtable .num { text-align: end; white-space: nowrap; }
+.dtable td.num { color: var(--ink); }
+.dtable .strong { font-weight: 600; color: var(--ink); }
+.dtable .primary { color: var(--ink); font-weight: 500; }
+.dtable .nowrap { white-space: nowrap; }
+.dtable tbody tr.row-link { cursor: pointer; transition: background .15s; }
+.dtable tbody tr.row-link:hover { background: var(--page); }
+.dtable tbody tr.row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dtable .sub { display: block; margin-top: 2px; font-size: 13px; color: var(--body); }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.filters .input { margin-top: 0; width: auto; min-height: 44px; }
+.empty { padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--p-primary-700); font-size: 20px; }
+.empty-title { font-weight: 600; color: var(--ink); }
+.empty-text { margin-top: 4px; font-size: 14.5px; color: var(--body); }
+.tfoot-row td { background: var(--page); border-top: 2px solid var(--line); font-weight: 700; color: var(--ink); }
+.foot-total .mono { font-family: var(--font-display); font-size: 20px; }
+.dtable .btn { min-height: 40px; }
+</style>

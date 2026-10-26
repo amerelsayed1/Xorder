@@ -13,6 +13,7 @@ import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
+import { useMenuLang } from '../../../lib/menuLang.js'
 
 // CB-09 slice a. Units are what purchases and stock are measured in. The
 // server creates the seven defaults (ea, kg, g, l, ml, box, pack) on the
@@ -20,6 +21,7 @@ import { alert } from '@xorder/ui/alert.js'
 // immutable and there is no delete; a unit is retired instead.
 // purchase.manage opens the page and gates writes (see SuppliersView).
 const { t, locale } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
 const canWrite = computed(() => auth.can('purchase.manage') && !auth.isReadOnly)
 
@@ -134,9 +136,9 @@ async function setActive(u, active) {
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.units_title') }}</h1>
-                <p class="page-sub">{{ t('purchasing.units_sub') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('purchasing.units_sub') }}</p>
             </div>
-            <button v-if="canWrite" type="button" class="btn btn-accent" @click="openCreate">
+            <button v-if="canWrite" type="button" class="btn btn-accent new-btn" @click="openCreate">
                 <Icon name="plus" :size="16" />{{ t('purchasing.add_unit') }}
             </button>
         </div>
@@ -146,16 +148,24 @@ async function setActive(u, active) {
         <template v-else>
             <div class="card overflow-hidden">
                 <ListSkeleton v-if="loading" />
-                <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('purchasing.none_units') }}</div>
+                <div v-else-if="!rows.length" class="empty">
+                    <div class="empty-ico"><i class="pi pi-sliders-h" aria-hidden="true" /></div>
+                    <p class="empty-text">{{ t('purchasing.none_units') }}</p>
+                    <button v-if="canWrite" type="button" class="btn btn-accent mt-4" @click="openCreate">
+                        <Icon name="plus" :size="16" />{{ t('purchasing.add_unit') }}
+                    </button>
+                </div>
                 <ul v-else>
-                    <li v-for="u in rows" :key="u.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)" :style="u.is_active ? '' : 'opacity:.65'">
-                        <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0 mono text-sm" dir="ltr" style="background:var(--accent-soft);color:var(--accent)">{{ u.code }}</div>
-                        <div class="flex-1 min-w-0">
-                            <div class="font-medium" style="color:var(--ink)">{{ nameOf(u) }}</div>
-                            <div class="text-xs flex flex-wrap items-center gap-2" style="color:var(--muted)">
-                                <span class="mono" dir="ltr">{{ u.eta_unit_type }}</span>
-                                <span>·</span>
-                                <span>{{ u.allows_fraction ? t('purchasing.fractions') : t('purchasing.whole_only') }}</span>
+                    <li v-for="u in rows" :key="u.id" class="row" :class="u.is_active ? '' : 'is-retired'">
+                        <div class="row-main">
+                            <div class="row-ico mono" dir="ltr">{{ u.code }}</div>
+                            <div class="min-w-0 flex-1">
+                                <div class="row-name"><span class="truncate">{{ nameOf(u) }}</span></div>
+                                <div class="row-meta flex flex-wrap items-center gap-2">
+                                    <span class="mono" dir="ltr">{{ u.eta_unit_type }}</span>
+                                    <span>·</span>
+                                    <span>{{ u.allows_fraction ? t('purchasing.fractions') : t('purchasing.whole_only') }}</span>
+                                </div>
                             </div>
                         </div>
                         <StatusBadge :value="u.is_active" :label="u.is_active ? t('common.active') : t('purchasing.retired')" />
@@ -165,29 +175,28 @@ async function setActive(u, active) {
                     </li>
                 </ul>
             </div>
-            <p v-if="!loading && rows.length" class="text-xs" style="color:var(--muted)">{{ t('purchasing.never_deleted') }}</p>
+            <p v-if="!loading && rows.length" class="text-sm" style="color:var(--body)">{{ t('purchasing.never_deleted') }}</p>
         </template>
 
         <Dialog v-if="showModal" :title="editing ? t('purchasing.edit_unit') : t('purchasing.add_unit')" @close="showModal = false">
             <form class="space-y-4" @submit.prevent="save">
                 <label class="block"><span class="label">{{ t('purchasing.unit_code') }}</span>
                     <input v-model="form.code" class="input mono" dir="ltr" maxlength="16" :disabled="!!editing" autocapitalize="off" spellcheck="false" />
-                    <span class="text-xs" style="color:var(--muted)">{{ editing ? t('purchasing.unit_code_locked') : t('purchasing.unit_code_hint') }}</span>
+                    <span class="text-xs" style="color:var(--body)">{{ editing ? t('purchasing.unit_code_locked') : t('purchasing.unit_code_hint') }}</span>
                     <FormError :errors="errors" field="code" /></label>
                 <!-- Both names, always: unit names are short, and the
                      seeded defaults already carry both languages. -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block" dir="ltr"><span class="label">{{ t('common.name_en') }}</span>
-                        <input v-model="form.name_en" class="input" maxlength="120" />
-                        <FormError :errors="errors" field="name_en" /></label>
-                    <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" maxlength="120" />
-                        <FormError :errors="errors" field="name_ar" /></label>
+                    <!-- Only the languages the menu is written in (XORD-005). -->
+                    <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <input v-model="form['name_' + lng]" class="input" maxlength="120" />
+                        <FormError :errors="errors" :field="'name_' + lng" /></label>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('purchasing.eta_type') }}</span>
                         <input v-model="form.eta_unit_type" class="input mono" dir="ltr" maxlength="6" placeholder="EA" autocapitalize="characters" spellcheck="false" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.eta_type_hint') }}</span>
+                        <span class="text-xs" style="color:var(--body)">{{ t('purchasing.eta_type_hint') }}</span>
                         <FormError :errors="errors" field="eta_unit_type" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.sort_order') }}</span>
                         <input v-model.number="form.sort_order" type="number" min="0" step="1" class="input" dir="ltr" />
@@ -198,14 +207,14 @@ async function setActive(u, active) {
                         <button type="button" class="switch" :class="{ on: form.allows_fraction }" :aria-pressed="form.allows_fraction" @click="form.allows_fraction = !form.allows_fraction"></button>
                         {{ t('purchasing.allows_fraction') }}
                     </label>
-                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('purchasing.allows_fraction_hint') }}</p>
+                    <p class="text-xs mt-1" style="color:var(--body)">{{ t('purchasing.allows_fraction_hint') }}</p>
                     <FormError :errors="errors" field="allows_fraction" />
                 </div>
                 <label v-if="editing" class="flex items-center gap-2 text-sm" style="color:var(--body)">
                     <button type="button" class="switch" :class="{ on: form.is_active }" :aria-pressed="form.is_active" @click="form.is_active = !form.is_active"></button>
                     {{ t('common.active') }}
                 </label>
-                <div class="flex justify-end gap-2 pt-2">
+                <div class="dlg-actions">
                     <button type="button" class="btn btn-ghost" :disabled="saving" @click="showModal = false">{{ t('common.cancel') }}</button>
                     <button type="submit" class="btn btn-accent" :disabled="saving">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
@@ -216,3 +225,23 @@ async function setActive(u, active) {
         </Dialog>
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.empty { padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--p-primary-700); font-size: 20px; }
+.empty-text { margin-top: 4px; font-size: 14.5px; color: var(--body); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; min-height: 64px; padding: 12px 20px; border-top: 1px solid var(--line); transition: background .15s; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--page); }
+.row-main { display: flex; align-items: center; gap: 12px; flex: 1 1 240px; min-width: 0; }
+.row-ico { width: 44px; height: 44px; border-radius: 10px; flex: none; display: grid; place-items: center; font-size: 14px; background: var(--accent-soft); color: var(--p-primary-700); }
+.is-retired .row-ico { background: var(--gray-soft); color: var(--body); }
+.row-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 600; font-size: 15.5px; color: var(--ink); }
+.row-meta { margin-top: 2px; font-size: 14px; color: var(--body); }
+.row .btn { min-height: 40px; }
+.row .icon-btn { width: 44px; height: 44px; }
+.new-btn { min-height: 44px; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+.dlg-actions .btn { min-height: 44px; }
+</style>

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -16,7 +16,28 @@ const auth = useAuth()
 // The page opens on settings.view; every field and the save button
 // additionally require settings.update.
 const { canUpdate } = useCaps('settings')
-const { langs, bilingual } = useMenuLang()
+const { langs, bilingual, defaultLang } = useMenuLang()
+
+// Content languages (XORD-005): which languages the menu is written in. Three
+// choices, read off the two stored flags. "Both" keeps whichever language is
+// already primary, so choosing it never silently swaps the menu's first language.
+const languageChoice = ref('both')
+const languageOptions = [
+    { value: 'ar', label: 'wizard.lang_arabic_only' },
+    { value: 'en', label: 'wizard.lang_english_only' },
+    { value: 'both', label: 'wizard.lang_bilingual' },
+]
+function readLanguageChoice() {
+    languageChoice.value = bilingual.value ? 'both' : defaultLang.value
+}
+// Read at load and again whenever the stored setting changes underneath us (a
+// colleague saved it, or our own save refreshed the session).
+watch([bilingual, defaultLang], readLanguageChoice, { immediate: true })
+function languagePayload() {
+    return languageChoice.value === 'both'
+        ? { bilingual: true, default_language: defaultLang.value }
+        : { bilingual: false, default_language: languageChoice.value }
+}
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
@@ -92,13 +113,17 @@ async function submit() {
         await ensureCsrf()
         // Blank number inputs arrive as '' — send null so nullable/required_with
         // rules (e.g. latitude↔longitude) see a truly absent value.
-        const payload = { ...form }
+        const payload = { ...form, ...languagePayload() }
         for (const k of ['latitude', 'longitude', 'minimum_order', 'delivery_time_min', 'delivery_time_max']) {
             if (payload[k] === '' || payload[k] === undefined || (typeof payload[k] === 'number' && Number.isNaN(payload[k]))) {
                 payload[k] = null
             }
         }
         await api.put('api/dashboard/restaurant', payload)
+        // The forms across the dashboard read the restaurant from the session,
+        // so refresh it: a form opened after this save shows the new languages,
+        // and one left open re-renders its fields from the same reactive source.
+        await auth.fetchUser()
         saved.value = true
     } catch (err) {
         errors.value = err.response?.data?.errors || {}
@@ -141,110 +166,143 @@ async function changePassword() {
 </script>
 
 <template>
-    <SettingsHeader :title="t('nav.profile')" :desc="t('profile.subtitle')">
+    <SettingsHeader class="prof-head" :title="t('nav.profile')" :desc="t('profile.subtitle')">
         <template #actions>
-            <span v-if="saved" class="set-chip set-chip-green"><span class="dot"></span>{{ t('common.saved') }}</span>
+            <span v-if="saved" class="chip chip-green" role="status"><span class="dot"></span>{{ t('common.saved') }}</span>
             <!-- Outside the <form> on purpose: the header belongs to the shell,
                  the form to the card. Calling submit() directly keeps one save
                  path rather than a second one via form="" association. -->
-            <button v-if="!loading && !loadError" type="button" class="set-btn-primary"
+            <button v-if="!loading && !loadError" type="button" class="set-btn-primary act"
                 :disabled="saving || !canUpdate" @click="submit">
                 {{ saving ? t('common.saving') : t('common.save') }}
             </button>
         </template>
     </SettingsHeader>
 
-    <div v-if="loading" class="set-stack-lg">
-        <div class="set-skel" style="height: 420px"></div>
+    <!-- Skeleton mirrors the stack of section cards -->
+    <div v-if="loading" class="stack">
+        <div class="set-skel" style="height: 300px"></div>
+        <div class="set-skel" style="height: 220px"></div>
+        <div class="set-skel" style="height: 160px"></div>
         <div class="set-skel" style="height: 220px"></div>
     </div>
 
     <ErrorState v-else-if="loadError" @retry="load" />
 
     <template v-else>
-        <form class="set-card set-form" @submit.prevent="submit">
-            <div class="set-grid">
-                <label v-for="lng in langs" :key="'n' + lng" class="set-field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }} <span class="set-req">*</span></span>
-                    <input v-model="form['name_' + lng]" class="input" />
-                    <FormError :errors="errors" :field="'name_' + lng" />
-                </label>
-                <label class="set-field">
-                    <span class="label">{{ t('restaurant.whatsapp') }}</span>
-                    <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
-                    <FormError :errors="errors" field="whatsapp_number" />
-                </label>
-            </div>
-
-            <div class="set-grid">
-                <label v-for="lng in langs" :key="'d' + lng" class="set-field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
-                    <textarea v-model="form['description_' + lng]" rows="3" class="input" style="resize: vertical"
-                        :placeholder="t('restaurant.description_placeholder')"></textarea>
-                </label>
-            </div>
-
-            <!-- Phone, address, and working hours are configured per-branch
-                 (every client has at least one branch). Only the WhatsApp
-                 ordering number — one per menu — stays at restaurant level. -->
-            <!-- Owner's "are we taking orders right now" switch. Hidden when
-                 the plan entitles no ordering channel. -->
-            <div v-if="orderingEntitled" class="set-inset">
-                <div>
-                    <span class="set-inset-title">{{ t('restaurant.accepts_orders') }}</span>
-                    <p class="set-inset-hint">{{ form.accepts_orders ? t('restaurant.accepts_orders_on') : t('restaurant.accepts_orders_off') }}</p>
+        <form class="stack" @submit.prevent="submit">
+            <!-- 1. Restaurant identity -->
+            <section class="card sec" aria-labelledby="pf-identity">
+                <h2 id="pf-identity" class="h-card">{{ t('profile.sec_identity') }}</h2>
+                <div class="grid-auto">
+                    <label v-for="lng in langs" :key="'n' + lng" class="field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }} <span class="req" aria-hidden="true">*</span></span>
+                        <input v-model="form['name_' + lng]" class="input" />
+                        <FormError :errors="errors" :field="'name_' + lng" />
+                    </label>
+                    <label class="field">
+                        <span class="label">{{ t('restaurant.whatsapp') }}</span>
+                        <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
+                        <FormError :errors="errors" field="whatsapp_number" />
+                    </label>
                 </div>
-                <button
-                    type="button"
-                    class="switch"
-                    :class="{ on: form.accepts_orders }"
-                    :disabled="!canUpdate"
-                    :aria-pressed="form.accepts_orders"
-                    :aria-label="t('restaurant.accepts_orders')"
-                    @click="form.accepts_orders = !form.accepts_orders"
-                ></button>
-            </div>
 
-            <div class="set-grid-sm">
-                <div class="set-field">
-                    <span class="label">{{ t('restaurant.delivery_time') }}</span>
-                    <div class="flex items-center gap-2">
-                        <input v-model.number="form.delivery_time_min" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_from')" dir="ltr" />
-                        <span style="color:var(--muted)">–</span>
-                        <input v-model.number="form.delivery_time_max" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_to')" dir="ltr" />
+                <div class="grid-auto">
+                    <label v-for="lng in langs" :key="'d' + lng" class="field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                        <textarea v-model="form['description_' + lng]" rows="3" class="input" style="resize: vertical"
+                            :placeholder="t('restaurant.description_placeholder')"></textarea>
+                    </label>
+                </div>
+                <!-- Phone, address, and working hours are configured per-branch
+                     (every client has at least one branch). Only the WhatsApp
+                     ordering number — one per menu — stays at restaurant level. -->
+            </section>
+
+            <!-- Content languages -->
+            <section class="card sec" aria-labelledby="pf-languages">
+                <h2 id="pf-languages" class="h-card">{{ t('profile.sec_languages') }}</h2>
+                <p class="help">{{ t('profile.languages_hint') }}</p>
+                <div class="lang-options" role="radiogroup" :aria-labelledby="'pf-languages'">
+                    <label v-for="opt in languageOptions" :key="opt.value" class="lang-opt" :class="{ on: languageChoice === opt.value }">
+                        <input type="radio" name="content-language" :value="opt.value" v-model="languageChoice"
+                            :disabled="!canUpdate" :data-test="'lang-' + opt.value" />
+                        {{ t(opt.label) }}
+                    </label>
+                </div>
+                <FormError :errors="errors" field="default_language" />
+                <FormError :errors="errors" field="bilingual" />
+            </section>
+
+            <!-- 2. Ordering and time zone -->
+            <section class="card sec" aria-labelledby="pf-ordering">
+                <h2 id="pf-ordering" class="h-card">{{ t('profile.sec_ordering') }}</h2>
+
+                <!-- Owner's "are we taking orders right now" switch. Hidden when
+                     the plan entitles no ordering channel. -->
+                <div v-if="orderingEntitled" class="inset">
+                    <div class="min-w-0">
+                        <span class="inset-title">{{ t('restaurant.accepts_orders') }}</span>
+                        <p class="hint">{{ form.accepts_orders ? t('restaurant.accepts_orders_on') : t('restaurant.accepts_orders_off') }}</p>
                     </div>
-                    <FormError :errors="errors" field="delivery_time_min" />
-                    <FormError :errors="errors" field="delivery_time_max" />
+                    <button
+                        type="button"
+                        class="switch"
+                        :class="{ on: form.accepts_orders }"
+                        :disabled="!canUpdate"
+                        role="switch"
+                        :aria-checked="form.accepts_orders"
+                        :aria-label="t('restaurant.accepts_orders')"
+                        @click="form.accepts_orders = !form.accepts_orders"
+                    ></button>
                 </div>
-                <label class="set-field">
-                    <span class="label">{{ t('restaurant.minimum_order') }}</span>
-                    <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr"
-                        :placeholder="t('restaurant.minimum_order_placeholder')" />
-                    <FormError :errors="errors" field="minimum_order" />
+
+                <div class="grid-auto">
+                    <div class="field">
+                        <span class="label">{{ t('restaurant.delivery_time') }}</span>
+                        <div class="flex items-center gap-2">
+                            <input v-model.number="form.delivery_time_min" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_from')" :aria-label="t('restaurant.delivery_from')" dir="ltr" />
+                            <span style="color:var(--body)" aria-hidden="true">–</span>
+                            <input v-model.number="form.delivery_time_max" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_to')" :aria-label="t('restaurant.delivery_to')" dir="ltr" />
+                        </div>
+                        <FormError :errors="errors" field="delivery_time_min" />
+                        <FormError :errors="errors" field="delivery_time_max" />
+                    </div>
+                    <label class="field">
+                        <span class="label">{{ t('restaurant.minimum_order') }}</span>
+                        <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr"
+                            :placeholder="t('restaurant.minimum_order_placeholder')" />
+                        <FormError :errors="errors" field="minimum_order" />
+                    </label>
+                </div>
+
+                <label class="field">
+                    <span class="label">{{ t('restaurant.timezone') }}</span>
+                    <select v-model="form.timezone" class="input" dir="ltr">
+                        <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</option>
+                    </select>
+                    <p class="hint" style="margin-top: 6px">
+                        {{ t('restaurant.timezone_hint') }}
+                        <template v-if="timezoneNow"> — {{ t('restaurant.timezone_now', { time: timezoneNow }) }}</template>
+                    </p>
+                    <FormError :errors="errors" field="timezone" />
                 </label>
-            </div>
+            </section>
 
-            <label class="set-field">
-                <span class="label">{{ t('restaurant.timezone') }}</span>
-                <select v-model="form.timezone" class="input" dir="ltr">
-                    <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</option>
-                </select>
-                <p class="set-inset-hint" style="margin-top: 6px">
-                    {{ t('restaurant.timezone_hint') }}
-                    <template v-if="timezoneNow"> — {{ t('restaurant.timezone_now', { time: timezoneNow }) }}</template>
-                </p>
-                <FormError :errors="errors" field="timezone" />
-            </label>
+            <!-- 3. Branding -->
+            <section class="card sec" aria-labelledby="pf-branding">
+                <h2 id="pf-branding" class="h-card">{{ t('profile.sec_branding') }}</h2>
+                <div class="grid-auto">
+                    <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="!canUpdate" />
+                    <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="!canUpdate" />
+                </div>
+            </section>
 
-            <div class="set-grid-sm">
-                <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="!canUpdate" />
-                <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="!canUpdate" />
-            </div>
-
-            <div class="set-field" style="gap: 10px">
+            <!-- 4. Social links -->
+            <section class="card sec" aria-labelledby="pf-social">
                 <div>
-                    <span class="label">{{ t('restaurant.social_links') }}</span>
-                    <p class="set-inset-hint">{{ t('restaurant.social_hint') }}</p>
+                    <h2 id="pf-social" class="h-card">{{ t('restaurant.social_links') }}</h2>
+                    <p class="hint">{{ t('restaurant.social_hint') }}</p>
                 </div>
                 <div class="flex flex-col gap-3">
                     <label class="flex items-center gap-3">
@@ -269,55 +327,94 @@ async function changePassword() {
                         </span>
                     </label>
                 </div>
+            </section>
+
+            <!-- Same save path as the header button, kept in reach on a long page -->
+            <div class="action-bar">
+                <button type="submit" class="btn btn-accent act-btn" :disabled="saving || !canUpdate">
+                    {{ saving ? t('common.saving') : t('common.save') }}
+                </button>
             </div>
         </form>
 
         <!-- Change password — deliberately its own card and its own endpoint,
              and not disabled when the restaurant is read-only: a lapsed
              subscription must not lock someone out of their own password. -->
-        <form class="set-card" @submit.prevent="changePassword">
-            <div class="set-card-head">
-                <div class="set-card-head-text">
-                    <span class="set-card-title">{{ t('profile.change_password') }}</span>
-                    <span class="set-card-desc">{{ t('profile.change_password_sub') }}</span>
+        <form class="card sec pw-card" aria-labelledby="pf-pw" @submit.prevent="changePassword">
+            <div class="pw-head">
+                <div class="min-w-0">
+                    <h2 id="pf-pw" class="h-card">{{ t('profile.change_password') }}</h2>
+                    <p class="hint">{{ t('profile.change_password_sub') }}</p>
                 </div>
-                <span v-if="pwSaved" class="set-chip set-chip-green" style="margin-inline-start:auto"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
+                <span v-if="pwSaved" class="chip chip-green" role="status"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
             </div>
 
-            <div class="set-form">
-                <label class="set-field" style="max-width: 340px">
-                    <span class="label">{{ t('profile.current_password') }}</span>
-                    <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
-                    <FormError :errors="pwErrors" field="current_password" />
+            <label class="field" style="max-width: 340px">
+                <span class="label">{{ t('profile.current_password') }}</span>
+                <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
+                <FormError :errors="pwErrors" field="current_password" />
+            </label>
+
+            <div class="grid-auto">
+                <label class="field">
+                    <span class="label">{{ t('profile.new_password') }}</span>
+                    <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                    <span class="hint" style="margin-top: 6px">{{ t('profile.password_rule') }}</span>
+                    <FormError :errors="pwErrors" field="password" />
                 </label>
-
-                <div class="set-grid-sm">
-                    <label class="set-field">
-                        <span class="label">{{ t('profile.new_password') }}</span>
-                        <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                        <span class="set-inset-hint" style="margin-top: 6px">{{ t('profile.password_rule') }}</span>
-                        <FormError :errors="pwErrors" field="password" />
-                    </label>
-                    <label class="set-field">
-                        <span class="label">{{ t('profile.confirm_password') }}</span>
-                        <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                        <FormError :errors="pwErrors" field="password_confirmation" />
-                    </label>
-                </div>
+                <label class="field">
+                    <span class="label">{{ t('profile.confirm_password') }}</span>
+                    <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                    <FormError :errors="pwErrors" field="password_confirmation" />
+                </label>
             </div>
 
-            <div class="set-card-foot">
-                <button type="submit" class="set-btn-primary" :disabled="pwSaving">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
+            <div class="pw-foot">
+                <button type="submit" class="btn btn-accent act-btn" :disabled="pwSaving">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
             </div>
         </form>
     </template>
 </template>
 
 <style scoped>
-.social-ico {
-    font-size: 20px;
-    width: 24px;
-    text-align: center;
-    flex: none;
+/* Colours come from the shared theme variables only. The settings shell's
+   own text is nudged to --body so secondary copy stays readable. */
+.prof-head :deep(.set-desc), .prof-head :deep(.set-crumb) { color: var(--body); font-size: 14px; }
+
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.sec { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+.lang-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.lang-opt { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; cursor: pointer; min-height: 44px; }
+.lang-opt.on { border-color: var(--p-primary-600, #2563eb); background: var(--p-primary-50, #eff6ff); }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.field { display: flex; flex-direction: column; min-width: 0; }
+.req { color: var(--red); }
+.hint { font-size: 13.5px; color: var(--body); line-height: 1.55; margin-top: 3px; }
+
+.inset { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--page); }
+.inset-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.social-ico { font-size: 20px; width: 24px; text-align: center; flex: none; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+.chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.chip-green { background: var(--green-soft); color: var(--green); }
+
+.pw-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pw-foot { display: flex; }
+
+.act { min-height: 40px; font-size: 14px; justify-content: center; }
+.act-btn { min-height: 44px; justify-content: center; }
+
+/* Sticky save row */
+.action-bar { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, .05); }
+
+@media (max-width: 640px) {
+    .sec { padding: 16px; }
+    .act { min-height: 44px; }
+    .action-bar .act-btn, .pw-foot .act-btn { flex: 1 1 auto; }
 }
 </style>

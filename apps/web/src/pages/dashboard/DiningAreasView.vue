@@ -115,30 +115,44 @@ function onTypeModeChange() {
 
 <template>
     <div class="space-y-5">
-        <div class="flex items-start justify-between gap-3">
-            <div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
                 <h1 class="page-title">{{ t('tbl.areas_title') }}</h1>
-                <p class="page-sub">{{ t('tbl.areas_sub', { count: rows.length }) }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('tbl.areas_sub', { count: rows.length }) }}</p>
             </div>
-            <button v-if="canCreate" @click="openCreate" :disabled="!branches.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate" @click="openCreate" :disabled="!branches.length" class="btn btn-accent act-btn"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
-        <p v-if="!loading && !branches.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_branch_first') }}</p>
+        <!-- Guidance, not a warning: areas only matter to venues with seating. -->
+        <div v-if="!loading && !branches.length" class="note" role="note">
+            <span class="note-ico" aria-hidden="true"><Icon name="info" :size="18" /></span>
+            <p class="note-title">{{ t('tbl.no_branch_first') }}</p>
+        </div>
 
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
-            <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_areas') }}</div>
+            <div v-else-if="!rows.length" class="empty">
+                <span class="empty-ico" aria-hidden="true"><Icon name="store" :size="22" /></span>
+                <p class="empty-text">{{ t('tbl.none_areas') }}</p>
+                <p class="empty-sub">{{ t('tbl.optional_areas_note') }}</p>
+                <button v-if="canCreate && branches.length" class="btn btn-accent act-btn" @click="openCreate"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            </div>
             <ul v-else>
-                <li v-for="a in rows" :key="a.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
-                    <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="store" :size="18" /></div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-medium" style="color:var(--ink)">{{ areaName(a) }}</div>
-                        <div class="text-xs truncate" style="color:var(--muted)">{{ branchLabel(a.branch_id) }} · {{ typeLabel(a.type) }} · {{ t('tbl.tables_count', { count: a.tables_count ?? 0 }) }}</div>
+                <li v-for="a in rows" :key="a.id" class="row">
+                    <div class="row-main">
+                        <div class="row-ico" aria-hidden="true"><Icon name="store" :size="18" /></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="row-name truncate">{{ areaName(a) }}</div>
+                            <div class="row-sub truncate">{{ branchLabel(a.branch_id) }} · {{ typeLabel(a.type) }} · {{ t('tbl.tables_count', { count: a.tables_count ?? 0 }) }}</div>
+                        </div>
                     </div>
-                    <StatusBadge :value="a.is_active" :label="a.is_active ? t('common.active') : t('common.inactive')" />
-                    <button v-if="canUpdate" class="switch" :class="{ on: a.is_active }" @click="toggleActive(a)"></button>
-                    <button v-if="canUpdate" @click="openEdit(a)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="canDelete" @click="remove(a)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <div class="row-side">
+                        <StatusBadge :value="a.is_active" :label="a.is_active ? t('common.active') : t('common.inactive')" />
+                        <button v-if="canUpdate" type="button" class="switch" :class="{ on: a.is_active }" role="switch"
+                            :aria-checked="a.is_active" :aria-label="a.is_active ? t('common.active') : t('common.inactive')" @click="toggleActive(a)"></button>
+                        <button v-if="canUpdate" @click="openEdit(a)" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                        <button v-if="canDelete" @click="remove(a)" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    </div>
                 </li>
             </ul>
         </div>
@@ -167,14 +181,14 @@ function onTypeModeChange() {
                     <label class="block"><span class="label">{{ t('tbl.display_order') }}</span>
                         <input v-model.number="form.display_order" type="number" min="0" class="input" /></label>
                 </div>
-                <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                    <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>
+                <label class="toggle-line">
+                    <button type="button" class="switch" :class="{ on: form.is_active }" role="switch" :aria-checked="form.is_active" @click="form.is_active = !form.is_active"></button>
                     {{ t('common.active') }}
                 </label>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button v-if="!editing" @click="save(true)" :disabled="saving" class="btn btn-ghost">{{ t('tbl.save_add_another') }}</button>
-                    <button @click="save()" :disabled="saving" class="btn btn-accent">
+                <div class="flex flex-wrap justify-end gap-2 pt-3 form-actions">
+                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost act-btn">{{ t('common.cancel') }}</button>
+                    <button v-if="!editing" @click="save(true)" :disabled="saving" class="btn btn-ghost act-btn">{{ t('tbl.save_add_another') }}</button>
+                    <button @click="save()" :disabled="saving" class="btn btn-accent act-btn">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                         {{ saving ? t('common.saving') : t('common.save') }}
                     </button>
@@ -183,3 +197,45 @@ function onTypeModeChange() {
         </Dialog>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables only. */
+
+/* Guidance note: calm, not an error. */
+.note { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px;
+    background: var(--accent-soft); border: 1px solid var(--line); }
+.note-ico { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none;
+    background: var(--card); color: var(--p-primary-700); }
+.note-title { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+
+/* Rows */
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; min-height: 64px;
+    border-top: 1px solid var(--line); transition: background .15s; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--page); }
+.row-main { display: flex; align-items: center; gap: 12px; flex: 1 1 220px; min-width: 0; }
+.row-side { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.row-ico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; flex: none;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.row-name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.row-sub { font-size: 13.5px; color: var(--body); margin-top: 1px; }
+
+/* Empty state: friendly, centred, not an error */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.empty-text { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.empty-sub { font-size: 14px; color: var(--body); max-width: 440px; line-height: 1.55; }
+.empty .btn { margin-top: 6px; }
+
+.toggle-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--body); min-height: 44px; }
+.form-actions { border-top: 1px solid var(--line); }
+
+@media (max-width: 640px) {
+    .row { padding-inline: 14px; }
+    .row-side { width: 100%; justify-content: flex-end; }
+    .row-side .icon-btn { width: 44px; height: 44px; }
+    .act-btn { min-height: 44px; justify-content: center; }
+    .form-actions .act-btn { flex: 1 1 auto; }
+}
+</style>

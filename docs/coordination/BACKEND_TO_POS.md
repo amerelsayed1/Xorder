@@ -3,7 +3,7 @@
 **Channel owner:** Agent 2 (Backend)
 **Request channel:** `./POS_TO_BACKEND.md` (Agent 1's; the authoritative copy lives in
 `~/Projects/Xorder/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
-**Backend repo:** `~/Projects/Xorder/xorder-new` (`apps/api`)
+**Backend repo:** `~/Projects/Xorder/xorder-cloud` (`apps/api`)
 **Last updated:** 2026-10-07 (owner decisions close the R1/R2 asks) · 2026-09-22 (POS-BE-010 refunds built → `READY`; §023 bundle gains
 `receipt_profiles[]`) · 2026-09-11 (CB-00: both repos' copies reconciled) ·
 2026-09-04 — **Cloud Wave 1 implemented, tested and smoke-verified; 16 items
@@ -221,6 +221,7 @@ for everything still `APPROVED`.**
 | POS-BE-027 | Three additive licence claims | **APPROVED** |
 | POS-BE-028 | Terminal rename decoupled from identity | **APPROVED** |
 | POS-BE-030 | Bundle withholds `purchase.manage`; cloud tills hide buying and stock | **READY** (platform half, CB-09 slice a) |
+| POS-BE-032 | Financial accounts in `money` (`financial_accounts`, `tender_account_defaults`) — additive, XORD-015 stage 1 | **PROPOSED** (built both sides 2026-10-26, not deployed) |
 
 Nothing is `BLOCKED`. Every open question from Agent 1's 2026-08-26/28 replies is
 answered below with a decision, not a discussion.
@@ -2309,11 +2310,64 @@ Agreed as filed in `POS_TO_BACKEND.md`; owner go 2026-09-13, "finish all phases"
   dashboard, under `feature:purchasing` + `can:purchase.manage` (CB-09 slices
   a–c). `purchasing` is a plan feature of its own and does not require `pos`.
 - **Wire:** unchanged. The platform reads nothing from till purchasing.
-- **Where it lives:** `feat/cb-09-purchasing` in xorder-new (slice a `dd9a530`
+- **Where it lives:** `feat/cb-09-purchasing` in xorder-cloud (slice a `dd9a530`
   and later). Not deployed; it follows Cloud Wave 1 to production.
 
 **Schema:** none for this contract. The purchasing tables are dashboard-only
 and are never sent to a till.
+
+---
+
+## POS-BE-032 — financial accounts · **PROPOSED** (additive to §013 `money`; XORD-015 stage 1)
+
+**Status 2026-10-26: built on both sides, not deployed, not `READY`.** Cloud half:
+`FinancialAccountsTest` (17) in `xorder-cloud`. Till half: `financial_accounts_test` (25, PostgreSQL),
+`financial_accounts_bundle_test`, `management_accounts_pane_test` in `xorder-pos`. The POS integrates only at
+`READY`: until the owner flips it, the till **parses** these keys and seeds them but nothing else reads them.
+
+**What it adds.** Two keys beside `tender_types` inside the existing `money` block of the §023 bootstrap bundle.
+Nothing else changes: no route, no request body, no existing response key. A payment, a refund and the shift
+cash-up are untouched (nothing is posted to an account in this stage).
+
+```jsonc
+"money": {
+  "tax_rules": [...], "charges": [...], "tender_types": [...],          // unchanged
+  "financial_accounts": [
+    { "id": 71, "name": "CIB main", "kind": "bank",        // kind: cash | bank | wallet
+      "currency": "EGP",                                   // the restaurant's, set by the server
+      "branch_id": null,                                   // null = shared by the whole business
+      "reference_label": "CIB 4521",                       // short hint, never an account number
+      "is_active": true, "sort_order": 1 }
+  ],
+  "tender_account_defaults": [                              // PLATFORM ids throughout
+    { "tender_type_id": 501, "branch_id": null, "financial_account_id": 71 },   // business-wide fallback
+    { "tender_type_id": 501, "branch_id": 10,   "financial_account_id": 72 }    // this branch's own
+  ]
+}
+```
+
+**Rules.**
+- The account for method M at branch B is the row for (M, B), else the row for (M, null), else none.
+- A business-wide default must be a shared account (`branch_id` null); a branch default may use a shared account
+  or that branch's own. The platform enforces this; the till applies the same rule (`AccountRules`).
+- Accounts are never deleted. An account the platform stops sending is switched off on the till.
+- **Absent key = an older platform.** The till then leaves its accounts and defaults alone. A present but empty
+  list means the business has none: accounts are switched off and defaults cleared.
+- An account or default the till cannot place (unknown kind, a branch it does not hold, a method it has no row
+  for) is skipped, never widened: "Maadi's drawer" is not stored as a shared account.
+- Cloud-authored only. An offline till authors its own, tied to its own branch, and never sends them.
+- `config_version` (POS-BE-025) moves when an account or a default changes, so the ETag and the till's cache
+  behave as for tenders.
+
+**Permission.** `finance.accounts` (platform `TenantCapability::FINANCE_ACCOUNTS`, till `PosCapability.financeAccounts`):
+the same string both sides. It implies `settings.view` on the platform. Owner only by default.
+
+**Compatibility and rollout.** Additive. Order: cloud first (migrations, bundle keys), then the POS release.
+Old POS + new cloud: the extra keys are ignored. New POS + old cloud: the keys are absent, nothing changes.
+
+**Not in this item (stage 2, separate approval).** Naming the account on a payment or refund, the cashier's
+override, transfers between accounts, movements and balances. Those change the §006 payment payload and its
+idempotency hash and need their own section.
 
 ---
 
@@ -2724,10 +2778,11 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-02 | **Agent 1 accepted DIS-1…DIS-5** (DIS-3 jointly declined, on the owner's desk). Error-code inconsistency fixed: uppercase `LICENCE_TENANT_MISMATCH` added to §019 for the site-register ref check, with a grandfather-collision note against the lowercase activation code; `LICENCE_SITE_MISMATCH` now solely the `server_id` claim mismatch; DIS-2, §019 and §026 agree. Client commitment recorded: `Tender.clientId` generated in `TicketEngine.addTender`. **Contracts closed.** No code written. |
 | 2026-09-04 | **Cloud Wave 1 implemented and tested** under the owner's 2026-09-02 go ("make the POS work with cloud for now"). READY: POS-BE-001, 002, 003, 005, 006 (+§006-P), 007, 008, 009 (registry subsumed by §023), 011, 013, 016 (claim/register warning), 019, 020, 022 (API; web UI later; `stale` awaits §026), 023, 024. Deferred, still APPROVED: 004, 010, 012, 014, 017, 018, 021, 025, 026, 027, 028. As-shipped amendments recorded in the banner: PBKDF2 PIN hash (supersedes bcrypt), bundle `tables` block + frozen normalized catalog, §006 v1 relaxations, UTC-instant timestamp rule, licence `current` tightened to the device credential. 740 backend tests green; end-to-end smoke by Agent 1 2026-09-04 (real Flutter parser, 0 products dropped). Implementation journal: `docs/backend/CLOUD_WAVE1_PROGRESS.md`. Nothing committed or deployed. |
 | 2026-09-05 | **Tenant creation split from terminal creation** (owner decision). Creating a client now mints the client **and its POS licence in one transaction** — a licence failure rolls the whole tenant back, so there is no such thing as an unlicensed client created through the wizard. Creating a client still creates **no terminal of any kind**; terminals are provisioned one at a time afterwards, and a licensed tenant with zero terminals is a valid resting state. New platform-side routes under `/api/admin/restaurants/{restaurant}/terminals` (§023 amendment), new `pos_fleet.manage` capability. **No POS-facing wire contract changed.** |
-| 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-new (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
+| 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-cloud (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
 | 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |
 | 2026-09-22 | **§023 bundle gains `receipt_profiles[]`** (owner go: "hand A3 and A7 to xorder-cloud", item A3). A new frozen key, one row per active branch, field names copied one for one from the till's `pos_receipt_profiles` columns so its seeder is a straight mapping. An unauthored branch is projected from the restaurant rather than omitted — a missing row is exactly what made every cloud till print with compiled-in defaults. `registration_number` is the restaurant's single copy (one taxpayer, one number); `branch_code` is ETA's, **not** `branches.code`. Authored at `GET`/`PUT /api/dashboard/receipt-profiles[/{branch}]` under `feature:pos` + `settings.view`/`settings.update` + `subscription.writable`, with a `revision` guard (stale save → 409) and a `pos_config_version` bump on every write. New dashboard page `PosReceiptView.vue` (EN + AR, RTL). **CLOUD_WAVE1 deviation 6 is closed:** `UpdateRestaurantProfileRequest` finally accepts `tax_registration_number`, and changing it bumps `config_version`. Tests: `tests/Feature/Pos/PosReceiptProfileTest.php` (10). Migration additive: new `receipt_profiles` table. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-22 | **POS-BE-010 built and tested → `READY`** (owner go: "hand A3 and A7 to xorder-cloud"). `POST /api/pos/refunds` + `GET /api/pos/refunds/by-client-id/{uuid}`, device token + `feature:pos`, `pos.refund` (or `pos.void` for `kind: void`), credit notes in their own `CN-` sequence bucket, cumulative quantity AND money checks under the order's row lock, idempotent per POS-BE-007 (201 first / 200 replay / never 409). **The blocker is cleared:** `POST /api/pos/orders` now accepts `lines[].client_line_id` and stores it under `unique(order_id, client_line_id)`, so a refund built offline addresses lines by `(order client_transaction_id, client_line_id)` and never needs a platform order-item id. **OrderStatus decision: the enum does not grow** — `NEW \| COMPLETED \| CANCELLED` stands, and refund state rides the derived `settlement_status` (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words; `VOIDED` and `PARTIALLY_PAID` are never emitted). A3's `cash_refunds` term went live and the shift report gained `refunds_minor`, `refunds_count`, `cash_refunds_minor`. No new §019 code. Tests: `tests/Feature/Pos/PosRefundsTest.php` (19). Migrations additive: `orders.refunded_minor`, `order_items.client_line_id` + `refunded_quantity`, `pos_refunds` / `pos_refund_lines` / `pos_refund_tenders`. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-27 | **Cloud coordination review of two owner revision specs → two `PROPOSED` amendments** (cloud side; no code, nothing committed/deployed). Both specs cross-checked against live `apps/api`+`apps/web` and confirmed accurate. **R1 — order-line bilingual name freeze** (amends §006/§010/§023): `order_items` gains nullable `name_ar`/`name_en`; `PosPricingEngine` freezes both from the resolved item and demotes `name_snapshot` to fallback-only; resources + legacy `orders.items` JSON expose both; dashboard resolves by locale with the app idiom; public/QR "Minimum" writes the single name into all three. `name` retained everywhere; no backfill. **R2 — dashboard-managed online licence + `POST /api/pos/license/check`** (amends §015/§022): additive `pos_licences.status/enforcement/suspended_at/suspended_reason` + `pos_terminals.licence_id/last_licence_check_at`; new `pos.device:no-feature` verdict endpoint (status enum mapped onto the existing `state()` + new `status` col); Super Admin suspend/resume/expire + per-terminal view + audit events; `LicenceIssuer::issueOnline` decouples tenant creation from `LICENCE_SIGNING_KEY` (demoted to islanded-only); the Ed25519 signed-file path kept for islanded tills. Phased 0–5, additive/deploy-safe. Desktop asks recorded (R1-A1..A3, R2-A1..A4). Statuses stay **PROPOSED** — owner's go pending. |
 | 2026-10-07 | **Owner decisions close the R1/R2 asks** (see "Owner decisions — 2026-10-07" at the top). R1 → `READY` (built `77fb22e`). `name_ar_snapshot` (R1-A1) accepted → `APPROVED`: nullable on `StorePosOrderRequest`, used only on the `client_asserted` fallback. R1-A3: the till reads only `data['id']` from replies. R2/POS-BE-031 → `APPROVED`: `enforcement` in the §023 bootstrap `licence` object **and** the activate 200 (absent ⇒ `offline`); path chosen by `enforcement`, never `deployment_mode`; verdict enum gains `not_yet_valid` (+ `starts_at`); `suspended`/`expired`/`not_yet_valid`/404 map `expired`-shaped (open shift finishes); 72h cache, client clamp 7d; one enforcement window per till. No code authorised by this entry. |
-| 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-new, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |
+| 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-cloud, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |
+| 2026-10-26 | **POS-BE-032 proposed: financial accounts (XORD-015 stage 1).** Two additive keys inside `money` in the §023 bundle (`financial_accounts`, `tender_account_defaults`); new capability `finance.accounts`. Cloud half in `xorder-cloud` (migrations `2026_10_26_000100/000200`, `FinancialAccountController`, `TenderAccountDefaultController`, `PosBootstrapService`, `FinancialAccountsTest` 17). Till half in `xorder-pos` (migration 60, `BootstrapSeeder`, Finance › Accounts pane). Nothing is posted to an account yet. Not `READY`: the POS parses and seeds the keys and nothing else reads them. Nothing committed or deployed. |

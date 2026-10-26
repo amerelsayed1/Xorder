@@ -39,6 +39,10 @@ services:
     build:
       context: .
       target: app
+      # Always re-pull the php:8.3-fpm-alpine base so security rebuilds
+      # (e.g. PHP2Shell, CVE-2026-109618/9) land on the next deploy instead
+      # of reusing the base layer cached on the VPS.
+      pull: true
     image: xorder-app
     container_name: xorder-app
     restart: unless-stopped
@@ -88,6 +92,7 @@ services:
     build:
       context: .
       target: web
+      pull: true
       args:
         # Bake the production server names (xorder.io + *.xorder.io) instead of
         # the dev localhost config.

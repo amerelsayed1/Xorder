@@ -197,13 +197,13 @@ async function save() {
 
 <template>
     <div class="space-y-5">
-        <button type="button" class="flex items-center gap-1.5 text-sm" style="color:var(--muted)" @click="router.push({ name: 'dashboard.purchasing.payments' })">
+        <button type="button" class="back" @click="router.push({ name: 'dashboard.purchasing.payments' })">
             <Icon name="chevronDown" :size="16" class="rotate-90 rtl:-rotate-90" />{{ t('purchasing.payments_title') }}
         </button>
 
         <div>
             <h1 class="page-title">{{ t('purchasing.new_payment') }}</h1>
-            <p class="page-sub">{{ t('purchasing.allocate_hint') }}</p>
+            <p class="page-sub" style="color:var(--body)">{{ t('purchasing.allocate_hint') }}</p>
         </div>
 
         <ErrorState v-if="failed" :message="t('common.error')" @retry="load" />
@@ -237,7 +237,7 @@ async function save() {
                         <FormError :errors="errors" field="method" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.payment_reference') }}</span>
                         <input v-model="form.reference" class="input mono" dir="ltr" maxlength="120" autocomplete="off" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.payment_reference_hint') }}</span>
+                        <span class="text-xs" style="color:var(--body)">{{ t('purchasing.payment_reference_hint') }}</span>
                         <FormError :errors="errors" field="reference" /></label>
                 </div>
                 <label v-if="form.method === 'cash' && form.branch_id" class="block">
@@ -246,7 +246,7 @@ async function save() {
                         <option value="">{{ t('purchasing.drawer_none') }}</option>
                         <option v-for="p in payouts" :key="p.id" :value="p.id">{{ fmtDate(p.occurred_at, locale, { time: true }) }} · {{ show(p.amount_minor) }} · {{ p.reason }}</option>
                     </select>
-                    <span class="text-xs" style="color:var(--muted)">{{ payouts.length ? t('purchasing.drawer_hint') : t('purchasing.drawer_none_found') }}</span>
+                    <span class="text-xs" style="color:var(--body)">{{ payouts.length ? t('purchasing.drawer_hint') : t('purchasing.drawer_none_found') }}</span>
                     <FormError :errors="errors" field="pos_cash_movement_id" />
                 </label>
                 <label class="block"><span class="label">{{ t('purchasing.notes') }}</span>
@@ -256,7 +256,7 @@ async function save() {
 
             <div class="card p-5 space-y-3">
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                    <h2 class="font-semibold" style="color:var(--ink)">{{ t('purchasing.allocate') }}</h2>
+                    <h2 class="card-title">{{ t('purchasing.allocate') }}</h2>
                     <div v-if="open.length" class="flex gap-2">
                         <button type="button" class="btn btn-ghost btn-sm" :disabled="!valid(amountMinor)" @click="fillOldest">{{ t('purchasing.allocate_oldest') }}</button>
                         <button type="button" class="btn btn-ghost btn-sm" @click="clearAllocations">{{ t('purchasing.clear_allocations') }}</button>
@@ -264,30 +264,30 @@ async function save() {
                 </div>
                 <FormError :errors="errors" field="allocations" />
 
-                <p v-if="!form.supplier_id || !form.branch_id" class="text-sm" style="color:var(--muted)">{{ t('purchasing.pick_supplier_branch_first') }}</p>
+                <p v-if="!form.supplier_id || !form.branch_id" class="text-sm" style="color:var(--body)">{{ t('purchasing.pick_supplier_branch_first') }}</p>
                 <ListSkeleton v-else-if="openLoading" />
-                <p v-else-if="!open.length" class="text-sm" style="color:var(--muted)">{{ t('purchasing.no_open_invoices') }}</p>
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-sm">
+                <p v-else-if="!open.length" class="text-sm" style="color:var(--body)">{{ t('purchasing.no_open_invoices') }}</p>
+                <div v-else class="dtable-wrap alloc-wrap">
+                    <table class="dtable">
                         <thead>
-                            <tr style="color:var(--muted)">
-                                <th class="px-3 py-2 text-start font-medium">{{ t('purchasing.invoice_number') }}</th>
-                                <th class="px-3 py-2 text-start font-medium">{{ t('purchasing.due_at') }}</th>
-                                <th class="px-3 py-2 text-end font-medium">{{ t('purchasing.total') }}</th>
-                                <th class="px-3 py-2 text-end font-medium">{{ t('purchasing.outstanding') }}</th>
-                                <th class="px-3 py-2 text-end font-medium">{{ t('purchasing.allocated') }}</th>
+                            <tr>
+                                <th>{{ t('purchasing.invoice_number') }}</th>
+                                <th>{{ t('purchasing.due_at') }}</th>
+                                <th class="num">{{ t('purchasing.total') }}</th>
+                                <th class="num">{{ t('purchasing.outstanding') }}</th>
+                                <th class="num">{{ t('purchasing.allocated') }}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="r in open" :key="r.id" class="border-t align-top" style="border-color:var(--line)">
-                                <td class="px-3 py-2"><span class="mono" dir="ltr" style="color:var(--ink)">{{ r.number }}</span></td>
-                                <td class="px-3 py-2 whitespace-nowrap" style="color:var(--body)">
+                            <tr v-for="r in open" :key="r.id" class="alloc-row">
+                                <td class="primary"><span class="mono" dir="ltr">{{ r.number }}</span></td>
+                                <td class="nowrap">
                                     {{ fmtDay(r.due_at, locale) }}
-                                    <div v-if="r.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: r.days_late }) }}</div>
+                                    <span v-if="r.days_late" class="meta-late">{{ t('purchasing.days_late', { n: r.days_late }) }}</span>
                                 </td>
-                                <td class="px-3 py-2 text-end"><span class="mono">{{ show(r.total_minor) }}</span></td>
-                                <td class="px-3 py-2 text-end"><span class="mono">{{ show(r.outstanding_minor) }}</span></td>
-                                <td class="px-3 py-2" style="min-width: 9rem">
+                                <td class="num"><span class="mono">{{ show(r.total_minor) }}</span></td>
+                                <td class="num strong"><span class="mono">{{ show(r.outstanding_minor) }}</span></td>
+                                <td class="alloc-cell">
                                     <input v-model="r.alloc" class="input mono text-end" dir="ltr" inputmode="decimal" data-en-digits placeholder="0" autocomplete="off" :aria-label="t('purchasing.allocated') + ' ' + r.number" />
                                     <FormError :errors="rowErrors" :field="String(r.id)" />
                                 </td>
@@ -296,17 +296,19 @@ async function save() {
                     </table>
                 </div>
 
-                <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.amount') }}</span><span class="mono">{{ valid(amountMinor) ? show(amountMinor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.allocated') }}</span><span class="mono">{{ show(allocated) }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" :style="onAccount !== null && onAccount < 0 ? 'color:var(--red)' : 'color:var(--ink)'">
-                        <span>{{ t('purchasing.on_account') }}</span><span class="mono">{{ onAccount === null ? '—' : show(onAccount) }}</span>
+                <div class="totals-wrap form-totals">
+                    <div class="totals">
+                        <div class="totals-row"><span>{{ t('purchasing.amount') }}</span><span class="mono">{{ valid(amountMinor) ? show(amountMinor) : '—' }}</span></div>
+                        <div class="totals-row"><span>{{ t('purchasing.allocated') }}</span><span class="mono">{{ show(allocated) }}</span></div>
+                        <div class="totals-row totals-grand" :style="onAccount !== null && onAccount < 0 ? 'color:var(--red)' : ''">
+                            <span>{{ t('purchasing.on_account') }}</span><span class="mono" :style="onAccount !== null && onAccount < 0 ? 'color:var(--red)' : ''">{{ onAccount === null ? '—' : show(onAccount) }}</span>
+                        </div>
+                        <p class="totals-note">{{ t('purchasing.on_account_hint') }}</p>
                     </div>
-                    <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.on_account_hint') }}</p>
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2">
+            <div class="form-actions">
                 <button type="button" class="btn btn-ghost" :disabled="saving" @click="router.push({ name: 'dashboard.purchasing.payments' })">{{ t('common.cancel') }}</button>
                 <button type="submit" class="btn btn-accent" :disabled="saving">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
@@ -316,3 +318,41 @@ async function save() {
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.back { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-size: 14.5px; font-weight: 500; color: var(--body); }
+.back:hover { color: var(--p-primary-700); }
+.meta-late { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--red); }
+.note { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.5; }
+.note > i { margin-top: 3px; flex: none; }
+.dtable-wrap { overflow-x: auto; }
+.dtable { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 15px; }
+.dtable th { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--body); background: var(--page); text-align: start; white-space: nowrap; }
+.dtable td { padding: 14px 16px; border-top: 1px solid var(--line); color: var(--body); vertical-align: middle; }
+.dtable .num { text-align: end; white-space: nowrap; }
+.dtable td.num { color: var(--ink); }
+.dtable .strong { font-weight: 600; color: var(--ink); }
+.dtable .primary { color: var(--ink); font-weight: 500; }
+.dtable .nowrap { white-space: nowrap; }
+.dtable tbody tr.row-link { cursor: pointer; transition: background .15s; }
+.dtable tbody tr.row-link:hover { background: var(--page); }
+.dtable tbody tr.row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dtable .sub { display: block; margin-top: 2px; font-size: 13px; color: var(--body); }
+.totals-wrap { display: flex; justify-content: flex-end; padding: 16px 20px 20px; border-top: 1px solid var(--line); background: var(--page); }
+.totals { width: 100%; max-width: 340px; }
+.totals-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px; color: var(--body); }
+.totals-row .mono { color: var(--ink); }
+.totals-grand { align-items: baseline; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--ink); }
+.totals-grand .mono { font-size: 26px; line-height: 1.1; }
+.form-totals { border: 1px solid var(--line); border-radius: 12px; }
+.totals-note { margin-top: 8px; font-size: 13.5px; color: var(--body); }
+.form-actions { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px; }
+.form-actions .btn { min-height: 44px; }
+@media (max-width: 639px) { .form-actions .btn { flex: 1 1 auto; justify-content: center; } }
+.card-title { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: var(--ink); }
+.alloc-wrap { border: 1px solid var(--line); border-radius: 12px; }
+.alloc-cell { min-width: 9rem; }
+.alloc-cell .input { margin-top: 0; min-height: 44px; }
+.dtable .alloc-row td { vertical-align: top; }
+</style>

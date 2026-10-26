@@ -2,16 +2,31 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\OptionDiscountValidation;
 use App\Models\OptionGroup;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreOptionGroupRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+
     public function authorize(): bool
     {
         return $this->user()?->can('menu.create') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'options.*.price',
+            'options.*.discounted_price',
+        ];
     }
 
     public function rules(): array
@@ -40,10 +55,7 @@ class StoreOptionGroupRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                $validator->errors()->add("name_{$lang}", __('xorder.validation.option_group_name_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.option_group_name_required', primaryWhenBilingual: true);
 
             if ($this->input('apply_scope') === OptionGroup::SCOPE_CATEGORIES
                 && count($this->input('category_ids') ?? []) === 0) {

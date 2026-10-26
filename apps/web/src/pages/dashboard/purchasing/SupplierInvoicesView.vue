@@ -70,16 +70,16 @@ const show = (i, minor) => money(minor, i.exponent, i.currency, locale.value)
 <template>
     <div class="space-y-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
+            <div class="min-w-0">
                 <h1 class="page-title">{{ t('purchasing.invoices_title') }}</h1>
-                <p class="page-sub">{{ t('purchasing.invoices_sub') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('purchasing.invoices_sub') }}</p>
             </div>
-            <RouterLink v-if="canWrite" :to="{ name: 'dashboard.purchasing.invoices.create', query: filters.supplier_id ? { supplier_id: filters.supplier_id } : {} }" class="btn btn-accent">
+            <RouterLink v-if="canWrite" :to="{ name: 'dashboard.purchasing.invoices.create', query: filters.supplier_id ? { supplier_id: filters.supplier_id } : {} }" class="btn btn-accent new-btn">
                 <Icon name="plus" :size="16" />{{ t('purchasing.new_invoice') }}
             </RouterLink>
         </div>
 
-        <div v-if="lookups" class="flex flex-wrap items-center gap-3">
+        <div v-if="lookups" class="filters">
             <select v-if="branches.length > 1" v-model="filters.branch_id" class="input" style="max-width: 220px" :aria-label="t('purchasing.branch')">
                 <option value="">{{ t('purchasing.all_branches') }}</option>
                 <option v-for="b in branches" :key="b.id" :value="b.id">{{ nameOf(b) }}</option>
@@ -92,7 +92,7 @@ const show = (i, minor) => money(minor, i.exponent, i.currency, locale.value)
                 <option value="">{{ t('purchasing.all_states') }}</option>
                 <option v-for="s in INVOICE_STATES" :key="s" :value="s">{{ t('purchasing.invoice_states.' + s) }}</option>
             </select>
-            <button v-if="orderId" type="button" class="btn btn-ghost btn-sm" @click="clearOrder">
+            <button v-if="orderId" type="button" class="btn btn-ghost btn-sm chip-btn" @click="clearOrder">
                 {{ t('purchasing.purchase_order') }} <span class="mono" dir="ltr">#{{ orderId }}</span> <Icon name="close" :size="14" />
             </button>
         </div>
@@ -100,52 +100,88 @@ const show = (i, minor) => money(minor, i.exponent, i.currency, locale.value)
         <ErrorState v-if="failed" :message="t('common.error')" @retry="load" />
 
         <div v-else class="card overflow-hidden">
-            <div v-if="!loading && !rows.length" class="p-8 text-center space-y-1">
-                <div v-if="filtered" class="text-sm" style="color:var(--muted)">{{ t('purchasing.none_invoices_match') }}</div>
+            <div v-if="!loading && !rows.length" class="empty">
+                <div class="empty-ico"><i class="pi pi-file" aria-hidden="true" /></div>
+                <p v-if="filtered" class="empty-text">{{ t('purchasing.none_invoices_match') }}</p>
                 <template v-else>
-                    <div class="font-medium" style="color:var(--ink)">{{ t('purchasing.none_invoices') }}</div>
-                    <div class="text-sm" style="color:var(--muted)">{{ t('purchasing.none_invoices_hint') }}</div>
+                    <div class="empty-title">{{ t('purchasing.none_invoices') }}</div>
+                    <p class="empty-text">{{ t('purchasing.none_invoices_hint') }}</p>
+                    <RouterLink v-if="canWrite" :to="{ name: 'dashboard.purchasing.invoices.create' }" class="btn btn-accent mt-4">
+                        <Icon name="plus" :size="16" />{{ t('purchasing.new_invoice') }}
+                    </RouterLink>
                 </template>
             </div>
-            <div v-else class="overflow-x-auto">
-                <table class="w-full text-sm">
+            <div v-else class="dtable-wrap">
+                <table class="dtable">
                     <thead>
-                        <tr style="color:var(--muted)">
-                            <th class="px-5 py-3 text-start font-medium">{{ t('purchasing.invoice_number') }}</th>
-                            <th class="px-5 py-3 text-start font-medium">{{ t('purchasing.supplier') }}</th>
-                            <th v-if="branches.length > 1" class="px-5 py-3 text-start font-medium">{{ t('purchasing.branch') }}</th>
-                            <th class="px-5 py-3 text-start font-medium">{{ t('purchasing.issued_at') }}</th>
-                            <th class="px-5 py-3 text-start font-medium">{{ t('purchasing.due_at') }}</th>
-                            <th class="px-5 py-3 text-end font-medium">{{ t('purchasing.total') }}</th>
-                            <th class="px-5 py-3 text-end font-medium">{{ t('purchasing.outstanding') }}</th>
-                            <th class="px-5 py-3 text-start font-medium">{{ t('common.status') }}</th>
+                        <tr>
+                            <th>{{ t('purchasing.invoice_number') }}</th>
+                            <th>{{ t('purchasing.supplier') }}</th>
+                            <th v-if="branches.length > 1">{{ t('purchasing.branch') }}</th>
+                            <th>{{ t('purchasing.issued_at') }}</th>
+                            <th>{{ t('purchasing.due_at') }}</th>
+                            <th class="num">{{ t('purchasing.total') }}</th>
+                            <th class="num">{{ t('purchasing.outstanding') }}</th>
+                            <th>{{ t('common.status') }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         <TableSkeleton v-if="loading" :cols="branches.length > 1 ? 8 : 7" />
                         <template v-else>
-                            <tr v-for="i in rows" :key="i.id" class="border-t cursor-pointer hover:bg-black/[.02]" style="border-color:var(--line)" @click="router.push({ name: 'dashboard.purchasing.invoice', params: { id: i.id } })">
-                                <td class="px-5 py-3"><span class="mono" dir="ltr" style="color:var(--ink)">{{ i.number }}</span></td>
-                                <td class="px-5 py-3" style="color:var(--ink)">{{ i.supplier_name }}</td>
-                                <td v-if="branches.length > 1" class="px-5 py-3" style="color:var(--body)">{{ nameOf(i.branch) }}</td>
-                                <td class="px-5 py-3 whitespace-nowrap" style="color:var(--body)">{{ fmtDay(i.issued_at, locale) }}</td>
-                                <td class="px-5 py-3 whitespace-nowrap" style="color:var(--body)">
+                            <tr v-for="i in rows" :key="i.id" class="row-link" tabindex="0" @click="router.push({ name: 'dashboard.purchasing.invoice', params: { id: i.id } })" @keydown.enter.self="router.push({ name: 'dashboard.purchasing.invoice', params: { id: i.id } })">
+                                <td class="primary"><span class="mono" dir="ltr">{{ i.number }}</span></td>
+                                <td class="primary">{{ i.supplier_name }}</td>
+                                <td v-if="branches.length > 1">{{ nameOf(i.branch) }}</td>
+                                <td class="nowrap">{{ fmtDay(i.issued_at, locale) }}</td>
+                                <td class="nowrap">
                                     {{ fmtDay(i.due_at, locale) }}
-                                    <div v-if="i.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: i.days_late }) }}</div>
+                                    <span v-if="i.days_late" class="meta-late">{{ t('purchasing.days_late', { n: i.days_late }) }}</span>
                                 </td>
-                                <td class="px-5 py-3 text-end"><span class="mono">{{ show(i, i.total_minor) }}</span></td>
-                                <td class="px-5 py-3 text-end"><span class="mono">{{ i.is_voided ? '—' : show(i, i.outstanding_minor) }}</span></td>
-                                <td class="px-5 py-3"><span class="badge" :class="invoiceBadge(i.state)">{{ t('purchasing.invoice_states.' + i.state) }}</span></td>
+                                <td class="num"><span class="mono">{{ show(i, i.total_minor) }}</span></td>
+                                <td class="num strong"><span class="mono">{{ i.is_voided ? '—' : show(i, i.outstanding_minor) }}</span></td>
+                                <td class="nowrap"><span class="badge" :class="invoiceBadge(i.state)">{{ t('purchasing.invoice_states.' + i.state) }}</span></td>
                             </tr>
                         </template>
                     </tbody>
                 </table>
             </div>
-            <div v-if="!loading && lastPage > 1" class="flex items-center justify-end gap-2 px-4 py-3 border-t" style="border-color:var(--line)">
+            <div v-if="!loading && lastPage > 1" class="pager">
                 <button type="button" class="btn btn-ghost btn-sm" :disabled="page <= 1" @click="go(page - 1)">{{ t('common.previous') }}</button>
-                <span class="mono text-xs" dir="ltr" style="color:var(--muted)">{{ page }} / {{ lastPage }}</span>
+                <span class="mono pager-info" dir="ltr">{{ page }} / {{ lastPage }}</span>
                 <button type="button" class="btn btn-ghost btn-sm" :disabled="page >= lastPage" @click="go(page + 1)">{{ t('common.next') }}</button>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.badge-amber { color: var(--p-primary-800); }
+.badge-gray { color: var(--body); }
+.badge-red { color: var(--red); }
+.meta-late { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--red); }
+.dtable-wrap { overflow-x: auto; }
+.dtable { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 15px; }
+.dtable th { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--body); background: var(--page); text-align: start; white-space: nowrap; }
+.dtable td { padding: 14px 16px; border-top: 1px solid var(--line); color: var(--body); vertical-align: middle; }
+.dtable .num { text-align: end; white-space: nowrap; }
+.dtable td.num { color: var(--ink); }
+.dtable .strong { font-weight: 600; color: var(--ink); }
+.dtable .primary { color: var(--ink); font-weight: 500; }
+.dtable .nowrap { white-space: nowrap; }
+.dtable tbody tr.row-link { cursor: pointer; transition: background .15s; }
+.dtable tbody tr.row-link:hover { background: var(--page); }
+.dtable tbody tr.row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dtable .sub { display: block; margin-top: 2px; font-size: 13px; color: var(--body); }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.pager .btn { min-height: 40px; }
+.pager-info { font-size: 13.5px; color: var(--body); }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.filters .input { margin-top: 0; width: auto; min-height: 44px; }
+.empty { padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--p-primary-700); font-size: 20px; }
+.empty-title { font-weight: 600; color: var(--ink); }
+.empty-text { margin-top: 4px; font-size: 14.5px; color: var(--body); }
+.new-btn { min-height: 44px; }
+.chip-btn { min-height: 44px; }
+</style>

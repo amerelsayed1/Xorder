@@ -31,9 +31,16 @@ class RestaurantProfileController extends Controller
         $trnChanged = array_key_exists('tax_registration_number', $data)
             && (string) $data['tax_registration_number'] !== (string) $restaurant->tax_registration_number;
 
+        // Content languages ride the POS bundle (restaurant.default_language and
+        // bilingual), so a change must tell the tills too.
+        $languagesChanged = (array_key_exists('default_language', $data)
+                && (string) $data['default_language'] !== (string) $restaurant->default_language?->value)
+            || (array_key_exists('bilingual', $data)
+                && (bool) $data['bilingual'] !== ($restaurant->bilingual !== false));
+
         $restaurant->update($data);
 
-        if ($trnChanged) {
+        if ($trnChanged || $languagesChanged) {
             PosConfigVersion::bump($restaurant);
         }
 

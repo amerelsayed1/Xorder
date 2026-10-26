@@ -344,4 +344,4 @@ Each step is independently shippable and back-compatible; nothing rewrites live 
   already resolves by that id) — reliable on the cloud path; branch-server/islanded modes must
   preserve the cloud id as the wire id if ever built.
 
-**File:** `/Users/amerelsayed/Projects/Xorder/xorder-new/docs/coordination/REVISION_ORDER_ITEM_ID.md`
+**File:** `/Users/amerelsayed/Projects/Xorder/apps/xorder-cloud/docs/coordination/REVISION_ORDER_ITEM_ID.md`
