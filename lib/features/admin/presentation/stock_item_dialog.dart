@@ -6,6 +6,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/pos_unit.dart';
 import '../../../domain/models/stock_item.dart';
 import 'admin_messages.dart';
@@ -60,7 +61,13 @@ class _StockItemDialogState extends State<StockItemDialog> {
   late final _nameEn = TextEditingController(
     text: widget.item?.nameEn ?? widget.initialName ?? '',
   );
-  late final _nameAr = TextEditingController(text: widget.item?.nameAr ?? '');
+  late final _nameAr = TextEditingController(
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.item?.nameAr,
+      nameEn: widget.item?.nameEn,
+    ),
+  );
   late final _sku = TextEditingController(text: widget.item?.sku ?? '');
   late QuantityUnit _unit = widget.item?.unit ?? QuantityUnit.each;
   late bool _isActive = widget.item?.isActive ?? true;
@@ -141,21 +148,27 @@ class _StockItemDialogState extends State<StockItemDialog> {
               ],
               const SizedBox(height: PosSpace.lg),
               if (widget.languages.showsEnglish)
-                _Field(
-                  name: 'name',
-                  label: strings.itemName,
-                  controller: _nameEn,
-                  enabled: !_onMenu,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    name: 'name',
+                    label: widget.languages.nameStrings(strings).itemName,
+                    controller: _nameEn,
+                    enabled: !_onMenu,
+                  ),
                 ),
               if (widget.languages.showsArabic)
-                _Field(
-                  name: 'name_ar',
-                  label: widget.languages == ContentLanguages.arabic
-                      ? strings.itemName
-                      : strings.itemNameAr,
-                  controller: _nameAr,
-                  optional: widget.languages == ContentLanguages.both,
-                  enabled: !_onMenu,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    name: 'name_ar',
+                    label: widget.languages == ContentLanguages.arabic
+                        ? widget.languages.nameStrings(strings).itemName
+                        : strings.itemNameAr,
+                    controller: _nameAr,
+                    optional: widget.languages == ContentLanguages.both,
+                    enabled: !_onMenu,
+                  ),
                 ),
               _Field(
                 name: 'sku',

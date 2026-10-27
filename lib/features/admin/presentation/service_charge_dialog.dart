@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/service_charge.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../app/labels.dart';
@@ -44,7 +45,11 @@ class ServiceChargeDialog extends StatefulWidget {
 class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
   late final _nameEn = TextEditingController(text: widget.charge?.nameEn ?? '');
   late final _nameAr = TextEditingController(
-    text: widget.charge?.nameAr ?? '',
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.charge?.nameAr,
+      nameEn: widget.charge?.nameEn,
+    ),
   );
   late final _amount = TextEditingController(
     text: widget.charge == null
@@ -136,19 +141,25 @@ class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
               const SizedBox(height: PosSpace.lg),
 
               if (widget.languages.showsEnglish)
-                _Field(
-                  fieldKey: const Key('charge-name'),
-                  label: strings.chargeName,
-                  controller: _nameEn,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    fieldKey: const Key('charge-name'),
+                    label: widget.languages.nameStrings(strings).chargeName,
+                    controller: _nameEn,
+                  ),
                 ),
               if (widget.languages.showsArabic)
-                _Field(
-                  fieldKey: const Key('charge-name-ar'),
-                  label: widget.languages == ContentLanguages.arabic
-                      ? strings.chargeName
-                      : strings.tenderNameAr,
-                  controller: _nameAr,
-                  optional: widget.languages == ContentLanguages.both,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    fieldKey: const Key('charge-name-ar'),
+                    label: widget.languages == ContentLanguages.arabic
+                        ? widget.languages.nameStrings(strings).chargeName
+                        : strings.tenderNameAr,
+                    controller: _nameAr,
+                    optional: widget.languages == ContentLanguages.both,
+                  ),
                 ),
 
               MicroLabel(strings.chargeHow),

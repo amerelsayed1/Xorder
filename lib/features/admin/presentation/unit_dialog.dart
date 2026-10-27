@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/pos_unit.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 
@@ -40,7 +41,13 @@ class UnitDialog extends StatefulWidget {
 
 class _UnitDialogState extends State<UnitDialog> {
   late final _nameEn = TextEditingController(text: widget.unit?.nameEn ?? '');
-  late final _nameAr = TextEditingController(text: widget.unit?.nameAr ?? '');
+  late final _nameAr = TextEditingController(
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.unit?.nameAr,
+      nameEn: widget.unit?.nameEn,
+    ),
+  );
   late final _code = TextEditingController(text: widget.unit?.code ?? '');
   late final _eta = TextEditingController(
     text: widget.unit?.etaUnitType ?? PosUnit.defaultEtaUnitType,
@@ -113,17 +120,25 @@ class _UnitDialogState extends State<UnitDialog> {
               ),
               const SizedBox(height: PosSpace.lg),
               if (widget.languages.showsEnglish)
-                _Field(
-                  name: 'name',
-                  label: strings.unitNameEn,
-                  controller: _nameEn,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    name: 'name',
+                    label: widget.languages.nameStrings(strings).unitNameEn,
+                    controller: _nameEn,
+                  ),
                 ),
               if (widget.languages.showsArabic)
-                _Field(
-                  name: 'name_ar',
-                  label: strings.unitNameAr,
-                  controller: _nameAr,
-                  optional: widget.languages == ContentLanguages.both,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    name: 'name_ar',
+                    label: widget.languages == ContentLanguages.arabic
+                        ? widget.languages.nameStrings(strings).unitNameEn
+                        : strings.unitNameAr,
+                    controller: _nameAr,
+                    optional: widget.languages == ContentLanguages.both,
+                  ),
                 ),
               _Field(
                 name: 'code',

@@ -11,6 +11,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/combo_draft.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
@@ -252,21 +253,30 @@ class _OptionState {
 }
 
 class _GroupState {
-  _GroupState(ComboGroupDraft? group, {required String Function(Money) fmt})
-    : id = group?.id ?? 0,
-      storedEn = group?.nameEn,
-      storedAr = group?.nameAr,
-      nameEn = TextEditingController(text: group?.nameEn ?? ''),
-      nameAr = TextEditingController(text: group?.nameAr ?? ''),
-      min = TextEditingController(text: '${group?.minSelect ?? 1}'),
-      max = TextEditingController(text: '${group?.maxSelect ?? 1}'),
-      options = [
-        for (final option in group?.options ?? const <ComboOptionDraft>[])
-          _OptionState(
-            option.productId,
-            option.priceDelta.minor == 0 ? '' : fmt(option.priceDelta),
-          ),
-      ];
+  _GroupState(
+    ComboGroupDraft? group, {
+    required String Function(Money) fmt,
+    ContentLanguages languages = ContentLanguages.both,
+  }) : id = group?.id ?? 0,
+       storedEn = group?.nameEn,
+       storedAr = group?.nameAr,
+       nameEn = TextEditingController(text: group?.nameEn ?? ''),
+       nameAr = TextEditingController(
+         text: initialArabicName(
+           languages: languages,
+           nameAr: group?.nameAr,
+           nameEn: group?.nameEn,
+         ),
+       ),
+       min = TextEditingController(text: '${group?.minSelect ?? 1}'),
+       max = TextEditingController(text: '${group?.maxSelect ?? 1}'),
+       options = [
+         for (final option in group?.options ?? const <ComboOptionDraft>[])
+           _OptionState(
+             option.productId,
+             option.priceDelta.minor == 0 ? '' : fmt(option.priceDelta),
+           ),
+       ];
 
   final int id;
 
@@ -316,7 +326,13 @@ class _ComboDialogState extends State<_ComboDialog> {
   static String _plain(Money m) => m.format();
 
   late final _nameEn = TextEditingController(text: widget.combo?.nameEn ?? '');
-  late final _nameAr = TextEditingController(text: widget.combo?.nameAr ?? '');
+  late final _nameAr = TextEditingController(
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.combo?.nameAr,
+      nameEn: widget.combo?.nameEn,
+    ),
+  );
   late final _price = TextEditingController(
     text: widget.combo == null ? '' : _plain(widget.combo!.price),
   );
@@ -327,7 +343,7 @@ class _ComboDialogState extends State<_ComboDialog> {
   late bool _available = widget.combo?.isAvailable ?? true;
   late final List<_GroupState> _groups = [
     for (final group in widget.combo?.groups ?? const <ComboGroupDraft>[])
-      _GroupState(group, fmt: _plain),
+      _GroupState(group, fmt: _plain, languages: widget.languages),
   ];
 
   bool _busy = false;
@@ -471,30 +487,50 @@ class _ComboDialogState extends State<_ComboDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
                   if (widget.languages.showsEnglish) ...[
-                    MicroLabel(strings.comboName),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('combo-name'),
-                      controller: _nameEn,
-                      onChanged: (_) => setState(() => _error = null),
-                      style: PosText.ui(size: 15, color: pos.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages.nameStrings(strings).comboName,
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('combo-name'),
+                            controller: _nameEn,
+                            onChanged: (_) => setState(() => _error = null),
+                            style: PosText.ui(size: 15, color: pos.ink),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: PosSpace.md),
                   ],
                   if (widget.languages.showsArabic) ...[
                     // The one name box when Arabic is the only language;
                     // otherwise the optional second one.
-                    MicroLabel(
-                      widget.languages == ContentLanguages.arabic
-                          ? strings.comboName
-                          : strings.optionalField(strings.tenderNameAr),
-                    ),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('combo-name-ar'),
-                      controller: _nameAr,
-                      onChanged: (_) => setState(() => _error = null),
-                      style: PosText.ui(size: 15, color: pos.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages == ContentLanguages.arabic
+                                ? widget.languages
+                                      .nameStrings(strings)
+                                      .comboName
+                                : strings.optionalField(strings.tenderNameAr),
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('combo-name-ar'),
+                            controller: _nameAr,
+                            onChanged: (_) => setState(() => _error = null),
+                            style: PosText.ui(size: 15, color: pos.ink),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: PosSpace.md),
                   ],
@@ -581,7 +617,13 @@ class _ComboDialogState extends State<_ComboDialog> {
                     label: strings.comboAddGroup,
                     border: Border.fromBorderSide(pos.resting),
                     onPressed: () => setState(() {
-                      _groups.add(_GroupState(null, fmt: _plain));
+                      _groups.add(
+                        _GroupState(
+                          null,
+                          fmt: _plain,
+                          languages: widget.languages,
+                        ),
+                      );
                       _error = null;
                     }),
                   ),
@@ -644,13 +686,16 @@ class _ComboDialogState extends State<_ComboDialog> {
       controller: group.nameAr,
       onChanged: (_) => setState(() => _error = null),
       decoration: InputDecoration(
-        hintText: soleName ? strings.comboGroupName : strings.tenderNameAr,
+        hintText: soleName
+            ? widget.languages.nameStrings(strings).comboGroupName
+            : strings.tenderNameAr,
       ),
       style: PosText.ui(size: 14, color: pos.ink),
     );
+    final boxed = NameDirection(languages: widget.languages, child: field);
     return soleName
-        ? Expanded(child: field)
-        : SizedBox(width: 150, child: field);
+        ? Expanded(child: boxed)
+        : SizedBox(width: 150, child: boxed);
   }
 
   Widget _group(int index, String locale) {
@@ -670,14 +715,19 @@ class _ComboDialogState extends State<_ComboDialog> {
             children: [
               if (widget.languages.showsEnglish)
                 Expanded(
-                  child: TextField(
-                    key: Key('combo-group-name-$index'),
-                    controller: group.nameEn,
-                    onChanged: (_) => setState(() => _error = null),
-                    decoration: InputDecoration(
-                      hintText: strings.comboGroupName,
+                  child: NameDirection(
+                    languages: widget.languages,
+                    child: TextField(
+                      key: Key('combo-group-name-$index'),
+                      controller: group.nameEn,
+                      onChanged: (_) => setState(() => _error = null),
+                      decoration: InputDecoration(
+                        hintText: widget.languages
+                            .nameStrings(strings)
+                            .comboGroupName,
+                      ),
+                      style: PosText.ui(size: 14, color: pos.ink),
                     ),
-                    style: PosText.ui(size: 14, color: pos.ink),
                   ),
                 ),
               if (widget.languages == ContentLanguages.both)

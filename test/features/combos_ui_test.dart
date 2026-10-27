@@ -255,13 +255,34 @@ void main() {
       expect(saved.groups.single.nameAr, 'برجر');
     });
 
-    testWidgets('both: the two name boxes, as always', (tester) async {
+    testWidgets('XORD-035: Arabic only runs right to left', (tester) async {
+      await pump(tester, languages: ContentLanguages.arabic);
+      await tapKey(tester, 'combos-new');
+
+      expect(
+        Directionality.of(tester.element(find.byKey(const Key('combo-name-ar')))),
+        TextDirection.rtl,
+      );
+    });
+
+    testWidgets('XORD-035: English only runs left to right', (tester) async {
+      await pump(tester, languages: ContentLanguages.english);
+      await tapKey(tester, 'combos-new');
+
+      expect(
+        Directionality.of(tester.element(find.byKey(const Key('combo-name')))),
+        TextDirection.ltr,
+      );
+    });
+
+    testWidgets('no language chosen (both): one name box, in the till language', (tester) async {
+      // XORD-035: no second-language box on any till form.
       await pump(tester);
 
       await tapKey(tester, 'combos-new');
 
       expect(find.byKey(const Key('combo-name')), findsOneWidget);
-      expect(find.byKey(const Key('combo-name-ar')), findsOneWidget);
+      expect(find.byKey(const Key('combo-name-ar')), findsNothing);
     });
   });
 
@@ -271,7 +292,6 @@ void main() {
 
       await tapKey(tester, 'combos-new');
       await type(tester, 'combo-name', ' Burger meal ');
-      await type(tester, 'combo-name-ar', 'وجبة برجر');
       // Major units, never through a double: 85.00 is 8500, not 8499.99….
       await type(tester, 'combo-price', '85.00');
       await type(tester, 'combo-sku', 'BM1');
@@ -491,7 +511,7 @@ void main() {
       await tapKey(tester, 'combo-row-7');
 
       expect(textOf(tester, 'combo-name'), 'Burger meal');
-      expect(textOf(tester, 'combo-name-ar'), 'وجبة برجر');
+      expect(find.byKey(const Key('combo-name-ar')), findsNothing);
       expect(textOf(tester, 'combo-price'), '85.00');
       expect(textOf(tester, 'combo-sku'), 'BM1');
       expect(textOf(tester, 'combo-group-name-1'), 'Side');

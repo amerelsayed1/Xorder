@@ -112,7 +112,6 @@ class _ContentLanguagesCardState extends ConsumerState<ContentLanguagesCard> {
             for (final (value, label) in <(ContentLanguages, String)>[
               (ContentLanguages.arabic, strings.contentLanguagesArabic),
               (ContentLanguages.english, strings.contentLanguagesEnglish),
-              (ContentLanguages.both, strings.contentLanguagesBoth),
             ])
               _Choice(
                 key: Key('content-language-${value.wire}'),

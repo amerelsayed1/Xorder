@@ -27,6 +27,21 @@ enum ContentLanguages {
   bool get showsArabic => this != english;
   bool get showsEnglish => this != arabic;
 
+  /// The single language a till of this interface language writes in: Arabic
+  /// for `ar`, English for anything else (XORD-035).
+  static ContentLanguages fromLocale(String languageCode) =>
+      languageCode.startsWith('ar') ? arabic : english;
+
+  /// The one language a form should be written in (XORD-035).
+  ///
+  /// The POS has no bilingual forms: `both` - a restaurant that never chose,
+  /// a till still loading its settings, a cloud restaurant whose dashboard is
+  /// bilingual - is read as the till's own language. Nothing is written back;
+  /// the stored value keeps meaning what the platform and older tills mean by
+  /// it. `ar` and `en` are the restaurant's own choice and win.
+  ContentLanguages resolvedFor(String languageCode) =>
+      this == both ? fromLocale(languageCode) : this;
+
   /// An unknown or missing value is `both`: asking for more fields than
   /// necessary is the safe way to be wrong.
   static ContentLanguages fromWire(String? value) => switch (value) {
@@ -68,6 +83,21 @@ bool hasRequiredName({
   ContentLanguages.english ||
   ContentLanguages.both => typedEn.trim().isNotEmpty,
 };
+
+/// What an Arabic name box opens with (XORD-035).
+///
+/// A record made before the till had one language usually has only an English
+/// name, so an Arabic-only form would open empty on every older row. In
+/// Arabic-only mode the English name stands in until an Arabic one is typed;
+/// in any other mode the box shows what is stored and nothing else.
+String initialArabicName({
+  required ContentLanguages languages,
+  String? nameAr,
+  String? nameEn,
+}) {
+  if (nameAr != null && nameAr.isNotEmpty) return nameAr;
+  return languages == ContentLanguages.arabic ? (nameEn ?? '') : '';
+}
 
 /// A machine code (`tray_of_30`) from a name, or [fallback] plus a short
 /// suffix when the name has no Latin letters or digits to make one from - an
@@ -118,6 +148,15 @@ String codeFromName(String name, {required String fallback, DateTime? now}) {
       return (nameEn: en, nameAr: previousAr ?? '');
 
     case ContentLanguages.arabic:
+      // The box opened with the English name standing in for a missing Arabic
+      // one ([initialArabicName]) and nothing was changed: the record has no
+      // Arabic name, and saving must not invent one from its English text.
+      final standIn =
+          (previousAr == null || previousAr.isEmpty) &&
+          previousEn != null &&
+          previousEn.isNotEmpty &&
+          ar == previousEn;
+      if (standIn) return (nameEn: previousEn, nameAr: '');
       final wasMirror =
           previousEn == null || previousEn.isEmpty || previousEn == previousAr;
       return (nameEn: wasMirror ? ar : previousEn, nameAr: ar);

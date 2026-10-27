@@ -114,11 +114,13 @@ void main() {
   }
 
   group('an item', () {
-    testWidgets('both languages: the two name fields, as always', (tester) async {
+    testWidgets('no language chosen (both): still one name field, in the till language', (tester) async {
+      // XORD-035: the POS has no two-box form; a till that never chose reads
+      // `both` as its own language.
       await pump(tester, ContentLanguages.both);
       await openNewItem(tester);
 
-      expect(nameBoxes(tester), 2);
+      expect(nameBoxes(tester), 1);
     });
 
     testWidgets('Arabic only: one name field, and it is the Arabic one', (tester) async {
@@ -202,11 +204,11 @@ void main() {
       expect(catalogue.category!.nameAr ?? '', isEmpty);
     });
 
-    testWidgets('both: two fields', (tester) async {
+    testWidgets('no language chosen (both): still one field, in the till language', (tester) async {
       await pump(tester, ContentLanguages.both, mode: MenuPaneMode.sections);
       await openNewCategory(tester);
 
-      expect(dialogFields(), findsNWidgets(2));
+      expect(dialogFields(), findsOneWidget);
     });
   });
 }

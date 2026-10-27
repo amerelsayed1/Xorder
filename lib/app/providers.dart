@@ -1392,10 +1392,16 @@ final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>((ref) {
   );
 });
 
-/// The same answer, synchronously, for a form that cannot wait on a future.
+/// The one language a form writes names in (XORD-035), synchronously, for a
+/// form that cannot wait on a future.
+///
+/// Never `both`: the stored `both` (the default, an unanswered query, a
+/// bilingual cloud restaurant) is the till's own language, so no form ever
+/// asks for a translation. Read at the moment a dialog opens.
 final contentLanguagesNowProvider = Provider<ContentLanguages>(
   (ref) =>
-      ref.watch(contentLanguagesProvider).valueOrNull ?? ContentLanguages.both,
+      (ref.watch(contentLanguagesProvider).valueOrNull ?? ContentLanguages.both)
+          .resolvedFor(ref.watch(localeProvider).languageCode),
 );
 
 /// The order types THIS branch actually offers the cashier (POS-BE-005, §31).

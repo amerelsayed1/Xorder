@@ -9,6 +9,7 @@ import '../../../core/ui/widgets/destructive_confirm_dialog.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
@@ -350,7 +351,7 @@ class _ExtraDialog extends StatefulWidget {
 class _ExtraDialogState extends State<_ExtraDialog> {
   late final _group = widget.group == null
       ? EditableGroup.blank()
-      : EditableGroup.from(widget.group!);
+      : EditableGroup.from(widget.group!, languages: widget.languages);
   String? _error;
   bool _saving = false;
 
@@ -391,6 +392,7 @@ class _ExtraDialogState extends State<_ExtraDialog> {
   @override
   Widget build(BuildContext context) {
     final s = context.strings;
+    final cs = widget.languages.nameStrings(s);
     final pos = context.pos;
     final hint = PosText.ui(size: 11.5, color: pos.muted, height: 1.4);
 
@@ -419,25 +421,35 @@ class _ExtraDialogState extends State<_ExtraDialog> {
           children: [
             if (widget.languages.showsEnglish)
               Expanded(
-                child: MenuInput(
-                  fieldKey: const Key('extras-name'),
-                  controller: _group.nameEn,
-                  label: s.extrasLibraryNameEn,
-                  hint: s.itemGroupNameEn,
-                  onChanged: (_) => _changed(),
+                child: NameDirection(
+                  languages: widget.languages,
+                  child: MenuInput(
+                    fieldKey: const Key('extras-name'),
+                    controller: _group.nameEn,
+                    label: widget.languages == ContentLanguages.both
+                        ? s.extrasLibraryNameEn
+                        : cs.extrasLibraryName,
+                    hint: cs.itemGroupNameEn,
+                    onChanged: (_) => _changed(),
+                  ),
                 ),
               ),
             if (widget.languages == ContentLanguages.both)
               const SizedBox(width: PosSpace.md),
             if (widget.languages.showsArabic)
               Expanded(
-                child: MenuInput(
-                  fieldKey: const Key('extras-name-ar'),
-                  controller: _group.nameAr,
-                  label: s.extrasLibraryNameAr,
-                  hint: s.itemGroupNameAr,
-                  arabic: true,
-                  onChanged: (_) => _changed(),
+                child: NameDirection(
+                  languages: widget.languages,
+                  child: MenuInput(
+                    fieldKey: const Key('extras-name-ar'),
+                    controller: _group.nameAr,
+                    label: widget.languages == ContentLanguages.both
+                        ? s.extrasLibraryNameAr
+                        : cs.extrasLibraryName,
+                    hint: cs.itemGroupNameAr,
+                    arabic: true,
+                    onChanged: (_) => _changed(),
+                  ),
                 ),
               ),
           ],
@@ -450,23 +462,33 @@ class _ExtraDialogState extends State<_ExtraDialog> {
           children: [
             if (widget.languages.showsEnglish)
               Expanded(
-                child: MenuInput(
-                  fieldKey: const Key('extras-heading'),
-                  controller: _group.displayEn,
-                  label: s.extrasMenuNameEn,
-                  hint: _placeholder(_group.nameEn.text, s),
+                child: NameDirection(
+                  languages: widget.languages,
+                  child: MenuInput(
+                    fieldKey: const Key('extras-heading'),
+                    controller: _group.displayEn,
+                    label: widget.languages == ContentLanguages.both
+                        ? s.extrasMenuNameEn
+                        : cs.extrasMenuName,
+                    hint: _placeholder(_group.nameEn.text, s),
+                  ),
                 ),
               ),
             if (widget.languages == ContentLanguages.both)
               const SizedBox(width: PosSpace.md),
             if (widget.languages.showsArabic)
               Expanded(
-                child: MenuInput(
-                  fieldKey: const Key('extras-heading-ar'),
-                  controller: _group.displayAr,
-                  label: s.extrasMenuNameAr,
-                  hint: _placeholder(_group.nameAr.text, s),
-                  arabic: true,
+                child: NameDirection(
+                  languages: widget.languages,
+                  child: MenuInput(
+                    fieldKey: const Key('extras-heading-ar'),
+                    controller: _group.displayAr,
+                    label: widget.languages == ContentLanguages.both
+                        ? s.extrasMenuNameAr
+                        : cs.extrasMenuName,
+                    hint: _placeholder(_group.nameAr.text, s),
+                    arabic: true,
+                  ),
                 ),
               ),
           ],

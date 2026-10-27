@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/models/content_languages.dart';
 import '../../domain/models/order_type_config.dart';
 import '../../domain/models/tender_method.dart';
 import '../../core/security/pin_hash.dart';
@@ -349,18 +350,30 @@ class LocalBootstrap {
 
   /// The restaurant row, matched on slug so a re-run adopts rather than
   /// duplicates.
+  ///
+  /// [contentLanguages] is the language the menu is written in (XORD-035): the
+  /// wizard's language for a new row, so names are asked for in one language
+  /// from the first form. Null leaves the column's own default. It is written
+  /// only when the row is created - a re-run that adopts a row never overwrites
+  /// what a manager chose since.
   Future<int> seedRestaurant(
     DeploymentConfig admin, {
     required String slug,
     required String name,
+    ContentLanguages? contentLanguages,
   }) async {
     final rows = await database.query(
       admin,
-      'INSERT INTO pos_restaurants (slug, name) VALUES (@slug, @name) '
+      'INSERT INTO pos_restaurants (slug, name, content_languages) '
+      "VALUES (@slug, @name, COALESCE(@languages::text, 'both')) "
       // Touch the conflicting column and nothing else: this is how the row's
       // id comes back without any of its content being overwritten.
       'ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug RETURNING id',
-      parameters: {'slug': slug, 'name': name},
+      parameters: {
+        'slug': slug,
+        'name': name,
+        'languages': contentLanguages?.wire,
+      },
     );
 
     return rows.first[0]! as int;

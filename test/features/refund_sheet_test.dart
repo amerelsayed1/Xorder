@@ -103,7 +103,9 @@ void main() {
           refundsRepositoryProvider.overrideWithValue(repository),
           refundPolicyProvider.overrideWithValue(policy),
           reasonsRepositoryProvider.overrideWithValue(const _Reasons()),
-          staffDirectoryRepositoryProvider.overrideWithValue(const _Directory()),
+          staffDirectoryRepositoryProvider.overrideWithValue(
+            const _Directory(),
+          ),
           signedInStaffProvider.overrideWith(_SignedIn.new),
         ],
         child: MaterialApp(
@@ -263,6 +265,34 @@ void main() {
     });
   });
 
+  group('the quantity stepper', () {
+    testWidgets('shows a count, not an amount of money — and on one line', (
+      tester,
+    ) async {
+      await open(tester);
+
+      // Every line starts at 0, and a count has no currency: "0 EGP" in the
+      // 40-wide box wrapped onto two lines and pushed the row out of line.
+      expect(find.text('0 EGP'), findsNothing);
+      expect(find.text('0'), findsWidgets);
+      for (final count in tester.widgetList<Text>(find.text('0'))) {
+        final box = tester.getSize(find.byWidget(count));
+        expect(box.height, lessThan(24), reason: 'a single line');
+      }
+
+      await tester.tap(find.text('+').first);
+      await tester.pumpAndSettle();
+      expect(find.text('1'), findsWidgets);
+      expect(find.text('1 EGP'), findsNothing);
+    });
+
+    testWidgets('and in Arabic', (tester) async {
+      await open(tester, locale: 'ar');
+      expect(find.text('0 EGP'), findsNothing);
+      expect(find.text('0'), findsWidgets);
+    });
+  });
+
   group('what it refuses', () {
     testWidgets('nothing selected leaves the button dead', (tester) async {
       final repository = await open(tester);
@@ -309,10 +339,7 @@ void main() {
         ),
       );
 
-      expect(
-        find.textContaining('outside the refund window'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('outside the refund window'), findsOneWidget);
     });
 
     testWidgets('refunds switched off say so', (tester) async {
@@ -462,10 +489,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repository.issued, isEmpty);
-      expect(
-        find.textContaining('no money has gone back'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('no money has gone back'), findsOneWidget);
       // Still open, with the selection intact — the customer is standing there
       // and retyping it is the last thing anybody needs.
       expect(find.text('Refund HST-000481'), findsOneWidget);
@@ -475,10 +499,7 @@ void main() {
     testWidgets('a retry replays rather than paying twice', (tester) async {
       // The id is generated once when the dialog opens, not per press. A fresh
       // id per attempt is how a customer gets paid twice.
-      final repository = await open(
-        tester,
-        failWith: StateError('timeout'),
-      );
+      final repository = await open(tester, failWith: StateError('timeout'));
       await take(tester, 'Mixed Grill', 1);
       await tester.pumpAndSettle();
       await pickReason(tester);

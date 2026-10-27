@@ -2276,6 +2276,8 @@ sealed class AppStrings {
   String get extrasLibraryNameHint;
   String get extrasMenuNameEn;
   String get extrasMenuNameAr;
+  String get extrasLibraryName;
+  String get extrasMenuName;
   String get extrasMenuNamePlaceholder;
   String get extrasMenuNameHint;
   String extrasShownAs(String name);
@@ -5831,8 +5833,8 @@ final class EnStrings extends AppStrings {
 
   @override
   String get contentLanguagesHint =>
-      'The languages your menu is written in. Item and category forms then ask only for these. '
-      'Anything already written in a language you switch off is kept, and comes back if you switch it on again. '
+      'The language your menu is written in. Item and category forms ask for names in this language only. '
+      'Names already written in the other language are kept, and are used again if you switch back. '
       "This is separate from the language this till is shown in.";
 
   @override
@@ -8212,6 +8214,10 @@ final class EnStrings extends AppStrings {
   String get extrasMenuNameEn => 'Menu heading (English)';
   @override
   String get extrasMenuNameAr => 'Menu heading (Arabic)';
+  @override
+  String get extrasLibraryName => 'Name in your list';
+  @override
+  String get extrasMenuName => 'Menu heading';
   @override
   String get extrasMenuNamePlaceholder => 'e.g. Choose your size';
   @override
@@ -11355,8 +11361,8 @@ final class ArStrings extends AppStrings {
 
   @override
   String get contentLanguagesHint =>
-      'اللغات التي يُكتب بها المنيو. ستطلب نماذج الأصناف والأقسام هذه اللغات فقط. '
-      'ما كُتب مسبقًا بلغة توقفها يبقى محفوظًا ويعود إذا فعّلتها من جديد. '
+      'اللغة التي يُكتب بها المنيو. ستطلب نماذج الأصناف والأقسام الأسماء بهذه اللغة فقط. '
+      'ما كُتب مسبقًا باللغة الأخرى يبقى محفوظًا ويُستخدم من جديد إذا عدت إليها. '
       'هذا مستقل عن اللغة التي تُعرض بها هذه الشاشة.';
 
   @override
@@ -13668,6 +13674,10 @@ final class ArStrings extends AppStrings {
   String get extrasMenuNameEn => 'عنوان المنيو (إنجليزي)';
   @override
   String get extrasMenuNameAr => 'عنوان المنيو (عربي)';
+  @override
+  String get extrasLibraryName => 'الاسم في قائمتك';
+  @override
+  String get extrasMenuName => 'عنوان المنيو';
   @override
   String get extrasMenuNamePlaceholder => 'مثال: اختر الحجم';
   @override

@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/supplier.dart';
 import '../../../core/text/digits.dart';
 
@@ -135,19 +136,34 @@ class _SupplierDialogState extends State<SupplierDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
                   if (widget.languages.showsEnglish)
-                    _Field(
-                      name: 'name',
-                      label: strings.supplierName,
-                      controller: _box('name', supplier?.nameEn),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: _Field(
+                        name: 'name',
+                        label: widget.languages
+                            .nameStrings(strings)
+                            .supplierName,
+                        controller: _box('name', supplier?.nameEn),
+                      ),
                     ),
                   if (widget.languages.showsArabic)
-                    _Field(
-                      name: 'name_ar',
-                      label: widget.languages == ContentLanguages.arabic
-                          ? strings.supplierName
-                          : strings.tenderNameAr,
-                      controller: _box('name_ar', supplier?.nameAr),
-                      optional: widget.languages == ContentLanguages.both,
+                    NameDirection(
+                      languages: widget.languages,
+                      child: _Field(
+                        name: 'name_ar',
+                        label: widget.languages == ContentLanguages.arabic
+                            ? widget.languages.nameStrings(strings).supplierName
+                            : strings.tenderNameAr,
+                        controller: _box(
+                          'name_ar',
+                          initialArabicName(
+                            languages: widget.languages,
+                            nameAr: supplier?.nameAr,
+                            nameEn: supplier?.nameEn,
+                          ),
+                        ),
+                        optional: widget.languages == ContentLanguages.both,
+                      ),
                     ),
                   _Field(
                     name: 'contact',

@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/tender_method.dart';
 
 /// Authoring one payment method (§40).
@@ -42,11 +43,13 @@ class TenderTypeDialog extends StatefulWidget {
 }
 
 class _TenderTypeDialogState extends State<TenderTypeDialog> {
-  late final _nameEn = TextEditingController(
-    text: widget.method?.nameEn ?? '',
-  );
+  late final _nameEn = TextEditingController(text: widget.method?.nameEn ?? '');
   late final _nameAr = TextEditingController(
-    text: widget.method?.nameAr ?? '',
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.method?.nameAr,
+      nameEn: widget.method?.nameEn,
+    ),
   );
   late final _code = TextEditingController(text: widget.method?.code ?? '');
 
@@ -132,17 +135,25 @@ class _TenderTypeDialogState extends State<TenderTypeDialog> {
               const SizedBox(height: PosSpace.lg),
 
               if (widget.languages.showsEnglish)
-                _Field(
-                  fieldKey: const Key('tender-name'),
-                  label: strings.tenderNameEn,
-                  controller: _nameEn,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    fieldKey: const Key('tender-name'),
+                    label: widget.languages.nameStrings(strings).tenderNameEn,
+                    controller: _nameEn,
+                  ),
                 ),
               if (widget.languages.showsArabic)
-                _Field(
-                  fieldKey: const Key('tender-name-ar'),
-                  label: strings.tenderNameAr,
-                  controller: _nameAr,
-                  optional: widget.languages == ContentLanguages.both,
+                NameDirection(
+                  languages: widget.languages,
+                  child: _Field(
+                    fieldKey: const Key('tender-name-ar'),
+                    label: widget.languages == ContentLanguages.arabic
+                        ? widget.languages.nameStrings(strings).tenderNameEn
+                        : strings.tenderNameAr,
+                    controller: _nameAr,
+                    optional: widget.languages == ContentLanguages.both,
+                  ),
                 ),
               _Field(
                 label: strings.tenderCode,

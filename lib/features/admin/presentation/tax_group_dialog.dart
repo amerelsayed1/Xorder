@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/tax.dart';
 import 'admin_pane_bits.dart';
 import '../../../core/text/digits.dart';
@@ -42,7 +43,13 @@ class TaxGroupDialog extends StatefulWidget {
 
 class _TaxGroupDialogState extends State<TaxGroupDialog> {
   late final _nameEn = TextEditingController(text: widget.group?.nameEn ?? '');
-  late final _nameAr = TextEditingController(text: widget.group?.nameAr ?? '');
+  late final _nameAr = TextEditingController(
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.group?.nameAr,
+      nameEn: widget.group?.nameEn,
+    ),
+  );
   late final _rate = TextEditingController(
     text: widget.group == null ? '' : _percent(widget.group!.rateBp),
   );
@@ -151,30 +158,50 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
                   if (widget.languages.showsEnglish) ...[
-                    MicroLabel(strings.taxGroupName),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('tax-group-name'),
-                      controller: _nameEn,
-                      onChanged: (_) => setState(() => _problem = null),
-                      style: PosText.ui(size: 15, color: palette.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages.nameStrings(strings).taxGroupName,
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('tax-group-name'),
+                            controller: _nameEn,
+                            onChanged: (_) => setState(() => _problem = null),
+                            style: PosText.ui(size: 15, color: palette.ink),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: PosSpace.md),
                   ],
                   if (widget.languages.showsArabic) ...[
                     // Required when it is the only language; optional beside
                     // English.
-                    MicroLabel(
-                      widget.languages == ContentLanguages.arabic
-                          ? strings.taxGroupName
-                          : strings.optionalField(strings.tenderNameAr),
-                    ),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('tax-group-name-ar'),
-                      controller: _nameAr,
-                      onChanged: (_) => setState(() => _problem = null),
-                      style: PosText.ui(size: 15, color: palette.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages == ContentLanguages.arabic
+                                ? widget.languages
+                                      .nameStrings(strings)
+                                      .taxGroupName
+                                : strings.optionalField(strings.tenderNameAr),
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('tax-group-name-ar'),
+                            controller: _nameAr,
+                            onChanged: (_) => setState(() => _problem = null),
+                            style: PosText.ui(size: 15, color: palette.ink),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                   const SizedBox(height: PosSpace.lg),

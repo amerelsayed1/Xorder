@@ -884,11 +884,15 @@ class _Stepper extends StatelessWidget {
         SizedBox(
           width: 40,
           child: Center(
+            // A count, not money: with the currency appended ("0 EGP") it did
+            // not fit the 40-wide box and wrapped onto two lines, pushing the
+            // row out of line.
             child: MonoAmount(
               Money(value, exponent: 0),
               size: 15,
               weight: FontWeight.w700,
               color: value > 0 ? palette.ink : palette.muted,
+              withCurrency: false,
             ),
           ),
         ),

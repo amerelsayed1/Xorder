@@ -16,6 +16,7 @@ import '../../../data/cloud/bootstrap_seeder.dart';
 import '../../../data/config/installer_credentials.dart';
 import '../../../data/config/setup_progress_store.dart';
 import '../../../data/postgres/local_bootstrap.dart';
+import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/repositories.dart'
     show ClaimNotice, DiscoveredPrinter;
@@ -805,6 +806,9 @@ class SetupController extends Notifier<SetupDraft> {
         admin,
         slug: claims.tenantSlug,
         name: claims.tenantName,
+        // The language chosen on the wizard's first screen is the language the
+        // menu is written in (XORD-035): one name box on every form.
+        contentLanguages: ContentLanguages.fromLocale(state.locale),
       );
       final branchId = await bootstrap.seedBranch(
         admin,

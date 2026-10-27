@@ -80,7 +80,6 @@ void main() {
     await tester.tap(find.byKey(const Key('unit-new')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('unit-name')), 'Tray of 30');
-    await tester.enterText(find.byKey(const Key('unit-name_ar')), 'طبق');
     await tester.tap(find.byKey(const Key('unit-save')));
     await tester.pumpAndSettle();
 

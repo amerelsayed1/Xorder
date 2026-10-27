@@ -186,6 +186,43 @@ void main() {
         expect(find.byKey(Key(dialog.arabic)), findsNothing);
       });
 
+      // XORD-035: the box runs in the language it is written in, whatever the
+      // screen is showing (this app is English).
+      testWidgets('Arabic only: the box runs right to left', (tester) async {
+        await _open(tester, dialog.open(ContentLanguages.arabic));
+
+        expect(
+          Directionality.of(tester.element(find.byKey(Key(dialog.arabic)))),
+          TextDirection.rtl,
+        );
+      });
+
+      testWidgets('English only: the box runs left to right', (tester) async {
+        await _open(tester, dialog.open(ContentLanguages.english));
+
+        expect(
+          Directionality.of(tester.element(find.byKey(Key(dialog.english)))),
+          TextDirection.ltr,
+        );
+      });
+
+      testWidgets('Arabic only: a record with only an English name opens with it', (
+        tester,
+      ) async {
+        await _open(
+          tester,
+          dialog.open(ContentLanguages.arabic, existing: ('Old name', null)),
+        );
+
+        expect(
+          tester
+              .widget<TextField>(find.byKey(Key(dialog.arabic)))
+              .controller!
+              .text,
+          'Old name',
+        );
+      });
+
       testWidgets(
         'Arabic only, new: saves with just the Arabic name; English mirrors it',
         (tester) async {
@@ -443,6 +480,24 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+
+        // XORD-035: a cell runs in the language it is written in.
+        if (languages == ContentLanguages.arabic) {
+          expect(
+            Directionality.of(
+              tester.element(find.byKey(const Key('x-option-0-name-ar'))),
+            ),
+            TextDirection.rtl,
+          );
+        }
+        if (languages == ContentLanguages.english) {
+          expect(
+            Directionality.of(
+              tester.element(find.byKey(const Key('x-option-0-name'))),
+            ),
+            TextDirection.ltr,
+          );
+        }
 
         expect(
           find.byKey(const Key('x-option-0-name')),

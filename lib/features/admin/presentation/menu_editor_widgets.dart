@@ -8,6 +8,7 @@ import '../../../core/ui/widgets/fold_digits_formatter.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/option_group.dart';
+import 'content_language_ui.dart';
 
 /// The pieces the menu's editors share: the dialog frame, the labelled input,
 /// and everything a size or extra group is edited with.
@@ -241,15 +242,23 @@ class MenuPill extends StatelessWidget {
 /// One option while it is being typed. Controllers rather than values, so a
 /// row keeps what was typed in it when a row above it is removed.
 class EditableOption {
-  EditableOption.from(OptionDraft option)
-    : id = option.id,
-      isAvailable = option.isAvailable,
-      storedNameEn = option.nameEn,
-      storedNameAr = option.nameAr,
-      nameEn = TextEditingController(text: option.nameEn),
-      nameAr = TextEditingController(text: option.nameAr ?? ''),
-      price = TextEditingController(text: option.price.format()),
-      sale = TextEditingController(text: option.salePrice?.format() ?? '');
+  EditableOption.from(
+    OptionDraft option, {
+    ContentLanguages languages = ContentLanguages.both,
+  }) : id = option.id,
+       isAvailable = option.isAvailable,
+       storedNameEn = option.nameEn,
+       storedNameAr = option.nameAr,
+       nameEn = TextEditingController(text: option.nameEn),
+       nameAr = TextEditingController(
+         text: initialArabicName(
+           languages: languages,
+           nameAr: option.nameAr,
+           nameEn: option.nameEn,
+         ),
+       ),
+       price = TextEditingController(text: option.price.format()),
+       sale = TextEditingController(text: option.salePrice?.format() ?? '');
 
   /// A new row, with its price blank — which is what lets switching a group to
   /// sizes carry the item's price into it (see the item editor).
@@ -291,25 +300,36 @@ class EditableOption {
 
 /// One group while it is being typed — a library group, or one on an item.
 class EditableGroup {
-  EditableGroup.from(OptionGroupDraft group)
-    : id = group.id,
-      revision = group.revision,
-      minSelect = group.minSelect,
-      freeOptions = group.freeOptions,
-      isVariant = group.isVariant,
-      isRequired = group.isRequired,
-      scope = group.scope,
-      categoryIds = {...group.categoryIds},
-      storedNameEn = group.nameEn,
-      storedNameAr = group.nameAr,
-      storedDisplayEn = group.displayNameEn,
-      storedDisplayAr = group.displayNameAr,
-      nameEn = TextEditingController(text: group.nameEn),
-      nameAr = TextEditingController(text: group.nameAr ?? ''),
-      displayEn = TextEditingController(text: group.displayNameEn ?? ''),
-      displayAr = TextEditingController(text: group.displayNameAr ?? ''),
-      maxSelect = TextEditingController(text: '${group.maxSelect}'),
-      options = [for (final o in group.options) EditableOption.from(o)];
+  EditableGroup.from(
+    OptionGroupDraft group, {
+    ContentLanguages languages = ContentLanguages.both,
+  }) : id = group.id,
+       revision = group.revision,
+       minSelect = group.minSelect,
+       freeOptions = group.freeOptions,
+       isVariant = group.isVariant,
+       isRequired = group.isRequired,
+       scope = group.scope,
+       categoryIds = {...group.categoryIds},
+       storedNameEn = group.nameEn,
+       storedNameAr = group.nameAr,
+       storedDisplayEn = group.displayNameEn,
+       storedDisplayAr = group.displayNameAr,
+       nameEn = TextEditingController(text: group.nameEn),
+       nameAr = TextEditingController(
+         text: initialArabicName(
+           languages: languages,
+           nameAr: group.nameAr,
+           nameEn: group.nameEn,
+         ),
+       ),
+       displayEn = TextEditingController(text: group.displayNameEn ?? ''),
+       displayAr = TextEditingController(text: group.displayNameAr ?? ''),
+       maxSelect = TextEditingController(text: '${group.maxSelect}'),
+       options = [
+         for (final o in group.options)
+           EditableOption.from(o, languages: languages),
+       ];
 
   /// The cloud's new group: not required, not sizes, one choice, no options.
   EditableGroup.blank() : this.from(const OptionGroupDraft(nameEn: ''));
@@ -593,23 +613,29 @@ class OptionRows extends StatelessWidget {
               children: [
                 if (languages.showsEnglish) ...[
                   Expanded(
-                    child: _Cell(
-                      key: Key('$keyPrefix-option-$i-name'),
-                      controller: option.nameEn,
-                      hint: s.itemOptionEn,
-                      onChanged: onChanged,
+                    child: NameDirection(
+                      languages: languages,
+                      child: _Cell(
+                        key: Key('$keyPrefix-option-$i-name'),
+                        controller: option.nameEn,
+                        hint: languages.nameStrings(s).itemOptionEn,
+                        onChanged: onChanged,
+                      ),
                     ),
                   ),
                   const SizedBox(width: PosSpace.sm),
                 ],
                 if (languages.showsArabic) ...[
                   Expanded(
-                    child: _Cell(
-                      key: Key('$keyPrefix-option-$i-name-ar'),
-                      controller: option.nameAr,
-                      hint: s.itemOptionAr,
-                      arabic: true,
-                      onChanged: onChanged,
+                    child: NameDirection(
+                      languages: languages,
+                      child: _Cell(
+                        key: Key('$keyPrefix-option-$i-name-ar'),
+                        controller: option.nameAr,
+                        hint: languages.nameStrings(s).itemOptionAr,
+                        arabic: true,
+                        onChanged: onChanged,
+                      ),
                     ),
                   ),
                   const SizedBox(width: PosSpace.sm),

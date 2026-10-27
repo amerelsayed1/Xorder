@@ -268,10 +268,12 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
         SizedBox(
           width: 36,
           child: Center(
+            // A count, not money: no currency beside it (it would wrap in 36).
             child: MonoAmount(
               Money(_quantity, exponent: 0),
               size: 15,
               weight: FontWeight.w700,
+              withCurrency: false,
             ),
           ),
         ),

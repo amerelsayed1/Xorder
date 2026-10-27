@@ -6,6 +6,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/order_type_config.dart';
 
 /// What a kind of order requires (§31).
@@ -49,7 +50,13 @@ class OrderTypeDialog extends StatefulWidget {
 
 class _OrderTypeDialogState extends State<OrderTypeDialog> {
   late final _nameEn = TextEditingController(text: widget.config.nameEn);
-  late final _nameAr = TextEditingController(text: widget.config.nameAr ?? '');
+  late final _nameAr = TextEditingController(
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.config.nameAr,
+      nameEn: widget.config.nameEn,
+    ),
+  );
 
   late bool _table = widget.config.requiresTable;
   late bool _customer = widget.config.requiresCustomer;
@@ -135,28 +142,48 @@ class _OrderTypeDialogState extends State<OrderTypeDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
                 children: [
                   if (widget.languages.showsEnglish) ...[
-                    MicroLabel(strings.orderTypeName),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('order-type-name'),
-                      controller: _nameEn,
-                      onChanged: (_) => setState(() => _problem = null),
-                      style: PosText.ui(size: 15, color: palette.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages.nameStrings(strings).orderTypeName,
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('order-type-name'),
+                            controller: _nameEn,
+                            onChanged: (_) => setState(() => _problem = null),
+                            style: PosText.ui(size: 15, color: palette.ink),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: PosSpace.md),
                   ],
                   if (widget.languages.showsArabic) ...[
-                    MicroLabel(
-                      widget.languages == ContentLanguages.arabic
-                          ? strings.orderTypeName
-                          : strings.optionalField(strings.tenderNameAr),
-                    ),
-                    const SizedBox(height: PosSpace.xs),
-                    TextField(
-                      key: const Key('order-type-name-ar'),
-                      controller: _nameAr,
-                      onChanged: (_) => setState(() => _problem = null),
-                      style: PosText.ui(size: 15, color: palette.ink),
+                    NameDirection(
+                      languages: widget.languages,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MicroLabel(
+                            widget.languages == ContentLanguages.arabic
+                                ? widget.languages
+                                      .nameStrings(strings)
+                                      .orderTypeName
+                                : strings.optionalField(strings.tenderNameAr),
+                          ),
+                          const SizedBox(height: PosSpace.xs),
+                          TextField(
+                            key: const Key('order-type-name-ar'),
+                            controller: _nameAr,
+                            onChanged: (_) => setState(() => _problem = null),
+                            style: PosText.ui(size: 15, color: palette.ink),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                   const SizedBox(height: PosSpace.lg),

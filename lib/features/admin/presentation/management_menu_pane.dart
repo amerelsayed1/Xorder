@@ -14,6 +14,7 @@ import '../../../domain/models/reason_code.dart' show ReasonRequirement;
 import '../../../data/postgres/pos_database.dart' show PosDbException;
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/content_languages.dart';
+import 'content_language_ui.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/tax.dart';
 import '../../../domain/models/shift.dart';
@@ -673,7 +674,11 @@ class _CategoryDialog extends StatefulWidget {
 class _CategoryDialogState extends State<_CategoryDialog> {
   late final _name = TextEditingController(text: widget.category?.nameEn ?? '');
   late final _nameAr = TextEditingController(
-    text: widget.category?.nameAr ?? '',
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.category?.nameAr,
+      nameEn: widget.category?.nameEn,
+    ),
   );
 
   @override
@@ -686,6 +691,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   @override
   Widget build(BuildContext context) {
     final languages = widget.languages;
+    final cs = languages.nameStrings(context.strings);
     return MenuDialog(
       title: widget.category == null
           ? context.strings.newCategory
@@ -707,18 +713,24 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       },
       children: [
         if (languages.showsEnglish) ...[
-          MenuInput(controller: _name, label: context.strings.fieldName),
+          NameDirection(
+            languages: languages,
+            child: MenuInput(controller: _name, label: cs.fieldName),
+          ),
           const SizedBox(height: PosSpace.md),
         ],
         if (languages.showsArabic)
-          MenuInput(
-            controller: _nameAr,
-            // Required when it is the only language; optional beside English.
-            label: languages == ContentLanguages.arabic
-                ? context.strings.fieldName
-                : context.strings.fieldNameArabic,
-            optional: languages == ContentLanguages.both,
-            arabic: true,
+          NameDirection(
+            languages: languages,
+            child: MenuInput(
+              controller: _nameAr,
+              // Required when it is the only language; optional beside English.
+              label: languages == ContentLanguages.arabic
+                  ? cs.fieldName
+                  : context.strings.fieldNameArabic,
+              optional: languages == ContentLanguages.both,
+              arabic: true,
+            ),
           ),
       ],
     );
@@ -803,7 +815,11 @@ class _ProductDialog extends StatefulWidget {
 class _ProductDialogState extends State<_ProductDialog> {
   late final _name = TextEditingController(text: widget.product?.nameEn ?? '');
   late final _nameAr = TextEditingController(
-    text: widget.product?.nameAr ?? '',
+    text: initialArabicName(
+      languages: widget.languages,
+      nameAr: widget.product?.nameAr,
+      nameEn: widget.product?.nameEn,
+    ),
   );
   late final _price = TextEditingController(
     text: widget.product?.price.format(),
@@ -829,7 +845,9 @@ class _ProductDialogState extends State<_ProductDialog> {
           groupId,
           _libraryGroup(groupId),
         ),
-        InlineGroupRef(:final group) => _InlineEntry(EditableGroup.from(group)),
+        InlineGroupRef(:final group) => _InlineEntry(
+          EditableGroup.from(group, languages: widget.languages),
+        ),
       },
   ];
 
@@ -1066,17 +1084,26 @@ class _ProductDialogState extends State<_ProductDialog> {
       onSave: _save,
       children: [
         if (widget.languages.showsEnglish) ...[
-          MenuInput(controller: _name, label: context.strings.fieldName),
+          NameDirection(
+            languages: widget.languages,
+            child: MenuInput(
+              controller: _name,
+              label: widget.languages.nameStrings(context.strings).fieldName,
+            ),
+          ),
           const SizedBox(height: PosSpace.md),
         ],
         if (widget.languages.showsArabic) ...[
-          MenuInput(
-            controller: _nameAr,
-            label: widget.languages == ContentLanguages.arabic
-                ? context.strings.fieldName
-                : context.strings.fieldNameArabic,
-            optional: widget.languages == ContentLanguages.both,
-            arabic: true,
+          NameDirection(
+            languages: widget.languages,
+            child: MenuInput(
+              controller: _nameAr,
+              label: widget.languages == ContentLanguages.arabic
+                  ? widget.languages.nameStrings(context.strings).fieldName
+                  : context.strings.fieldNameArabic,
+              optional: widget.languages == ContentLanguages.both,
+              arabic: true,
+            ),
           ),
           const SizedBox(height: PosSpace.md),
         ],
@@ -1435,21 +1462,27 @@ class _ProductDialogState extends State<_ProductDialog> {
             children: [
               if (widget.languages.showsEnglish)
                 Expanded(
-                  child: _groupName(
-                    Key('$prefix-name'),
-                    group.nameEn,
-                    s.itemGroupNameEn,
+                  child: NameDirection(
+                    languages: widget.languages,
+                    child: _groupName(
+                      Key('$prefix-name'),
+                      group.nameEn,
+                      widget.languages.nameStrings(s).itemGroupNameEn,
+                    ),
                   ),
                 ),
               if (widget.languages == ContentLanguages.both)
                 const SizedBox(width: PosSpace.sm),
               if (widget.languages.showsArabic)
                 Expanded(
-                  child: _groupName(
-                    Key('$prefix-name-ar'),
-                    group.nameAr,
-                    s.itemGroupNameAr,
-                    arabic: true,
+                  child: NameDirection(
+                    languages: widget.languages,
+                    child: _groupName(
+                      Key('$prefix-name-ar'),
+                      group.nameAr,
+                      widget.languages.nameStrings(s).itemGroupNameAr,
+                      arabic: true,
+                    ),
                   ),
                 ),
             ],
