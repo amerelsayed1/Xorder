@@ -83,7 +83,7 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
         'pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
           'r': restaurantId,
@@ -161,7 +161,7 @@ void main() {
   ) => db.query(
     pg.config,
     'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-    '  shift_id, kind, amount_minor, staff_id) '
+    '  shift_id, kind, amount_minor, user_id) '
     'VALUES (@r, @b, @t::uuid, @s, @k, @a, @by)',
     parameters: {
       'r': restaurantId,
@@ -242,7 +242,7 @@ void main() {
     // The close's ledger row, as `CloseShiftDialog` writes it.
     await db.query(
       pg.config,
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, actor_staff_id, '
+      'INSERT INTO pos_audit_events (restaurant_id, branch_id, actor_user_id, '
       '  actor_name, approved_by_id, approved_by_name, action, entity_type, '
       '  entity_id) '
       "VALUES (@r, @b, @by, 'Omar T.', 99, 'Hana M.', 'shift.closed', "

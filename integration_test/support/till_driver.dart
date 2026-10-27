@@ -211,20 +211,27 @@ class TillDriver {
 
   // --------------------------------------------------------------------- till
 
-  /// Sign in and open the drawer.
+  /// Sign in at Start, then start the shift from Home and open the drawer.
   ///
-  /// Two questions stand between the start screen and selling now, and both are
-  /// load-bearing: a shift with no named person is a drawer nobody is
-  /// answerable for, and a shift with no opening float makes every variance
-  /// wrong by the same unknown amount.
+  /// Signing in and opening a shift are two steps now (pos-signin-first-home):
+  /// Start asks who is at the till, Home's Start shift asks what is in the
+  /// drawer. Both are load-bearing: a shift with no named person is a drawer
+  /// nobody is answerable for, and a shift with no opening float makes every
+  /// variance wrong by the same unknown amount.
+  ///
+  /// **Not run in this change** (needs a real PostgreSQL and the platform); it
+  /// also types no user name, as it did not before the name-and-PIN sign-in.
   Future<void> openShift({required String pin}) async {
-    await waitForTextContaining('Start shift');
-    await tapTextContaining('Start shift');
+    await waitForText('Sign in');
+    await tapButton('Sign in');
 
     await waitForText('Sign in');
     for (final digit in pin.split('')) {
       await tapButton(digit);
     }
+
+    await waitForTextContaining('Start shift');
+    await tapTextContaining('Start shift');
 
     // The float defaults to 0.00, which is what the dialog offers and what an
     // empty drawer actually holds.

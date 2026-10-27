@@ -138,7 +138,7 @@ void main() {
         PosDbFailure.classify(
           const _ServerError(
             '42703',
-            'column "password_hash" of relation "pos_staff" does not exist',
+            'column "password_hash" of relation "pos_users" does not exist',
           ),
         ),
         PosDbFailure.query,

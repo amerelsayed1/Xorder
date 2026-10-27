@@ -365,7 +365,9 @@ void main() {
   group('the account a payment method pays into', () {
     test('is set, replaced and cleared as one row', () async {
       final bank = await save(draft(name: 'Bank'));
-      final wallet = await save(draft(name: 'Wallet', kind: AccountKind.wallet));
+      // A second bank: a card pays into a bank, not a wallet (the pairing is
+      // `AccountRules.kindsFor`), so "replaced" means one bank for another.
+      final wallet = await save(draft(name: 'Second bank'));
 
       Future<void> set(int? account) async {
         final r = await admin().setDefault(
@@ -399,7 +401,9 @@ void main() {
     });
 
     test('a branch can have its own, beside the business-wide one', () async {
-      final bank = await save(draft(name: 'Bank'));
+      // Cash pays into a cash account: a shared safe for the business, the
+      // branch's own drawer for the branch.
+      final bank = await save(draft(name: 'Safe', kind: AccountKind.cash));
       final drawer = await save(draft(name: 'Drawer', kind: AccountKind.cash, branch: branchId));
 
       await admin().setDefault(tenderTypeId: cashId, branchId: null, accountId: bank.id, by: owner);
@@ -421,6 +425,63 @@ void main() {
         AccountRules.effectiveAccountId(rows, tenderTypeId: cashId, branchId: null),
         bank.id,
       );
+    });
+
+    test('a method only pays into an account of its own kind', () async {
+      final bank = await save(draft(name: 'Bank'));
+      final safe = await save(draft(name: 'Safe', kind: AccountKind.cash));
+      final wallet = await save(draft(name: 'Wallet', kind: AccountKind.wallet));
+
+      Future<AccountProblem?> set(int tender, int account) async {
+        final refusal = (await admin().setDefault(
+          tenderTypeId: tender,
+          branchId: null,
+          accountId: account,
+          by: owner,
+        )).refusal;
+        return refusal is AccountRefused ? refusal.problem : null;
+      }
+
+      expect(await set(cashId, bank.id), AccountProblem.accountKindMismatch);
+      expect(await set(cashId, wallet.id), AccountProblem.accountKindMismatch);
+      expect(await set(cardId, safe.id), AccountProblem.accountKindMismatch);
+      expect(await set(cardId, wallet.id), AccountProblem.accountKindMismatch);
+      expect(await reader().defaults(), isEmpty, reason: 'nothing was stored');
+
+      expect(await set(cashId, safe.id), isNull);
+      expect(await set(cardId, bank.id), isNull);
+      expect(await reader().defaults(), hasLength(2));
+    });
+
+    test('a pairing saved before the rule is kept, and replaced only by a '
+        'fitting account or none', () async {
+      final bank = await save(draft(name: 'Bank'));
+      final safe = await save(draft(name: 'Safe', kind: AccountKind.cash));
+
+      // Written straight into the table, as an older build would have.
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_tender_account_defaults (restaurant_id, '
+        '  tender_type_id, branch_id, branch_key, financial_account_id) '
+        'VALUES (@r, @t, NULL, 0, @a)',
+        parameters: {'r': restaurantId, 't': cardId, 'a': safe.id},
+      );
+      expect((await reader().defaults()).single.accountId, safe.id);
+
+      final again = await admin().setDefault(
+        tenderTypeId: cardId,
+        branchId: null,
+        accountId: safe.id,
+        by: owner,
+      );
+      expect(again.refusal, isA<AccountRefused>(), reason: 'saving it anew is refused');
+      expect((await reader().defaults()).single.accountId, safe.id,
+          reason: 'and the old row was not touched');
+
+      expect((await admin().setDefault(
+        tenderTypeId: cardId, branchId: null, accountId: bank.id, by: owner,
+      )).refusal, isNull);
+      expect((await reader().defaults()).single.accountId, bank.id);
     });
 
     test('each rule is a refusal, and a refused default changes nothing', () async {

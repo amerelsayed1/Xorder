@@ -114,9 +114,21 @@ void main() {
     });
   }
 
+  /// Sign in at Start, as everybody now does first (pos-signin-first-home): a
+  /// name and a PIN, in the dialog Start's button opens. The shift is open in
+  /// these tests (a restart, or a morning already begun), so this lands where
+  /// the router sends somebody with a shift open.
   Future<void> resume(WidgetTester tester) async {
-    await tester.tap(find.textContaining('Resume'));
+    await tester.tap(find.byKey(const Key('start-sign-in')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'rana');
+    await tester.pump();
+    for (final digit in ['1', '2', '3', '4']) {
+      await tester.tap(
+        find.descendant(of: find.byType(Dialog), matching: find.text(digit)),
+      );
+      await tester.pumpAndSettle();
+    }
   }
 
   Future<void> finish(WidgetTester tester) async {
@@ -207,14 +219,16 @@ void main() {
     await finish(tester);
   }, variant: desktop);
 
-  testWidgets('Home with a shift open and nobody signed in is the lock '
-      'screen', (tester) async {
+  testWidgets('Home with nobody signed in is Start, never the lock screen', (
+    tester,
+  ) async {
     await pumpTill(tester, signedIn: false);
 
     container.read(routerProvider).go(PosRoutes.home);
     await tester.pumpAndSettle();
 
-    expect(at(), PosRoutes.lock);
+    expect(at(), PosRoutes.start);
+    expect(visited, isNot(contains(PosRoutes.lock)));
     await finish(tester);
   }, variant: desktop);
 
@@ -229,19 +243,14 @@ void main() {
     await finish(tester);
   }, variant: desktop);
 
-  testWidgets('resuming a shift with nobody signed in (a restart): the lock '
-      'screen, and unlocking goes to Home — not past it', (tester) async {
+  testWidgets('a restart with the shift still open: sign in at Start, and '
+      'Home — no lock screen on the way', (tester) async {
     await pumpTill(tester, signedIn: false);
     await resume(tester);
 
-    expect(at(), PosRoutes.lock, reason: 'a name and a PIN first');
-
-    // Somebody enters their PIN: the lock screen signs them in and unlocks.
-    container.read(signedInStaffProvider.notifier).signIn(_rana);
-    tester.widget<LockScreen>(find.byType(LockScreen)).onUnlocked();
-    await tester.pumpAndSettle();
-
     expect(at(), PosRoutes.home);
+    expect(visited, isNot(contains(PosRoutes.lock)));
+    expect(container.read(signedInStaffProvider)?.name, 'Rana A.');
     await finish(tester);
   }, variant: desktop);
 

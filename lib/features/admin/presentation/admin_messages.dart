@@ -104,6 +104,7 @@ abstract final class AdminText {
     AuditAction.categoryUpdated => s.actCategoryUpdated,
     AuditAction.categoryArchived => s.actCategoryArchived,
     AuditAction.categoryRestored => s.actCategoryRestored,
+    AuditAction.categoryDeleted => s.actCategoryDeleted,
     AuditAction.productCreated => s.actProductCreated,
     AuditAction.productUpdated => s.actProductUpdated,
     AuditAction.productArchived => s.actProductArchived,
@@ -424,6 +425,7 @@ abstract final class AdminText {
         CatalogProblem.categoryNameMissing => s.refusalCategoryNameMissing,
         CatalogProblem.skuTaken => s.refusalSkuTaken,
         CatalogProblem.categoryUnavailable => s.refusalCategoryUnavailable,
+        CatalogProblem.categoryHasItems => s.refusalCategoryHasItems,
       };
 
   /// Why an account, or the account a payment method pays into, could not be
@@ -439,6 +441,7 @@ abstract final class AdminText {
         AccountProblem.methodUnknown => s.refusalAccountMethodUnknown,
         AccountProblem.accountUnavailable => s.refusalAccountUnavailable,
         AccountProblem.accountOfAnotherBranch => s.refusalAccountOtherBranch,
+        AccountProblem.accountKindMismatch => s.refusalAccountKindMismatch,
         AccountProblem.accountIsDefault => s.refusalAccountIsDefault,
       };
 

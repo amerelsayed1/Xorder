@@ -9,8 +9,12 @@ import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/cloud/cloud_provisioning_repository.dart'
     show posAppVersion;
 import 'package:xorder_pos/data/cloud/cloud_sync.dart';
+import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/domain/services/business_day_service.dart';
 
 import '../support/fakes.dart';
 import '../support/fonts.dart';
@@ -160,6 +164,86 @@ void main() {
     expect(person, findsNothing);
   }, variant: desktop);
 
+  group('a day left open, or sales after it closed, is said in the bar', () {
+    final notice = find.byKey(const Key('till-status-day-notice'));
+    Override staleDay() => dayNoticeProvider.overrideWith(
+      (ref) async =>
+          DayNotice(DayNoticeKind.staleOpenDay, DateTime(2026, 10, 24)),
+    );
+
+    testWidgets('on every screen, in a few words, beside the till facts', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester, overrides: [staleDay()]);
+
+      for (final path in [PosRoutes.start, PosRoutes.lock, PosRoutes.sale]) {
+        await goTo(tester, container, path);
+        expect(
+          find.descendant(
+            of: bar,
+            matching: find.text(
+              const EnStrings().dayStillOpenShort('2026-10-24'),
+            ),
+          ),
+          findsOneWidget,
+          reason: path,
+        );
+        expect(find.descendant(of: bar, matching: notice), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: path);
+      }
+    }, variant: desktop);
+
+    testWidgets('the sales-after-close warning too, and in Arabic', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        language: 'ar',
+        overrides: [
+          dayNoticeProvider.overrideWith(
+            (ref) async => DayNotice(
+              DayNoticeKind.todayAlreadyClosed,
+              DateTime(2026, 10, 24),
+            ),
+          ),
+        ],
+      );
+
+      expect(
+        find.descendant(
+          of: bar,
+          matching: find.text(
+            const ArStrings().dayClosedTodayShort('2026-10-24'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    }, variant: desktop);
+
+    testWidgets('the full sentence, with what to do, is its tooltip', (
+      tester,
+    ) async {
+      await pumpApp(tester, overrides: [staleDay()]);
+
+      expect(
+        find.byTooltip(const EnStrings().dayStillOpenFrom('2026-10-24')),
+        findsOneWidget,
+      );
+    }, variant: desktop);
+
+    testWidgets('nothing to say, nothing shown', (tester) async {
+      await pumpApp(tester);
+      expect(notice, findsNothing);
+    }, variant: desktop);
+
+    testWidgets('and fits a narrow window without overflow', (tester) async {
+      await pumpApp(tester, width: 900, overrides: [staleDay()]);
+
+      expect(notice, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }, variant: desktop);
+  });
+
   testWidgets('inside the back office it names the administrator, once', (
     tester,
   ) async {
@@ -262,6 +346,86 @@ void main() {
     expect(bar, findsOneWidget);
     expect(tester.takeException(), isNull);
   }, variant: desktop);
+
+  // Close shift moved here from the sale screen's top bar (owner, 26 Oct 2026).
+  group('close shift', () {
+    final button = find.byKey(const Key('till-status-close-shift'));
+
+    testWidgets('is in the bar on the sale screen and nowhere else, and the '
+        'top bar no longer has it', (tester) async {
+      final container = await pumpApp(tester);
+
+      await goTo(tester, container, PosRoutes.sale);
+      expect(
+        find.descendant(of: bar, matching: find.text('Close shift')),
+        findsOneWidget,
+      );
+      expect(find.text('Close shift'), findsOneWidget, reason: 'only once');
+
+      for (final path in [
+        PosRoutes.orders,
+        PosRoutes.licence,
+        PosRoutes.lock,
+      ]) {
+        await goTo(tester, container, path);
+        expect(button, findsNothing, reason: path);
+      }
+    }, variant: desktop);
+
+    testWidgets('a ticket still on screen is kept: the cashier is told and '
+        'stays on the sale screen', (tester) async {
+      final container = await pumpApp(tester);
+      container
+          .read(ticketProvider.notifier)
+          .addProduct(
+            const Product(
+              id: 101,
+              categoryId: 1,
+              nameEn: 'Burger',
+              price: Money(9500),
+            ),
+          );
+      await goTo(tester, container, PosRoutes.sale);
+
+      await tester.tap(button);
+      await tester.pump();
+
+      expect(find.text(EnStrings().ticketStillOpen), findsOneWidget);
+      expect(
+        container
+            .read(routerProvider)
+            .routerDelegate
+            .currentConfiguration
+            .uri
+            .path,
+        PosRoutes.sale,
+      );
+      expect(container.read(ticketProvider).isEmpty, isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    }, variant: desktop);
+
+    testWidgets('with no shift open there is nothing to count: back to Start', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      await goTo(tester, container, PosRoutes.sale);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(
+        container
+            .read(routerProvider)
+            .routerDelegate
+            .currentConfiguration
+            .uri
+            .path,
+        PosRoutes.start,
+      );
+    }, variant: desktop);
+  });
 
   // The bar costs 44 px of a 700 px window on every screen; the sale screen is
   // the one that is full.

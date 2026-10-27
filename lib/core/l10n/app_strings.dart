@@ -333,6 +333,10 @@ sealed class AppStrings {
   String get wrongUsernameOrPin;
   String get openTheDrawer;
   String get signInHelp;
+  String get signInOnlyHelp;
+  String signedInAs(String name);
+  String get signOut;
+  String get startShiftToSell;
   String countTheDrawerHelp(String name);
   String get pinNotRecognised;
 
@@ -589,10 +593,7 @@ sealed class AppStrings {
   String get keystoreUnavailableHelp;
 
   // First install: the wizard step that creates the database itself.
-  String get machineNowHasDatabase;
   String get noDatabaseYet;
-  String get firstInstallHeading;
-  String get firstInstallHelp;
 
   /// The role that owns the schema. Editable because `pos_admin` is what the
   /// Windows installer makes, and a machine whose PostgreSQL somebody set up by
@@ -632,13 +633,23 @@ sealed class AppStrings {
   /// building: it is kept so Admin Mode opens on a username and a PIN.
   /// Separate wording because [adminPasswordHelp] promises the opposite.
   String get adminPasswordKeptHelp;
-  String get firstPerson;
-  String get firstPersonHelp;
-  String get theirUsername;
-  String get theirPin;
-  String get theirPinHelp;
-  String get buildingDatabase;
-  String get buildTheDatabase;
+
+  // Setup step 4, first install (pos-setup-owner-step): plain words, two screens.
+  String get ownerDbAccessTitle;
+  String get ownerDbAccessHelp;
+  String adminAccountIs(String user);
+  String get ownerAccountTitle;
+  String get ownerAccountHelp;
+  String get ownerNameLabel;
+  String get usernameLabel;
+  String get signInPinLabel;
+  String get confirmPinLabel;
+  String pinExactHelp(int length);
+  String get pinsDoNotMatch;
+  String get showSecret;
+  String get hideSecret;
+  String get createDatabaseAndContinue;
+  String get databaseCreated;
 
   // ── Setup: first install, step by step ────────────────────────────────────
   //
@@ -1101,6 +1112,9 @@ sealed class AppStrings {
   String get refusalAccountMethodUnknown;
   String get refusalAccountUnavailable;
   String get refusalAccountOtherBranch;
+  String get refusalAccountKindMismatch;
+  String get accountsNotMatching;
+  String accountsNoMatchingKind(String kind);
   String get refusalAccountIsDefault;
   String get paneFinanceAccounts;
   String get financeAccountsBlurb;
@@ -1396,6 +1410,7 @@ sealed class AppStrings {
   String get actCategoryUpdated;
   String get actCategoryArchived;
   String get actCategoryRestored;
+  String get actCategoryDeleted;
   String get actProductCreated;
   String get actProductUpdated;
   String get actProductArchived;
@@ -2212,6 +2227,8 @@ sealed class AppStrings {
   String get addItem;
   String get rename;
   String get takeOffTheRail;
+  String get putBackOnTheRail;
+  String deleteSectionTitle(String name);
   String get edit;
   String get offSale;
   String get backOnSale;
@@ -2355,6 +2372,7 @@ sealed class AppStrings {
   String get refusalCategoryNameMissing;
   String get refusalSkuTaken;
   String get refusalCategoryUnavailable;
+  String get refusalCategoryHasItems;
 
   /// A save that failed for a reason this screen has no sentence for. Said
   /// instead of leaving the editor frozen on "Saving…".
@@ -2866,6 +2884,11 @@ sealed class AppStrings {
   /// night). [date] is `YYYY-MM-DD`. Sales keep going into it until somebody
   /// closes it from the start screen.
   String dayStillOpenFrom(String date);
+
+  /// The same two facts in a few words, for the status bar under every screen:
+  /// the full sentences above are its tooltip.
+  String dayStillOpenShort(String date);
+  String dayClosedTodayShort(String date);
 
   /// Selling after [date]'s business day was closed: these sales are not filed
   /// under any day.
@@ -3681,8 +3704,12 @@ final class EnStrings extends AppStrings {
   String dayClosed(String gross) => 'Day closed. Gross $gross';
   @override
   String dayStillOpenFrom(String date) =>
-      'The business day of $date is still open. Close it from this screen '
-      'when trading ends.';
+      'The business day of $date is still open. Close it from the start '
+      'screen when trading ends.';
+  @override
+  String dayStillOpenShort(String date) => 'Day $date is still open';
+  @override
+  String dayClosedTodayShort(String date) => 'Day $date was already closed';
   @override
   String dayClosedTodayNotice(String date) =>
       'The business day of $date was already closed. Sales from now are not '
@@ -4116,6 +4143,14 @@ final class EnStrings extends AppStrings {
   @override
   String get signInHelp =>
       'Your name and your PIN. The shift is opened in your name.';
+  @override
+  String get signInOnlyHelp => 'Your name and your PIN.';
+  @override
+  String signedInAs(String name) => 'Signed in as $name';
+  @override
+  String get signOut => 'Sign out';
+  @override
+  String get startShiftToSell => 'Start a shift to sell.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · count what is in the drawer before you start.';
@@ -4607,16 +4642,7 @@ final class EnStrings extends AppStrings {
       'an administrator also locks saved credentials). If it keeps happening, '
       'the application may need reinstalling by someone who can sign it.';
   @override
-  String get machineNowHasDatabase => 'This machine now has a database.';
-  @override
   String get noDatabaseYet => 'This machine has no database yet';
-  @override
-  String get firstInstallHeading => 'FIRST INSTALL ON THIS MACHINE';
-  @override
-  String get firstInstallHelp =>
-      'Creates the database, its tables, the four staff roles and the first '
-      'person. The restaurant\'s name comes from the licence. Safe to run '
-      'twice — anything already there is left alone.';
   @override
   String get adminDatabaseUser => 'Administrator role';
   @override
@@ -4684,23 +4710,41 @@ final class EnStrings extends AppStrings {
       'back office opens on a username and a PIN rather than on a password '
       'nobody was ever told.';
   @override
-  String get firstPerson => 'First person';
+  String get ownerDbAccessTitle => 'Database access';
   @override
-  String get firstPersonHelp =>
-      'The owner. Without somebody to sign in as, the next step has nobody '
-      'to authenticate.';
+  String get ownerDbAccessHelp =>
+      'Enter the PostgreSQL administrator password. It is used once to create '
+      'the XOrder database and is not saved. Ask whoever installed PostgreSQL '
+      'on this computer. If PostgreSQL here has no password, leave it empty.';
   @override
-  String get theirUsername => 'Their username';
+  String adminAccountIs(String user) => 'Account: $user';
   @override
-  String get theirPin => 'Their PIN';
+  String get ownerAccountTitle => 'Create the owner account';
   @override
-  String get theirPinHelp =>
-      'What they type at the till, four to twelve digits. Stored as a '
-      'PBKDF2 hash — it cannot be read back, only replaced.';
+  String get ownerAccountHelp =>
+      'The owner signs in at the till with this username and PIN.';
   @override
-  String get buildingDatabase => 'Building…';
+  String get ownerNameLabel => 'Owner name';
   @override
-  String get buildTheDatabase => 'Build the database';
+  String get usernameLabel => 'Username';
+  @override
+  String get signInPinLabel => 'Sign-in PIN';
+  @override
+  String get confirmPinLabel => 'Confirm PIN';
+  @override
+  String pinExactHelp(int length) =>
+      'Exactly $length digits, typed at the till. It cannot be shown again, '
+      'only replaced.';
+  @override
+  String get pinsDoNotMatch => 'The two PINs are not the same.';
+  @override
+  String get showSecret => 'Show';
+  @override
+  String get hideSecret => 'Hide';
+  @override
+  String get createDatabaseAndContinue => 'Create database and continue';
+  @override
+  String get databaseCreated => 'Database created.';
 
   @override
   String get installLicenceFirst =>
@@ -4708,9 +4752,8 @@ final class EnStrings extends AppStrings {
       'for.';
   @override
   String get firstPersonIncomplete =>
-      'The first person needs a name, a username and a PIN of at least four '
-      'digits. Without one, nobody can sign in to the till that is about to '
-      'exist.';
+      'The owner needs a name, a username and a PIN of exactly four digits. '
+      'Without one, nobody can sign in to the till that is about to exist.';
   @override
   String pinIsExactlyDigits(int length) =>
       'A PIN is exactly $length digits. It is typed on a keypad at the '
@@ -4759,10 +4802,10 @@ final class EnStrings extends AppStrings {
   String ownerAlreadyExists(String name, String username) =>
       '$name is already the owner of this restaurant, and a restaurant has '
       'one — so nobody new was made the owner. To set this till up as $name, '
-      'put their username, $username, in the username field and build the '
+      'put their username, $username, in the Username field and create the '
       'database again; their PIN is left as it is. If the restaurant has a new '
       'owner, disable $name first — in Management, on a till that is already '
-      'running — then build it again.';
+      'running — then create it again.';
   @override
   String grantsApplied(String tillRole, String adminRole) =>
       'Granted $tillRole and $adminRole what each one needs.';
@@ -5628,6 +5671,14 @@ final class EnStrings extends AppStrings {
   String get refusalAccountOtherBranch =>
       'This account belongs to a different branch.';
   @override
+  String get refusalAccountKindMismatch =>
+      'This account\'s type does not fit the payment method: cash goes to a cash account, cards to a bank account, wallets to a wallet account.';
+  @override
+  String get accountsNotMatching => 'Does not match this method';
+  @override
+  String accountsNoMatchingKind(String kind) =>
+      'No $kind account yet. Add one above.';
+  @override
   String get refusalAccountIsDefault =>
       'This account is the default for a payment method. Choose another account for it first.';
   @override
@@ -6328,6 +6379,8 @@ final class EnStrings extends AppStrings {
   String get actCategoryArchived => 'Archived a category';
   @override
   String get actCategoryRestored => 'Restored a category';
+  @override
+  String get actCategoryDeleted => 'Deleted a category';
   @override
   String get actProductCreated => 'Added a menu item';
   @override
@@ -8076,6 +8129,10 @@ final class EnStrings extends AppStrings {
   @override
   String get takeOffTheRail => 'Take off the rail';
   @override
+  String get putBackOnTheRail => 'Put back on the rail';
+  @override
+  String deleteSectionTitle(String name) => 'Delete the section "$name"?';
+  @override
   String get edit => 'Edit';
   @override
   String get offSale => 'Off sale';
@@ -8410,6 +8467,9 @@ final class EnStrings extends AppStrings {
   @override
   String get refusalCategoryUnavailable =>
       'Pick an active category. This one is archived or no longer exists.';
+  @override
+  String get refusalCategoryHasItems =>
+      'This section has items, so it cannot be deleted. Turn it off instead.';
   @override
   String get refusalSaveFailed =>
       'Could not save this item. Check it and try again.';
@@ -9212,8 +9272,12 @@ final class ArStrings extends AppStrings {
   String dayClosed(String gross) => 'أُقفل اليوم. الإجمالي $gross';
   @override
   String dayStillOpenFrom(String date) =>
-      'يوم العمل بتاريخ $date ما زال مفتوحاً. أقفله من هذه الشاشة عند انتهاء '
-      'العمل.';
+      'يوم العمل بتاريخ $date ما زال مفتوحاً. أقفله من الشاشة الرئيسية عند '
+      'انتهاء العمل.';
+  @override
+  String dayStillOpenShort(String date) => 'يوم العمل $date ما زال مفتوحاً';
+  @override
+  String dayClosedTodayShort(String date) => 'يوم العمل $date مُقفل بالفعل';
   @override
   String dayClosedTodayNotice(String date) =>
       'تم إقفال يوم العمل بتاريخ $date بالفعل. المبيعات من الآن لا تُسجَّل '
@@ -9664,6 +9728,14 @@ final class ArStrings extends AppStrings {
   @override
   String get signInHelp =>
       'اسمك ورقمك السري. ستُفتح الوردية باسمك.';
+  @override
+  String get signInOnlyHelp => 'اسمك ورقمك السري.';
+  @override
+  String signedInAs(String name) => 'مسجّل الدخول: $name';
+  @override
+  String get signOut => 'تسجيل الخروج';
+  @override
+  String get startShiftToSell => 'ابدأ وردية لتبدأ البيع.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · اعدّ ما في الدرج قبل أن تبدأ.';
@@ -10135,15 +10207,7 @@ final class ArStrings extends AppStrings {
       'أيضاً بيانات الاعتماد المحفوظة). إذا تكرر الأمر فقد يحتاج التطبيق إلى '
       'إعادة تثبيت من شخص يستطيع توقيعه.';
   @override
-  String get machineNowHasDatabase => 'صار لهذا الجهاز قاعدة بيانات.';
-  @override
   String get noDatabaseYet => 'لا توجد قاعدة بيانات على هذا الجهاز بعد';
-  @override
-  String get firstInstallHeading => 'أول تثبيت على هذا الجهاز';
-  @override
-  String get firstInstallHelp =>
-      'يُنشئ قاعدة البيانات وجداولها وأدوار الموظفين الأربعة وأول شخص. اسم '
-      'المطعم يأتي من الترخيص. تشغيله مرتين آمن — ما هو موجود يُترك كما هو.';
   @override
   String get adminDatabaseUser => 'دور المدير';
   @override
@@ -10207,31 +10271,49 @@ final class ArStrings extends AppStrings {
       'تُستخدم هنا لبناء قاعدة البيانات، ثم تُحفظ على هذا الجهاز ليفتح مكتب '
       'الإدارة باسم مستخدم ورمز، لا بكلمة مرور لم يُخبَر بها أحد.';
   @override
-  String get firstPerson => 'أول شخص';
+  String get ownerDbAccessTitle => 'الوصول إلى قاعدة البيانات';
   @override
-  String get firstPersonHelp =>
-      'المالك. بدون شخص يسجّل الدخول باسمه، لن تجد الخطوة التالية من '
-      'تتحقق منه.';
+  String get ownerDbAccessHelp =>
+      'أدخل كلمة مرور مدير PostgreSQL. تُستخدم مرة واحدة لإنشاء قاعدة بيانات '
+      'XOrder ولا تُحفظ. اسأل من ثبّت PostgreSQL على هذا الكمبيوتر. وإن لم تكن '
+      'لـ PostgreSQL هنا كلمة مرور، فاتركها فارغة.';
   @override
-  String get theirUsername => 'اسم المستخدم';
+  String adminAccountIs(String user) => 'الحساب: $user';
   @override
-  String get theirPin => 'الكود';
+  String get ownerAccountTitle => 'إنشاء حساب المالك';
   @override
-  String get theirPinHelp =>
-      'ما يكتبه على الكاشير، من أربعة إلى اثني عشر رقماً. يُحفظ كبصمة '
-      'PBKDF2 — لا يمكن قراءته، بل استبداله فقط.';
+  String get ownerAccountHelp =>
+      'يسجّل المالك الدخول على الكاشير بهذا الاسم وهذا الرقم السري.';
   @override
-  String get buildingDatabase => 'جارٍ البناء…';
+  String get ownerNameLabel => 'اسم المالك';
   @override
-  String get buildTheDatabase => 'ابنِ قاعدة البيانات';
+  String get usernameLabel => 'اسم المستخدم';
+  @override
+  String get signInPinLabel => 'الرقم السري لتسجيل الدخول';
+  @override
+  String get confirmPinLabel => 'تأكيد الرقم السري';
+  @override
+  String pinExactHelp(int length) =>
+      'بالضبط $length أرقام، يُكتب على الكاشير. لا يمكن عرضه لاحقاً، بل '
+      'استبداله فقط.';
+  @override
+  String get pinsDoNotMatch => 'الرقمان السريان غير متطابقين.';
+  @override
+  String get showSecret => 'إظهار';
+  @override
+  String get hideSecret => 'إخفاء';
+  @override
+  String get createDatabaseAndContinue => 'أنشئ قاعدة البيانات وتابع';
+  @override
+  String get databaseCreated => 'تم إنشاء قاعدة البيانات.';
 
   @override
   String get installLicenceFirst =>
       'ثبّت الترخيص أولاً — فهو الذي يسمّي المطعم صاحب قاعدة البيانات هذه.';
   @override
   String get firstPersonIncomplete =>
-      'أول شخص يحتاج اسماً واسم مستخدم وكوداً من أربعة أرقام على الأقل. بدونه '
-      'لن يستطيع أحد تسجيل الدخول إلى الكاشير الذي على وشك أن يوجد.';
+      'المالك يحتاج اسماً واسم مستخدم ورقماً سرياً من أربعة أرقام بالضبط. '
+      'بدونه لن يستطيع أحد تسجيل الدخول إلى الكاشير الذي على وشك أن يوجد.';
   @override
   String pinIsExactlyDigits(int length) =>
       'الكود $length أرقام بالضبط. يُكتب على لوحة أرقام عند الكاونتر تُرسله عند '
@@ -10278,9 +10360,9 @@ final class ArStrings extends AppStrings {
   String ownerAlreadyExists(String name, String username) =>
       '$name هو مالك هذا المطعم بالفعل، وللمطعم مالك واحد فقط — لذلك لم '
       'يُعيَّن مالك جديد. لإعداد هذا الجهاز باسم $name، اكتب اسم المستخدم '
-      'الخاص به، $username، في خانة اسم المستخدم ثم ابنِ قاعدة البيانات مرة '
-      'أخرى؛ ويبقى الكود كما هو. وإن كان للمطعم مالك جديد، فعطّل $name أولاً — '
-      'من الإدارة، على جهاز يعمل بالفعل — ثم ابنِها مرة أخرى.';
+      'الخاص به، $username، في خانة اسم المستخدم ثم أنشئ قاعدة البيانات مرة '
+      'أخرى؛ ويبقى الرقم السري كما هو. وإن كان للمطعم مالك جديد، فعطّل $name '
+      'أولاً — من الإدارة، على جهاز يعمل بالفعل — ثم أنشئها مرة أخرى.';
   @override
   String grantsApplied(String tillRole, String adminRole) =>
       'مُنح $tillRole و$adminRole ما يحتاجه كل منهما.';
@@ -11113,6 +11195,14 @@ final class ArStrings extends AppStrings {
   String get refusalAccountOtherBranch =>
       'هذا الحساب يخص فرعًا آخر.';
   @override
+  String get refusalAccountKindMismatch =>
+      'نوع هذا الحساب لا يناسب وسيلة الدفع: النقدي في حساب نقدي، والبطاقة في حساب بنكي، والمحفظة في حساب محفظة.';
+  @override
+  String get accountsNotMatching => 'لا يناسب وسيلة الدفع';
+  @override
+  String accountsNoMatchingKind(String kind) =>
+      'لا يوجد حساب $kind بعد. أضف واحدًا أعلاه.';
+  @override
   String get refusalAccountIsDefault =>
       'هذا الحساب هو الافتراضي لوسيلة دفع. اختر حسابًا آخر لها أولًا.';
   @override
@@ -11799,6 +11889,8 @@ final class ArStrings extends AppStrings {
   String get actCategoryArchived => 'أرشفة تصنيف';
   @override
   String get actCategoryRestored => 'استعادة تصنيف';
+  @override
+  String get actCategoryDeleted => 'حذف تصنيف';
   @override
   String get actProductCreated => 'إضافة صنف';
   @override
@@ -13495,6 +13587,10 @@ final class ArStrings extends AppStrings {
   @override
   String get takeOffTheRail => 'إخفاء من الشريط';
   @override
+  String get putBackOnTheRail => 'إظهار في الشريط';
+  @override
+  String deleteSectionTitle(String name) => 'حذف القسم «$name»؟';
+  @override
   String get edit => 'تعديل';
   @override
   String get offSale => 'إيقاف البيع';
@@ -13823,6 +13919,9 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalCategoryUnavailable =>
       'اختر قسمًا نشطًا. هذا القسم مؤرشف أو لم يعد موجودًا.';
+  @override
+  String get refusalCategoryHasItems =>
+      'في هذا القسم أصناف، لذلك لا يمكن حذفه. أوقفه بدلًا من ذلك.';
   @override
   String get refusalSaveFailed => 'تعذّر حفظ هذا الصنف. راجعه وحاول مرة أخرى.';
 }

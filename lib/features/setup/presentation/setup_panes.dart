@@ -119,6 +119,7 @@ class _Field extends StatefulWidget {
     this.mono = false,
     this.readOnly = false,
     this.error,
+    this.ltr = false,
   });
 
   final String label;
@@ -126,6 +127,10 @@ class _Field extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final String? hint;
   final String? help;
+
+  /// A technical value (a username, an address) that reads left to right even
+  /// in an Arabic screen. Off by default: other fields keep how they looked.
+  final bool ltr;
 
   /// Why this value cannot be used, shown in place of [help].
   ///
@@ -203,6 +208,8 @@ class _FieldState extends State<_Field> {
         focusNode: _focus,
         onChanged: widget.onChanged,
         readOnly: widget.readOnly,
+        textDirection: widget.ltr ? TextDirection.ltr : null,
+        textAlign: widget.ltr ? TextAlign.left : TextAlign.start,
         style: widget.mono
             ? PosText.mono(
                 size: 14,
@@ -1106,6 +1113,9 @@ class _PasswordField extends StatefulWidget {
     required this.field,
     this.label,
     this.help,
+    this.revealable = false,
+    this.error,
+    this.counter,
   });
 
   final String value;
@@ -1121,6 +1131,17 @@ class _PasswordField extends StatefulWidget {
   final String? label;
   final String? help;
 
+  /// A Show / Hide control. Off by default so no other screen changes; the
+  /// first-install step turns it on, where a PIN that cannot be read back is
+  /// typed once and must be right.
+  final bool revealable;
+
+  /// Why this value cannot be used, shown in place of [help].
+  final String? error;
+
+  /// A short running count (`2 / 4`), set left to right beside the help.
+  final String? counter;
+
   @override
   State<_PasswordField> createState() => _PasswordFieldState();
 }
@@ -1128,6 +1149,7 @@ class _PasswordField extends StatefulWidget {
 class _PasswordFieldState extends State<_PasswordField> {
   late final TextEditingController _controller;
   final _focus = FocusNode();
+  bool _shown = false;
 
   @override
   void initState() {
@@ -1158,28 +1180,77 @@ class _PasswordFieldState extends State<_PasswordField> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      MicroLabel(widget.label ?? context.strings.password),
-      const SizedBox(height: PosSpace.sm),
-      TextFormField(
-        key: ValueKey('${widget.field}:password'),
-        controller: _controller,
-        focusNode: _focus,
-        onChanged: widget.onChanged,
-        obscureText: true,
-        style: PosText.ui(color: context.pos.inkWarm, size: 14),
-      ),
-      if (widget.help != null) ...[
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MicroLabel(widget.label ?? strings.password),
         const SizedBox(height: PosSpace.sm),
-        Text(
-          widget.help!,
-          style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+        TextFormField(
+          key: ValueKey('${widget.field}:password'),
+          controller: _controller,
+          focusNode: _focus,
+          onChanged: widget.onChanged,
+          obscureText: !(widget.revealable && _shown),
+          // A password and a PIN are read left to right whatever the language.
+          textDirection: widget.revealable ? TextDirection.ltr : null,
+          textAlign: widget.revealable ? TextAlign.left : TextAlign.start,
+          style: PosText.ui(color: context.pos.inkWarm, size: 14),
+          decoration: widget.revealable
+              ? InputDecoration(
+                  suffixIcon: IconButton(
+                    key: ValueKey('${widget.field}:toggle'),
+                    tooltip: _shown ? strings.hideSecret : strings.showSecret,
+                    icon: Icon(
+                      _shown
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 20,
+                      color: context.pos.muted,
+                    ),
+                    onPressed: () => setState(() => _shown = !_shown),
+                  ),
+                )
+              : null,
         ),
+        if (widget.error != null) ...[
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            widget.error!,
+            key: ValueKey('${widget.field}:error'),
+            style: PosText.ui(size: 12, color: context.pos.danger, height: 1.5),
+          ),
+        ] else if (widget.help != null || widget.counter != null) ...[
+          const SizedBox(height: PosSpace.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.help ?? '',
+                  style: PosText.ui(
+                    size: 12,
+                    color: context.pos.muted,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              if (widget.counter != null) ...[
+                const SizedBox(width: PosSpace.md),
+                Text(
+                  widget.counter!,
+                  key: ValueKey('${widget.field}:counter'),
+                  textDirection: TextDirection.ltr,
+                  style: PosText.mono(size: 12, color: context.pos.muted),
+                ),
+              ],
+            ],
+          ),
+        ],
       ],
-    ],
-  );
+    );
+  }
 }
 
 class _BranchPane extends ConsumerWidget {
@@ -2088,21 +2159,20 @@ class _SummaryPane extends ConsumerWidget {
   }
 }
 
-/// Build this machine's database from the wizard.
+/// Build this machine's database from the wizard (pos-setup-owner-step).
 ///
 /// The offline path used to begin at a command line — `PosMigrator` ran only on
 /// the cloud claim path, so an offline restaurant needed somebody at a terminal
 /// with `bin/pos_migrate.dart` before the wizard could do anything at all. This
 /// is that command, on the screen the operator is already looking at.
 ///
-/// Shown open, because this IS the step now.
-///
-/// It used to sit collapsed behind a "this machine has no database yet" button,
-/// at the foot of the connection screen, so that a till being re-installed
-/// against an existing database was not invited to re-run it. That reasoning
-/// belonged to the old position. As the whole content of the first-administrator
-/// step, a lone button — whose label reads as a status line rather than an
-/// action — is the step appearing to have nothing on it.
+/// **Two screens, one step, one button.** The first asks for the one thing a
+/// technician knows (the password that may create a database) and says in plain
+/// words why; the second asks the owner for a name, a username and a PIN typed
+/// twice. The wizard's own button does the work — Continue on the first,
+/// "Create database and continue" on the second, Continue again once it is
+/// built — so there is never a second button beside a dimmed one. Nothing here
+/// says PostgreSQL role, hash or PBKDF2 to somebody who only wants to sell.
 class _FirstInstallFields extends ConsumerStatefulWidget {
   const _FirstInstallFields({required this.draft});
 
@@ -2119,85 +2189,115 @@ class _FirstInstallFieldsState extends ConsumerState<_FirstInstallFields> {
     final s = context.strings;
     final draft = widget.draft;
     final controller = ref.read(setupProvider.notifier);
+    final pos = context.pos;
+
+    Text title(String text) => Text(
+      text,
+      style: PosText.ui(size: 18, weight: FontWeight.w800, color: pos.ink),
+    );
+    Text explain(String text) =>
+        Text(text, style: PosText.ui(size: 13, color: pos.body, height: 1.6));
 
     if (draft.bootstrapped) {
       return Container(
+        key: const Key('first-install-done'),
         padding: const EdgeInsets.all(PosSpace.md),
         decoration: BoxDecoration(
-          color: context.pos.accentSoft,
-          border: Border.all(color: context.pos.ok),
+          color: pos.accentSoft,
+          border: Border.all(color: pos.ok),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              s.machineNowHasDatabase,
+              s.databaseCreated,
               style: PosText.ui(
-                size: 13,
+                size: 14,
                 weight: FontWeight.w700,
-                color: context.pos.ink,
+                color: pos.ink,
               ),
             ),
             const SizedBox(height: PosSpace.sm),
             Text(
               draft.bootstrapReport ?? '',
-              style: PosText.ui(size: 12.5, color: context.pos.body, height: 1.6),
+              style: PosText.ui(size: 12.5, color: pos.body, height: 1.6),
             ),
           ],
         ),
       );
     }
 
+    if (draft.ownerPage == OwnerPage.databaseAccess) {
+      return Column(
+        key: const Key('first-install-database-access'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          title(s.ownerDbAccessTitle),
+          const SizedBox(height: PosSpace.sm),
+          explain(s.ownerDbAccessHelp),
+          const SizedBox(height: PosSpace.xl),
+          _PasswordField(
+            field: 'admin',
+            value: draft.adminDatabasePassword,
+            onChanged: controller.setAdminDatabasePassword,
+            revealable: true,
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            s.adminAccountIs(draft.deployment.adminDatabaseUser),
+            textDirection: TextDirection.ltr,
+            style: PosText.mono(size: 12, color: pos.muted),
+          ),
+        ],
+      );
+    }
+
+    // Said the moment a typed digit can no longer be the PIN above it, and
+    // again when the button is pressed — before anything is built.
+    final confirm = draft.ownerPinConfirm;
+    final mismatch =
+        confirm.isNotEmpty && !draft.ownerPin.startsWith(confirm);
+
     return Column(
+      key: const Key('first-install-owner-account'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MicroLabel(s.firstInstallHeading),
+        title(s.ownerAccountTitle),
         const SizedBox(height: PosSpace.sm),
-        Text(
-          s.firstInstallHelp,
-          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
-        ),
-        const SizedBox(height: PosSpace.lg),
-        _PasswordField(
-          field: 'admin',
-          label: s.adminPasswordFor(draft.deployment.adminDatabaseUser),
-          value: draft.adminDatabasePassword,
-          onChanged: controller.setAdminDatabasePassword,
-          help: s.adminPasswordHelp,
-        ),
-        const SizedBox(height: PosSpace.lg),
+        explain(s.ownerAccountHelp),
+        const SizedBox(height: PosSpace.xl),
         _Field(
-          label: s.firstPerson,
+          label: s.ownerNameLabel,
           value: draft.ownerName,
           onChanged: controller.setOwnerName,
-          help: s.firstPersonHelp,
         ),
         const SizedBox(height: PosSpace.md),
         _Field(
-          label: s.theirUsername,
+          label: s.usernameLabel,
           value: draft.ownerUsername,
           mono: true,
+          ltr: true,
           hint: 'owner',
           onChanged: controller.setOwnerUsername,
         ),
         const SizedBox(height: PosSpace.md),
         _PasswordField(
           field: 'owner-pin',
-          label: s.theirPin,
+          label: s.signInPinLabel,
           value: draft.ownerPin,
           onChanged: controller.setOwnerPin,
-          help: s.theirPinHelp,
+          revealable: true,
+          help: s.pinExactHelp(SetupDraft.pinLength),
+          counter: '${draft.ownerPin.length} / ${SetupDraft.pinLength}',
         ),
-        const SizedBox(height: PosSpace.xl),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: PosButton(
-            label: draft.busy ? s.buildingDatabase : s.buildTheDatabase,
-            background: context.pos.ink,
-            foreground: context.pos.onInk,
-            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-            onPressed: draft.busy ? null : controller.bootstrapDatabase,
-          ),
+        const SizedBox(height: PosSpace.md),
+        _PasswordField(
+          field: 'owner-pin-confirm',
+          label: s.confirmPinLabel,
+          value: draft.ownerPinConfirm,
+          onChanged: controller.setOwnerPinConfirm,
+          revealable: true,
+          error: mismatch ? s.pinsDoNotMatch : null,
         ),
       ],
     );

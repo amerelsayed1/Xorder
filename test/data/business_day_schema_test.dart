@@ -65,7 +65,7 @@ void main() {
     final rows = await db.query(
       pg.config,
       'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-      '  shift_id, kind, amount_minor, staff_id) '
+      '  shift_id, kind, amount_minor, user_id) '
       'VALUES (@r, @b, @t::uuid, @s, @kind, @amount, @staff) RETURNING id',
       parameters: {
         'r': restaurantId,
@@ -138,7 +138,7 @@ void main() {
     staffId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_staff (restaurant_id, branch_id, name, '
+                  'INSERT INTO pos_users (restaurant_id, branch_id, name, '
                   "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
                   "  'nour', 'salt', 'hash') RETURNING id",
                   parameters: {'r': restaurantId, 'b': branchId},
@@ -282,7 +282,7 @@ void main() {
         db.query(
           pg.config,
           'INSERT INTO pos_cash_movements (restaurant_id, branch_id, '
-          "  terminal_id, kind, amount_minor, staff_id) "
+          "  terminal_id, kind, amount_minor, user_id) "
           "VALUES (@r, @b, @t::uuid, 'pay_in', 1000, @staff)",
           parameters: {
             'r': restaurantId,
@@ -312,7 +312,7 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'DELETE FROM pos_staff WHERE id = @id',
+          'DELETE FROM pos_users WHERE id = @id',
           parameters: {'id': staffId},
         ),
         throwsA(anything),

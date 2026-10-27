@@ -5,25 +5,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
-import '../../core/money/money.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../admin/presentation/management_eta_pane.dart' show etaProblemText;
 import '../admin/presentation/management_screen.dart' show ManagementPane;
-import '../../domain/models/branch_sales.dart' show businessDayWire;
 import '../../domain/repositories/repositories.dart';
-import '../../domain/services/business_day_service.dart';
 import '../licensing/domain/license.dart';
-import '../cash/presentation/day_close_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
 import 'database_unavailable.dart';
 
 /// Start screen — terminal identity and opening the shift.
 ///
 /// Full-screen shell ground, one centred column at most 520 wide. Tap or Enter
-/// starts the shift; the real implementation opens a `Shift` record with the
-/// counted float (POS-BE-009, still PROPOSED).
+/// signs in (name and PIN). **Signing in does not open a shift**: that is a
+/// button on Home, for whoever may (pos-signin-first-home), so a manager can
+/// close the day without ever opening a drawer.
 class StartScreen extends ConsumerStatefulWidget {
   const StartScreen({
     super.key,
@@ -64,23 +61,15 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     Future.microtask(() => ref.read(cloudSyncProvider)?.nudge());
   }
 
-  /// Open a shift, then go selling.
+  /// Sign in, then go to Home (or straight to selling, for a branch that sells
+  /// one way with a shift already open — the router decides).
   ///
-  /// A shift already open is resumed rather than replaced: a till restarted
-  /// mid-service must come back to the same drawer, because the drawer never
-  /// closed. Only a genuinely new shift asks who is on the till and what is in
-  /// it.
-  Future<void> _start() async {
-    final licence = ref.read(licenceEntitlementProvider).valueOrNull;
-    if (licence != null && !licence.canOpenShift) return;
-
-    if (ref.read(shiftProvider).valueOrNull != null) {
-      widget.onStart();
-      return;
-    }
-
-    final opened = await OpenShiftDialog.show(context);
-    if (opened && mounted) widget.onStart();
+  /// **Not gated by the licence.** An expired licence blocks opening the *next
+  /// shift*, which is Home's button; a manager must still be able to get in to
+  /// cash up, reprint and close the day.
+  Future<void> _signIn() async {
+    final signedIn = await SignInDialog.show(context);
+    if (signedIn && mounted) widget.onStart();
   }
 
   @override
@@ -116,7 +105,7 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             actions: {
               ActivateIntent: CallbackAction<ActivateIntent>(
                 onInvoke: (_) {
-                  _start();
+                  _signIn();
                   return null;
                 },
               ),
@@ -129,13 +118,7 @@ class _StartScreenState extends ConsumerState<StartScreen> {
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 520),
-                        child: _body(
-                          context,
-                          data,
-                          licence,
-                          terminal,
-                          ref.watch(shiftProvider).valueOrNull,
-                        ),
+                        child: _body(context, data, licence, terminal),
                       ),
                     ),
                   ),
@@ -153,7 +136,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     PosSession session,
     LicenseEntitlement? licence,
     TerminalProfile terminal,
-    PosShift? openShift,
   ) {
     final strings = context.strings;
 
@@ -237,10 +219,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             onPressed: widget.onManageLicence,
           ),
         ],
-        if (ref.watch(dayNoticeProvider).valueOrNull case final notice?) ...[
-          const SizedBox(height: PosSpace.lg),
-          _dayNoticeBanner(notice, pos: context.pos),
-        ],
         if (etaProblemText(strings, ref.watch(etaFilingProblemProvider))
             case final problem?) ...[
           const SizedBox(height: PosSpace.lg),
@@ -272,65 +250,25 @@ class _StartScreenState extends ConsumerState<StartScreen> {
         ],
         const SizedBox(height: PosSpace.s28),
         PosButton(
-          label: blocked
-              ? strings.licenceRequired
-              : (openShift == null
-                    ? strings.startShift
-                    : strings.resumeShift(openShift.reference)),
+          key: const Key('start-sign-in'),
+          label: strings.signIn,
           height: 72,
           alignLeft: true,
-          background: blocked ? context.pos.shellCard : context.pos.accent,
-          foreground: blocked ? context.pos.shellMuted : Colors.white,
+          background: context.pos.accent,
+          foreground: Colors.white,
           fontSize: 17,
           fontWeight: FontWeight.w800,
           padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-          trailing: blocked
-              ? null
-              : KeyChip(strings.enterKeyCap, onShell: true),
-          onPressed: blocked ? null : _start,
+          trailing: KeyChip(strings.enterKeyCap, onShell: true),
+          onPressed: _signIn,
         ),
         const SizedBox(height: PosSpace.md),
         Text(
-          blocked
-              ? strings.cashUpStillAvailable
-              : (openShift == null
-                    ? strings.startShiftHelp
-                    : strings.resumeShiftHelp(openShift.openedByName)),
+          strings.signInOnlyHelp,
           textAlign: TextAlign.center,
           style: PosText.ui(size: 12, color: context.pos.shellMuted),
         ),
-        const SizedBox(height: PosSpace.s28),
-        // Ending the night. Here rather than on the sale screen because it is
-        // the last thing anybody does, and because a trading day is a property
-        // of the branch rather than of the till somebody happens to be standing
-        // at. Only shown while one is open.
-        //
-        // Resetting the terminal is not beside it: that is the back office's
-        // (System › Terminal, behind `terminal.manage`), because a cashier
-        // opens the till from here and must not be one tap from wiping it.
-        if (ref.watch(businessDayProvider).valueOrNull != null)
-          Align(
-            child: PosButton(
-              label: context.strings.dayCloseTitle,
-              height: PosSize.minTouchTarget,
-              foreground: context.pos.shellMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              onPressed: _closeDay,
-            ),
-          ),
       ],
-    );
-  }
-
-  Future<void> _closeDay() async {
-    final closed = await DayCloseDialog.show(context);
-    if (closed == null || !mounted) return;
-    posToast(
-      context,
-      context.strings.dayClosed(
-        (closed.gross ?? Money.zero).format(withCurrency: true),
-      ),
     );
   }
 
@@ -385,31 +323,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  /// A day left open from an earlier date, or sales after the date was closed.
-  /// A warning, not a refusal: nothing here stops the till selling.
-  Widget _dayNoticeBanner(DayNotice notice, {required PosPalette pos}) {
-    final strings = context.strings;
-    final date = businessDayWire(notice.date);
-    return Container(
-      key: const Key('start-day-notice'),
-      padding: const EdgeInsets.all(PosSpace.md),
-      decoration: BoxDecoration(
-        color: pos.offlinePillBg,
-        border: Border.all(color: pos.warn),
-      ),
-      child: Text(
-        switch (notice.kind) {
-          DayNoticeKind.staleOpenDay => strings.dayStillOpenFrom(date),
-          DayNoticeKind.todayAlreadyClosed => strings.dayClosedTodayNotice(
-            date,
-          ),
-        },
-        textAlign: TextAlign.center,
-        style: PosText.ui(size: 12.5, color: pos.offlinePillText, height: 1.5),
       ),
     );
   }

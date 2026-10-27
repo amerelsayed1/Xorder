@@ -174,7 +174,7 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
         '  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
           'r': restaurantId,
@@ -277,7 +277,7 @@ void main() {
   Future<List<List<Object?>>> drawerMovements() async {
     final rows = await db.query(
       pg.config,
-      'SELECT kind, amount_minor, note, reason_id, staff_id, terminal_id::text '
+      'SELECT kind, amount_minor, note, reason_id, user_id, terminal_id::text '
       'FROM pos_cash_movements WHERE shift_id = @s ORDER BY id',
       parameters: {'s': openShift.id},
     );
@@ -801,7 +801,7 @@ void main() {
       final payIn = (await db.query(
         pg.config,
         'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-        '  shift_id, kind, amount_minor, staff_id) '
+        '  shift_id, kind, amount_minor, user_id) '
         "VALUES (@r, @b, @t::uuid, @s, 'pay_in', 50000, @staff) RETURNING id",
         parameters: {
           'r': restaurantId,
@@ -833,7 +833,7 @@ void main() {
       final payOut = (await db.query(
         pg.config,
         'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-        '  shift_id, kind, amount_minor, staff_id) '
+        '  shift_id, kind, amount_minor, user_id) '
         "VALUES (@r, @b, @t::uuid, @s, 'pay_out', 50000, @staff) RETURNING id",
         parameters: {
           'r': restaurantId,

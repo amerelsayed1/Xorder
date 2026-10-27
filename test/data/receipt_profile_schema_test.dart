@@ -61,7 +61,7 @@ void main() {
     Future<PosStaff> staff(String name, String username, Set<String> caps) async {
       final rows = await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
         "pin_salt, pin_hash, capabilities) VALUES (@r, @b, @n, @u, 'x', 'y', @c) "
         'RETURNING id',
         parameters: {

@@ -86,7 +86,7 @@ void main() {
 
     final rows = await db.query(
       pg.config,
-      'SELECT name, capabilities FROM pos_staff WHERE restaurant_id = @r ORDER BY id',
+      'SELECT name, capabilities FROM pos_users WHERE restaurant_id = @r ORDER BY id',
       parameters: {'r': restaurantId},
     );
 
@@ -139,7 +139,7 @@ void main() {
     // nobody who could grant it.
     final assigned = await db.query(
       pg.config,
-      'SELECT s.name, r.code FROM pos_staff s JOIN pos_roles r ON r.id = s.role_id '
+      'SELECT s.name, r.code FROM pos_users s JOIN pos_roles r ON r.id = s.role_id '
       'WHERE s.restaurant_id = @r ORDER BY s.id',
       parameters: {'r': restaurantId},
     );

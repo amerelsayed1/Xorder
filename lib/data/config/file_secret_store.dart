@@ -47,7 +47,7 @@ class FileSecretStore implements PosDbSecretStore {
   /// The read-only backup account's password (`pos_backup`).
   ///
   /// Kept beside the till's because it reads every row and writes none. Every
-  /// row includes the `pos_staff` PIN hashes, which the till's own role can
+  /// row includes the `pos_users` PIN hashes, which the till's own role can
   /// also read (SECURITY_AND_RECOVERY §3).
   static const backupPasswordKey = 'pos_backup_database_password';
 

@@ -275,7 +275,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_staff_id, actor_name, action,
+          (restaurant_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
         VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
@@ -400,7 +400,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_staff_id, actor_name, action,
+          (restaurant_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, before_value, after_value)
         VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
                 @before::jsonb, @after::jsonb)

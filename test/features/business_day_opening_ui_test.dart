@@ -14,6 +14,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/services/business_day_service.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
+import 'package:xorder_pos/features/home/home_screen.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
 import '../support/fakes.dart';
@@ -109,15 +110,28 @@ void main() {
     onManage: (_) {},
   );
 
-  Future<void> openShift(WidgetTester tester) async {
-    await tester.tap(find.textContaining('Start shift'));
+  /// Home is where a shift is started now (pos-signin-first-home): somebody has
+  /// already signed in at Start, so what is asked here is the float.
+  Widget homeScreen() => HomeScreen(
+    onPick: (_) {},
+    onBack: () {},
+    onShiftOpened: () => events.add('start'),
+  );
+
+  Future<void> openShift(WidgetTester tester, ProviderContainer container) async {
+    container
+        .read(signedInStaffProvider.notifier)
+        .signIn(
+          const PosStaff(
+            id: 1,
+            name: 'Rana A.',
+            username: 'rana',
+            role: _cashier,
+          ),
+        );
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'rana');
-    await tester.pump();
-    for (final digit in ['1', '2', '3', '4']) {
-      await tester.tap(find.text(digit));
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.byKey(const Key('home-start-shift')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Open shift'));
     await tester.pumpAndSettle();
   }
@@ -128,8 +142,8 @@ void main() {
     ) async {
       // The trigger stamps a shift from the open day at INSERT time; a day
       // opened after the shift would leave the shift unstamped.
-      await boot(tester, home: startScreen());
-      await openShift(tester);
+      final container = await boot(tester, home: homeScreen());
+      await openShift(tester, container);
 
       expect(events, ['day:rana', 'shift', 'start']);
     });
@@ -138,15 +152,15 @@ void main() {
       tester,
     ) async {
       // The till never stops selling because of the day (AC-4).
-      await boot(
+      final container = await boot(
         tester,
-        home: startScreen(),
+        home: homeScreen(),
         result: const BusinessDayResult(
           BusinessDayOutcome.failed,
           error: 'database down',
         ),
       );
-      await openShift(tester);
+      await openShift(tester, container);
 
       expect(events, containsAllInOrder(['day:rana', 'shift', 'start']));
     });
@@ -154,12 +168,12 @@ void main() {
     testWidgets('a date that was already closed does not stop it either', (
       tester,
     ) async {
-      await boot(
+      final container = await boot(
         tester,
-        home: startScreen(),
+        home: homeScreen(),
         result: const BusinessDayResult(BusinessDayOutcome.dateAlreadyClosed),
       );
-      await openShift(tester);
+      await openShift(tester, container);
 
       expect(events, containsAllInOrder(['day:rana', 'shift', 'start']));
     });
@@ -228,49 +242,16 @@ void main() {
     });
   });
 
-  group('the start screen says what is wrong with the day', () {
-    testWidgets('a day left open from an earlier date', (tester) async {
+  group('what is wrong with the day is said in the status bar, not here', () {
+    testWidgets('the start screen carries no banner for it', (tester) async {
       await boot(
         tester,
         home: startScreen(),
         notice: DayNotice(DayNoticeKind.staleOpenDay, DateTime(2026, 10, 22)),
       );
-
-      expect(find.byKey(const Key('start-day-notice')), findsOneWidget);
-      expect(find.text(en.dayStillOpenFrom('2026-10-22')), findsOneWidget);
-    });
-
-    testWidgets('sales after the date was closed', (tester) async {
-      await boot(
-        tester,
-        home: startScreen(),
-        notice: DayNotice(
-          DayNoticeKind.todayAlreadyClosed,
-          DateTime(2026, 10, 24),
-        ),
-      );
-
-      expect(find.text(en.dayClosedTodayNotice('2026-10-24')), findsOneWidget);
-    });
-
-    testWidgets('and says it in Arabic on an Arabic till', (tester) async {
-      await boot(
-        tester,
-        home: startScreen(),
-        arabic: true,
-        notice: DayNotice(DayNoticeKind.staleOpenDay, DateTime(2026, 10, 22)),
-      );
-
-      expect(
-        find.text(const ArStrings().dayStillOpenFrom('2026-10-22')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('nothing to say, nothing shown', (tester) async {
-      await boot(tester, home: startScreen());
 
       expect(find.byKey(const Key('start-day-notice')), findsNothing);
+      expect(find.text(en.dayStillOpenFrom('2026-10-22')), findsNothing);
     });
   });
 
@@ -279,7 +260,11 @@ void main() {
     for (final s in [en, ar]) {
       expect(s.dayStillOpenFrom('2026-10-22'), contains('2026-10-22'));
       expect(s.dayClosedTodayNotice('2026-10-24'), contains('2026-10-24'));
+      expect(s.dayStillOpenShort('2026-10-22'), contains('2026-10-22'));
+      expect(s.dayClosedTodayShort('2026-10-24'), contains('2026-10-24'));
     }
+    expect(ar.dayStillOpenShort('x'), isNot(en.dayStillOpenShort('x')));
+    expect(ar.dayClosedTodayShort('x'), isNot(en.dayClosedTodayShort('x')));
     expect(ar.dayStillOpenFrom('x'), isNot(en.dayStillOpenFrom('x')));
     expect(ar.dayClosedTodayNotice('x'), isNot(en.dayClosedTodayNotice('x')));
   });

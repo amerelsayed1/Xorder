@@ -4742,6 +4742,195 @@ const posMigrations = <PosMigration>[
   PosMigration(61, 'a table need not say how many it seats', [
     'ALTER TABLE pos_dining_tables ALTER COLUMN seats DROP NOT NULL',
   ]),
+  // `pos_staff` becomes `pos_users`, and everything named after it follows:
+  // the two per-person tables, the `staff_id` / `actor_staff_id` columns, the
+  // id sequence, auto-named constraints, and the three owner-guard triggers.
+  //
+  // **A rename, not a copy.** Every row, foreign key, index, grant and
+  // sequence value is kept, because `ALTER ... RENAME` only changes a name in
+  // the catalogue: no rewrite, no scan, an ACCESS EXCLUSIVE lock held for the
+  // length of one catalogue update. The whole migration is one transaction
+  // (see `PosMigrator`), so a failure leaves the old names in place.
+  //
+  // **What does not follow, on purpose:**
+  //  * `staff.manage` and every other capability code: they are rows in
+  //    `pos_roles` and strings in the platform's role bundle.
+  //  * `pos_permission_limits.subject_type = 'staff'`: a stored value, and a
+  //    discriminator the platform may mirror.
+  //  * JSON keys inside `pos_parked_tickets.payload` (`staff_id`,
+  //    `by_staff_id`): documents written by older builds that a newer till
+  //    must still read.
+  //
+  // **Rollout.** A till on an older binary against a database that has run
+  // this fails on its first query: `pos_staff` no longer exists. Upgrade every
+  // till on the branch together, and migrate through the newer binary first —
+  // the same constraint every migration here carries, only louder.
+  PosMigration(62, 'pos_staff becomes pos_users', [
+    'ALTER TABLE pos_staff RENAME TO pos_users',
+    'ALTER TABLE pos_staff_roles RENAME TO pos_user_roles',
+    'ALTER TABLE pos_staff_permission_overrides '
+        'RENAME TO pos_user_permission_overrides',
+    'ALTER SEQUENCE pos_staff_id_seq RENAME TO pos_users_id_seq',
+
+    'ALTER TABLE pos_user_roles RENAME COLUMN staff_id TO user_id',
+    'ALTER TABLE pos_user_permission_overrides '
+        'RENAME COLUMN staff_id TO user_id',
+    'ALTER TABLE pos_cash_movements RENAME COLUMN staff_id TO user_id',
+    'ALTER TABLE pos_order_line_events RENAME COLUMN staff_id TO user_id',
+    'ALTER TABLE pos_audit_events '
+        'RENAME COLUMN actor_staff_id TO actor_user_id',
+
+    // Constraint and index names the database generated (or that this file
+    // chose) with `staff` in them. Looked up rather than listed, because the
+    // auto-generated ones (`pos_staff_pkey`, `..._staff_id_fkey`) depend on
+    // what the table was created with and a name that is not there must not
+    // fail the migration. A primary key or unique constraint carries its index
+    // with it.
+    r'''
+    DO $rename$
+    DECLARE
+      c record;
+      renamed text;
+    BEGIN
+      FOR c IN
+        SELECT con.conrelid::regclass::text AS tbl, con.conname
+          FROM pg_constraint con
+         WHERE con.conrelid IN (
+                 'pos_users'::regclass,
+                 'pos_user_roles'::regclass,
+                 'pos_user_permission_overrides'::regclass,
+                 'pos_cash_movements'::regclass,
+                 'pos_order_line_events'::regclass)
+           AND con.conname LIKE '%staff%'
+      LOOP
+        renamed := replace(replace(replace(replace(replace(c.conname,
+          'pos_staff_roles', 'pos_user_roles'),
+          'pos_staff_permission_overrides', 'pos_user_permission_overrides'),
+          'pos_staff_overrides', 'pos_user_overrides'),
+          'staff_id', 'user_id'),
+          'pos_staff', 'pos_users');
+        EXECUTE format('ALTER TABLE %s RENAME CONSTRAINT %I TO %I',
+                       c.tbl, c.conname, renamed);
+      END LOOP;
+    END $rename$
+    ''',
+
+    // The trigger functions name the table and the column inside their bodies,
+    // which PostgreSQL resolves when they run, not when they are created — so
+    // after the renames above they would fail on the next write to `pos_users`.
+    // Renamed and re-created here with the new names; the triggers follow their
+    // function by OID and need only a new name of their own. Bodies are
+    // otherwise exactly migration 42's.
+    'ALTER FUNCTION pos_staff_one_owner() RENAME TO pos_users_one_owner',
+    'ALTER FUNCTION pos_staff_roles_not_owner() '
+        'RENAME TO pos_user_roles_not_owner',
+    'ALTER FUNCTION pos_staff_overrides_not_owner() '
+        'RENAME TO pos_user_overrides_not_owner',
+    'ALTER TRIGGER pos_staff_one_owner_insert ON pos_users '
+        'RENAME TO pos_users_one_owner_insert',
+    'ALTER TRIGGER pos_staff_one_owner_update ON pos_users '
+        'RENAME TO pos_users_one_owner_update',
+    'ALTER TRIGGER pos_staff_roles_no_owner ON pos_user_roles '
+        'RENAME TO pos_user_roles_no_owner',
+    'ALTER TRIGGER pos_staff_overrides_no_owner '
+        'ON pos_user_permission_overrides '
+        'RENAME TO pos_user_overrides_no_owner',
+    r'''
+    CREATE OR REPLACE FUNCTION pos_users_one_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      owner_role bigint;
+      incumbent  text;
+    BEGIN
+      IF NEW.role_id IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      SELECT id INTO owner_role FROM pos_roles
+       WHERE id = NEW.role_id AND code = 'owner'
+         FOR NO KEY UPDATE;
+      IF owner_role IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      IF TG_OP = 'UPDATE' AND OLD.role_id IS DISTINCT FROM NEW.role_id AND (
+           EXISTS (SELECT 1 FROM pos_user_roles WHERE user_id = NEW.id)
+        OR EXISTS (SELECT 1 FROM pos_user_permission_overrides
+                    WHERE user_id = NEW.id)) THEN
+        RAISE EXCEPTION
+          '% still has extra roles or permission exceptions — clear them before making them the owner, who holds every permission already',
+          NEW.name;
+      END IF;
+
+      IF NOT NEW.is_active THEN
+        RETURN NEW;
+      END IF;
+
+      SELECT name INTO incumbent FROM pos_users
+       WHERE restaurant_id = NEW.restaurant_id
+         AND role_id = owner_role
+         AND is_active
+         AND id <> NEW.id
+         AND NOT (TG_OP = 'INSERT' AND coalesce(username = NEW.username, false))
+       ORDER BY id
+       LIMIT 1;
+
+      IF incumbent IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is already the owner of this restaurant, and a restaurant has one — disable % first, then appoint the new owner',
+          incumbent, incumbent;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    r'''
+    CREATE OR REPLACE FUNCTION pos_user_roles_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pos_roles WHERE id = NEW.role_id AND code = 'owner') THEN
+        RAISE EXCEPTION
+          'the owner role cannot be an extra role — to make somebody the owner, set it as their role (pos_users.role_id), after disabling the current owner';
+      END IF;
+
+      SELECT s.name INTO holder FROM pos_users s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.user_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner and already holds every permission, so the owner is given no extra roles',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    r'''
+    CREATE OR REPLACE FUNCTION pos_user_overrides_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      SELECT s.name INTO holder FROM pos_users s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.user_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner — a permission exception on the owner means nothing if it allows and locks the restaurant out if it denies, so there is nothing to set here',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

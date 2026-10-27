@@ -355,6 +355,7 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.categoryUpdated,
   AuditAction.categoryArchived,
   AuditAction.categoryRestored,
+  AuditAction.categoryDeleted,
   AuditAction.productCreated,
   AuditAction.productUpdated,
   AuditAction.productArchived,

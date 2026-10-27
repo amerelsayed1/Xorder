@@ -85,7 +85,7 @@ void main() {
 
     final staff = await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, @b, 'Hana Mostafa', 'hana', 'salt', 'hash') RETURNING id",
       parameters: {'r': restaurantId, 'b': branchId},
     );
@@ -198,7 +198,7 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'DELETE FROM pos_staff WHERE id = @s',
+          'DELETE FROM pos_users WHERE id = @s',
           parameters: {'s': staffId},
         ),
         throwsA(isA<Exception>()),
@@ -384,7 +384,7 @@ void main() {
       for (final event in const ['removed_before_send', 'voided_after_send']) {
         await db.query(
           pg.config,
-          'INSERT INTO pos_order_line_events (order_id, line_key, event, staff_id) '
+          'INSERT INTO pos_order_line_events (order_id, line_key, event, user_id) '
           'VALUES (@o, @k, @e, @s)',
           parameters: {'o': orderId, 'k': '1:', 'e': event, 's': staffId},
         );
@@ -410,7 +410,7 @@ void main() {
       // place.
       await db.query(
         pg.config,
-        'INSERT INTO pos_order_line_events (order_id, line_key, event, staff_id) '
+        'INSERT INTO pos_order_line_events (order_id, line_key, event, user_id) '
         "VALUES (@o, '7:12,14', 'removed_before_send', @s)",
         parameters: {'o': orderId, 's': staffId},
       );
@@ -430,7 +430,7 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_order_line_events (order_id, line_key, event, staff_id) '
+          'INSERT INTO pos_order_line_events (order_id, line_key, event, user_id) '
           "VALUES (@o, '1:', 'vanished', @s)",
           parameters: {'o': orderId, 's': staffId},
         ),

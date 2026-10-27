@@ -20,13 +20,11 @@ class PosTopBar extends ConsumerWidget {
     super.key,
     required this.session,
     required this.onLock,
-    required this.onCloseShift,
     this.supportedOrderTypes = OrderType.values,
   });
 
   final PosSession session;
   final VoidCallback onLock;
-  final VoidCallback onCloseShift;
 
   /// Comes from `branch.supported_order_types` (POS-BE-005). Only enabled types
   /// are shown — never a hardcoded set, and never a visibly disabled control.
@@ -89,14 +87,8 @@ class PosTopBar extends ConsumerWidget {
               border: Border.fromBorderSide(context.pos.shellBorder),
               onPressed: onLock,
             ),
-            const SizedBox(width: PosSpace.s14),
-            PosButton(
-              label: strings.closeShift,
-              height: 38,
-              foreground: context.pos.offlinePillText,
-              border: Border.all(color: context.pos.warn),
-              onPressed: onCloseShift,
-            ),
+            // Close shift is in the status bar under the screen, beside the
+            // day notice (owner, 26 Oct 2026); the top bar no longer has it.
             // Who is signed in is not said here (owner, 26 Oct 2026): the status
             // bar under every screen says it once, at the far edge.
           ],

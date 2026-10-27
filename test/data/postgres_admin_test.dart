@@ -415,7 +415,7 @@ void main() {
     });
   });
   group('a cloud till, where the platform owns who works here', () {
-    // `BootstrapSeeder` upserts `pos_staff` from the bundle and deactivates
+    // `BootstrapSeeder` upserts `pos_users` from the bundle and deactivates
     // anybody the bundle does not name. Before this, the back office let a
     // manager add a cashier on a cloud till and the next sync switched them
     // off — silently, with nothing to read. Found by auditing the panes
@@ -486,7 +486,7 @@ void main() {
 
     test('but assigning a role is allowed — it is not in the bundle', () async {
       // The half that works, and the reason this refuses per act rather than
-      // closing the pane. `pos_staff.role_id` is never written by the seeder.
+      // closing the pane. `pos_users.role_id` is never written by the seeder.
       final rana = await hire(SystemRoles.cashierCode, name: 'Mai', pin: '3344');
       final result = await cloud.update(
         by: owner,
@@ -499,7 +499,7 @@ void main() {
     });
 
     test('and so are the per-person grants Wave C added', () async {
-      // `pos_staff_roles`, the overrides and the ceilings are local tables the
+      // `pos_user_roles`, the overrides and the ceilings are local tables the
       // bundle does not touch.
       final rana = await hire(SystemRoles.cashierCode, name: 'Yara', pin: '5566');
       final result = await cloud.setGrants(

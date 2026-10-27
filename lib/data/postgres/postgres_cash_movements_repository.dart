@@ -28,7 +28,7 @@ abstract final class CashMovementWrite {
   static const sql =
       'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
       '  shift_id, business_day_id, kind, amount_minor, reason_id, note, '
-      '  staff_id, approved_by_id, client_transaction_id) '
+      '  user_id, approved_by_id, client_transaction_id) '
       'VALUES (@restaurant, @branch, @terminal, @shift, @day, @kind, @amount, '
       '  @reason, @note, @staff, @approvedBy, @client) '
       'RETURNING id, occurred_at';
@@ -114,8 +114,8 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
 
   static const _joins = '''
         LEFT JOIN pos_reason_codes AS reason ON reason.id = m.reason_id
-        LEFT JOIN pos_staff AS staff ON staff.id = m.staff_id
-        LEFT JOIN pos_staff AS approver ON approver.id = m.approved_by_id''';
+        LEFT JOIN pos_users AS staff ON staff.id = m.user_id
+        LEFT JOIN pos_users AS approver ON approver.id = m.approved_by_id''';
 
   CashMovement _movement(List<Object?> row) => CashMovement(
     id: row[0]! as int,

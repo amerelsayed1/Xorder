@@ -849,7 +849,7 @@ class OutboxDrain {
       config,
       '''
       SELECT m.client_transaction_id, s.client_transaction_id, m.kind,
-             m.amount_minor, reason.code, m.note, m.staff_id, m.occurred_at
+             m.amount_minor, reason.code, m.note, m.user_id, m.occurred_at
         FROM pos_cash_movements m
         JOIN pos_shifts s ON s.id = m.shift_id
         LEFT JOIN pos_reason_codes reason ON reason.id = m.reason_id
@@ -985,7 +985,7 @@ class OutboxDrain {
       // together would make every grouped refund report a list of one.
       reason: row[2] as String? ?? row[3] as String?,
       // The local staff id IS the platform's user id on a cloud till — the
-      // bootstrap seeder writes `pos_staff` under the platform's own ids, and
+      // bootstrap seeder writes `pos_users` under the platform's own ids, and
       // the order path already sends `served_by` on that basis.
       actingUserId: row[4] as int?,
       authorizedByUserId: row[5] as int?,

@@ -560,7 +560,7 @@ void main() {
       ),
       (
         'a write the database refused',
-        PosDbException(PosDbFailure.query, 'permission denied for pos_staff'),
+        PosDbException(PosDbFailure.query, 'permission denied for pos_users'),
         isA<AdminDatabaseRefused>(),
       ),
       ('anything else', StateError('boom'), isA<AdminDatabaseRefused>()),
@@ -893,7 +893,7 @@ class _UndefinedColumn implements ServerException {
 
   @override
   String toString() =>
-      'column "password_hash" of relation "pos_staff" does not exist';
+      'column "password_hash" of relation "pos_users" does not exist';
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

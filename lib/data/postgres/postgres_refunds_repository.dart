@@ -256,8 +256,8 @@ class PostgresRefundsRepository implements RefundsRepository {
       '       issuer.name, approver.name '
       'FROM pos_refunds AS r '
       'LEFT JOIN pos_reason_codes AS reason ON reason.id = r.reason_id '
-      'LEFT JOIN pos_staff AS issuer ON issuer.id = r.refunded_by '
-      'LEFT JOIN pos_staff AS approver ON approver.id = r.approved_by_id '
+      'LEFT JOIN pos_users AS issuer ON issuer.id = r.refunded_by '
+      'LEFT JOIN pos_users AS approver ON approver.id = r.approved_by_id '
       'WHERE r.order_id = @order AND r.restaurant_id = @restaurant '
       'ORDER BY r.occurred_at, r.id',
       parameters: {'order': orderId, 'restaurant': context.restaurantId},

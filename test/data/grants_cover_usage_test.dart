@@ -21,11 +21,31 @@ void main() {
 
   String read(String path) => File('$root/$path').readAsStringSync();
 
-  /// Every table the migrations create.
-  Set<String> allTables() => RegExp(r'CREATE TABLE IF NOT EXISTS (\w+)')
-      .allMatches(read('lib/data/postgres/migrations.dart'))
-      .map((m) => m.group(1)!)
-      .toSet();
+  /// The migrations with adjacent string literals joined, so a statement the
+  /// source wraps over two lines reads as one.
+  String flatMigrations() => read('lib/data/postgres/migrations.dart')
+      .replaceAll(RegExp(r"'\s*\n\s*'"), '');
+
+  /// `old -> new` for every `ALTER <kind> old RENAME TO new`, in source order.
+  List<(String, String)> renames(String kind) => RegExp(
+    'ALTER $kind (\\w+)\\s+RENAME TO (\\w+)',
+  ).allMatches(flatMigrations()).map((m) => (m.group(1)!, m.group(2)!)).toList();
+
+  /// Every table the migrations leave behind: created, minus the names a later
+  /// migration renamed away, plus the names it renamed to. A grant on a name
+  /// that was renamed away throws at install time, so the old one must go.
+  Set<String> allTables() {
+    final tables = RegExp(r'CREATE TABLE IF NOT EXISTS (\w+)')
+        .allMatches(read('lib/data/postgres/migrations.dart'))
+        .map((m) => m.group(1)!)
+        .toSet();
+    for (final (from, to) in renames('TABLE')) {
+      tables
+        ..remove(from)
+        ..add(to);
+    }
+    return tables;
+  }
 
   /// A grant block, as text. Sliced out rather than executed, because the
   /// statements interpolate a role name and a database name that only exist at
@@ -258,6 +278,11 @@ void main() {
       ).allMatches(source))
         if (match.group(2)!.contains('serial')) '${match.group(1)!}_id_seq',
     };
+    for (final (from, to) in renames('SEQUENCE')) {
+      owning
+        ..remove(from)
+        ..add(to);
+    }
 
     final named = <String>{};
     for (final admin in [false, true]) {

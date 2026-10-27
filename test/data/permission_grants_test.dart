@@ -77,7 +77,7 @@ void main() {
     final salt = PinHash.newSalt();
     staffId = (await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, role_id, name, '
+      'INSERT INTO pos_users (restaurant_id, branch_id, role_id, name, '
       "  username, pin_salt, pin_hash) "
       "VALUES (@r, @b, @role, 'Rana', 'rana', @salt, @hash) RETURNING id",
       parameters: {
@@ -115,13 +115,13 @@ void main() {
 
   Future<void> addRole(int roleId) => db.query(
     pg.config,
-    'INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (@s, @r)',
+    'INSERT INTO pos_user_roles (user_id, role_id) VALUES (@s, @r)',
     parameters: {'s': staffId, 'r': roleId},
   );
 
   Future<void> override(String capability, String effect) => db.query(
     pg.config,
-    'INSERT INTO pos_staff_permission_overrides (staff_id, capability, effect) '
+    'INSERT INTO pos_user_permission_overrides (user_id, capability, effect) '
     'VALUES (@s, @c, @e)',
     parameters: {'s': staffId, 'c': capability, 'e': effect},
   );
@@ -154,7 +154,7 @@ void main() {
       // somebody holding the role they were moved off.
       final rows = await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_staff_roles WHERE staff_id = @s',
+        'SELECT count(*) FROM pos_user_roles WHERE user_id = @s',
         parameters: {'s': staffId},
       );
       expect(rows.first[0], 0);
@@ -170,7 +170,7 @@ void main() {
       await addRole(supervisorRoleId);
       await db.query(
         pg.config,
-        'UPDATE pos_staff SET role_id = @r WHERE id = @s',
+        'UPDATE pos_users SET role_id = @r WHERE id = @s',
         parameters: {'r': supervisorRoleId, 's': staffId},
       );
 
@@ -339,13 +339,13 @@ void main() {
     await override(PosCapability.orderRefund, 'ALLOW');
     await db.query(
       pg.config,
-      'DELETE FROM pos_staff WHERE id = @s',
+      'DELETE FROM pos_users WHERE id = @s',
       parameters: {'s': staffId},
     );
 
     final rows = await db.query(
       pg.config,
-      'SELECT count(*) FROM pos_staff_permission_overrides',
+      'SELECT count(*) FROM pos_user_permission_overrides',
     );
     expect(rows.first[0], 0);
   });
@@ -500,7 +500,7 @@ void main() {
 
       final rows = await db.query(
         pg.config,
-        'SELECT role_id FROM pos_staff_roles WHERE staff_id = @s',
+        'SELECT role_id FROM pos_user_roles WHERE user_id = @s',
         parameters: {'s': staffId},
       );
       expect(rows.single[0], supervisorRoleId);

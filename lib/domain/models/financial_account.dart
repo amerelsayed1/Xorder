@@ -5,6 +5,8 @@
 /// account yet, so no sale, shift, cash-up or report reads any of this.
 library;
 
+import 'tender_method.dart';
+
 /// What sort of place the money is in.
 ///
 /// A separate list from [TenderKind], on purpose: a payment *method* says how
@@ -131,6 +133,11 @@ enum AccountProblem {
   /// business-wide fallback.
   accountOfAnotherBranch,
 
+  /// The account's type does not fit the payment method: cash is paid into a
+  /// cash account, a card into a bank account, a wallet into a wallet account
+  /// (`AccountRules.kindsFor`).
+  accountKindMismatch,
+
   /// The account is somebody's default; replace that first.
   accountIsDefault,
 }
@@ -156,16 +163,41 @@ abstract final class AccountRules {
   static bool referenceLooksLikeNumber(String? reference) =>
       looksLikeNumber(reference);
 
-  /// May [account] be the default of a payment method at [branchId]
-  /// (null = business-wide)? Active, and either shared or that branch's own.
+  /// The kinds of account a payment method of this kind may pay into, or null
+  /// where it has no natural type and any account will do (owner, 26 Oct 2026).
+  ///
+  /// **One table, in step with the platform's.** The cloud applies the same
+  /// pairing on the server (`FinancialAccount::kindsForTender`), over its own
+  /// vocabulary — `cash | card | external | other`, where `external` is a card
+  /// taken on the bank's own terminal and so, like [TenderKind.card], pays into
+  /// a bank. A test on each side holds the two together. `wallet` exists only
+  /// here: the platform has no such kind, so a wallet-style method there is
+  /// `other` and offers every account.
+  static Set<AccountKind>? kindsFor(TenderKind method) => switch (method) {
+    TenderKind.cash => const {AccountKind.cash},
+    TenderKind.card => const {AccountKind.bank},
+    TenderKind.wallet => const {AccountKind.wallet},
+    TenderKind.account || TenderKind.voucher || TenderKind.other => null,
+  };
+
+  /// Whether an account of [account]'s kind may be offered to, and saved as the
+  /// default of, a payment method of kind [method].
+  static bool fits(TenderKind method, AccountKind account) =>
+      kindsFor(method)?.contains(account) ?? true;
+
+  /// May [account] be the default of a payment method of kind [method] at
+  /// [branchId] (null = business-wide)? Active, either shared or that branch's
+  /// own, and of a kind the method pays into.
   static AccountProblem? defaultProblem(
     FinancialAccount account, {
     required int? branchId,
+    required TenderKind method,
   }) {
     if (!account.isActive) return AccountProblem.accountUnavailable;
     if (account.branchId != null && account.branchId != branchId) {
       return AccountProblem.accountOfAnotherBranch;
     }
+    if (!fits(method, account.kind)) return AccountProblem.accountKindMismatch;
     return null;
   }
 

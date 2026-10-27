@@ -47,7 +47,7 @@ class PostgresShiftRepository implements ShiftRepository {
   static const _selectShift = '''
     SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at,
            s.opened_by, s.client_transaction_id
-    FROM pos_shifts s JOIN pos_staff st ON st.id = s.opened_by
+    FROM pos_shifts s JOIN pos_users st ON st.id = s.opened_by
   ''';
 
   @override
@@ -163,7 +163,7 @@ class PostgresShiftRepository implements ShiftRepository {
         SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at,
                s.opened_by, s.terminal_id::text, term.name
           FROM pos_shifts s
-          JOIN pos_staff st ON st.id = s.opened_by
+          JOIN pos_users st ON st.id = s.opened_by
           LEFT JOIN pos_terminals term ON term.id = s.terminal_id
          WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
            AND s.closed_at IS NULL
@@ -237,7 +237,7 @@ class PostgresShiftRepository implements ShiftRepository {
           Sql.named('''
             SELECT DISTINCT s.terminal_id::text, term.name, s.opened_by, st.name
               FROM $_shiftsAsDated
-              JOIN pos_staff st ON st.id = s.opened_by
+              JOIN pos_users st ON st.id = s.opened_by
               LEFT JOIN pos_terminals term ON term.id = s.terminal_id
               ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
              WHERE ${dated.join(' AND ')}
@@ -268,8 +268,8 @@ class PostgresShiftRepository implements ShiftRepository {
                    s.counted_cash_minor, s.expected_cash_minor,
                    s.variance_minor, s.closing_note, approval.approved_by_name
               FROM $_shiftsAsDated
-              JOIN pos_staff st ON st.id = s.opened_by
-              LEFT JOIN pos_staff closer ON closer.id = s.closed_by
+              JOIN pos_users st ON st.id = s.opened_by
+              LEFT JOIN pos_users closer ON closer.id = s.closed_by
               LEFT JOIN pos_terminals term ON term.id = s.terminal_id
               ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
               LEFT JOIN LATERAL (

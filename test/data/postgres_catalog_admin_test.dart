@@ -267,6 +267,74 @@ void main() {
       expect(rows.first[0], AuditAction.productUpdated);
     });
 
+    group('a section: off, back on, and deleted', () {
+      Future<Category> section(String name) async => (await repository
+              .saveCategory(Category(id: 0, nameEn: name), by: manager))
+          .value!;
+
+      test('a section that is off is listed for the switch, and not on the till', () async {
+        final spare = await section('Seasonal');
+        await repository.archiveCategory(spare, by: manager);
+
+        expect((await repository.inactiveCategories()).map((c) => c.nameEn), ['Seasonal']);
+        final grid = await PostgresCatalogRepository(
+          database: db,
+          config: pg.config.copyWith(tenantSlug: slug),
+        ).load();
+        expect(grid.categories.map((c) => c.nameEn), isNot(contains('Seasonal')));
+
+        await repository.archiveCategory(spare, by: manager, restore: true);
+        expect(await repository.inactiveCategories(), isEmpty);
+      });
+
+      test('an empty section is deleted, audited, and gone', () async {
+        final spare = await section('Seasonal');
+        final result = await repository.deleteCategory(spare, by: manager);
+        expect(result.succeeded, isTrue, reason: '${result.refusal}');
+
+        final rows = await db.query(
+          pg.config,
+          'SELECT count(*) FROM pos_categories WHERE id = @id',
+          parameters: {'id': spare.id},
+        );
+        expect(rows.first[0], 0);
+        final audit = await db.query(
+          pg.config,
+          'SELECT action FROM pos_audit_events WHERE entity_type = @e '
+          'ORDER BY id DESC LIMIT 1',
+          parameters: {'e': AuditAction.entityCategory},
+        );
+        expect(audit.first[0], AuditAction.categoryDeleted);
+      });
+
+      test('a section that holds an item cannot be deleted, even when it is off', () async {
+        final saved = await repository.saveProduct(draft(), by: manager);
+        final home = Category(id: categoryId, nameEn: 'Hot Drinks');
+
+        final live = await repository.deleteCategory(home, by: manager);
+        expect(live.refusal, isA<CatalogRefused>());
+        expect((live.refusal! as CatalogRefused).problem, CatalogProblem.categoryHasItems);
+
+        // Archiving the item does not free the section: a sale may name it.
+        await repository.archiveProduct(saved.value!, by: manager);
+        final off = await repository.deleteCategory(home, by: manager);
+        expect((off.refusal! as CatalogRefused).problem, CatalogProblem.categoryHasItems);
+
+        final rows = await db.query(
+          pg.config,
+          'SELECT count(*) FROM pos_categories WHERE id = @id',
+          parameters: {'id': categoryId},
+        );
+        expect(rows.first[0], 1, reason: 'nothing was deleted');
+      });
+
+      test('a cashier cannot delete a section', () async {
+        final spare = await section('Seasonal');
+        final result = await repository.deleteCategory(spare, by: cashier);
+        expect(result.succeeded, isFalse);
+      });
+    });
+
     test('archiving takes it off sale and keeps the row', () async {
       final saved = await repository.saveProduct(draft(), by: manager);
       final archived =
@@ -764,6 +832,54 @@ void main() {
         by: owner,
       );
       expect(result.refusal, isA<CatalogInvalid>());
+    });
+
+    test('a table need not say how many it seats', () async {
+      final saved = await repository.saveTable(
+        const DiningTable(id: 0, label: 'Pickup', seats: null),
+        by: owner,
+      );
+      expect(saved.succeeded, isTrue, reason: '${saved.refusal}');
+      expect(saved.value!.seats, isNull);
+
+      // And it can be given a size later, and have it taken away again.
+      final sized = await repository.saveTable(
+        DiningTable(id: saved.value!.id, label: 'Pickup', seats: 6),
+        by: owner,
+      );
+      expect(sized.value!.seats, 6);
+      final cleared = await repository.saveTable(
+        DiningTable(id: saved.value!.id, label: 'Pickup', seats: null),
+        by: owner,
+      );
+      expect(cleared.value!.seats, isNull);
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT seats FROM pos_dining_tables WHERE id = @id',
+        parameters: {'id': saved.value!.id},
+      );
+      expect(rows.single[0], isNull);
+    });
+
+    test('a batch with no seats stored is accepted, and the floor reads it back', () async {
+      final result = await repository.createTables([
+        for (var n = 1; n <= 3; n++) DiningTable(id: 0, label: 'Spot $n', seats: null),
+      ], by: owner);
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+      expect(result.value!.every((t) => t.seats == null), isTrue);
+    });
+
+    test('a stated count is still positive: the CHECK constraint stands', () async {
+      await expectLater(
+        db.query(
+          pg.config,
+          'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) '
+          'VALUES (@r, (SELECT id FROM pos_branches WHERE restaurant_id = @r), @l, 0)',
+          parameters: {'r': restaurantId, 'l': 'Zero'},
+        ),
+        throwsA(anything),
+      );
     });
 
     test('archiving keeps the row, because tickets name it', () async {

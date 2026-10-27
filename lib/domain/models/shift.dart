@@ -170,7 +170,7 @@ class PosShift {
 /// Who has held a drawer at this branch — the Users section's two shift facts.
 ///
 /// **Last shift, not last login.** No sign-in is stored anywhere: there is no
-/// `last_login_at` on `pos_staff` and no sign-in audit action. The last shift
+/// `last_login_at` on `pos_users` and no sign-in audit action. The last shift
 /// somebody opened is the nearest thing that is recorded, and it is labelled
 /// as what it is rather than passed off as the thing the mockup asked for.
 ///

@@ -44,7 +44,7 @@ class _AdminContext {
   ///
   /// [by] is null only for an act no member of staff performed — the
   /// technician's password reset — and then [actorName] says who did:
-  /// `actor_staff_id` is nullable for exactly this, and `actor_name` is not.
+  /// `actor_user_id` is nullable for exactly this, and `actor_name` is not.
   Future<void> audit(
     TxSession tx, {
     required PosStaff? by,
@@ -64,7 +64,7 @@ class _AdminContext {
     await tx.execute(
       Sql.named(
         'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, shift_id, '
-        '  actor_staff_id, actor_name, approved_by_id, approved_by_name, action, '
+        '  actor_user_id, actor_name, approved_by_id, approved_by_name, action, '
         '  entity_type, entity_id, before_value, after_value, reason) '
         'VALUES (@restaurant, @branch, @terminal, @shift, @actorId, @actorName, '
         '  @approverId, @approverName, @action, @entityType, @entityId, '
@@ -96,7 +96,7 @@ class _AdminContext {
 const roleColumns = 'id, code, name_en, name_ar, capabilities, is_system';
 
 /// The same columns aliased to `r`, for the queries that hang a role off a
-/// member of staff. `pos_staff` and `pos_roles` both have an `id`, so an
+/// member of staff. `pos_users` and `pos_roles` both have an `id`, so an
 /// unprefixed list is ambiguous the moment the two are joined.
 const joinedRoleColumns =
     'r.id, r.code, r.name_en, r.name_ar, r.capabilities, r.is_system';
@@ -303,7 +303,7 @@ class PostgresRolesRepository implements RolesRepository {
       // manager hunting through a list; the names are one join away.
       final held = await tx.execute(
         Sql.named(
-          'SELECT name FROM pos_staff WHERE role_id = @id AND restaurant_id = @r ORDER BY name',
+          'SELECT name FROM pos_users WHERE role_id = @id AND restaurant_id = @r ORDER BY name',
         ),
         parameters: {'id': role.id, 'r': _c.restaurantId},
       );
@@ -387,12 +387,12 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   /// Whether this terminal owns its own staff records.
   ///
   /// **False on a cloud till, and it changes what may be written here — not
-  /// whether anything may be.** `BootstrapSeeder` upserts `pos_staff` from the
+  /// whether anything may be.** `BootstrapSeeder` upserts `pos_users` from the
   /// bundle and deactivates anybody the bundle does not name, so creating,
   /// renaming, disabling or re-PINning somebody locally lasts until the next
   /// sync and then silently does not.
   ///
-  /// It does **not** seed `pos_roles`, `pos_staff.role_id`, `pos_staff_roles`,
+  /// It does **not** seed `pos_roles`, `pos_users.role_id`, `pos_user_roles`,
   /// the per-person overrides or the ceilings. Assigning a role and setting
   /// somebody's permissions are local, permanent and correct on a cloud till —
   /// which is why this refuses per *act* rather than closing the pane. Hiding
@@ -408,7 +408,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   final bool adminAvailable;
 
   static const _from =
-      'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id';
+      'FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id';
 
   @override
   Future<List<PosStaff>> all({bool includeInactive = true}) async {
@@ -501,7 +501,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, '
+          'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, '
           '  pin_hash, role_id, capabilities) '
           'VALUES (@r, @branch, @name, @username, @salt, @hash, @role, @grants) '
           'ON CONFLICT (restaurant_id, username) DO NOTHING '
@@ -657,7 +657,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET '
+          'UPDATE pos_users SET '
           '  name = coalesce(@name, name), '
           '  username = coalesce(@username, username), '
           '  role_id = coalesce(@role, role_id), '
@@ -764,7 +764,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET is_active = @active WHERE id = @id AND restaurant_id = @r',
+          'UPDATE pos_users SET is_active = @active WHERE id = @id AND restaurant_id = @r',
         ),
         parameters: {'id': staffId, 'r': _c.restaurantId, 'active': isActive},
       );
@@ -827,7 +827,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET pin_salt = @salt, pin_hash = @hash '
+          'UPDATE pos_users SET pin_salt = @salt, pin_hash = @hash '
           'WHERE id = @id AND restaurant_id = @r RETURNING name',
         ),
         parameters: {
@@ -860,7 +860,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     try {
       final rows = await _read.database.query(
         _read.config,
-        'SELECT id FROM pos_staff '
+        'SELECT id FROM pos_users '
         'WHERE restaurant_id = @r AND password_hash IS NOT NULL',
         parameters: {'r': _read.restaurantId},
       );
@@ -897,7 +897,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     return _c.database.runTx(_c.config, (tx) async {
       final rows = await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET password_hash = @hash, password_set_at = now() '
+          'UPDATE pos_users SET password_hash = @hash, password_set_at = now() '
           'WHERE id = @id AND restaurant_id = @r AND is_active RETURNING name',
         ),
         parameters: {'id': by.id, 'r': _c.restaurantId, 'hash': hash},
@@ -946,7 +946,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET password_hash = NULL, password_set_at = NULL '
+          'UPDATE pos_users SET password_hash = NULL, password_set_at = NULL '
           'WHERE id = @id AND restaurant_id = @r '
           '  AND password_hash IS NOT NULL RETURNING name',
         ),
@@ -990,7 +990,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     return _c.database.runTx(_c.config, (tx) async {
       final rows = await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET password_hash = NULL, password_set_at = NULL '
+          'UPDATE pos_users SET password_hash = NULL, password_set_at = NULL '
           'WHERE restaurant_id = @r AND is_active '
           '  AND lower(trim(username)) = @u AND password_hash IS NOT NULL '
           'RETURNING id, name',
@@ -1082,7 +1082,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       }
 
       await tx.execute(
-        Sql.named('DELETE FROM pos_staff_roles WHERE staff_id = @s'),
+        Sql.named('DELETE FROM pos_user_roles WHERE user_id = @s'),
         parameters: {'s': staffId},
       );
       for (final roleId in extraRoleIds) {
@@ -1092,7 +1092,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
         if (roleId == before.role?.id) continue;
         await tx.execute(
           Sql.named(
-            'INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (@s, @r)',
+            'INSERT INTO pos_user_roles (user_id, role_id) VALUES (@s, @r)',
           ),
           parameters: {'s': staffId, 'r': roleId},
         );
@@ -1100,15 +1100,15 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       await tx.execute(
         Sql.named(
-          'DELETE FROM pos_staff_permission_overrides WHERE staff_id = @s',
+          'DELETE FROM pos_user_permission_overrides WHERE user_id = @s',
         ),
         parameters: {'s': staffId},
       );
       for (final override in overrides) {
         await tx.execute(
           Sql.named(
-            'INSERT INTO pos_staff_permission_overrides '
-            '  (staff_id, capability, effect, granted_by) '
+            'INSERT INTO pos_user_permission_overrides '
+            '  (user_id, capability, effect, granted_by) '
             'VALUES (@s, @c, @e, @by)',
           ),
           parameters: {
@@ -1241,7 +1241,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   }) async {
     final rows = await tx.execute(
       Sql.named(
-        'SELECT name FROM pos_staff '
+        'SELECT name FROM pos_users '
         'WHERE restaurant_id = @r AND role_id = @role AND is_active '
         '  AND (@id::bigint IS NULL OR id <> @id::bigint) '
         'ORDER BY id LIMIT 1',
@@ -1255,9 +1255,9 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   /// there was anything to take.
   Future<bool> _clearGrants(TxSession tx, int staffId) async {
     var removed = 0;
-    for (final table in ['pos_staff_roles', 'pos_staff_permission_overrides']) {
+    for (final table in ['pos_user_roles', 'pos_user_permission_overrides']) {
       removed += (await tx.execute(
-        Sql.named('DELETE FROM $table WHERE staff_id = @s'),
+        Sql.named('DELETE FROM $table WHERE user_id = @s'),
         parameters: {'s': staffId},
       )).affectedRows;
     }
@@ -1281,7 +1281,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   }) async {
     final rows = await tx.execute(
       Sql.named(
-        'SELECT 1 FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+        'SELECT 1 FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
         'WHERE s.restaurant_id = @r AND s.is_active AND s.id <> @id '
         "  AND ('staff.manage' = ANY(s.capabilities) "
         "    OR 'staff.manage' = ANY(coalesce(r.capabilities, '{}'::text[]))) "
@@ -1344,12 +1344,12 @@ class PostgresAuditRepository implements AuditRepository {
   }) async {
     final rows = await _c.database.query(
       _c.config,
-      'SELECT id, action, entity_type, entity_id, actor_staff_id, actor_name, '
+      'SELECT id, action, entity_type, entity_id, actor_user_id, actor_name, '
       '  approved_by_id, approved_by_name, before_value, after_value, reason, occurred_at '
       'FROM pos_audit_events WHERE restaurant_id = @r '
       '  AND (@entityType::text IS NULL OR entity_type = @entityType) '
       '  AND (@entityId::text IS NULL OR entity_id = @entityId) '
-      '  AND (@staffId::bigint IS NULL OR actor_staff_id = @staffId) '
+      '  AND (@staffId::bigint IS NULL OR actor_user_id = @staffId) '
       'ORDER BY occurred_at DESC, id DESC LIMIT @limit',
       parameters: {
         'r': _c.restaurantId,

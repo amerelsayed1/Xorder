@@ -137,7 +137,8 @@ void main() {
     expect(find.text('${PosRoutes.lock} idle'), findsOneWidget);
   });
 
-  testWidgets('five idle minutes on the home screen lock the till too', (
+  testWidgets('five idle minutes on the home screen sign the till out and '
+      'return to Start — Home is nobody\'s once nobody is signed in', (
     tester,
   ) async {
     await pumpTill(tester, at: PosRoutes.home);
@@ -146,7 +147,7 @@ void main() {
     expect(location(), PosRoutes.home, reason: 'not a second early');
 
     await wait(tester, const Duration(seconds: 1));
-    expect(location(), PosRoutes.lock);
+    expect(location(), PosRoutes.start);
     expect(container.read(signedInStaffProvider), isNull);
   });
 
@@ -197,7 +198,11 @@ void main() {
     expect(location(), PosRoutes.lock);
 
     final after = container.read(ticketProvider);
-    expect(after.id, before.id, reason: 'reset() mints a new id; locking must not');
+    expect(
+      after.id,
+      before.id,
+      reason: 'reset() mints a new id; locking must not',
+    );
     expect(after.lines, hasLength(1));
     expect(after.lines.single.product.nameEn, 'Burger');
 

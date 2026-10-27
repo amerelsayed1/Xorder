@@ -67,7 +67,6 @@ void main() {
                 onLock: () {},
                 onTables: () {},
                 onOrders: () {},
-                onCloseShift: () {},
               );
             },
           ),

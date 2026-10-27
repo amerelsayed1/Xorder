@@ -22,7 +22,7 @@ import 'pg_fixture.dart';
 ///
 /// **What this does not prove:** the suites run as a superuser, so nothing
 /// here shows the till role cannot write `password_hash`. That rests on the
-/// offline REVOKE of INSERT/UPDATE on `pos_staff`, which
+/// offline REVOKE of INSERT/UPDATE on `pos_users`, which
 /// `till_grants_enforced_test.dart` already exercises for the table.
 void main() {
   if (PgFixture.host == null) {
@@ -122,13 +122,13 @@ void main() {
 
   Future<String?> storedHash(int staffId) async => (await db.query(
     pg.config,
-    'SELECT password_hash FROM pos_staff WHERE id = @id',
+    'SELECT password_hash FROM pos_users WHERE id = @id',
     parameters: {'id': staffId},
   )).first[0] as String?;
 
   Future<List<List<Object?>>> ledger(String action) => db.query(
     pg.config,
-    'SELECT actor_staff_id, actor_name, entity_id, before_value::text, '
+    'SELECT actor_user_id, actor_name, entity_id, before_value::text, '
     '  after_value::text '
     'FROM pos_audit_events WHERE restaurant_id = @r AND action = @a '
     'ORDER BY id',
@@ -303,7 +303,7 @@ void main() {
   group('round the repositories, in raw SQL', () {
     Future<void> write(String? hash, {bool stamped = true}) => db.query(
       pg.config,
-      'UPDATE pos_staff SET password_hash = @h, '
+      'UPDATE pos_users SET password_hash = @h, '
       'password_set_at = ${stamped ? 'now()' : 'NULL'} WHERE id = @id',
       parameters: {'h': hash, 'id': owner.id},
     );
@@ -340,11 +340,11 @@ void main() {
     // put back here, on the shared database, so the next suite finds it.
     await db.query(
       pg.config,
-      'ALTER TABLE pos_staff DROP COLUMN password_hash CASCADE',
+      'ALTER TABLE pos_users DROP COLUMN password_hash CASCADE',
     );
     await db.query(
       pg.config,
-      'ALTER TABLE pos_staff DROP COLUMN password_set_at CASCADE',
+      'ALTER TABLE pos_users DROP COLUMN password_set_at CASCADE',
     );
     await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 55');
     try {

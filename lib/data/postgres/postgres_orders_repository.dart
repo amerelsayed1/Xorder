@@ -562,7 +562,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           INSERT INTO pos_order_line_events (
             order_id, order_line_id, line_key, event, quantity_before,
             quantity_after, unit_price_before_minor, unit_price_after_minor,
-            reason_id, note, staff_id, approved_by_id, occurred_at
+            reason_id, note, user_id, approved_by_id, occurred_at
           ) VALUES (
             @order, @line, @key, @event, @before,
             @after, @priceBefore, @priceAfter,

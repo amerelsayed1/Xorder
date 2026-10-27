@@ -161,7 +161,7 @@ void main() {
 
     Future<int> staff(String name, String username) async => (await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, 'salt', 'hash') RETURNING id",
       parameters: {
         'r': restaurantId,
@@ -234,7 +234,7 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'DELETE FROM pos_staff WHERE id = @id',
+          'DELETE FROM pos_users WHERE id = @id',
           parameters: {'id': nourId},
         ),
         throwsA(anything),

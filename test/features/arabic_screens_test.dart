@@ -131,16 +131,16 @@ void main() {
     );
   });
 
-  testWidgets('the start screen call to action is Arabic when a shift may open', (
+  testWidgets('the start screen call to action is Arabic: signing in', (
     tester,
   ) async {
     await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
 
-    expect(find.text('بدء الوردية'), findsOneWidget); // startShift
-    expect(find.text('Start shift'), findsNothing);
+    expect(find.text('تسجيل الدخول'), findsOneWidget); // signIn
+    expect(find.text('Sign in'), findsNothing);
     // The help line under it.
     expect(
-      find.textContaining('سيُطلب منك رقمك السري'), // startShiftHelp
+      find.textContaining('اسمك ورقمك السري'), // signInOnlyHelp
       findsOneWidget,
     );
   });
@@ -148,16 +148,14 @@ void main() {
   testWidgets('the start screen is Arabic when the licence blocks the shift', (
     tester,
   ) async {
-    // The other branch of every ternary on this screen. It was reachable with
-    // the English hardcoded just as it is now, so it has to be read too.
+    // The licence banner is the other branch on this screen. It was reachable
+    // with the English hardcoded just as it is now, so it has to be read too.
+    // Signing in itself is never blocked (pos-signin-first-home): the shift
+    // button, and its "Licence required", are on Home.
     await _pump(tester, _startScreen);
 
-    expect(find.text('الترخيص مطلوب'), findsOneWidget); // licenceRequired
+    expect(find.text('تسجيل الدخول'), findsOneWidget); // signIn, still there
     expect(find.text('تجديد الترخيص'), findsOneWidget); // renewLicence
-    expect(
-      find.textContaining('تقفيل الوردية السابقة'), // cashUpStillAvailable
-      findsOneWidget,
-    );
 
     for (final english in [
       'Licence required',
@@ -171,6 +169,7 @@ void main() {
       );
     }
   });
+
 
   testWidgets('nothing on the start screen is left in Latin script', (
     tester,

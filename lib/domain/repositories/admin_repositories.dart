@@ -301,10 +301,10 @@ class NoDatabaseConfigured extends AdminRefusal {
 ///
 /// **A refusal rather than a silent overwrite.** On a cloud till the bootstrap
 /// bundle is authoritative for some rows and not others, and the difference is
-/// invisible from the screen: `BootstrapSeeder` upserts `pos_staff` and
+/// invisible from the screen: `BootstrapSeeder` upserts `pos_users` and
 /// deactivates anyone the bundle does not name, so a cashier added in the back
 /// office is switched off by the next sync — with no error and nothing to
-/// read. It does **not** touch `pos_roles`, `pos_staff.role_id`, or Wave C's
+/// read. It does **not** touch `pos_roles`, `pos_users.role_id`, or Wave C's
 /// grant tables, so assigning somebody a role locally is permanent and correct.
 ///
 /// [what] is the thing that is owned elsewhere, so the message can say where to
@@ -465,6 +465,7 @@ abstract final class AuditAction {
   static const categoryUpdated = 'category.updated';
   static const categoryArchived = 'category.archived';
   static const categoryRestored = 'category.restored';
+  static const categoryDeleted = 'category.deleted';
 
   static const productCreated = 'product.created';
   static const productUpdated = 'product.updated';
@@ -738,6 +739,20 @@ abstract interface class CatalogAdminRepository {
     Category category, {
     required PosStaff by,
     bool restore = false,
+  });
+
+  /// The categories that are turned off. [CatalogRepository.load] returns only
+  /// the active ones, which is right for the till's grid and wrong for the
+  /// screen that turns them back on.
+  Future<List<Category>> inactiveCategories();
+
+  /// Delete a category that holds nothing. Refused with
+  /// [CatalogProblem.categoryHasItems] if any item (live or archived) or combo
+  /// is in it: those keep their history, so such a category is turned off with
+  /// [archiveCategory] instead.
+  Future<AdminResult<void>> deleteCategory(
+    Category category, {
+    required PosStaff by,
   });
 
   /// Create or update a product. Id `0` is a new one.

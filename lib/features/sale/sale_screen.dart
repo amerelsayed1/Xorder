@@ -18,7 +18,6 @@ import '../payment/customer_dialog.dart';
 import '../../domain/services/ticket_engine.dart';
 import '../admin/presentation/supervisor_override.dart';
 import '../receipt/receipt_dialog.dart';
-import '../shift/presentation/shift_dialogs.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/discount_sheet.dart';
 import 'widgets/held_tickets_dialog.dart';
@@ -62,7 +61,6 @@ class SaleScreen extends ConsumerStatefulWidget {
     required this.onLock,
     required this.onTables,
     required this.onOrders,
-    required this.onCloseShift,
     this.onTablesToCollect,
     this.onChangeTable,
     this.onBack,
@@ -94,7 +92,6 @@ class SaleScreen extends ConsumerStatefulWidget {
   /// Order history. A destination, so leaving the till does not disturb the
   /// live ticket — it is parked in memory and still here on return.
   final VoidCallback onOrders;
-  final VoidCallback onCloseShift;
 
   @override
   ConsumerState<SaleScreen> createState() => _SaleScreenState();
@@ -255,29 +252,6 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           : context.strings.voidOrderRecorded(outcome.invoiceNumber!),
     );
     if (ticket.tableId != null) widget.onTables();
-  }
-
-  /// Cash up and hand the till back.
-  ///
-  /// Two things had to change here. It used to navigate to the start screen and
-  /// nothing else — no shift was closed, because none was ever opened, and an
-  /// in-progress ticket was discarded without a word. A cashier who taps this
-  /// with a customer's order on screen should not lose it.
-  Future<void> _closeShift(Ticket ticket) async {
-    if (!ticket.isEmpty) {
-      posToast(context, context.strings.ticketStillOpen);
-      return;
-    }
-
-    final shift = ref.read(shiftProvider).valueOrNull;
-    if (shift == null) {
-      // Nothing to count. Handing the till back is still the right outcome.
-      widget.onCloseShift();
-      return;
-    }
-
-    final closed = await CloseShiftDialog.show(context, shift: shift);
-    if (closed && mounted) widget.onCloseShift();
   }
 
   /// Take money off the bill.
@@ -625,7 +599,6 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
               session: sessionData,
               supportedOrderTypes: ref.watch(branchOrderTypesProvider),
               onLock: widget.onLock,
-              onCloseShift: () => _closeShift(ticket),
             ),
             // The platform stopped recognising this till. A cashier mid-shift
             // never sees the start screen, so the warning has to live where

@@ -326,7 +326,9 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
     );
     if (!mounted || decision is! Allowed) return;
 
-    final by = ref.read(signedInStaffProvider);
+    // The person ACTING, as the permission check above used: in the back office
+    // that is the administrator, and the till may have nobody signed in.
+    final by = ref.read(actingStaffProvider);
     if (by == null) return;
 
     setState(() {

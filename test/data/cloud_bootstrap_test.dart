@@ -216,19 +216,23 @@ void main() {
              'is_active': false, 'sort_order': 3},
             {'id': 6, 'name': 'Crypto', 'kind': 'crypto'},
             {'id': '7', 'kind': 'card'},
+            {'id': 8, 'name': 'InstaPay', 'kind': 'wallet'},
             {'name': 'No id', 'kind': 'cash'},
             'not a map',
           ],
         },
       );
       final tenders = bundle.tenderTypes;
-      expect(tenders.map((t) => t.id), [5, 6, 7],
+      expect(tenders.map((t) => t.id), [5, 6, 7, 8],
           reason: 'no id is the one thing nothing can be keyed on');
       expect(tenders[0].kind, PlatformTenderKind.external);
       expect(tenders[0].isActive, isFalse);
       expect(tenders[0].sortOrder, 3);
       expect(tenders[1].kind, isNull, reason: 'unknown, and still takeable');
       expect(tenders[2].name, 'Payment method 7');
+      expect(tenders[3].kind, PlatformTenderKind.wallet,
+          reason: 'the platform has a wallet kind (2026-10-26)');
+      expect(tenders[3].kind!.tillKind, TenderKind.wallet);
     });
 
     test('a bundle without them has none, and does not throw', () {

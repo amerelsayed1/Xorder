@@ -74,7 +74,7 @@ class E2eSeed {
     final salt = PinHash.newSalt();
     await db.query(
       config,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
       "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, ARRAY['pos.operate']) "
       'ON CONFLICT (restaurant_id, username) '
       'DO UPDATE SET pin_salt = EXCLUDED.pin_salt, pin_hash = EXCLUDED.pin_hash',

@@ -187,7 +187,7 @@ void main() {
     final can = await sql(
       apiDb,
       "SELECT has_table_privilege('$till', 'pos_orders', 'INSERT'), "
-      "       has_table_privilege('$till', 'pos_staff', 'UPDATE')",
+      "       has_table_privilege('$till', 'pos_users', 'UPDATE')",
     );
     expect(can.single, [true, false], reason: 'sells; does not edit staff');
   });

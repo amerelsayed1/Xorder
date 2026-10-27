@@ -51,7 +51,11 @@ void main() {
     List<PosBranch> branches = const [],
     String locale = 'en',
   }) async {
-    ledger = _Ledger(accounts: accounts, defaults: defaults, branches: branches);
+    ledger = _Ledger(
+      accounts: accounts,
+      defaults: defaults,
+      branches: branches,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -97,7 +101,12 @@ void main() {
 
   group('an offline till', () {
     testWidgets('lists the accounts and offers to add one', (tester) async {
-      await pump(tester, authors: true, accounts: [bank, drawer], branches: [maadi]);
+      await pump(
+        tester,
+        authors: true,
+        accounts: [bank, drawer],
+        branches: [maadi],
+      );
 
       // Each account is listed once; its name also appears as a choice under
       // every payment method, so the list row is found by its own key.
@@ -124,7 +133,10 @@ void main() {
 
       // The thing an owner will otherwise assume. It is in the blurb under the
       // title, not buried.
-      expect(find.textContaining('Nothing is booked to an account yet'), findsOneWidget);
+      expect(
+        find.textContaining('Nothing is booked to an account yet'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('with none yet, says so and says what to do', (tester) async {
@@ -139,7 +151,10 @@ void main() {
 
       await tester.tap(find.byKey(const Key('account-new')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('account-name')), '  Petty cash  ');
+      await tester.enterText(
+        find.byKey(const Key('account-name')),
+        '  Petty cash  ',
+      );
       await tester.tap(find.byKey(const Key('account-kind-cash')));
       await tester.tap(find.byKey(const Key('account-branch-10')));
       await tester.pump();
@@ -195,8 +210,14 @@ void main() {
 
       await tester.tap(find.byKey(const Key('account-new')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('account-name')), 'Company bank');
-      await tester.enterText(find.byKey(const Key('account-reference')), 'CIB 4521');
+      await tester.enterText(
+        find.byKey(const Key('account-name')),
+        'Company bank',
+      );
+      await tester.enterText(
+        find.byKey(const Key('account-reference')),
+        'CIB 4521',
+      );
       await tester.tap(find.byKey(const Key('account-save')));
       await tester.pumpAndSettle();
 
@@ -206,18 +227,27 @@ void main() {
         contains('already have an account'),
       );
       expect(
-        tester.widget<TextField>(find.byKey(const Key('account-name'))).controller!.text,
+        tester
+            .widget<TextField>(find.byKey(const Key('account-name')))
+            .controller!
+            .text,
         'Company bank',
       );
       expect(
-        tester.widget<TextField>(find.byKey(const Key('account-reference'))).controller!.text,
+        tester
+            .widget<TextField>(find.byKey(const Key('account-reference')))
+            .controller!
+            .text,
         'CIB 4521',
       );
       expect(ledger.saved, isEmpty, reason: 'nothing was stored');
 
       // Fixed and sent again, it goes through and the dialog closes.
       ledger.refuse = null;
-      await tester.enterText(find.byKey(const Key('account-name')), 'Company bank 2');
+      await tester.enterText(
+        find.byKey(const Key('account-name')),
+        'Company bank 2',
+      );
       await tester.tap(find.byKey(const Key('account-save')));
       await tester.pumpAndSettle();
 
@@ -234,7 +264,10 @@ void main() {
 
       await tester.tap(find.byKey(const Key('account-new')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('account-name')), 'Petty cash');
+      await tester.enterText(
+        find.byKey(const Key('account-name')),
+        'Petty cash',
+      );
       await tester.tap(find.byKey(const Key('account-save')));
       await tester.pumpAndSettle();
 
@@ -269,54 +302,65 @@ void main() {
         branches: [maadi, zamalek],
       );
 
-      // Maadi may use the shared bank or its own drawer; Zamalek only the bank.
-      expect(find.byKey(const Key('default-1-10-1')), findsOneWidget);
+      // Cash (1) pays into a cash account: Maadi its own drawer, Zamalek none
+      // (the drawer is Maadi's). Card (2) pays into a bank: the shared bank at
+      // either branch, and never a drawer.
       expect(find.byKey(const Key('default-1-10-2')), findsOneWidget);
-      expect(find.byKey(const Key('default-1-11-1')), findsOneWidget);
+      expect(find.byKey(const Key('default-1-10-1')), findsNothing);
       expect(find.byKey(const Key('default-1-11-2')), findsNothing);
+      expect(find.byKey(const Key('default-1-11-1')), findsNothing);
+      expect(find.byKey(const Key('default-2-10-1')), findsOneWidget);
+      expect(find.byKey(const Key('default-2-11-1')), findsOneWidget);
+      expect(find.byKey(const Key('default-2-10-2')), findsNothing);
 
       await tester.tap(find.byKey(const Key('default-1-10-2')));
       await tester.pumpAndSettle();
       expect(ledger.defaultsSet, [(1, 10, 2)]);
     });
 
-    testWidgets('a choice already made is the highlighted one and is not re-sent',
-        (tester) async {
-      await pump(
-        tester,
-        authors: true,
-        accounts: [bank],
-        defaults: [const TenderAccountDefault(tenderTypeId: 2, accountId: 1)],
-      );
+    testWidgets(
+      'a choice already made is the highlighted one and is not re-sent',
+      (tester) async {
+        await pump(
+          tester,
+          authors: true,
+          accounts: [bank],
+          defaults: [const TenderAccountDefault(tenderTypeId: 2, accountId: 1)],
+        );
 
-      await tester.tap(find.byKey(const Key('default-2-all-1')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('default-2-all-1')));
+        await tester.pumpAndSettle();
 
-      expect(ledger.defaultsSet, isEmpty);
-    });
+        expect(ledger.defaultsSet, isEmpty);
+      },
+    );
   });
 
   group('a cloud till', () {
-    testWidgets('is told these are the platform\'s, and given nothing to press', (
-      tester,
-    ) async {
-      await pump(tester, authors: false, accounts: [bank, drawer]);
+    testWidgets(
+      'is told these are the platform\'s, and given nothing to press',
+      (tester) async {
+        await pump(tester, authors: false, accounts: [bank, drawer]);
 
-      expect(find.byType(PlatformOwnedNotice), findsOneWidget);
-      expect(find.textContaining('dashboard'), findsOneWidget);
-      expect(find.byKey(const Key('account-new')), findsNothing,
-          reason: 'a button that cannot save is a lie');
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('account-1')),
-          matching: find.text('Company bank'),
-        ),
-        findsOneWidget,
-      );
+        expect(find.byType(PlatformOwnedNotice), findsOneWidget);
+        expect(find.textContaining('dashboard'), findsOneWidget);
+        expect(
+          find.byKey(const Key('account-new')),
+          findsNothing,
+          reason: 'a button that cannot save is a lie',
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('account-1')),
+            matching: find.text('Company bank'),
+          ),
+          findsOneWidget,
+        );
 
-      final row = tester.widget<InkWell>(find.byKey(const Key('account-1')));
-      expect(row.onTap, isNull, reason: 'listed, and not operable');
-    });
+        final row = tester.widget<InkWell>(find.byKey(const Key('account-1')));
+        expect(row.onTap, isNull, reason: 'listed, and not operable');
+      },
+    );
 
     testWidgets('shows where each method pays in, in words', (tester) async {
       await pump(
@@ -373,11 +417,128 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('each payment method offers only accounts of its own kind', () {
+    const safe = FinancialAccount(id: 3, name: 'Safe', kind: AccountKind.cash);
+    const wallet = FinancialAccount(
+      id: 4,
+      name: 'Wallet',
+      kind: AccountKind.wallet,
+    );
+
+    testWidgets('cash → cash, card → bank, wallet → wallet; no natural type → '
+        'every account', (tester) async {
+      await pump(tester, authors: true, accounts: [bank, safe, wallet]);
+
+      Finder choice(int method, int account) =>
+          find.byKey(Key('default-$method-all-$account'));
+
+      // Cash (1).
+      expect(choice(1, 3), findsOneWidget);
+      expect(choice(1, 1), findsNothing);
+      expect(choice(1, 4), findsNothing);
+      // Card (2).
+      expect(choice(2, 1), findsOneWidget);
+      expect(choice(2, 3), findsNothing);
+      expect(choice(2, 4), findsNothing);
+      // Wallet (3).
+      expect(choice(3, 4), findsOneWidget);
+      expect(choice(3, 1), findsNothing);
+      expect(choice(3, 3), findsNothing);
+      // "No account" is always there.
+      for (final method in [1, 2, 3]) {
+        expect(
+          find.byKey(Key('default-$method-all-none')),
+          findsOneWidget,
+          reason: 'method $method',
+        );
+      }
+    });
+
+    testWidgets('a pairing saved before the rule is kept and marked, and the '
+        'choices are the fitting ones', (tester) async {
+      await pump(
+        tester,
+        authors: true,
+        accounts: [bank, safe],
+        defaults: [const TenderAccountDefault(tenderTypeId: 2, accountId: 3)],
+      );
+
+      final marker = find.byKey(const Key('default-mismatch-2-all'));
+      expect(marker, findsOneWidget);
+      expect(
+        find.descendant(of: marker, matching: find.textContaining('Safe')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: marker,
+          matching: find.textContaining('Does not match'),
+        ),
+        findsOneWidget,
+      );
+      // Not cleared, and not offered again: the bank is.
+      expect(ledger.defaultsSet, isEmpty);
+      expect(find.byKey(const Key('default-2-all-3')), findsNothing);
+      expect(find.byKey(const Key('default-2-all-1')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('default-2-all-1')));
+      await tester.pumpAndSettle();
+      expect(ledger.defaultsSet, [(2, null, 1)]);
+    });
+
+    testWidgets('a cloud till shows the same marker, read-only',
+        (tester) async {
+      await pump(
+        tester,
+        authors: false,
+        accounts: [bank, safe],
+        defaults: [const TenderAccountDefault(tenderTypeId: 2, accountId: 3)],
+      );
+
+      expect(find.byKey(const Key('default-mismatch-2-all')), findsOneWidget);
+      expect(find.byKey(const Key('default-2-all-1')), findsNothing);
+    });
+
+    testWidgets('no account of the needed kind: says which one to add',
+        (tester) async {
+      await pump(tester, authors: true, accounts: [bank]);
+
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('default-none-fit-1-all')))
+            .data,
+        contains('Cash'),
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('default-none-fit-3-all')))
+            .data,
+        contains('Wallet'),
+      );
+      expect(find.byKey(const Key('default-none-fit-2-all')), findsNothing);
+    });
+
+    testWidgets('in Arabic the marker and the hint are Arabic', (tester) async {
+      await pump(
+        tester,
+        authors: true,
+        accounts: [bank, safe],
+        defaults: [const TenderAccountDefault(tenderTypeId: 2, accountId: 3)],
+        locale: 'ar',
+      );
+
+      expect(find.textContaining('لا يناسب وسيلة الدفع'), findsOneWidget);
+      expect(find.textContaining('لا يوجد حساب'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
 
 /// In-memory stand-in for both the till's read and Management's write, so the
 /// pane reloads what it saved.
-class _Ledger implements FinancialAccountsRepository, FinancialAccountsAdminRepository {
+class _Ledger
+    implements FinancialAccountsRepository, FinancialAccountsAdminRepository {
   _Ledger({
     required List<FinancialAccount> accounts,
     required List<TenderAccountDefault> defaults,
@@ -394,7 +555,9 @@ class _Ledger implements FinancialAccountsRepository, FinancialAccountsAdminRepo
   AdminRefusal? refuse;
 
   @override
-  Future<List<FinancialAccount>> accounts({bool includeInactive = false}) async => [
+  Future<List<FinancialAccount>> accounts({
+    bool includeInactive = false,
+  }) async => [
     for (final a in _accounts)
       if (includeInactive || a.isActive) a,
   ];

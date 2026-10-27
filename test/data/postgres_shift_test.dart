@@ -78,7 +78,7 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
         'VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
           'r': restaurantId,

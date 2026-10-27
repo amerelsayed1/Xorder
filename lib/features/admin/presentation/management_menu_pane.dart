@@ -8,7 +8,9 @@ import '../../../core/money/quantity.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/destructive_confirm_dialog.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/reason_code.dart' show ReasonRequirement;
 import '../../../data/postgres/pos_database.dart' show PosDbException;
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/content_languages.dart';
@@ -79,6 +81,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
       return;
     }
     ref.invalidate(catalogProvider);
+    ref.invalidate(inactiveCategoriesProvider);
   }
 
   @override
@@ -113,7 +116,15 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
       ),
       error: (error, _) => _Centred(text: '$error'),
       data: (menu) {
-        final categories = menu.categories;
+        // Off sections stay in the list (dimmed, switch off) so they can be
+        // switched back on; the till's own catalogue never carries them.
+        final categories = [
+          ...menu.categories,
+          ...?ref.watch(inactiveCategoriesProvider).valueOrNull,
+        ]..sort((a, b) {
+            final bySort = a.sortOrder.compareTo(b.sortOrder);
+            return bySort != 0 ? bySort : a.id.compareTo(b.id);
+          });
         final selected =
             _categoryId ?? (categories.isEmpty ? null : categories.first.id);
         final products = selected == null
@@ -131,8 +142,13 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
           if (category.id == selected) current = category;
         }
 
-        Future<void> archiveCategory(Category category) => _write(
-          () => repository.archiveCategory(category, by: widget.admin),
+        // One switch: on puts it back on the rail, off takes it off.
+        Future<void> toggleCategory(Category category) => _write(
+          () => repository.archiveCategory(
+            category,
+            by: widget.admin,
+            restore: !category.isActive,
+          ),
         );
 
         return Column(
@@ -159,7 +175,9 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                       selected: null,
                       onPick: (_) {},
                       onEdit: (category) => _editCategory(repository, category),
-                      onArchive: archiveCategory,
+                      onToggle: toggleCategory,
+                      onDelete: (category) =>
+                          _deleteCategory(repository, category),
                     )
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -172,7 +190,9 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                           onPick: (id) => setState(() => _categoryId = id),
                           onEdit: (category) =>
                               _editCategory(repository, category),
-                          onArchive: archiveCategory,
+                          onToggle: toggleCategory,
+                          onDelete: (category) =>
+                              _deleteCategory(repository, category),
                         ),
                         Expanded(
                           child: _ProductList(
@@ -246,6 +266,28 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     );
     if (edited == null) return;
     await _write(() => repository.saveCategory(edited, by: widget.admin));
+  }
+
+  Future<void> _deleteCategory(
+    CatalogAdminRepository repository,
+    Category category,
+  ) async {
+    final strings = context.strings;
+    final confirmed = await DestructiveConfirmDialog.show(
+      context,
+      title: strings.deleteSectionTitle(
+        category.displayName(strings.languageCode),
+      ),
+      confirmLabel: strings.deleteLabel,
+      keepLabel: strings.cancel,
+      requirement: ReasonRequirement.disabled,
+    );
+    if (confirmed == null || !mounted) return;
+    await _write(() => repository.deleteCategory(category, by: widget.admin));
+    // The rail may have been showing the section that is gone.
+    if (mounted && _categoryId == category.id) {
+      setState(() => _categoryId = null);
+    }
   }
 
   Future<void> _editProduct(
@@ -365,7 +407,8 @@ class _CategoryList extends StatelessWidget {
     required this.selected,
     required this.onPick,
     required this.onEdit,
-    required this.onArchive,
+    required this.onToggle,
+    required this.onDelete,
     this.width,
   });
 
@@ -379,7 +422,9 @@ class _CategoryList extends StatelessWidget {
   final int? selected;
   final ValueChanged<int> onPick;
   final ValueChanged<Category> onEdit;
-  final ValueChanged<Category> onArchive;
+  /// The on/off switch: turns the section on if it is off, and off if it is on.
+  final ValueChanged<Category> onToggle;
+  final ValueChanged<Category> onDelete;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -411,7 +456,10 @@ class _CategoryList extends StatelessWidget {
                           style: PosText.ui(
                             size: 14,
                             weight: FontWeight.w600,
-                            color: context.pos.ink,
+                            // Off reads as off before anyone looks at the switch.
+                            color: category.isActive
+                                ? context.pos.ink
+                                : context.pos.muted,
                           ),
                         ),
                         const SizedBox(height: PosSpace.xs),
@@ -424,17 +472,34 @@ class _CategoryList extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    tooltip: context.strings.rename,
-                    onPressed: () => onEdit(category),
+                  Tooltip(
+                    message: category.isActive
+                        ? context.strings.takeOffTheRail
+                        : context.strings.putBackOnTheRail,
+                    child: Switch(
+                      key: Key('category-${category.id}-active'),
+                      value: category.isActive,
+                      onChanged: (_) => onToggle(category),
+                    ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.archive_outlined, size: 16),
-                    // Never "delete": products point at this row, and so
-                    // does every sale that ever named it.
-                    tooltip: context.strings.takeOffTheRail,
-                    onPressed: () => onArchive(category),
+                    key: Key('category-${category.id}-edit'),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    tooltip: context.strings.edit,
+                    onPressed: () => onEdit(category),
+                  ),
+                  // Refused by the repository while the section holds an item
+                  // (live or archived): products point at this row, and so does
+                  // every sale that named them. Such a section is switched off.
+                  IconButton(
+                    key: Key('category-${category.id}-delete'),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      size: 16,
+                      color: context.pos.danger,
+                    ),
+                    tooltip: context.strings.deleteLabel,
+                    onPressed: () => onDelete(category),
                   ),
                 ],
               ),

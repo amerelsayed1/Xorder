@@ -24,7 +24,7 @@ import 'pg_fixture.dart';
 /// The two installers, pointed at a restaurant that already has an owner.
 ///
 /// `seedOwner` (the wizard) and `pos_migrate --seed` both write the owner
-/// straight into `pos_staff`, past `PostgresStaffDirectoryRepository`. Given a
+/// straight into `pos_users`, past `PostgresStaffDirectoryRepository`. Given a
 /// different username they used to make a second owner in silence; migration
 /// 42 made the database refuse, and neither caller expected it — the CLI died
 /// on a driver error and the wizard showed one in its error bar. What each says
@@ -89,7 +89,7 @@ void main() {
   Future<Map<String, bool>> owners() async {
     final rows = await db.query(
       pg.config,
-      'SELECT s.name, s.is_active FROM pos_staff s '
+      'SELECT s.name, s.is_active FROM pos_users s '
       'JOIN pos_roles r ON r.id = s.role_id '
       "WHERE s.restaurant_id = @r AND r.code = 'owner' ORDER BY s.id",
       parameters: {'r': restaurantId},
@@ -124,7 +124,7 @@ void main() {
     test('the owner again, by username, changes nothing — PIN included', () async {
       Future<Object?> pinHash() async => (await db.query(
         pg.config,
-        "SELECT pin_hash FROM pos_staff WHERE username = 'amer'",
+        "SELECT pin_hash FROM pos_users WHERE username = 'amer'",
       )).first[0];
 
       final before = await pinHash();
@@ -137,7 +137,7 @@ void main() {
         () async {
       await db.query(
         pg.config,
-        "UPDATE pos_staff SET is_active = false WHERE username = 'amer'",
+        "UPDATE pos_users SET is_active = false WHERE username = 'amer'",
       );
       expect(await seed('Nour', 'nour'), isA<OwnerCreated>());
       expect(await owners(), {'Amer': false, 'Nour': true});
@@ -279,6 +279,8 @@ void main() {
         ownerName: 'Nour',
         ownerUsername: 'nour',
         ownerPin: '4821',
+        // Typed twice since pos-setup-owner-step.
+        ownerPinConfirm: '4821',
       );
       await tester.pumpAndSettle();
       return container;

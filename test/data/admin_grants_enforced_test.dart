@@ -151,15 +151,15 @@ void main() {
   });
 
   test('Management can read and write the people', () async {
-    expect(await refusalFor("UPDATE pos_staff SET name = 'x'"), isNull);
+    expect(await refusalFor("UPDATE pos_users SET name = 'x'"), isNull);
     expect(
       await refusalFor("UPDATE pos_roles SET name_en = 'x'"),
       isNull,
     );
     expect(
       await refusalFor(
-        "INSERT INTO pos_staff_permission_overrides "
-        "  (staff_id, capability, effect) VALUES (1, 'order.refund', 'ALLOW')",
+        "INSERT INTO pos_user_permission_overrides "
+        "  (user_id, capability, effect) VALUES (1, 'order.refund', 'ALLOW')",
       ),
       isNot('42501'),
     );
@@ -202,7 +202,7 @@ void main() {
     // The rule the administrative list opens with: no DELETE anywhere. Staff
     // are disabled, roles are edited and the catalogue is archived, because a
     // deleted row takes its audit trail's subject with it.
-    expect(await refusalFor('DELETE FROM pos_staff'), '42501');
+    expect(await refusalFor('DELETE FROM pos_users'), '42501');
     expect(await refusalFor('DELETE FROM pos_orders'), '42501');
     expect(await refusalFor('DELETE FROM pos_products'), '42501');
     expect(await refusalFor('DELETE FROM pos_categories'), '42501');

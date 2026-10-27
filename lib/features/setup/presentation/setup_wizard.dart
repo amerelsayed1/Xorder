@@ -371,18 +371,31 @@ class _Footer extends ConsumerWidget {
               ),
             ),
           PosButton(
-            label: draft.isLastStep
-                ? context.strings.openTheTill
-                : context.strings.continueLabel,
+            // One button per screen. On the offline first-install step it is
+            // "Continue" on the first page and "Create database and continue"
+            // on the second; everywhere else it is what it always was.
+            key: const Key('setup-primary'),
+            label: switch (draft.footerAction) {
+              FooterAction.finish => context.strings.openTheTill,
+              FooterAction.createDatabase =>
+                context.strings.createDatabaseAndContinue,
+              _ => context.strings.continueLabel,
+            },
             height: PosSize.secondaryAction,
             background: context.pos.accent,
             foreground: Colors.white,
             fontSize: 15,
             fontWeight: FontWeight.w800,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.s28),
-            onPressed: draft.busy || !draft.canAdvance
+            onPressed: draft.busy || !draft.footerEnabled
                 ? null
                 : () async {
+                    // The first-install step's two pages, and the build.
+                    if (draft.footerAction == FooterAction.toOwnerPage ||
+                        draft.footerAction == FooterAction.createDatabase) {
+                      controller.footerPressed();
+                      return;
+                    }
                     if (draft.isLastStep) {
                       // Publish what the wizard gathered and write it to disk
                       // before leaving — the rest of the app reads deployment

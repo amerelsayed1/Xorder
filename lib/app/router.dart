@@ -47,15 +47,21 @@ abstract final class PosRoutes {
 ///
 /// Only when a shift is OPEN. A terminal sitting on the start screen before
 /// trading has nobody signed in either, and that is the ordinary morning state
-/// — opening the shift is what asks who is there.
+/// — Start's sign-in is what asks who is there.
+///
+/// **Resuming after a restart no longer comes through here.** Start signs the
+/// person in first (pos-signin-first-home), so the lock screen is only reached
+/// by Lock, Switch user and the idle lock. Home is not in the set: with nobody
+/// signed in it goes to Start.
 bool needsSignIn({
   required String at,
   required bool signedIn,
   required bool shiftOpen,
 }) =>
-    (at == PosRoutes.sale || at == PosRoutes.floor || at == PosRoutes.home) &&
-    !signedIn &&
-    shiftOpen;
+    // Home is not here: it is the screen a person lands on after signing in,
+    // shift or no shift, so with nobody signed in it goes to Start instead
+    // (the redirect below), never to a lock screen that would unlock into it.
+    (at == PosRoutes.sale || at == PosRoutes.floor) && !signedIn && shiftOpen;
 
 /// The lock screen, remembering which selling screen sent the till to it.
 ///
@@ -157,6 +163,30 @@ final routerProvider = Provider<GoRouter>((ref) {
     openType(context, ref.read(branchOrderTypesProvider).single);
   }
 
+  /// Where somebody goes once they have signed in at Start
+  /// (pos-signin-first-home).
+  ///
+  /// Home, unless a shift is already open and the branch sells one way: then
+  /// there is nothing to choose and nothing to start, so they go where Start
+  /// sent them before. A one-type branch with **no** shift open sees Home, which
+  /// is where Start shift is.
+  Future<void> afterSignIn(BuildContext context) async {
+    try {
+      await ref.read(orderTypeConfigProvider.future);
+      await ref.read(branchesProvider.future);
+      await ref.read(shiftProvider.future);
+    } on Object {
+      // The providers' own fallbacks apply.
+    }
+    if (!context.mounted) return;
+    final shiftOpen = ref.read(shiftProvider).valueOrNull != null;
+    if (shiftOpen && !hasChoice()) {
+      openType(context, ref.read(branchOrderTypesProvider).single);
+      return;
+    }
+    context.go(PosRoutes.home);
+  }
+
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: PosRoutes.start,
@@ -171,6 +201,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return PosRoutes.welcome;
       }
       if (configured && (at == PosRoutes.setup || at == PosRoutes.welcome)) {
+        return PosRoutes.start;
+      }
+      // Home is for somebody who has signed in; with nobody, the way in is Start.
+      if (at == PosRoutes.home && ref.read(signedInStaffProvider) == null) {
         return PosRoutes.start;
       }
       if (needsSignIn(
@@ -269,7 +303,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PosRoutes.start,
         builder: (context, state) => StartScreen(
-          onStart: () => afterShift(context),
+          onStart: () => afterSignIn(context),
           onManageLicence: () => context.go(PosRoutes.licence),
           onManage: (pane) =>
               context.go(PosRoutes.management, extra: pane),
@@ -285,8 +319,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           // the ticket is still in memory, so the cashier lands where they
           // left off — the sale screen after Lock, and the screen a restarted
           // till was heading for (Home, the floor) after a resume.
-          onUnlocked: () =>
-              context.go(unlockTarget(state.uri.queryParameters['next'])),
+          //
+          // **With no shift open it is Home, whatever was asked for.** Somebody
+          // can now be signed in without a shift (pos-signin-first-home), and
+          // Lock or Switch user from Home would otherwise unlock onto the sale
+          // screen and take cash against no drawer (`shift_id` NULL).
+          onUnlocked: () => context.go(
+            ref.read(shiftProvider).valueOrNull == null
+                ? PosRoutes.home
+                : unlockTarget(state.uri.queryParameters['next']),
+          ),
           // The screen signs out first, so resuming the shift from the start
           // screen is sent straight back here for a name and a PIN.
           onBack: () => context.go(PosRoutes.start),
@@ -294,12 +336,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: PosRoutes.home,
-        builder: (context, state) =>
-            HomeScreen(
-              onPick: (type) => openType(context, type),
-              // Escape: back to Start, where the shift was opened or resumed.
-              onBack: () => context.go(PosRoutes.start),
-            ),
+        builder: (context, state) => HomeScreen(
+          onPick: (type) => openType(context, type),
+          // A shift was just opened here: a one-way branch goes selling,
+          // one with a choice stays on Home, now with its buttons live.
+          onShiftOpened: () => afterShift(context),
+          // Escape and Sign out: the person signs out (Home does that),
+          // and Start is the signed-out door.
+          onBack: () => context.go(PosRoutes.start),
+        ),
       ),
       GoRoute(
         path: PosRoutes.floor,
@@ -387,7 +432,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             }
           },
           onOrders: () => context.go(PosRoutes.orders),
-          onCloseShift: () => context.go(PosRoutes.start),
         ),
       ),
     ],

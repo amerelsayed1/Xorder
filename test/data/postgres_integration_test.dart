@@ -44,7 +44,7 @@ void main() {
 
   /// A real person to attribute a void to.
   ///
-  /// `pos_order_lines.voided_by` has a foreign key to `pos_staff` — deliberately,
+  /// `pos_order_lines.voided_by` has a foreign key to `pos_users` — deliberately,
   /// so a void can never name somebody who does not work here — which means this
   /// suite needs an actual staff row rather than an invented id.
   late int staffId;
@@ -63,7 +63,7 @@ void main() {
     );
     final staff = await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (restaurant_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, 'Nour Adel', 'nour', 'salt', 'hash') RETURNING id",
       parameters: {'r': restaurant.first[0]},
     );
@@ -380,7 +380,7 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT event, unit_price_before_minor, unit_price_after_minor, '
-        '       staff_id, note, order_line_id '
+        '       user_id, note, order_line_id '
         'FROM pos_order_line_events ORDER BY id DESC LIMIT 1',
       );
 

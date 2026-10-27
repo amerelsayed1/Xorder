@@ -126,6 +126,14 @@ class _TillIdleLockState extends ConsumerState<TillIdleLock> {
 
     ref.read(signedInStaffProvider.notifier).signOut();
 
+    // Home belongs to whoever signed in, shift or no shift (pos-signin-first-
+    // home). Signed out under it, it would be an empty screen on a counter, so
+    // it goes to Start — the signed-out door — rather than to a lock screen.
+    if (at == PosRoutes.home) {
+      router.go(PosRoutes.start);
+      return true;
+    }
+
     final shiftOpen = ref.read(shiftProvider).valueOrNull != null;
     // The order history is a till screen too — receipts, refunds and
     // reprints — but outside the redirect's rule, which is about selling.

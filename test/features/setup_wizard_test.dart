@@ -731,7 +731,7 @@ void main() {
 
     test('an offline till registers as the administrator it just created', () {
       // The regression this pins: registration authenticates against
-      // `pos_staff` on this machine, and it used to read the CLOUD sign-in
+      // `pos_users` on this machine, and it used to read the CLOUD sign-in
       // fields — which the offline path stopped collecting when its account
       // step became "First administrator". It sent an empty username to the
       // till's own database and was refused on the last step of the wizard.
@@ -776,10 +776,17 @@ void main() {
         // And its FIELDS, open. This block used to sit collapsed behind a
         // button labelled "This machine has no database yet" — a status line
         // wearing a button, which as the whole content of a step reads as an
-        // empty screen.
+        // empty screen. It is two screens now (pos-setup-owner-step); the first
+        // asks for the one password and says in plain words why.
         expect(find.text('This machine has no database yet'), findsNothing);
-        expect(find.text('FIRST INSTALL ON THIS MACHINE'), findsOneWidget);
-        expect(find.text('Build the database'), findsOneWidget);
+        expect(find.text('Database access'), findsOneWidget);
+        expect(
+          find.byKey(const Key('first-install-database-access')),
+          findsOneWidget,
+        );
+        // One button per screen: no "Build the database" beside a dimmed
+        // Continue.
+        expect(find.text('Build the database'), findsNothing);
       },
     );
 

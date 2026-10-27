@@ -104,7 +104,7 @@ void main() {
     );
 
     final staff = await database.query(admin,
-        'SELECT name FROM pos_staff WHERE restaurant_id = @r',
+        'SELECT name FROM pos_users WHERE restaurant_id = @r',
         parameters: {'r': restaurantId});
     expect(staff.first[0], 'Amer', reason: 'the first name survived the re-run');
   }, timeout: const Timeout(Duration(minutes: 2)));

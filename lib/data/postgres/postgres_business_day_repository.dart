@@ -29,8 +29,8 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
         opener.name, closer.name''';
 
   static const _joins = '''
-        LEFT JOIN pos_staff AS opener ON opener.id = d.opened_by
-        LEFT JOIN pos_staff AS closer ON closer.id = d.closed_by''';
+        LEFT JOIN pos_users AS opener ON opener.id = d.opened_by
+        LEFT JOIN pos_users AS closer ON closer.id = d.closed_by''';
 
   Money? _money(Object? minor) => minor is int
       ? Money(minor, currency: currency, exponent: exponent)

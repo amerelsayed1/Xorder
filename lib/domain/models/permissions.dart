@@ -9,7 +9,7 @@ library;
 /// The permission names, exactly as they are stored.
 ///
 /// **These strings are data.** They live in `pos_roles.capabilities` and
-/// `pos_staff.capabilities` on every branch server that has ever run this
+/// `pos_users.capabilities` on every branch server that has ever run this
 /// build, so renaming one is a migration, not an edit — see
 /// [PosCapability.canonical] and migration 5.
 abstract final class PosCapability {

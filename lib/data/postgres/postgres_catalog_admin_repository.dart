@@ -194,6 +194,73 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     });
   }
 
+  @override
+  Future<List<Category>> inactiveCategories() async {
+    final rows = await database.query(
+      config,
+      'SELECT $_categoryColumns FROM pos_categories '
+      'WHERE restaurant_id = @r AND NOT is_active '
+      'ORDER BY sort_order, id',
+      parameters: {'r': restaurantId},
+    );
+    return [for (final row in rows) _categoryFrom(row)];
+  }
+
+  @override
+  Future<AdminResult<void>> deleteCategory(
+    Category category, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult<void>.refused(blocked);
+
+    return database.runTx(config, (tx) async {
+      final existing = await tx.execute(
+        Sql.named(
+          'SELECT $_categoryColumns FROM pos_categories '
+          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+        ),
+        parameters: {'id': category.id, 'r': restaurantId},
+      );
+      if (existing.isEmpty) {
+        return const AdminResult<void>.refused(EditedElsewhere(0));
+      }
+      final stored = _categoryFrom(existing.first);
+
+      // Counted inside the lock, archived items included: they are still rows
+      // the foreign key protects, and a sale may name them.
+      final held = await tx.execute(
+        Sql.named(
+          'SELECT (SELECT count(*) FROM pos_products WHERE category_id = @id) '
+          '     + (SELECT count(*) FROM pos_combos WHERE category_id = @id)',
+        ),
+        parameters: {'id': category.id},
+      );
+      if ((held.first[0]! as int) > 0) {
+        return const AdminResult<void>.refused(
+          CatalogRefused(CatalogProblem.categoryHasItems),
+        );
+      }
+
+      // Its links to option groups cascade; nothing else points at it.
+      await tx.execute(
+        Sql.named(
+          'DELETE FROM pos_categories WHERE id = @id AND restaurant_id = @r',
+        ),
+        parameters: {'id': category.id, 'r': restaurantId},
+      );
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.categoryDeleted,
+        entityType: AuditAction.entityCategory,
+        entityId: '${stored.id}',
+        before: {'name': stored.nameEn, 'slug': stored.slug},
+      );
+      return const AdminResult<void>.done(null);
+    });
+  }
+
   // ── products ───────────────────────────────────────────────────────────────
 
   @override
@@ -1280,7 +1347,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           'WHERE id = @id AND restaurant_id = @r '
           'RETURNING $_tableColumns',
         ),
-        parameters: {...parameters, 'id': table.id},
+        // `branch` is for the INSERT only; the driver refuses a named
+        // parameter the statement does not use, which made every edit of an
+        // existing table fail.
+        parameters: {...parameters, 'id': table.id}..remove('branch'),
       );
       final saved = _tableFrom(rows.first);
       await _audit(
@@ -2659,7 +2729,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   }) => tx.execute(
     Sql.named(
       'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, '
-      '  actor_staff_id, actor_name, action, entity_type, entity_id, '
+      '  actor_user_id, actor_name, action, entity_type, entity_id, '
       '  before_value, after_value) '
       'VALUES (@r, @branch, @terminal, @actor, @actorName, @action, '
       '        @entityType, @entityId, @before::jsonb, @after::jsonb)',

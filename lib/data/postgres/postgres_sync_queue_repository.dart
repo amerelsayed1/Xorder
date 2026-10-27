@@ -166,7 +166,7 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
       await tx.execute(
         Sql.named(
           'INSERT INTO pos_audit_events (restaurant_id, branch_id, '
-          '  terminal_id, actor_staff_id, actor_name, action, entity_type, '
+          '  terminal_id, actor_user_id, actor_name, action, entity_type, '
           '  entity_id, before_value) '
           'VALUES (@restaurant, @branch, @terminal, @actor, @actorName, '
           '        @action, @entityType, @entityId, @before::jsonb)',

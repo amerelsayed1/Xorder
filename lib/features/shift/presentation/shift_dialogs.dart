@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,21 +27,56 @@ import '../../../core/ui/widgets/mono_amount.dart';
 /// what make the cash-up mean anything. A shift with no named person is a
 /// drawer nobody is answerable for, and a shift with no opening float makes
 /// every variance wrong by the same unknown amount.
+///
+/// **Three ways in**, one dialog, so the PIN pad, the lockout and the wording of
+/// a refusal are the same wherever somebody types a PIN:
+///
+/// * [show]: name and PIN, then the float (the original form).
+/// * [show] with [by]: the person is already signed in, so the float only. This
+///   is what Home asks for (pos-signin-first-home).
+/// * [SignInDialog]: name and PIN and nothing else. Signing in does not open a
+///   shift, which is what lets a manager close the day without ever opening a
+///   drawer.
 class OpenShiftDialog extends ConsumerStatefulWidget {
-  const OpenShiftDialog({super.key});
+  const OpenShiftDialog({super.key, this.by, this.signInOnly = false});
+
+  /// Already signed in: skip the PIN and ask for the float.
+  final PosStaff? by;
+
+  /// Name and PIN only. Does not need `shift.open` and writes no shift.
+  final bool signInOnly;
 
   /// Returns true when a shift is open and the till may trade.
-  static Future<bool> show(BuildContext context) async =>
+  static Future<bool> show(BuildContext context, {PosStaff? by}) async =>
       await showDialog<bool>(
         context: context,
         barrierColor: context.pos.scrimHeavy,
         barrierDismissible: false,
-        builder: (_) => const OpenShiftDialog(),
+        builder: (_) => OpenShiftDialog(by: by),
       ) ??
       false;
 
   @override
   ConsumerState<OpenShiftDialog> createState() => _OpenShiftDialogState();
+}
+
+/// Signing in at the till: a name and a PIN, no shift.
+///
+/// **Not the same act as opening a shift.** Opening one makes the person answer
+/// for a drawer; signing in only says who is at the till. A manager who has come
+/// to close the night has no use for a drawer, and an open shift is a blocker
+/// for closing the day. Wrong PINs count against the same limiter as the lock
+/// screen and the shift dialog.
+abstract final class SignInDialog {
+  /// Returns true when somebody is now signed in.
+  static Future<bool> show(BuildContext context) async =>
+      await showDialog<bool>(
+        context: context,
+        barrierColor: context.pos.scrimHeavy,
+        barrierDismissible: false,
+        builder: (_) => const OpenShiftDialog(signInOnly: true),
+      ) ??
+      false;
 }
 
 class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
@@ -49,6 +86,17 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   PosStaff? _staff;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _staff = widget.by;
+    // Whoever signed in last is offered back, as the lock screen does: at Start
+    // the only thing left to type is the PIN.
+    if (widget.signInOnly) {
+      _username.text = ref.read(lastUsernameProvider) ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -110,7 +158,25 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     // sends somebody to retype a PIN that was right.
     final permitted =
         staff != null &&
-        Authorization.check(staff, PosCapability.shiftOpen).isAllowed;
+        (widget.signInOnly ||
+            Authorization.check(staff, PosCapability.shiftOpen).isAllowed);
+
+    // Signing in is the whole job here. Same as the lock screen: the day is
+    // made sure of when a shift is already open (a till upgraded mid-shift, or
+    // restarted), not awaited, and never throwing: signing in must not wait.
+    if (widget.signInOnly && staff != null) {
+      ref.read(signedInStaffProvider.notifier).signIn(staff);
+      if (ref.read(shiftProvider).valueOrNull != null) {
+        unawaited(ref.read(ensureBusinessDayProvider)(staff));
+      }
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    // A wrong PIN is the moment a just-changed one would be wrong: ask the
+    // platform again, so the second try can be against the new one (as the
+    // lock screen does).
+    if (staff == null) ref.read(cloudSyncProvider)?.nudge();
 
     setState(() {
       _busy = false;
@@ -134,6 +200,14 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   Future<void> _open() async {
     final staff = _staff;
     if (staff == null) return;
+
+    // Asked here as well as hidden by the caller: with `by` the PIN step, which
+    // used to be where `shift.open` was checked, is skipped, and the repository
+    // does not check it. Hiding Home's button is courtesy; this is the guard.
+    if (!Authorization.check(staff, PosCapability.shiftOpen).isAllowed) {
+      setState(() => _error = context.strings.notPermittedToOpenShift(staff.name));
+      return;
+    }
 
     final float = Money.tryParse(_float.text.trim());
     if (float == null || float.minor < 0) {
@@ -187,7 +261,7 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     return _ShiftDialogShell(
       title: _staff == null ? strings.signIn : strings.openTheDrawer,
       subtitle: _staff == null
-          ? strings.signInHelp
+          ? (widget.signInOnly ? strings.signInOnlyHelp : strings.signInHelp)
           : strings.countTheDrawerHelp(_staff!.name),
       error: _error,
       busy: _busy,
@@ -1001,7 +1075,19 @@ class _ShiftDialogShell extends StatelessWidget {
   final String? error;
 
   @override
-  Widget build(BuildContext context) => Dialog(
+  Widget build(BuildContext context) => CallbackShortcuts(
+    // Esc is the same as pressing Cancel, and is ignored while a save is in
+    // flight or when the dialog has no cancel (a closed shift is final).
+    // `autofocus` so Esc works before anybody has clicked into a field.
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): () {
+        if (!busy) onCancel?.call();
+      },
+    },
+    child: Focus(autofocus: true, child: _dialog(context)),
+  );
+
+  Widget _dialog(BuildContext context) => Dialog(
     backgroundColor: context.pos.page,
     insetPadding: const EdgeInsets.all(PosSpace.s24),
     shape: RoundedRectangleBorder(

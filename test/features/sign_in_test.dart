@@ -362,13 +362,23 @@ void main() {
     // straight to the till, so sales carried no cashier and the cash-up refused
     // with a message whose door did not exist.
     test('selling with a shift open and nobody signed in', () {
-      for (final at in [PosRoutes.sale, PosRoutes.floor, PosRoutes.home]) {
+      for (final at in [PosRoutes.sale, PosRoutes.floor]) {
         expect(
           needsSignIn(at: at, signedIn: false, shiftOpen: true),
           isTrue,
           reason: at,
         );
       }
+    });
+
+    test('Home is not one of them: it goes to Start, never to the lock', () {
+      // Home is where somebody lands after signing in, shift or no shift
+      // (pos-signin-first-home). With nobody signed in the router sends it to
+      // Start instead, so unlocking can never be a way past Start.
+      expect(
+        needsSignIn(at: PosRoutes.home, signedIn: false, shiftOpen: true),
+        isFalse,
+      );
     });
 
     test('somebody signed in is left alone', () {

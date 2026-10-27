@@ -12,6 +12,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/cash/presentation/cash_dialogs.dart';
 import 'package:xorder_pos/features/cash/presentation/day_close_dialog.dart';
@@ -44,12 +45,18 @@ void main() {
     bool withShift = true,
     BusinessDayRepository? days,
     String locale = 'en',
+    bool nobodyAtTill = false,
+    PosStaff? admin,
   }) => ProviderScope(
     overrides: [
       cashMovementsRepositoryProvider.overrideWithValue(cash),
       cashPolicyProvider.overrideWithValue(policy),
       reasonsRepositoryProvider.overrideWithValue(const _Reasons()),
-      signedInStaffProvider.overrideWith(_SignedIn.new),
+      signedInStaffProvider.overrideWith(
+        nobodyAtTill ? _NobodyAtTill.new : _SignedIn.new,
+      ),
+      if (admin != null)
+        adminSessionProvider.overrideWith(() => _AdminIn(admin)),
       // A flag rather than a nullable shift: `shift ?? _openShift` would have
       // made "no shift open" untestable, because passing null is exactly how a
       // caller says there is none.
@@ -268,6 +275,9 @@ void main() {
       WidgetTester tester, {
       required List<DayBlocker> blockers,
       String locale = 'en',
+      _FakeDays? days,
+      bool nobodyAtTill = false,
+      PosStaff? admin,
     }) async {
       await tester.pumpWidget(
         host(
@@ -278,8 +288,10 @@ void main() {
             ),
           ),
           cash: FakeCash(),
-          days: _FakeDays(blockers),
+          days: days ?? _FakeDays(blockers),
           locale: locale,
+          nobodyAtTill: nobodyAtTill,
+          admin: admin,
         ),
       );
       await tester.pumpAndSettle();
@@ -295,6 +307,38 @@ void main() {
       expect(find.text('Close the day'), findsWidgets);
       expect(find.text('Close anyway'), findsNothing);
     });
+
+    testWidgets('the closer is the person at the till', (tester) async {
+      final days = _FakeDays(const []);
+      await openDay(tester, blockers: const [], days: days);
+      await tester.tap(find.text('Close the day').last);
+      await tester.pumpAndSettle();
+
+      expect(days.closedBy, [4]);
+    });
+
+    testWidgets(
+      'closed from the back office with nobody signed in at the till, the '
+      'administrator is the closer, not nobody',
+      (tester) async {
+        final days = _FakeDays(const []);
+        await openDay(
+          tester,
+          blockers: const [],
+          days: days,
+          nobodyAtTill: true,
+          admin: const PosStaff(
+            id: 9,
+            name: 'Admin',
+            capabilities: {PosCapability.dayClose},
+          ),
+        );
+        await tester.tap(find.text('Close the day').last);
+        await tester.pumpAndSettle();
+
+        expect(days.closedBy, [9]);
+      },
+    );
 
     testWidgets('blockers are named and counted, not summarised', (
       tester,
@@ -320,9 +364,7 @@ void main() {
     ) async {
       await openDay(
         tester,
-        blockers: const [
-          DayBlocker(kind: DayBlockerKind.openShift, count: 1),
-        ],
+        blockers: const [DayBlocker(kind: DayBlockerKind.openShift, count: 1)],
       );
       expect(find.text('Close anyway'), findsOneWidget);
       // Only the title, not a second button offering the gentler act.
@@ -332,9 +374,7 @@ void main() {
     testWidgets('forcing is dead until a reason is typed', (tester) async {
       await openDay(
         tester,
-        blockers: const [
-          DayBlocker(kind: DayBlockerKind.openShift, count: 1),
-        ],
+        blockers: const [DayBlocker(kind: DayBlockerKind.openShift, count: 1)],
       );
 
       // The database refuses a forced close with no reason; the screen refuses
@@ -367,9 +407,7 @@ void main() {
       await openDay(
         tester,
         locale: 'ar',
-        blockers: const [
-          DayBlocker(kind: DayBlockerKind.openShift, count: 2),
-        ],
+        blockers: const [DayBlocker(kind: DayBlockerKind.openShift, count: 2)],
       );
       expect(find.text('إقفال رغم ذلك'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -385,7 +423,8 @@ final _openShift = PosShift(
 );
 
 class FakeCash implements CashMovementsRepository {
-  final recorded = <({CashMovementKind kind, Money amount, int shiftId, int? reasonId})>[];
+  final recorded =
+      <({CashMovementKind kind, Money amount, int shiftId, int? reasonId})>[];
   Object? failWith;
 
   @override
@@ -431,6 +470,9 @@ class _FakeDays implements BusinessDayRepository {
 
   final List<DayBlocker> blockers;
 
+  /// The ids of whoever closed, in order.
+  final closedBy = <int>[];
+
   static final _day = BusinessDay(
     id: 1,
     date: DateTime(2026, 9, 8),
@@ -459,7 +501,10 @@ class _FakeDays implements BusinessDayRepository {
     required PosStaff by,
     bool force = false,
     String? forceReason,
-  }) async => _day;
+  }) async {
+    closedBy.add(by.id);
+    return _day;
+  }
 }
 
 class _Reasons implements ReasonsRepository {
@@ -480,6 +525,21 @@ class _Reasons implements ReasonsRepository {
         ),
     ];
   }
+}
+
+class _NobodyAtTill extends SignedInStaffController {
+  @override
+  PosStaff? build() => null;
+}
+
+class _AdminIn extends AdminSessionController {
+  _AdminIn(this.staff);
+
+  final PosStaff staff;
+
+  @override
+  AdminSession? build() =>
+      AdminSession(staff: staff, startedAt: DateTime(2026, 9, 8));
 }
 
 class _SignedIn extends SignedInStaffController {

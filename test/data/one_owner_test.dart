@@ -18,7 +18,7 @@ import 'pg_fixture.dart';
 /// Tested twice, as every cross-row rule in this codebase is: through
 /// [PostgresStaffDirectoryRepository], which refuses with a sentence, and by
 /// raw SQL that goes round it — because the repository is one writer of
-/// `pos_staff` and the installer, `pos_migrate --seed` and the cloud seeder are
+/// `pos_users` and the installer, `pos_migrate --seed` and the cloud seeder are
 /// three more. Migration 42's triggers are what hold for all four.
 ///
 /// Counted among ACTIVE staff throughout. That is what keeps ownership
@@ -124,7 +124,7 @@ void main() {
   Future<Map<String, bool>> owners() async {
     final rows = await db.query(
       pg.config,
-      'SELECT s.name, s.is_active FROM pos_staff s '
+      'SELECT s.name, s.is_active FROM pos_users s '
       'JOIN pos_roles r ON r.id = s.role_id '
       "WHERE s.restaurant_id = @r AND r.code = 'owner' ORDER BY s.id",
       parameters: {'r': restaurantId},
@@ -134,7 +134,7 @@ void main() {
 
   Future<String?> storedRole(int staffId) async => (await db.query(
     pg.config,
-    'SELECT r.code FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+    'SELECT r.code FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
     'WHERE s.id = @id',
     parameters: {'id': staffId},
   )).first[0] as String?;
@@ -144,7 +144,7 @@ void main() {
     table == 'pos_permission_limits'
         ? "SELECT count(*) FROM pos_permission_limits WHERE subject_type = 'staff' "
               'AND subject_id = @s'
-        : 'SELECT count(*) FROM $table WHERE staff_id = @s',
+        : 'SELECT count(*) FROM $table WHERE user_id = @s',
     parameters: {'s': staffId},
   )).first[0]! as int;
 
@@ -158,7 +158,7 @@ void main() {
     bool active = true,
   }) async => (await db.query(
     pg.config,
-    'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+    'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
     '  pin_salt, pin_hash, role_id, is_active) '
     "VALUES (@r, @b, @n, @u, 's', 'h', @role, @active) RETURNING id",
     parameters: {
@@ -222,7 +222,7 @@ void main() {
       );
 
       expect((result.refusal! as OwnerAlreadyExists).ownerName, 'Amer');
-      expect(await count('pos_staff_roles', rana.id), 0);
+      expect(await count('pos_user_roles', rana.id), 0);
     });
 
     test('a disabled owner cannot come back while another is active', () async {
@@ -282,8 +282,8 @@ void main() {
       expect(appointed.succeeded, isTrue, reason: '${appointed.refusal}');
       expect(appointed.value!.role!.code, SystemRoles.ownerCode);
       expect(await owners(), {'Amer': false, 'Nour': true});
-      expect(await count('pos_staff_roles', nour.id), 0);
-      expect(await count('pos_staff_permission_overrides', nour.id), 0);
+      expect(await count('pos_user_roles', nour.id), 0);
+      expect(await count('pos_user_permission_overrides', nour.id), 0);
       expect(await count('pos_permission_limits', nour.id), 0);
     });
 
@@ -301,7 +301,7 @@ void main() {
       );
 
       expect(result.refusal, isA<OwnerIsNotAnExtraRole>());
-      expect(await count('pos_staff_roles', rana.id), 0);
+      expect(await count('pos_user_roles', rana.id), 0);
     });
   });
 
@@ -345,14 +345,14 @@ void main() {
       );
 
       expect(result.refusal, isA<OwnerIsFixed>());
-      expect(await count('pos_staff_roles', owner.id), 0);
-      expect(await count('pos_staff_permission_overrides', owner.id), 0);
+      expect(await count('pos_user_roles', owner.id), 0);
+      expect(await count('pos_user_permission_overrides', owner.id), 0);
       expect(await count('pos_permission_limits', owner.id), 0);
     });
 
     Future<String> storedPin(int staffId) async => (await db.query(
       pg.config,
-      'SELECT pin_hash FROM pos_staff WHERE id = @id',
+      'SELECT pin_hash FROM pos_users WHERE id = @id',
       parameters: {'id': staffId},
     )).first[0]! as String;
 
@@ -417,7 +417,7 @@ void main() {
       // of the owner's PIN and the installer's re-run, and stop nobody who
       // holds the administrator password anyway.
       await sql(
-        'UPDATE pos_staff SET pin_salt = @s, pin_hash = @h WHERE id = @id',
+        'UPDATE pos_users SET pin_salt = @s, pin_hash = @h WHERE id = @id',
         {'s': 'salt', 'h': 'seeded', 'id': owner.id},
       );
       expect(await storedPin(owner.id), 'seeded');
@@ -482,7 +482,7 @@ void main() {
     test('moving somebody onto Owner in SQL is refused', () async {
       final rana = await insertStaff('Rana', role: SystemRoles.cashierCode);
       await expectLater(
-        sql('UPDATE pos_staff SET role_id = @role WHERE id = @id', {
+        sql('UPDATE pos_users SET role_id = @role WHERE id = @id', {
           'role': roleId(SystemRoles.ownerCode),
           'id': rana,
         }),
@@ -497,7 +497,7 @@ void main() {
         active: false,
       );
       await expectLater(
-        sql('UPDATE pos_staff SET is_active = true WHERE id = @id', {
+        sql('UPDATE pos_users SET is_active = true WHERE id = @id', {
           'id': former,
         }),
         refusedSaying('is already the owner'),
@@ -512,7 +512,7 @@ void main() {
     test('the owner role is never an extra role', () async {
       final rana = await insertStaff('Rana', role: SystemRoles.cashierCode);
       await expectLater(
-        sql('INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (@s, @r)', {
+        sql('INSERT INTO pos_user_roles (user_id, role_id) VALUES (@s, @r)', {
           's': rana,
           'r': roleId(SystemRoles.ownerCode),
         }),
@@ -522,7 +522,7 @@ void main() {
 
     test('the owner is given no extra roles', () async {
       await expectLater(
-        sql('INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (@s, @r)', {
+        sql('INSERT INTO pos_user_roles (user_id, role_id) VALUES (@s, @r)', {
           's': owner.id,
           'r': roleId(SystemRoles.cashierCode),
         }),
@@ -535,7 +535,7 @@ void main() {
       // itself out of the screen that could take it off again.
       await expectLater(
         sql(
-          'INSERT INTO pos_staff_permission_overrides (staff_id, capability, effect) '
+          'INSERT INTO pos_user_permission_overrides (user_id, capability, effect) '
           "VALUES (@s, 'staff.manage', 'DENY')",
           {'s': owner.id},
         ),
@@ -544,18 +544,18 @@ void main() {
     });
 
     test('somebody still carrying exceptions cannot be made the owner', () async {
-      await sql('UPDATE pos_staff SET is_active = false WHERE id = @id', {
+      await sql('UPDATE pos_users SET is_active = false WHERE id = @id', {
         'id': owner.id,
       });
       final rana = await insertStaff('Rana', role: SystemRoles.cashierCode);
       await sql(
-        'INSERT INTO pos_staff_permission_overrides (staff_id, capability, effect) '
+        'INSERT INTO pos_user_permission_overrides (user_id, capability, effect) '
         "VALUES (@s, 'receipt.reprint', 'DENY')",
         {'s': rana},
       );
 
       await expectLater(
-        sql('UPDATE pos_staff SET role_id = @role WHERE id = @id', {
+        sql('UPDATE pos_users SET role_id = @role WHERE id = @id', {
           'role': roleId(SystemRoles.ownerCode),
           'id': rana,
         }),
@@ -566,7 +566,7 @@ void main() {
     test('two owners appointed at the same moment: exactly one wins', () async {
       // Without the lock on the owner role's row, each transaction counts the
       // other's uncommitted appointment as nobody, and both commit.
-      await sql('UPDATE pos_staff SET is_active = false WHERE id = @id', {
+      await sql('UPDATE pos_users SET is_active = false WHERE id = @id', {
         'id': owner.id,
       });
 
@@ -576,7 +576,7 @@ void main() {
           await db.runTx(pg.config, (tx) async {
             await tx.execute(
               Sql.named(
-                'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+                'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
                 '  pin_salt, pin_hash, role_id) '
                 "VALUES (@r, @b, @n, @n, 's', 'h', @role)",
               ),
@@ -615,12 +615,12 @@ void main() {
       // does not rewrite them — which one is the real owner is the
       // restaurant's question, not a migration's — so edits that do not touch
       // the role or the active flag must keep working on both rows.
-      await sql('ALTER TABLE pos_staff DISABLE TRIGGER pos_staff_one_owner_insert');
+      await sql('ALTER TABLE pos_users DISABLE TRIGGER pos_users_one_owner_insert');
       final second = await insertStaff('Nour', role: SystemRoles.ownerCode);
-      await sql('ALTER TABLE pos_staff ENABLE TRIGGER pos_staff_one_owner_insert');
+      await sql('ALTER TABLE pos_users ENABLE TRIGGER pos_users_one_owner_insert');
       expect(await owners(), {'Amer': true, 'Nour': true});
 
-      await sql("UPDATE pos_staff SET name = 'Nour S.' WHERE id = @id", {
+      await sql("UPDATE pos_users SET name = 'Nour S.' WHERE id = @id", {
         'id': second,
       });
       // The repository's UPDATE always writes `role_id = coalesce(@role,

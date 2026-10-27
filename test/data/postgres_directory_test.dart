@@ -70,7 +70,7 @@ void main() {
     final salt = PinHash.newSalt();
     await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
       "VALUES (@r, @b, 'Sara M.', 'sara', @salt, @hash, ARRAY['pos.operate','pos.reprint'])",
       parameters: {
         'r': restaurantId,
@@ -432,7 +432,7 @@ void main() {
     });
 
     test('the PIN is checked against the stored hash, not the stored PIN', () async {
-      final stored = await db.query(pg.config, 'SELECT pin_hash FROM pos_staff');
+      final stored = await db.query(pg.config, 'SELECT pin_hash FROM pos_users');
 
       expect(stored.first[0], isNot(pin), reason: 'the PIN itself must never be in the database');
       expect(await session().verifyPin(pin), isTrue);
@@ -444,7 +444,7 @@ void main() {
       final salt = PinHash.newSalt();
       await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
         "VALUES (@r, @b, 'Elsewhere', 'elsewhere', @salt, @hash)",
         parameters: {
           'r': restaurantId,
@@ -469,7 +469,7 @@ void main() {
       final salt = PinHash.newSalt();
       await db.query(
         pg.config,
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
         'pin_salt, pin_hash) '
         "VALUES (@r, @b, 'Sayed A.', 'sayed', @salt, @hash)",
         parameters: {
@@ -498,7 +498,7 @@ void main() {
     });
 
     test('a member of staff who left cannot unlock the till', () async {
-      await db.query(pg.config, 'UPDATE pos_staff SET is_active = false');
+      await db.query(pg.config, 'UPDATE pos_users SET is_active = false');
 
       expect(await session().verifyPin(pin), isFalse);
     });

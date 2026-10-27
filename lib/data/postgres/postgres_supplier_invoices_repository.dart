@@ -667,7 +667,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       );
     }
 
-    // `pos_cash_movements.staff_id` is NOT NULL, and it is the one column on
+    // `pos_cash_movements.user_id` is NOT NULL, and it is the one column on
     // that row that matters afterwards: a pay-out nobody is named on is a
     // shortage nobody can be asked about. Every other write here tolerates
     // `id == 0` by storing null; this one must not.
@@ -1102,7 +1102,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
   }) => tx.execute(
     Sql.named('''
     INSERT INTO pos_audit_events
-      (restaurant_id, branch_id, actor_staff_id, actor_name, action,
+      (restaurant_id, branch_id, actor_user_id, actor_name, action,
        entity_type, entity_id, after_value)
     VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
             @after::jsonb)

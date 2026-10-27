@@ -603,7 +603,7 @@ class LocalBootstrap {
       );
       final incumbent = await tx.execute(
         Sql.named(
-          'SELECT s.name, s.username FROM pos_staff s '
+          'SELECT s.name, s.username FROM pos_users s '
           'JOIN pos_roles r ON r.id = s.role_id '
           'WHERE s.restaurant_id = @restaurant AND r.code = @owner '
           '  AND s.is_active AND s.username <> @username '
@@ -624,7 +624,7 @@ class LocalBootstrap {
 
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+          'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
           'pin_salt, pin_hash, role_id, capabilities) '
           // No direct grants: the ROLE carries the permissions, so changing
           // what an owner may do is one edit in one place.
@@ -814,7 +814,7 @@ class LocalBootstrap {
     // The restaurant's own data. Read-only for the till: a till displays
     // the menu, it does not edit it. Changing what the restaurant sells is
     // a back-office act — see [administrativeGrants].
-    'GRANT SELECT ON pos_restaurants, pos_branches, pos_staff, pos_categories, '
+    'GRANT SELECT ON pos_restaurants, pos_branches, pos_users, pos_categories, '
         'pos_products, pos_modifier_groups, pos_modifiers, '
         'pos_product_modifier_groups, pos_modifier_group_categories, '
         'pos_dining_tables TO "$role"',
@@ -825,7 +825,7 @@ class LocalBootstrap {
     // the ceilings. SELECT only: a till reads what somebody may do and never
     // writes it, which is the whole reason the back office needs a separate
     // credential.
-    'GRANT SELECT ON pos_staff_roles, pos_staff_permission_overrides, '
+    'GRANT SELECT ON pos_user_roles, pos_user_permission_overrides, '
         'pos_permission_limits TO "$role"',
     // Claiming a pairing code stamps `claimed_at`, and an installer with
     // no dashboard registers the terminal from the wizard.
@@ -878,18 +878,18 @@ class LocalBootstrap {
     // buys an attacker nothing at settlement. On an OFFLINE till there is no
     // second opinion: this database IS the restaurant. Granted there, the same
     // statements let a credential recovered from the till reprice the menu for
-    // real, and — through `pos_staff` — point somebody's row at the owner role
+    // real, and — through `pos_users` — point somebody's row at the owner role
     // or overwrite a PIN hash, reaching Management without ever knowing the
     // administrator's password. So an offline install does not get them, and
     // loses nothing: `BootstrapSeeder` never runs without a platform, and
     // Management authors the menu and the staff over the ADMIN credential.
     if (cloudSeeding) ...[
-      'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
+      'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_users TO "$role"',
       'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
           'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
           'pos_modifier_group_categories, pos_dining_tables TO "$role"',
       'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
-          'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
+          'pos_branches_id_seq, pos_users_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
       // Payment methods, since POS-BE-013 delivers them in the bundle. No
@@ -955,12 +955,12 @@ class LocalBootstrap {
       // already taking money — permissive forever. REVOKE of something never
       // held is a no-op, so a fresh install pays nothing for this.
       'REVOKE INSERT, UPDATE, DELETE ON pos_restaurants, pos_branches, '
-          'pos_staff, pos_categories, pos_products, pos_modifier_groups, '
+          'pos_users, pos_categories, pos_products, pos_modifier_groups, '
           'pos_modifiers, pos_product_modifier_groups, '
           'pos_modifier_group_categories, pos_dining_tables '
           'FROM "$role"',
       'REVOKE UPDATE ON SEQUENCE pos_restaurants_id_seq, '
-          'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
+          'pos_branches_id_seq, pos_users_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq FROM "$role"',
       // Offline, `counts_as_cash` on this table is what every cash-up expects
@@ -1014,8 +1014,8 @@ class LocalBootstrap {
   /// subject with it and "who removed this and when" is the question that gets
   /// asked.
   static List<String> administrativeGrants({required String role}) => <String>[
-    'GRANT SELECT, INSERT, UPDATE ON pos_staff TO "$role"',
-    'GRANT USAGE, SELECT ON SEQUENCE pos_staff_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_users TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_users_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_roles TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_roles_id_seq TO "$role"',
     // Granting a second role, an exception or a ceiling. DELETE here, unlike
@@ -1023,8 +1023,8 @@ class LocalBootstrap {
     // access rather than a record of anything that happened, and the record is
     // the audit ledger's job. A revoked override that could only be flipped to
     // ALLOW and never removed would leave a table nobody can read.
-    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_staff_roles, '
-        'pos_staff_permission_overrides, pos_permission_limits TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_user_roles, '
+        'pos_user_permission_overrides, pos_permission_limits TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_permission_limits_id_seq TO "$role"',
     // A restaurant's own vocabulary for why things happen. Editable in
     // Settings, which is why this is here and not in the till's set — a

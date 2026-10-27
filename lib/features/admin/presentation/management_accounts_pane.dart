@@ -358,10 +358,24 @@ class _DefaultsRow extends StatelessWidget {
       required String noneLabel,
     }) {
       final current = _current(branchId);
-      final currentName = allAccounts
+      final currentAccount = allAccounts
           .where((a) => a.id == current)
-          .map((a) => a.name)
           .firstOrNull;
+      final currentName = currentAccount?.name;
+
+      // **Only accounts of a kind this method pays into** (owner, 26 Oct 2026):
+      // cash into a cash account, a card into a bank, a wallet into a wallet.
+      final fitting = [
+        for (final a in choices)
+          if (AccountRules.fits(method.kind, a.kind)) a,
+      ];
+      // A pairing saved before the rule is kept and shown as not matching, never
+      // cleared behind anybody's back; it is replaced by a fitting account, or
+      // by none.
+      final mismatch =
+          currentAccount != null &&
+          !AccountRules.fits(method.kind, currentAccount.kind);
+      final needed = AccountRules.kindsFor(method.kind);
 
       Widget chip(int? id, String text) {
         final selected = current == id;
@@ -381,10 +395,23 @@ class _DefaultsRow extends StatelessWidget {
       if (onPick == null) {
         return Padding(
           padding: const EdgeInsets.only(top: PosSpace.xs),
-          child: Text(
-            '$label: ${currentName ?? noneLabel}',
-            key: Key('default-text-${method.id}-${branchId ?? 'all'}'),
-            style: PosText.ui(size: 12.5, color: palette.body),
+          child: Wrap(
+            spacing: PosSpace.xs,
+            children: [
+              Text(
+                '$label: ${currentName ?? noneLabel}',
+                key: Key('default-text-${method.id}-${branchId ?? 'all'}'),
+                style: PosText.ui(size: 12.5, color: palette.body),
+              ),
+              if (mismatch)
+                Text(
+                  '· ${strings.accountsNotMatching}',
+                  key: Key(
+                    'default-mismatch-${method.id}-${branchId ?? 'all'}',
+                  ),
+                  style: PosText.ui(size: 12.5, color: palette.danger),
+                ),
+            ],
           ),
         );
       }
@@ -398,7 +425,33 @@ class _DefaultsRow extends StatelessWidget {
           children: [
             Text(label, style: PosText.ui(size: 12.5, color: palette.muted)),
             chip(null, noneLabel),
-            for (final a in choices) chip(a.id, a.name),
+            if (mismatch)
+              Container(
+                key: Key(
+                  'default-mismatch-${method.id}-${branchId ?? 'all'}',
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: PosSpace.md,
+                  vertical: PosSpace.sm,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: palette.danger),
+                ),
+                child: Text(
+                  '${currentAccount.name} · ${strings.accountsNotMatching}',
+                  style: PosText.ui(size: 12.5, color: palette.danger),
+                ),
+              ),
+            for (final a in fitting) chip(a.id, a.name),
+            if (fitting.isEmpty && needed != null)
+              Text(
+                key: Key('default-none-fit-${method.id}-${branchId ?? 'all'}'),
+                strings.accountsNoMatchingKind(
+                  [for (final kind in needed) accountKindName(strings, kind)]
+                      .join(' / '),
+                ),
+                style: PosText.ui(size: 12, color: palette.muted),
+              ),
           ],
         ),
       );

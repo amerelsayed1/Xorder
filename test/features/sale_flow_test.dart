@@ -78,7 +78,6 @@ void main() {
         onLock: () {},
         onTables: () {},
         onOrders: () {},
-        onCloseShift: () {},
       ),
     );
 
@@ -107,7 +106,6 @@ void main() {
         onLock: () {},
         onTables: () {},
         onOrders: () {},
-        onCloseShift: () {},
       );
           }),
         ),
@@ -148,7 +146,6 @@ void main() {
                 onLock: () {},
                 onTables: () => events.add('tables'),
                 onOrders: () {},
-                onCloseShift: () {},
               );
             }),
           ),
@@ -215,7 +212,6 @@ void main() {
                 onTables: () => events.add('tables'),
                 onTablesToCollect: () => events.add('tables-to-collect'),
                 onOrders: () {},
-                onCloseShift: () {},
               );
             }),
           ),
@@ -263,7 +259,6 @@ void main() {
                     onLock: () {},
                     onTables: () {},
                     onOrders: () {},
-                    onCloseShift: () {},
                   );
                 },
               );
@@ -291,7 +286,6 @@ void main() {
         onLock: () {},
         onTables: () {},
         onOrders: () {},
-        onCloseShift: () {},
       ),
     );
 
@@ -309,7 +303,6 @@ void main() {
         onLock: () {},
         onTables: () {},
         onOrders: () {},
-        onCloseShift: () {},
       ),
     );
 
@@ -402,7 +395,6 @@ void main() {
               onLock: () {},
               onTables: () {},
               onOrders: () => opened = true,
-              onCloseShift: () {},
             ),
           ),
         ),

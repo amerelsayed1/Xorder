@@ -298,7 +298,7 @@ void main() {
     // their id on it would name them as the author of the platform's text.
     final staffId = (await db.query(
       pg.config,
-      'INSERT INTO pos_staff (restaurant_id, name, username, pin_salt, '
+      'INSERT INTO pos_users (restaurant_id, name, username, pin_salt, '
       "  pin_hash, capabilities) VALUES (@r, 'Mona', 'mona', '', '', '{}') "
       'RETURNING id',
       parameters: {'r': restaurantId},

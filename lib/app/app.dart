@@ -139,39 +139,45 @@ class XorderPosApp extends ConsumerWidget {
       defaultTargetPlatform != TargetPlatform.macOS
       ? child
       : PlatformMenuBar(
-    menus: [
-      // The product's own name, and so never translated.
-      const PlatformMenu(
-        label: 'XOrder POS',
-        menus: [
-          PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.servicesSubmenu,
-          ),
-          PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.hideOtherApplications,
-          ),
-          PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
-        ],
-      ),
-      PlatformMenu(
-        label: strings.windowMenu,
-        menus: const [
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.minimizeWindow,
-          ),
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.zoomWindow,
-          ),
-          PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.toggleFullScreen,
-          ),
-        ],
-      ),
-    ],
-    child: child,
-  );
+          menus: [
+            // The product's own name, and so never translated.
+            const PlatformMenu(
+              label: 'XOrder POS',
+              menus: [
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.about,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.servicesSubmenu,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.hide,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.hideOtherApplications,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.quit,
+                ),
+              ],
+            ),
+            PlatformMenu(
+              label: strings.windowMenu,
+              menus: const [
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.minimizeWindow,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.zoomWindow,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.toggleFullScreen,
+                ),
+              ],
+            ),
+          ],
+          child: child,
+        );
 
   /// The in-app Settings bar.
   ///
@@ -282,7 +288,9 @@ class XorderPosApp extends ConsumerWidget {
               // off a capability: the page follows whoever is in Admin Mode,
               // the till's line whoever is signed in at the till, and those
               // can be two people.
-              final inBackOffice = {for (final line in settingsLines) line.pane};
+              final inBackOffice = {
+                for (final line in settingsLines) line.pane,
+              };
               final tillPrinter =
                   managesTerminal &&
                   !inBackOffice.contains(ManagementPane.printer);
@@ -312,7 +320,8 @@ class XorderPosApp extends ConsumerWidget {
               return _AfterEachRoute(
                 listenable: router.routerDelegate,
                 builder: (context) => MenuBarWidget(
-                  enabled: visible &&
+                  enabled:
+                      visible &&
                       !_beforeTheTill(
                         router.routerDelegate.currentConfiguration.uri.path,
                       ),
@@ -394,7 +403,10 @@ class XorderPosApp extends ConsumerWidget {
                           // — and back there on close, not to the sale screen.
                           MenuButton(
                             text: Text(strings.settingsOrders),
-                            icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                            icon: const Icon(
+                              Icons.receipt_long_outlined,
+                              size: 16,
+                            ),
                             onTap: () {
                               final router = ref.read(routerProvider);
                               final here = router
@@ -439,14 +451,19 @@ class XorderPosApp extends ConsumerWidget {
                           // language item does.
                           MenuButton(
                             text: Text(
-                              dark ? strings.switchToLight : strings.switchToDark,
+                              dark
+                                  ? strings.switchToLight
+                                  : strings.switchToDark,
                             ),
                             icon: Icon(
-                              dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                              dark
+                                  ? Icons.light_mode_outlined
+                                  : Icons.dark_mode_outlined,
                               size: 16,
                             ),
-                            onTap: () =>
-                                ref.read(brightnessProvider.notifier).toggle(showing),
+                            onTap: () => ref
+                                .read(brightnessProvider.notifier)
+                                .toggle(showing),
                           ),
                           // Switch user and About are the account menu's now
                           // (XORD-022-D); Settings holds configuration, and the
@@ -572,6 +589,13 @@ class XorderPosApp extends ConsumerWidget {
                           showPerson: _showsPerson(
                             router.routerDelegate.currentConfiguration.uri.path,
                           ),
+                          showCloseShift:
+                              router
+                                  .routerDelegate
+                                  .currentConfiguration
+                                  .uri
+                                  .path ==
+                              PosRoutes.sale,
                         ),
                     ],
                   ),
@@ -625,10 +649,7 @@ class XorderPosApp extends ConsumerWidget {
   /// `backOfficeTabsFor` exists beneath it: the screen checks every request
   /// against that rule, so a menu offering Purchasing to somebody it hides
   /// Purchasing from would open on Home instead, and read as a broken menu.
-  List<ManagementBarMenu> _managementMenus(
-    WidgetRef ref,
-    AppStrings strings,
-  ) {
+  List<ManagementBarMenu> _managementMenus(WidgetRef ref, AppStrings strings) {
     // Only inside Admin Mode, and for whoever is in it. Outside, the bar offers
     // no back office at all — not a door, not a greyed word: the way in is the
     // hidden shortcut, and a menu item leading to it would be a second, visible

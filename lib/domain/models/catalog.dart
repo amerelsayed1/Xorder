@@ -218,6 +218,12 @@ enum CatalogProblem {
   /// the row exists, not whose it is; an item in an archived category is off
   /// every cashier's screen while the owner believes it is on sale (XORD-014).
   categoryUnavailable,
+
+  /// A category that holds an item — live or archived — or a combo cannot be
+  /// deleted: `pos_products.category_id` and `pos_combos.category_id` are
+  /// `ON DELETE RESTRICT`, because every sale names its items. It can be turned
+  /// off instead.
+  categoryHasItems,
 }
 
 /// A modifier group — the server's `option_group`.

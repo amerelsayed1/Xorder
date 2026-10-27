@@ -3001,6 +3001,14 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
   );
 });
 
+/// The categories turned off. The till's grid never sees these
+/// (`catalogProvider` is active-only); the Menu and Sections panes list them so
+/// the owner can switch one back on.
+final inactiveCategoriesProvider = FutureProvider<List<Category>>((ref) async {
+  final repository = ref.watch(catalogAdminRepositoryProvider);
+  return repository == null ? const [] : repository.inactiveCategories();
+});
+
 // ── Purchasing ──────────────────────────────────────────────────────────────
 //
 // All three run on the administrator connection and none on the till's: a

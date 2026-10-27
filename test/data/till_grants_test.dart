@@ -5,7 +5,7 @@ import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 /// themselves so it holds without a server.
 ///
 /// The finding behind this file: the till role was granted INSERT/UPDATE on
-/// `pos_staff` and INSERT/UPDATE/DELETE on the whole catalogue, unconditionally.
+/// `pos_users` and INSERT/UPDATE/DELETE on the whole catalogue, unconditionally.
 /// That is what `BootstrapSeeder` needs to replace the local cache with the
 /// platform's copy, and on a cloud till it is defensible — the cache is not
 /// authoritative, every order is re-priced server-side, so rewriting the
@@ -62,7 +62,7 @@ void main() {
     });
 
     test('cannot write staff, which is how it would reach Management', () {
-      expect(writesTo(offline, 'pos_staff'), isEmpty);
+      expect(writesTo(offline, 'pos_users'), isEmpty);
     });
 
     test('cannot write the restaurant or its branches', () {
@@ -134,7 +134,7 @@ void main() {
         'pos_order_payments',
         'pos_order_discounts',
         'pos_reason_codes',
-        'pos_staff',
+        'pos_users',
       ]) {
         expect(readsOf(table), isNotEmpty, reason: 'history joins $table');
       }
@@ -197,7 +197,7 @@ void main() {
       final taken = revokes(offline);
       expect(taken, isNotEmpty);
       expect(
-        taken.any((s) => s.contains('pos_staff') && s.contains('pos_products')),
+        taken.any((s) => s.contains('pos_users') && s.contains('pos_products')),
         isTrue,
       );
       expect(
@@ -229,7 +229,7 @@ void main() {
 
     test('gets the seeding writes, because BootstrapSeeder needs them', () {
       expect(writesTo(cloud, 'pos_products'), isNotEmpty);
-      expect(writesTo(cloud, 'pos_staff'), isNotEmpty);
+      expect(writesTo(cloud, 'pos_users'), isNotEmpty);
       expect(writesTo(cloud, 'pos_categories'), isNotEmpty);
       // Granted with the rest of the catalogue so the seeder can be taught to
       // write it, though today it only goes by cascade — see `_seedCatalog`.

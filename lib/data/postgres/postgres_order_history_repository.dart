@@ -111,8 +111,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// round trips to draw one column.
   static final _orderJoins =
       '''
-        LEFT JOIN pos_staff       AS served ON served.id = o.served_by
-        LEFT JOIN pos_staff       AS voider ON voider.id = o.voided_by
+        LEFT JOIN pos_users       AS served ON served.id = o.served_by
+        LEFT JOIN pos_users       AS voider ON voider.id = o.voided_by
         LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
         LEFT JOIN pos_terminals   AS term   ON term.id = o.terminal_id
         LEFT JOIN pos_customers   AS cust   ON cust.id = o.customer_id
@@ -574,8 +574,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   static final _refundJoins =
       '''
         JOIN pos_orders AS o ON o.id = r.order_id
-        LEFT JOIN pos_staff        AS issuer   ON issuer.id = r.refunded_by
-        LEFT JOIN pos_staff        AS approver ON approver.id = r.approved_by_id
+        LEFT JOIN pos_users        AS issuer   ON issuer.id = r.refunded_by
+        LEFT JOIN pos_users        AS approver ON approver.id = r.approved_by_id
         LEFT JOIN pos_reason_codes AS reason   ON reason.id = r.reason_id
         LEFT JOIN pos_terminals    AS term     ON term.id = r.terminal_id
         LEFT JOIN LATERAL (
@@ -761,7 +761,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       '       l.note, l.menu_item_id, l.refunded_quantity, l.voided_at, '
       '       voider.name '
       'FROM pos_order_lines AS l '
-      'LEFT JOIN pos_staff AS voider ON voider.id = l.voided_by '
+      'LEFT JOIN pos_users AS voider ON voider.id = l.voided_by '
       'WHERE l.order_id = @order ORDER BY l.id',
       parameters: {'order': orderId},
     );
@@ -779,8 +779,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       '       applier.name, approver.name, d.applied_at '
       'FROM pos_order_discounts AS d '
       'LEFT JOIN pos_order_lines AS l ON l.id = d.order_line_id '
-      'LEFT JOIN pos_staff AS applier ON applier.id = d.applied_by '
-      'LEFT JOIN pos_staff AS approver ON approver.id = d.approved_by_id '
+      'LEFT JOIN pos_users AS applier ON applier.id = d.applied_by '
+      'LEFT JOIN pos_users AS approver ON approver.id = d.approved_by_id '
       'WHERE d.order_id = @order ORDER BY d.id',
       parameters: {'order': orderId},
     );
@@ -937,8 +937,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       config,
       'SELECT r.occurred_at, issuer.name, approver.name, r.total_minor '
       'FROM pos_refunds AS r '
-      'LEFT JOIN pos_staff AS issuer ON issuer.id = r.refunded_by '
-      'LEFT JOIN pos_staff AS approver ON approver.id = r.approved_by_id '
+      'LEFT JOIN pos_users AS issuer ON issuer.id = r.refunded_by '
+      'LEFT JOIN pos_users AS approver ON approver.id = r.approved_by_id '
       'WHERE r.order_id = @order AND r.restaurant_id = @restaurant '
       'ORDER BY r.occurred_at, r.id',
       parameters: {'order': order.id, 'restaurant': restaurantId},

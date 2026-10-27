@@ -134,7 +134,7 @@ class BackupService {
     'pos_business_days',
     'pos_audit_events',
     'pos_products',
-    'pos_staff',
+    'pos_users',
   ];
 
   /// Take one, verify it, and record what happened either way.

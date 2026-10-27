@@ -99,7 +99,7 @@ void main() {
     addTearDown(connection.close);
     // No refusal is the assertion; the row count is irrelevant.
     await connection.execute('SELECT 1 FROM pos_products');
-    await connection.execute('SELECT 1 FROM pos_staff');
+    await connection.execute('SELECT 1 FROM pos_users');
   });
 
   test('the till may not reprice the menu', () async {
@@ -124,12 +124,12 @@ void main() {
   test('the till may not promote somebody to the owner role', () async {
     // The escalation this whole change exists to close: with UPDATE here, a
     // recovered till password reaches Management without the administrator's.
-    expect(await refusalFor('UPDATE pos_staff SET role_id = 1'), '42501');
+    expect(await refusalFor('UPDATE pos_users SET role_id = 1'), '42501');
   });
 
   test('the till may not overwrite a PIN hash', () async {
     expect(
-      await refusalFor("UPDATE pos_staff SET pin_hash = 'x', pin_salt = 'y'"),
+      await refusalFor("UPDATE pos_users SET pin_hash = 'x', pin_salt = 'y'"),
       '42501',
     );
   });
@@ -395,22 +395,22 @@ void main() {
     // **The one that decides whether Wave C means anything.** A recovered till
     // credential that could write an ALLOW override, add a role, or lift a
     // ceiling would make every permission in the product advisory.
-    expect(await refusalFor('SELECT 1 FROM pos_staff_roles'), isNull);
+    expect(await refusalFor('SELECT 1 FROM pos_user_roles'), isNull);
     expect(
       await refusalFor(
-        'INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (1, 1)',
+        'INSERT INTO pos_user_roles (user_id, role_id) VALUES (1, 1)',
       ),
       '42501',
     );
     expect(
       await refusalFor(
-        'INSERT INTO pos_staff_permission_overrides '
-        "  (staff_id, capability, effect) VALUES (1, 'backup.manage', 'ALLOW')",
+        'INSERT INTO pos_user_permission_overrides '
+        "  (user_id, capability, effect) VALUES (1, 'backup.manage', 'ALLOW')",
       ),
       '42501',
     );
     expect(
-      await refusalFor('DELETE FROM pos_staff_permission_overrides'),
+      await refusalFor('DELETE FROM pos_user_permission_overrides'),
       '42501',
       reason: 'nor remove a DENY somebody put there',
     );

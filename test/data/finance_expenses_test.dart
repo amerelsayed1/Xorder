@@ -178,7 +178,7 @@ void main() {
     String? reason = 'petty_expense',
   }) => scalar(
     'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-    '  shift_id, business_day_id, kind, amount_minor, reason_id, staff_id, '
+    '  shift_id, business_day_id, kind, amount_minor, reason_id, user_id, '
     '  occurred_at) '
     'SELECT @r, t.branch_id, t.id, @s, @d, @k, @a, '
     '  (SELECT id FROM pos_reason_codes WHERE restaurant_id = @r '
@@ -333,7 +333,7 @@ void main() {
     final salt = PinHash.newSalt();
     manager = PosStaff(
       id: await scalar(
-        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
         '  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         {
           'r': restaurantId,

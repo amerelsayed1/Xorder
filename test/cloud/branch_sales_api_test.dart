@@ -177,6 +177,14 @@ void main() {
       expect(sales.otherTender, Money.zero);
     });
 
+    test('a wallet is read as a wallet, as the offline till files it', () async {
+      platform.answer(200, paidWith([method('wallet', 7000, id: 10)]));
+      final sales = (await source().summary(day)).sales!;
+
+      expect(sales.terminal('pos-01')!.payments.single.kind, TenderKind.wallet);
+      expect(sales.cash, Money.zero);
+    });
+
     test('a kind this build has never heard of is other, and cash only by its flag', () async {
       platform.answer(
         200,

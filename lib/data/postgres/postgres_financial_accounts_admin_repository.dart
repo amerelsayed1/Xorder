@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/financial_account.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
@@ -225,11 +226,14 @@ class PostgresFinancialAccountsAdminRepository
     return database.runTx(config, (tx) async {
       final method = await tx.execute(
         Sql.named(
-          'SELECT 1 FROM pos_tender_types WHERE id = @t AND restaurant_id = @r',
+          'SELECT kind FROM pos_tender_types '
+          'WHERE id = @t AND restaurant_id = @r',
         ),
         parameters: {'t': tenderTypeId, 'r': restaurantId},
       );
       if (method.isEmpty) return _refused(AccountProblem.methodUnknown);
+      // A kind this build does not know falls to `other` (any account will do).
+      final methodKind = TenderKind.fromWire(method.first[0] as String?);
 
       if (branchId != null) {
         final branch = await tx.execute(
@@ -285,6 +289,7 @@ class PostgresFinancialAccountsAdminRepository
       final problem = AccountRules.defaultProblem(
         _account(rows.first),
         branchId: branchId,
+        method: methodKind,
       );
       if (problem != null) return _refused(problem);
 
@@ -354,7 +359,7 @@ class PostgresFinancialAccountsAdminRepository
   }) => tx.execute(
     Sql.named(
       'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, '
-      '  actor_staff_id, actor_name, action, entity_type, entity_id, '
+      '  actor_user_id, actor_name, action, entity_type, entity_id, '
       '  before_value, after_value) '
       'VALUES (@r, @branch, @terminal, @actor, @actorName, @action, '
       '        @entityType, @entityId, @before::jsonb, @after::jsonb)',

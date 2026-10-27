@@ -72,6 +72,33 @@ enum SetupStep {
   summary,
 }
 
+/// The two screens inside the offline first-install step (pos-setup-owner-step).
+///
+/// One step, two pages: the wizard's step list, its numbering and the saved
+/// progress do not change. Not persisted — a restart comes back on the first.
+enum OwnerPage {
+  /// The password of the PostgreSQL account that creates the database.
+  databaseAccess,
+
+  /// The owner's name, username and PIN, and the button that builds it all.
+  ownerAccount,
+}
+
+/// What the wizard's one primary button does on this screen.
+enum FooterAction {
+  /// Move to the next step. Enabled by [SetupDraft.canAdvance], as ever.
+  next,
+
+  /// The last step: publish the setup and open the till.
+  finish,
+
+  /// Offline first install, page one: on to the owner's page.
+  toOwnerPage,
+
+  /// Offline first install, page two: create the database and the owner.
+  createDatabase,
+}
+
 /// Everything the wizard has gathered so far.
 class SetupDraft {
   /// A PIN is typed on a keypad at the counter, so it is digits and nothing
@@ -106,6 +133,8 @@ class SetupDraft {
     this.ownerName = '',
     this.ownerUsername = '',
     this.ownerPin = '',
+    this.ownerPinConfirm = '',
+    this.ownerPage = OwnerPage.databaseAccess,
     this.bootstrapped = false,
     this.bootstrapReport,
     this.provisioned = false,
@@ -172,6 +201,46 @@ class SetupDraft {
 
   /// Whether the first person's PIN is one the till could actually accept.
   bool get hasUsablePin => PinRules.isWellFormed(ownerPin);
+
+  /// Whether the PIN was typed the same twice.
+  bool get pinsMatch => ownerPin == ownerPinConfirm;
+
+  /// The step where an offline terminal builds its database and first owner —
+  /// the one with two pages. A child tablet signs in to its main device and a
+  /// cloud terminal pairs, so neither is this.
+  bool get isFirstInstall =>
+      step == SetupStep.account &&
+      !deployment.isChild &&
+      deployment.mode == DeploymentMode.offline;
+
+  /// What the footer's one button does. Everywhere but the first install it is
+  /// what it always was; on the first install, before the database exists, it
+  /// walks the two pages and then builds.
+  FooterAction get footerAction {
+    if (isFirstInstall && !bootstrapped) {
+      return ownerPage == OwnerPage.databaseAccess
+          ? FooterAction.toOwnerPage
+          : FooterAction.createDatabase;
+    }
+    return isLastStep ? FooterAction.finish : FooterAction.next;
+  }
+
+  /// Whether that button may be pressed now. [canAdvance] is untouched: it still
+  /// answers "may the wizard leave this step", which stays false on the first
+  /// install until the database exists.
+  bool get footerEnabled => switch (footerAction) {
+    FooterAction.next || FooterAction.finish => canAdvance,
+    // An empty administrator password is allowed, as it always was: a local
+    // PostgreSQL that trusts this machine's account has none to give.
+    FooterAction.toOwnerPage => true,
+    // Filled in; what is wrong with it (a mismatch, a short PIN) is said when
+    // it is pressed, in words, rather than by a button that will not say why.
+    FooterAction.createDatabase =>
+      ownerName.trim().isNotEmpty &&
+          ownerUsername.trim().isNotEmpty &&
+          ownerPin.isNotEmpty &&
+          ownerPinConfirm.isNotEmpty,
+  };
 
   /// How many terminals the plan covers. One until a licence says otherwise.
   int get maxTerminals => claims?.maxTerminals ?? 1;
@@ -379,10 +448,17 @@ class SetupDraft {
   final String adminDatabasePassword;
 
   /// The first person. Without one, an offline till has nobody to sign in as:
-  /// the account step authenticates against `pos_staff`, which starts empty.
+  /// the account step authenticates against `pos_users`, which starts empty.
   final String ownerName;
   final String ownerUsername;
   final String ownerPin;
+
+  /// The PIN typed a second time. In memory only, like the PIN: a typo in a PIN
+  /// that cannot be read back locks the owner out, so it is asked twice.
+  final String ownerPinConfirm;
+
+  /// Which of the first-install step's two screens is showing.
+  final OwnerPage ownerPage;
 
   /// Whether this wizard built the database. Not persisted — a re-run of the
   /// bootstrap is harmless (every statement is an upsert) but pointless.
@@ -569,6 +645,8 @@ class SetupDraft {
     String? ownerName,
     String? ownerUsername,
     String? ownerPin,
+    String? ownerPinConfirm,
+    OwnerPage? ownerPage,
     bool? bootstrapped,
     String? bootstrapReport,
     bool? provisioned,
@@ -629,6 +707,8 @@ class SetupDraft {
     ownerName: ownerName ?? this.ownerName,
     ownerUsername: ownerUsername ?? this.ownerUsername,
     ownerPin: ownerPin ?? this.ownerPin,
+    ownerPinConfirm: ownerPinConfirm ?? this.ownerPinConfirm,
+    ownerPage: ownerPage ?? this.ownerPage,
     bootstrapped: bootstrapped ?? this.bootstrapped,
     bootstrapReport: bootstrapReport ?? this.bootstrapReport,
     provisioned: provisioned ?? this.provisioned,

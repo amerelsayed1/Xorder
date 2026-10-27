@@ -673,7 +673,7 @@ class BootstrapSeeder {
     for (final member in bundle.staff) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_staff (id, restaurant_id, name, username, pin_salt, pin_hash, capabilities, is_active)
+          INSERT INTO pos_users (id, restaurant_id, name, username, pin_salt, pin_hash, capabilities, is_active)
           VALUES (@id, @restaurant, @name, @username, @salt, @hash, @capabilities, @active)
           ON CONFLICT (id) DO UPDATE
             SET name = @name, username = @username,
@@ -706,7 +706,7 @@ class BootstrapSeeder {
     if (bundle.staff.isNotEmpty) {
       await tx.execute(
         Sql.named(
-          'UPDATE pos_staff SET is_active = false '
+          'UPDATE pos_users SET is_active = false '
           'WHERE restaurant_id = @restaurant AND NOT (id = ANY(@keep))',
         ),
         parameters: {
@@ -892,7 +892,7 @@ class BootstrapSeeder {
     const tables = [
       'pos_restaurants',
       'pos_branches',
-      'pos_staff',
+      'pos_users',
       'pos_categories',
       'pos_modifier_groups',
       'pos_modifiers',

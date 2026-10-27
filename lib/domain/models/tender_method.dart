@@ -42,17 +42,18 @@ enum TenderKind {
 }
 
 /// What the platform calls a kind of tender (POS-BE-013): `cash | card |
-/// external | other`.
+/// wallet | external | other` (`wallet` was added 2026-10-26, so a wallet
+/// method pairs with wallet accounts on the platform as on an offline till).
 ///
-/// A separate vocabulary from [TenderKind], not four more members on it. The
-/// two lists share three words and disagree about the fourth, and folding
-/// `external` into [TenderKind] would put it in the offline editor, where it
-/// means nothing. The translation is one exhaustive switch, so a fifth
+/// A separate vocabulary from [TenderKind], not more members on it. The two
+/// lists share four words and disagree about `external`, and folding it into
+/// [TenderKind] would put it in the offline editor, where it means nothing. The translation is one exhaustive switch, so a fifth
 /// platform kind is a compile error in [tillKind] rather than a payment
 /// method that quietly lands in the wrong column of a reconciliation.
 enum PlatformTenderKind {
   cash('cash'),
   card('card'),
+  wallet('wallet'),
   external('external'),
   other('other');
 
@@ -73,6 +74,7 @@ enum PlatformTenderKind {
   TenderKind get tillKind => switch (this) {
     cash => TenderKind.cash,
     card => TenderKind.card,
+    wallet => TenderKind.wallet,
     // A card taken on the bank's own standalone terminal — which is what the
     // platform's model says `external` exists for. Card rather than other
     // because of the one reader that tells them apart: the branch-sales

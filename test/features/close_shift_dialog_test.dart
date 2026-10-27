@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,6 +115,27 @@ void main() {
   }
 
   final warning = find.byKey(const Key('close-shift-open-tickets'));
+
+  testWidgets('Esc dismisses the dialog, with or without a field focused', (
+    tester,
+  ) async {
+    await open(tester, parked: const OpenTickets());
+    expect(find.byType(CloseShiftDialog), findsOneWidget);
+
+    // Nothing clicked yet: Esc must still reach the dialog.
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(CloseShiftDialog), findsNothing);
+
+    // And again with the counted-cash field focused.
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(CloseShiftDialog), findsNothing);
+  });
 
   testWidgets('two parked tickets are named, with their totals', (
     tester,

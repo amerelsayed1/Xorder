@@ -12,7 +12,10 @@
 # POS_PG_HOST/PORT/USER/PASSWORD to point elsewhere. Every PostgreSQL suite
 # shares ONE database per checkout (test/data/pg_fixture.dart), run one suite at
 # a time, so a run leaves a single database behind instead of dozens and does not
-# touch anyone else's.
+# touch anyone else's. When the run ends (pass, fail or Ctrl+C) the databases and
+# roles it made are dropped again, by tool/drop_test_databases.dart, which only
+# ever matches THIS checkout's test names. KEEP_TEST_DBS=1 skips that, to look at
+# what a failing suite left.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,6 +29,20 @@ if ! pg_isready -q -h "$POS_PG_HOST" -p "$POS_PG_PORT"; then
   echo "Start it (brew services start postgresql@16) or set POS_PG_HOST/POS_PG_PORT." >&2
   exit 1
 fi
+
+# Remove what the PostgreSQL suites created, however the run ends. Never fails
+# the run: a cleanup that cannot finish says so and leaves the rest to be run by
+# hand (`dart run tool/drop_test_databases.dart --dry-run` shows what is left).
+cleanup_test_databases() {
+  if [ "${KEEP_TEST_DBS:-}" = "1" ]; then
+    echo "KEEP_TEST_DBS=1: leaving the test databases in place."
+    return 0
+  fi
+  echo "Removing this checkout's test databases..."
+  dart run tool/drop_test_databases.dart \
+    || echo "Test database cleanup did not finish; run: dart run tool/drop_test_databases.dart" >&2
+}
+trap cleanup_test_databases EXIT
 
 # The backup suites run pg_dump, which refuses a server newer than itself.
 # Put the client tools that match the server's major version first on PATH

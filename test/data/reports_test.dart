@@ -231,7 +231,7 @@ void main() {
       {'r': restaurantId},
     );
     Future<int> person(String name, String username) => scalar(
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, @name, @user, 'salt', 'hash') "
       'RETURNING id',
       {'r': restaurantId, 'b': branchId, 'name': name, 'user': username},
@@ -894,7 +894,7 @@ void main() {
         ),
         hasLength(4),
       );
-      // Employees reads `pos_staff` for the names, on the till's grant.
+      // Employees reads `pos_users` for the names, on the till's grant.
       expect((await asTill.staffSales(range)).net, const Money(99345));
     } finally {
       await probe.close();

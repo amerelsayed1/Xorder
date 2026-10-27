@@ -1,6 +1,6 @@
 import 'dart:ui' show Locale;
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -667,6 +667,40 @@ class SetupController extends Notifier<SetupDraft> {
     );
   }
 
+  /// The PIN again, held to the same rules as the first — digits only, never
+  /// longer than [SetupDraft.pinLength] — so the two can only differ by being
+  /// different, never by one having been silently cut.
+  void setOwnerPinConfirm(String pin) {
+    final digits = pin.replaceAll(RegExp(r'[^0-9]'), '');
+    state = state.copyWith(
+      ownerPinConfirm: digits.length > SetupDraft.pinLength
+          ? digits.substring(0, SetupDraft.pinLength)
+          : digits,
+      clearError: true,
+    );
+  }
+
+  /// Which of the first-install step's two screens shows. Typed values are
+  /// kept: they live in the draft, not in the screen.
+  void showOwnerPage(OwnerPage page) =>
+      state = state.copyWith(ownerPage: page, clearError: true);
+
+  /// The footer's one button on the first install, before the database exists.
+  /// On the first page it moves to the second; on the second it builds.
+  void footerPressed() {
+    // The footer closure may be one frame stale: a second press while the build
+    // runs must not start a second build.
+    if (state.busy) return;
+    switch (state.footerAction) {
+      case FooterAction.toOwnerPage:
+        if (state.footerEnabled) showOwnerPage(OwnerPage.ownerAccount);
+      case FooterAction.createDatabase:
+        if (state.footerEnabled) bootstrapDatabase();
+      case FooterAction.next || FooterAction.finish:
+        break; // The wizard's own buttons, unchanged.
+    }
+  }
+
   /// Build this machine's database, from nothing.
   ///
   /// The offline path used to start at a command line: `PosMigrator` ran only
@@ -696,6 +730,12 @@ class SetupController extends Notifier<SetupDraft> {
       state = state.copyWith(
         error: s.pinIsExactlyDigits(SetupDraft.pinLength),
       );
+      return;
+    }
+    // Typed twice because it cannot be read back. Said here, with nothing
+    // built: a PIN with a typo in it would be the owner's lock-out.
+    if (!state.pinsMatch) {
+      state = state.copyWith(error: s.pinsDoNotMatch);
       return;
     }
     if (state.ownerName.trim().isEmpty ||
@@ -846,12 +886,23 @@ class SetupController extends Notifier<SetupDraft> {
         bootstrapReport: done.join('\n'),
       );
     } on TillRoleRefused catch (refusal) {
+      // The administrator account's doing, so back to where its password is.
       state = state.copyWith(
         busy: false,
+        ownerPage: OwnerPage.databaseAccess,
         error: s.tillRoleRefused(refusal.role, refusal.admin),
       );
     } on PosDbException catch (error) {
-      state = state.copyWith(busy: false, error: _bootstrapFailure(error));
+      state = state.copyWith(
+        busy: false,
+        // A password, a role or a connection that is wrong is on the first page
+        // — the field is there, the button was on the second. Anything else
+        // stays beside what was just typed.
+        ownerPage: isAdminAccessFailure(error.failure)
+            ? OwnerPage.databaseAccess
+            : null,
+        error: _bootstrapFailure(error),
+      );
     } on Object catch (error, stack) {
       // The raw object still goes to the console — the screen gets the
       // sentence, the log gets the thing that actually happened.
@@ -863,6 +914,19 @@ class SetupController extends Notifier<SetupDraft> {
       await database.close();
     }
   }
+
+  /// Whether a database failure is about the administrator account or the road
+  /// to it: what the first-install step's first page asks for.
+  @visibleForTesting
+  static bool isAdminAccessFailure(PosDbFailure failure) => switch (failure) {
+    PosDbFailure.auth ||
+    PosDbFailure.missingRole ||
+    PosDbFailure.permissionDenied ||
+    PosDbFailure.dns ||
+    PosDbFailure.tcp ||
+    PosDbFailure.tls => true,
+    _ => false,
+  };
 
   /// A repository's refusal, in the operator's language.
   ///
@@ -1930,7 +1994,7 @@ class SetupController extends Notifier<SetupDraft> {
     final provisioning = ref.read(provisioningRepositoryProvider);
 
     // WHO is registering. Offline registration authenticates against
-    // `pos_staff` on this machine's own database, and the person doing it is
+    // `pos_users` on this machine's own database, and the person doing it is
     // the administrator created two steps ago — the wizard is still holding
     // those credentials, so asking for them again would be asking somebody to
     // retype what they typed a minute earlier on the same run.
@@ -2144,12 +2208,22 @@ class SetupController extends Notifier<SetupDraft> {
     final steps = state.visibleSteps;
     state = state.copyWith(
       step: steps[steps.indexOf(state.step) + 1],
+      // Arriving at the first-install step starts on its first page.
+      ownerPage: OwnerPage.databaseAccess,
       clearError: true,
       clearNotice: true,
     );
   }
 
   void back() {
+    // Inside the first-install step, Back from the owner's page is the first
+    // page, not the previous step.
+    if (state.isFirstInstall &&
+        !state.bootstrapped &&
+        state.ownerPage == OwnerPage.ownerAccount) {
+      showOwnerPage(OwnerPage.databaseAccess);
+      return;
+    }
     if (state.isFirstStep) return;
     final steps = state.visibleSteps;
     state = state.copyWith(

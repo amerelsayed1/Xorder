@@ -48,6 +48,9 @@ void main() {
         .copyWith(
           step: SetupStep.account,
           deployment: const DeploymentConfig(mode: DeploymentMode.offline),
+          // The PIN is on the owner's screen, the second of the step's two
+          // (pos-setup-owner-step).
+          ownerPage: OwnerPage.ownerAccount,
         );
     await tester.pumpAndSettle();
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/domain/models/financial_account.dart';
+import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 
 /// Financial accounts, stage 1 (XORD-015): the rules both the cloud and the
@@ -25,11 +26,10 @@ void main() {
 
   group('kinds', () {
     test('are cash, bank and wallet, by the platform\'s words', () {
-      expect([for (final k in AccountKind.values) k.wire], [
-        'cash',
-        'bank',
-        'wallet',
-      ]);
+      expect(
+        [for (final k in AccountKind.values) k.wire],
+        ['cash', 'bank', 'wallet'],
+      );
       expect(AccountKind.fromWire('bank'), AccountKind.bank);
     });
 
@@ -40,31 +40,73 @@ void main() {
   });
 
   group('which account may be a default', () {
-    test('an active shared account may serve any branch and the whole business',
-        () {
-      expect(AccountRules.defaultProblem(shared, branchId: null), isNull);
-      expect(AccountRules.defaultProblem(shared, branchId: 10), isNull);
-      expect(AccountRules.defaultProblem(shared, branchId: 99), isNull);
-    });
+    test(
+      'an active shared account may serve any branch and the whole business',
+      () {
+        expect(
+          AccountRules.defaultProblem(
+            shared,
+            branchId: null,
+            method: TenderKind.other,
+          ),
+          isNull,
+        );
+        expect(
+          AccountRules.defaultProblem(
+            shared,
+            branchId: 10,
+            method: TenderKind.other,
+          ),
+          isNull,
+        );
+        expect(
+          AccountRules.defaultProblem(
+            shared,
+            branchId: 99,
+            method: TenderKind.other,
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('a branch\'s own account serves that branch and no other', () {
-      expect(AccountRules.defaultProblem(maadiDrawer, branchId: 10), isNull);
       expect(
-        AccountRules.defaultProblem(maadiDrawer, branchId: 11),
+        AccountRules.defaultProblem(
+          maadiDrawer,
+          branchId: 10,
+          method: TenderKind.other,
+        ),
+        isNull,
+      );
+      expect(
+        AccountRules.defaultProblem(
+          maadiDrawer,
+          branchId: 11,
+          method: TenderKind.other,
+        ),
         AccountProblem.accountOfAnotherBranch,
       );
     });
 
     test('a branch\'s own account cannot be the business-wide fallback', () {
       expect(
-        AccountRules.defaultProblem(maadiDrawer, branchId: null),
+        AccountRules.defaultProblem(
+          maadiDrawer,
+          branchId: null,
+          method: TenderKind.other,
+        ),
         AccountProblem.accountOfAnotherBranch,
       );
     });
 
     test('a switched-off account is never a default', () {
       expect(
-        AccountRules.defaultProblem(off, branchId: null),
+        AccountRules.defaultProblem(
+          off,
+          branchId: null,
+          method: TenderKind.other,
+        ),
         AccountProblem.accountUnavailable,
       );
     });
@@ -106,7 +148,11 @@ void main() {
   group('the reference', () {
     test('a short label is fine', () {
       for (final label in ['CIB 4521', 'Maadi', '•••• 4521', null, '']) {
-        expect(AccountRules.referenceLooksLikeNumber(label), isFalse, reason: '$label');
+        expect(
+          AccountRules.referenceLooksLikeNumber(label),
+          isFalse,
+          reason: '$label',
+        );
       }
     });
 
@@ -119,7 +165,11 @@ void main() {
         '1234/5678/9012',
         'EG38 0019 0005 0000 0000 2631 8000 2',
       ]) {
-        expect(AccountRules.referenceLooksLikeNumber(number), isTrue, reason: number);
+        expect(
+          AccountRules.referenceLooksLikeNumber(number),
+          isTrue,
+          reason: number,
+        );
       }
     });
   });
@@ -129,7 +179,11 @@ void main() {
     // the people this till is sold to.
     test('in the reference and in the name', () {
       for (final number in ['٠١٢٣٤٥٦٧٨٩٠١', '۱۲۳۴۵۶۷۸۹۰', '１２３４５６７８９０']) {
-        expect(AccountRules.referenceLooksLikeNumber(number), isTrue, reason: number);
+        expect(
+          AccountRules.referenceLooksLikeNumber(number),
+          isTrue,
+          reason: number,
+        );
         expect(AccountRules.looksLikeNumber(number), isTrue, reason: number);
       }
     });
@@ -161,13 +215,25 @@ void main() {
 
     test('the owner holds it and nobody else does by default', () {
       expect(SystemRoles.owner, contains(PosCapability.financeAccounts));
-      expect(SystemRoles.manager, isNot(contains(PosCapability.financeAccounts)));
-      expect(SystemRoles.supervisor, isNot(contains(PosCapability.financeAccounts)));
-      expect(SystemRoles.cashier, isNot(contains(PosCapability.financeAccounts)));
+      expect(
+        SystemRoles.manager,
+        isNot(contains(PosCapability.financeAccounts)),
+      );
+      expect(
+        SystemRoles.supervisor,
+        isNot(contains(PosCapability.financeAccounts)),
+      );
+      expect(
+        SystemRoles.cashier,
+        isNot(contains(PosCapability.financeAccounts)),
+      );
     });
 
     test('is not a supervisor override: it cannot be lent for a moment', () {
-      expect(PosCapability.overridable, isNot(contains(PosCapability.financeAccounts)));
+      expect(
+        PosCapability.overridable,
+        isNot(contains(PosCapability.financeAccounts)),
+      );
     });
   });
 }

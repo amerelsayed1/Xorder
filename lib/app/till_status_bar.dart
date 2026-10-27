@@ -6,7 +6,13 @@ import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
 import '../core/ui/widgets/pos_widgets.dart';
 import '../data/cloud/cloud_provisioning_repository.dart' show posAppVersion;
+import '../domain/models/branch_sales.dart' show businessDayWire;
+import '../domain/services/business_day_service.dart'
+    show DayNotice, DayNoticeKind;
+import '../features/shift/presentation/shift_dialogs.dart'
+    show CloseShiftDialog;
 import 'providers.dart';
+import 'router.dart' show PosRoutes, rootNavigatorKey, routerProvider;
 
 /// The bottom line of every screen of a set-up till: connection, branch, this
 /// till, version, who is in.
@@ -31,9 +37,19 @@ import 'providers.dart';
 /// manual Lock leaves the last cashier signed in behind it, and printing their
 /// name on the lock screen would defeat it.
 class TillStatusBar extends ConsumerWidget {
-  const TillStatusBar({super.key, this.showPerson = true});
+  const TillStatusBar({
+    super.key,
+    this.showPerson = true,
+    this.showCloseShift = false,
+  });
 
   final bool showPerson;
+
+  /// Close shift, on the cashier's screen only. It was the sale screen's top
+  /// bar's button until the owner moved it here, beside the day notice (26 Oct
+  /// 2026): the notice says the day is still open, and this is where the
+  /// cashier acts on it.
+  final bool showCloseShift;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,6 +59,7 @@ class TillStatusBar extends ConsumerWidget {
     final branch = profile.branchName;
     final terminal = profile.terminalName;
     final who = showPerson ? ref.watch(actingStaffProvider) : null;
+    final notice = ref.watch(dayNoticeProvider).valueOrNull;
     final meta = PosText.ui(size: 13, color: pos.body);
 
     // Its own Material: this sits above the router, so no screen's Scaffold is
@@ -114,6 +131,9 @@ class TillStatusBar extends ConsumerWidget {
                 ],
               ),
             ),
+            // A warning, not a refusal: nothing here stops the till selling.
+            if (notice != null) _DayNotice(notice),
+            if (showCloseShift) const _CloseShiftButton(),
             if (who != null)
               Flexible(
                 child: Padding(
@@ -174,6 +194,117 @@ class BackOfficeConnectionPill extends ConsumerWidget {
       checking: probe.isLoading,
       reachable: probe.hasValue && probe.value == null,
       onTap: () => ref.invalidate(branchDatabaseProvider),
+    );
+  }
+}
+
+/// A day left open from an earlier date, or sales after the date was closed,
+/// said in a few words in the bar (it was a banner on the start screen). The
+/// full sentence, with what to do about it, is the tooltip.
+class _DayNotice extends StatelessWidget {
+  const _DayNotice(this.notice);
+
+  final DayNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    final strings = context.strings;
+    final date = businessDayWire(notice.date);
+    final (short, full) = switch (notice.kind) {
+      DayNoticeKind.staleOpenDay => (
+        strings.dayStillOpenShort(date),
+        strings.dayStillOpenFrom(date),
+      ),
+      DayNoticeKind.todayAlreadyClosed => (
+        strings.dayClosedTodayShort(date),
+        strings.dayClosedTodayNotice(date),
+      ),
+    };
+    return Flexible(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
+        child: Tooltip(
+          message: full,
+          child: Container(
+            key: const Key('till-status-day-notice'),
+            padding: const EdgeInsets.symmetric(
+              horizontal: PosSpace.sm,
+              vertical: PosSpace.xs,
+            ),
+            decoration: BoxDecoration(
+              color: pos.offlinePillBg,
+              border: Border.all(color: pos.warn),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 16,
+                  color: pos.offlinePillText,
+                ),
+                const SizedBox(width: PosSpace.xs),
+                Flexible(
+                  child: Text(
+                    short,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PosText.ui(size: 12.5, color: pos.offlinePillText),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cash up and hand the till back.
+///
+/// What the sale screen's top-bar button did, unchanged: a ticket still on the
+/// screen is not discarded (the cashier is told instead), a till with no shift
+/// open has nothing to count and just goes back to Start, and otherwise the
+/// count dialog runs and Start follows once the shift is closed.
+///
+/// The dialog is opened on the root navigator's context, as About is: this bar
+/// sits above the router, so its own context has no Navigator above it.
+class _CloseShiftButton extends ConsumerWidget {
+  const _CloseShiftButton();
+
+  Future<void> _close(BuildContext context, WidgetRef ref) async {
+    final router = ref.read(routerProvider);
+    if (!ref.read(ticketProvider).isEmpty) {
+      posToast(context, context.strings.ticketStillOpen);
+      return;
+    }
+    final shift = ref.read(shiftProvider).valueOrNull;
+    if (shift == null) {
+      router.go(PosRoutes.start);
+      return;
+    }
+    final dialogContext = rootNavigatorKey.currentContext;
+    if (dialogContext == null) return;
+    final closed = await CloseShiftDialog.show(dialogContext, shift: shift);
+    if (closed) router.go(PosRoutes.start);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pos = context.pos;
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: PosSpace.lg),
+      child: PosButton(
+        key: const Key('till-status-close-shift'),
+        label: context.strings.closeShift,
+        height: 32,
+        fontSize: 12.5,
+        foreground: pos.offlinePillText,
+        border: Border.all(color: pos.warn),
+        onPressed: () => _close(context, ref),
+      ),
     );
   }
 }

@@ -168,7 +168,7 @@ void main() {
       {'r': restaurantId},
     );
     staffId = await scalar(
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', 'nour', 'salt', "
       "  'hash') RETURNING id",
       {'r': restaurantId, 'b': branchId},

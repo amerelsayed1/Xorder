@@ -155,7 +155,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
 
     final staff = await _db.query(
       _config,
-      'SELECT pin_salt, pin_hash FROM pos_staff '
+      'SELECT pin_salt, pin_hash FROM pos_users '
       'WHERE restaurant_id = @restaurant AND username = @username AND is_active',
       parameters: {'restaurant': tenant.id, 'username': username.trim()},
     );
@@ -235,7 +235,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
 
     final staff = await _db.query(
       _config,
-      'SELECT pin_salt, pin_hash FROM pos_staff '
+      'SELECT pin_salt, pin_hash FROM pos_users '
       'WHERE restaurant_id = @restaurant AND username = @username AND is_active',
       parameters: {'restaurant': tenant.id, 'username': username.trim()},
     );
@@ -383,7 +383,7 @@ class PostgresSessionRepository implements SessionRepository {
       // bar reads a `PosSession`, which carries a flat set rather than a role.
       "  SELECT st.name, st.capabilities || coalesce(ro.capabilities, '{}'::text[]) "
       '    AS capabilities '
-      '  FROM pos_staff st LEFT JOIN pos_roles ro ON ro.id = st.role_id '
+      '  FROM pos_users st LEFT JOIN pos_roles ro ON ro.id = st.role_id '
       '  WHERE st.restaurant_id = r.id AND st.is_active '
       '    AND (st.branch_id IS NULL OR st.branch_id = @branch) '
       '  ORDER BY st.id LIMIT 1'
@@ -477,7 +477,7 @@ class PostgresSessionRepository implements SessionRepository {
         _config,
         'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, '
         '       $joinedRoleColumns, s.password_hash '
-        'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+        'FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
         'WHERE s.restaurant_id = @restaurant AND s.is_active '
         '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
         '  AND lower(trim(s.username)) = @username '
@@ -531,7 +531,7 @@ class PostgresSessionRepository implements SessionRepository {
       _config,
       'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, $joinedRoleColumns, '
       '       s.pin_salt, s.pin_hash '
-      'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+      'FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
       'WHERE s.restaurant_id = @restaurant AND s.is_active '
       '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
       'ORDER BY s.id',
@@ -580,16 +580,16 @@ class PostgresSessionRepository implements SessionRepository {
     try {
       final extras = await _db.query(
         _config,
-        'SELECT $joinedRoleColumns FROM pos_staff_roles sr '
+        'SELECT $joinedRoleColumns FROM pos_user_roles sr '
         'JOIN pos_roles r ON r.id = sr.role_id '
-        'WHERE sr.staff_id = @staff ORDER BY r.id',
+        'WHERE sr.user_id = @staff ORDER BY r.id',
         parameters: {'staff': staff.id},
       );
 
       final overrides = await _db.query(
         _config,
         'SELECT capability, effect, granted_by, granted_at '
-        'FROM pos_staff_permission_overrides WHERE staff_id = @staff',
+        'FROM pos_user_permission_overrides WHERE user_id = @staff',
         parameters: {'staff': staff.id},
       );
 

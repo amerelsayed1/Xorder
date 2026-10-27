@@ -52,12 +52,13 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     MenuPaneMode mode = MenuPaneMode.menu,
+    List<Category> inactive = const [],
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 1600)
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    catalogue = _Catalogue();
+    catalogue = _Catalogue()..inactive = inactive;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -178,14 +179,104 @@ void main() {
       expect(find.byKey(const Key('menu-section-header')), findsNothing);
     });
 
-    testWidgets('still adds, renames and takes sections off the rail', (
+    testWidgets('each section has three actions: a switch, Edit and Delete', (
       tester,
     ) async {
       await pump(tester, mode: MenuPaneMode.sections);
 
       expect(find.text(en.addCategory), findsOneWidget);
-      expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
-      expect(find.byIcon(Icons.archive_outlined), findsNWidgets(2));
+      for (final id in [1, 2]) {
+        expect(find.byKey(Key('category-$id-active')), findsOneWidget);
+        expect(find.byKey(Key('category-$id-edit')), findsOneWidget);
+        expect(find.byKey(Key('category-$id-delete')), findsOneWidget);
+      }
+      expect(find.byType(Switch), findsNWidgets(2));
+      expect(find.byIcon(Icons.archive_outlined), findsNothing);
+    });
+
+    testWidgets('the switch is on for an active section and turns it off', (
+      tester,
+    ) async {
+      await pump(tester, mode: MenuPaneMode.sections);
+
+      final toggle = find.byKey(const Key('category-1-active'));
+      expect(tester.widget<Switch>(toggle).value, isTrue);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(catalogue.archived.single.id, 1);
+      expect(catalogue.restoreFlag, isFalse, reason: 'off, not back on');
+    });
+
+    testWidgets('a section that is off is listed with the switch off, and turns back on', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        mode: MenuPaneMode.sections,
+        inactive: const [Category(id: 3, nameEn: 'Seasonal', isActive: false)],
+      );
+
+      expect(find.text('Seasonal'), findsOneWidget);
+      final toggle = find.byKey(const Key('category-3-active'));
+      expect(tester.widget<Switch>(toggle).value, isFalse);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(catalogue.archived.single.id, 3);
+      expect(catalogue.restoreFlag, isTrue, reason: 'on again');
+    });
+
+    testWidgets('Edit opens the section for editing', (tester) async {
+      await pump(tester, mode: MenuPaneMode.sections);
+
+      await tester.tap(find.byKey(const Key('category-2-edit')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('Desserts'), findsWidgets);
+    });
+
+    testWidgets('Delete asks first, and keeping it deletes nothing', (
+      tester,
+    ) async {
+      await pump(tester, mode: MenuPaneMode.sections);
+
+      await tester.tap(find.byKey(const Key('category-2-delete')));
+      await tester.pumpAndSettle();
+      expect(find.text(en.deleteSectionTitle('Desserts')), findsOneWidget);
+
+      await tester.tap(find.text(en.cancel));
+      await tester.pumpAndSettle();
+
+      expect(catalogue.deleted, isEmpty);
+    });
+
+    testWidgets('confirming deletes that section', (tester) async {
+      await pump(tester, mode: MenuPaneMode.sections);
+
+      await tester.tap(find.byKey(const Key('category-2-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(en.deleteLabel));
+      await tester.pumpAndSettle();
+
+      expect(catalogue.deleted.single.id, 2);
+    });
+
+    testWidgets('a section with items is refused, and the refusal is said', (
+      tester,
+    ) async {
+      await pump(tester, mode: MenuPaneMode.sections);
+      catalogue.deleteRefusal = const CatalogRefused(
+        CatalogProblem.categoryHasItems,
+      );
+
+      await tester.tap(find.byKey(const Key('category-1-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(en.deleteLabel));
+      await tester.pumpAndSettle();
+
+      expect(find.text(en.refusalCategoryHasItems), findsOneWidget);
     });
   });
 
@@ -205,6 +296,36 @@ void main() {
 /// is stubbed or throws, so a test straying outside this path fails loudly.
 class _Catalogue implements CatalogAdminRepository {
   Product? saved;
+  List<Category> inactive = const [];
+  final archived = <Category>[];
+  bool? restoreFlag;
+  final deleted = <Category>[];
+  AdminRefusal? deleteRefusal;
+
+  @override
+  Future<List<Category>> inactiveCategories() async => inactive;
+
+  @override
+  Future<AdminResult<Category>> archiveCategory(
+    Category category, {
+    required PosStaff by,
+    bool restore = false,
+  }) async {
+    archived.add(category);
+    restoreFlag = restore;
+    return AdminResult.done(category);
+  }
+
+  @override
+  Future<AdminResult<void>> deleteCategory(
+    Category category, {
+    required PosStaff by,
+  }) async {
+    final refusal = deleteRefusal;
+    if (refusal != null) return AdminResult<void>.refused(refusal);
+    deleted.add(category);
+    return const AdminResult<void>.done(null);
+  }
 
   @override
   Future<AdminResult<Product>> saveProduct(

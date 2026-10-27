@@ -601,38 +601,38 @@ class PostgresReportsRepository implements ReportsRepository {
         WHERE ${voidWhere.join(' AND ')}
       ),
       sold AS (
-        SELECT served_by AS staff_id, count(*) AS orders,
+        SELECT served_by AS user_id, count(*) AS orders,
                sum(total_minor + discount_minor)::bigint AS gross,
                sum(discount_minor)::bigint AS discounts
           FROM sales GROUP BY served_by
       ),
       given AS (
-        SELECT refunded_by AS staff_id, count(*) AS refunds,
+        SELECT refunded_by AS user_id, count(*) AS refunds,
                sum(total_minor)::bigint AS refunded
           FROM refunds GROUP BY refunded_by
       ),
       voided AS (
-        SELECT voided_by AS staff_id, count(*) AS voids
+        SELECT voided_by AS user_id, count(*) AS voids
           FROM voids GROUP BY voided_by
       ),
       people AS (
-        SELECT staff_id FROM sold
-        UNION SELECT staff_id FROM given
-        UNION SELECT staff_id FROM voided
+        SELECT user_id FROM sold
+        UNION SELECT user_id FROM given
+        UNION SELECT user_id FROM voided
       )
-      SELECT p.staff_id, st.name,
+      SELECT p.user_id, st.name,
              coalesce(s.orders, 0), coalesce(s.gross, 0),
              coalesce(s.discounts, 0),
              coalesce(g.refunds, 0), coalesce(g.refunded, 0),
              coalesce(v.voids, 0)
         FROM people AS p
-        LEFT JOIN sold AS s ON s.staff_id IS NOT DISTINCT FROM p.staff_id
-        LEFT JOIN given AS g ON g.staff_id IS NOT DISTINCT FROM p.staff_id
-        LEFT JOIN voided AS v ON v.staff_id IS NOT DISTINCT FROM p.staff_id
-        LEFT JOIN pos_staff AS st ON st.id = p.staff_id
+        LEFT JOIN sold AS s ON s.user_id IS NOT DISTINCT FROM p.user_id
+        LEFT JOIN given AS g ON g.user_id IS NOT DISTINCT FROM p.user_id
+        LEFT JOIN voided AS v ON v.user_id IS NOT DISTINCT FROM p.user_id
+        LEFT JOIN pos_users AS st ON st.id = p.user_id
        ORDER BY coalesce(s.gross, 0) - coalesce(s.discounts, 0)
                   - coalesce(g.refunded, 0) DESC,
-                st.name NULLS LAST, p.staff_id NULLS LAST
+                st.name NULLS LAST, p.user_id NULLS LAST
       ''',
       parameters: {
         ...sold.parameters,
