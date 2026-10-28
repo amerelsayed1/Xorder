@@ -164,6 +164,78 @@ void main() {
     );
   });
 
+  test('a sale takes the trading day\'s order number as the till, and the till '
+      'cannot rewrite it', () async {
+    // The number is stamped by a trigger that runs AS THE TILL and bumps
+    // `pos_order_day_counters`. A table with no grant for it works for the
+    // superuser in every other suite and refuses at the counter.
+    final restaurant = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('number-probe', 'Number') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      'RETURNING id',
+    )).first[0]! as int;
+    final branch = (await db.query(
+      pg.config,
+      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "VALUES (@r, 'NPR', 'Probe') "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'RETURNING id',
+      parameters: {'r': restaurant},
+    )).first[0]! as int;
+    Future<void> sweep() async {
+      await db.query(pg.config, 'DELETE FROM pos_orders WHERE branch_id = @b',
+          parameters: {'b': branch});
+      await db.query(
+        pg.config,
+        'DELETE FROM pos_business_days WHERE branch_id = @b',
+        parameters: {'b': branch},
+      );
+    }
+
+    // Before and after: the suites that run next in the shared database delete
+    // branches, and a business day still referenced by an order blocks that.
+    await sweep();
+    addTearDown(() async {
+      await sweep();
+      await db.query(pg.config, 'DELETE FROM pos_branches WHERE id = @b',
+          parameters: {'b': branch});
+      await db.query(pg.config, 'DELETE FROM pos_restaurants WHERE id = @r',
+          parameters: {'r': restaurant});
+    });
+    await db.query(
+      pg.config,
+      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      "  opened_at) VALUES (@r, @b, '2026-09-10', now() - interval '1 hour')",
+      parameters: {'r': restaurant, 'b': branch},
+    );
+
+    final connection = await connect();
+    addTearDown(connection.close);
+    Future<int> sell() async => (await connection.execute(
+      Sql.named(
+        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        '  branch_id, terminal_id, invoice_number, order_type, currency, '
+        '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
+        '  occurred_at) '
+        "VALUES (gen_random_uuid(), @r, @b, gen_random_uuid(), "
+        "  'INV-' || gen_random_uuid()::text, 'takeaway', 'EGP', 2, 100, 0, 0, "
+        '  100, now()) RETURNING day_order_number',
+      ),
+      parameters: {'r': restaurant, 'b': branch},
+    )).first[0]! as int;
+
+    expect(await sell(), 1);
+    expect(await sell(), 2);
+
+    expect(
+      await refusalFor('UPDATE pos_orders SET day_order_number = 99'),
+      '42501',
+      reason: 'the number is stamped once; the till cannot renumber a sale',
+    );
+    expect(await refusalFor('DELETE FROM pos_order_day_counters'), '42501');
+  });
+
   // ── Everything added since Wave A ────────────────────────────────────────
   //
   // The tests above were written when the schema stopped at orders and staff.

@@ -72,7 +72,13 @@ void main() {
 
   test('keeps every row, and the ids other rows point at', () async {
     final applied = await PosMigrator(db).migrate(pg.config);
-    // 62 first; anything numbered after it follows.
+    // 62 and whatever came after it: the database was built to just before 62,
+    // so every later migration runs here too. Asserting `[62]` alone broke the
+    // moment a later migration landed.
+    expect(applied, [
+      for (final migration in posMigrations)
+        if (migration.version >= 62) migration.version,
+    ]);
     expect(applied.first, 62);
 
     final users = await db.query(

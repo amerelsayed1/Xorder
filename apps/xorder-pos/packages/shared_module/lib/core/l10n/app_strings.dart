@@ -228,6 +228,7 @@ sealed class AppStrings {
   String get receiptDate;
   String get receiptTime;
   String get receiptOrderNumber;
+  String get receiptDayOrderNumber;
   String get receiptCashier;
   String get receiptTerminal;
   String get receiptOrderType;
@@ -4090,6 +4091,8 @@ final class EnStrings extends AppStrings {
   String get receiptTime => 'Time';
   @override
   String get receiptOrderNumber => 'Order #';
+  @override
+  String get receiptDayOrderNumber => 'Order no.';
   @override
   String get receiptCashier => 'Cashier';
   @override
@@ -9802,6 +9805,8 @@ final class ArStrings extends AppStrings {
   String get receiptTime => 'الوقت';
   @override
   String get receiptOrderNumber => 'رقم الطلب';
+  @override
+  String get receiptDayOrderNumber => 'رقم الطلب اليومي';
   @override
   String get receiptCashier => 'الكاشير';
   @override

@@ -164,6 +164,8 @@ class _Detail extends ConsumerWidget {
       order.orderType.label(strings),
       if (order.tableLabel != null) order.tableLabel!,
       if (order.guestCount != null) strings.orderDetailGuests(order.guestCount!),
+      if (order.dayOrderNumber != null)
+        '${strings.receiptDayOrderNumber} ${order.dayOrderNumber}',
     ].join(' · ');
 
     return Container(

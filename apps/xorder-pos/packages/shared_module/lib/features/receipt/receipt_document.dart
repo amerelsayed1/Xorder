@@ -303,6 +303,13 @@ class ReceiptDocument {
               secondary: true,
             ),
     );
+    // The number the cashier calls out. Beside the invoice number, which stays
+    // the legal one; absent for an order outside any trading day.
+    if (data.dayOrderNumber case final number?) {
+      blocks.add(
+        SlipRow(strings.receiptDayOrderNumber, '$number', secondary: true),
+      );
+    }
     blocks.add(
       SlipRow(
         strings.receiptCashier,

@@ -233,6 +233,7 @@ class OrderRecord {
     this.customerPhone,
     this.customerEmail,
     this.platformNumbered = true,
+    this.dayOrderNumber,
   });
 
   /// The day `served_by` became trustworthy.
@@ -261,6 +262,11 @@ class OrderRecord {
     required bool syncsToPlatform,
     required String provisional,
   }) => syncsToPlatform && !platformNumbered ? provisional : invoiceNumber;
+
+  /// The count of orders in the trading day, shared by every till of the
+  /// branch: the number a cashier calls out. Null for an order written before
+  /// it existed or outside any trading day. Not the invoice number.
+  final int? dayOrderNumber;
   final OrderStatus status;
   final OrderType orderType;
   final DateTime occurredAt;

@@ -96,6 +96,7 @@ class ReceiptData {
     required this.paid,
     required this.change,
     this.invoiceNumber,
+    this.dayOrderNumber,
     this.tableLabel,
     this.serviceBp,
     this.taxLines = const [],
@@ -122,12 +123,14 @@ class ReceiptData {
   factory ReceiptData.fromTicket(
     Ticket ticket, {
     String? invoiceNumber,
+    int? dayOrderNumber,
     bool queued = false,
     bool cloudBacked = false,
   }) {
     final totals = ticket.totals;
     return ReceiptData(
       invoiceNumber: invoiceNumber,
+      dayOrderNumber: dayOrderNumber,
       orderType: ticket.orderType,
       tableLabel: ticket.tableLabel,
       occurredAt: DateTime.now(),
@@ -234,6 +237,7 @@ class ReceiptData {
 
     return ReceiptData(
       invoiceNumber: order.invoiceNumber,
+      dayOrderNumber: order.dayOrderNumber,
       orderType: order.orderType,
       tableLabel: order.tableLabel,
       // The time of the **sale**, not of the reprint. A receipt reprinted a
@@ -329,6 +333,11 @@ class ReceiptData {
   }
 
   final String? invoiceNumber;
+
+  /// The count of orders in the trading day, shared by every till: the number
+  /// a cashier calls out. Printed beside the invoice number, never instead of
+  /// it. Null prints nothing.
+  final int? dayOrderNumber;
   final OrderType orderType;
   final String? tableLabel;
   final DateTime occurredAt;

@@ -728,6 +728,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     };
     return HistoryHeadings(
       children: [
+        SizedBox(width: _Cols.number, child: const MicroLabel('#')),
         SizedBox(width: _Cols.invoice, child: MicroLabel(strings.orderColumnInvoice)),
         SizedBox(width: _Cols.time, child: MicroLabel(strings.orderColumnTime)),
         SizedBox(width: _Cols.type, child: MicroLabel(strings.orderColumnType)),
@@ -761,6 +762,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
 
 /// Column widths, in one place so the headings and the rows cannot drift.
 abstract final class _Cols {
+  /// The day's order count, the number a cashier calls out.
+  static const number = 44.0;
   static const invoice = 132.0;
   static const time = 64.0;
   static const type = 96.0;
@@ -1010,6 +1013,15 @@ class _OrderRow extends StatelessWidget {
       selected: selected,
       onTap: onTap,
       children: [
+        SizedBox(
+          width: _Cols.number,
+          child: MonoCode(
+            order.dayOrderNumber?.toString() ?? '—',
+            key: Key('order-number-${order.id}'),
+            size: 12.5,
+            color: dead ? pos.muted : pos.ink,
+          ),
+        ),
         SizedBox(
           width: _Cols.invoice,
           child: MonoCode(
