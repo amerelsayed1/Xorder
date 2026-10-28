@@ -291,6 +291,7 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
       UsernameField(
         controller: _username,
         onSubmitted: () => FocusScope.of(context).nextFocus(),
+        pinHint: true,
       ),
       const SizedBox(height: PosSpace.lg),
       PinDots(length: _pin.length),

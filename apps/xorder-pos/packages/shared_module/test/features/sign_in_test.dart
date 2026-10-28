@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/config/terminal_config.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/app/router.dart';
 import 'package:shared_module/features/lock/lock_screen.dart';
@@ -463,5 +465,123 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.digit4);
     await tester.pumpAndSettle();
     expect(unlocked, isTrue, reason: '1234 once the 9 is taken back');
+  });
+
+  // ── The keyboard reaches the PIN (README XORDER-012) ───────────────────────
+  //
+  // The pad only hears the keyboard while it holds focus. Tapping a key on the
+  // glass used to leave focus in the name box, so a cashier who tapped one key
+  // and carried on typing finished their PIN inside the username.
+
+  const digits = [
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+  ];
+
+  testWidgets('tapping one key hands the keyboard to the pad', (tester) async {
+    var unlocked = false;
+    await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typeUsername(tester, 'rana');
+    await tester.tap(find.text('1').last);
+    await tester.pump();
+    for (final key in digits.skip(1)) {
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(unlocked, isTrue, reason: 'one tap, then 2-3-4 from the keyboard');
+    final name = tester.widget<TextField>(find.byType(TextField));
+    expect(name.controller!.text, 'rana', reason: 'no digit went into the name');
+  });
+
+  testWidgets('Tab from the name box reaches the pad, and the numpad types',
+      (tester) async {
+    var unlocked = false;
+    await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typeUsername(tester, 'rana');
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    for (final key in [
+      LogicalKeyboardKey.numpad1,
+      LogicalKeyboardKey.numpad2,
+      LogicalKeyboardKey.numpad3,
+      LogicalKeyboardKey.numpad4,
+    ]) {
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(unlocked, isTrue);
+  });
+
+  testWidgets('letters are ignored once the pad has the keyboard', (
+    tester,
+  ) async {
+    var unlocked = false;
+    await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typeUsername(tester, 'rana');
+    await tester.testTextInput.receiveAction(TextInputAction.next);
+    await tester.pumpAndSettle();
+    for (final key in [
+      LogicalKeyboardKey.keyA,
+      LogicalKeyboardKey.keyZ,
+      ...digits,
+    ]) {
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(unlocked, isTrue, reason: 'a, z then 1234 is still 1234');
+  });
+
+  Future<void> pumpLockIn(WidgetTester tester, String language) async {
+    tester.view
+      ..physicalSize = const Size(1440, 900)
+      ..devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final scope = ProviderContainer(overrides: fakeRepositoryOverrides());
+    addTearDown(scope.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: scope,
+        child: MaterialApp(
+          locale: Locale(language),
+          theme: buildPosTheme(),
+          localizationsDelegates: const [
+            AppLocalizations(),
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: LockScreen(onUnlocked: () {}, onBack: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('the lock screen says how to get from the name to the PIN', (
+    tester,
+  ) async {
+    await pumpLockIn(tester, 'en');
+    expect(
+      find.text('Press Enter or Tab, then type the PIN'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('and says it in Arabic', (tester) async {
+    await pumpLockIn(tester, 'ar');
+    expect(find.text(const ArStrings().pinTypeHint), findsOneWidget);
+    expect(const ArStrings().pinTypeHint, isNot(const EnStrings().pinTypeHint));
   });
 }

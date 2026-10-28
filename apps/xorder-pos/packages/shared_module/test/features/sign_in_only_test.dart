@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/app/providers.dart';
@@ -317,6 +318,70 @@ void main() {
       expect(result, isNull, reason: 'the dialog stays open');
       expect(find.textContaining('Nour S.'), findsWidgets);
       expect(await container.read(shiftRepositoryProvider).current(), isNull);
+    });
+  });
+
+  // README XORDER-012: the same pad, the same keyboard rule as the lock screen.
+  group('the keyboard reaches the PIN here too', () {
+    const digits = [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+    ];
+
+    testWidgets('one tapped key hands the keyboard to the pad', (tester) async {
+      bool? result;
+      await pumpDialog(
+        tester,
+        SignInDialog.show,
+        onResult: (r) => result = r,
+      );
+
+      await tester.enterText(find.byType(TextField), 'rana');
+      await tester.pump();
+      await tester.tap(find.text('1').last);
+      await tester.pump();
+      for (final key in digits.sublist(1, 3)) {
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+      }
+      // Three digits in, none of them in the name box.
+      final name = tester.widget<TextField>(find.byType(TextField));
+      expect(name.controller!.text, 'rana');
+      expect(result, isNull);
+
+      await tester.sendKeyEvent(digits.last);
+      await tester.pumpAndSettle();
+      expect(result, isTrue);
+    });
+
+    testWidgets('Enter in the name box moves to the pad', (tester) async {
+      bool? result;
+      await pumpDialog(
+        tester,
+        SignInDialog.show,
+        onResult: (r) => result = r,
+      );
+
+      await tester.enterText(find.byType(TextField), 'rana');
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pumpAndSettle();
+      for (final key in digits) {
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(result, isTrue);
+    });
+
+    testWidgets('the dialog says how to get from the name to the PIN', (
+      tester,
+    ) async {
+      await pumpDialog(tester, SignInDialog.show, onResult: (_) {});
+
+      expect(find.text('Press Enter or Tab, then type the PIN'), findsOneWidget);
     });
   });
 }

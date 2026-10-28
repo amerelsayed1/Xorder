@@ -941,6 +941,7 @@ sealed class AppStrings {
   String get dataFileRefused;
   String get eachTillAlone;
   String get username;
+  String get pinTypeHint;
   String get password;
   String get managerPassword;
   String get manualCredentialsWarning;
@@ -5359,6 +5360,8 @@ final class EnStrings extends AppStrings {
       'dashboard.';
   @override
   String get username => 'Username';
+  @override
+  String get pinTypeHint => 'Press Enter or Tab, then type the PIN';
   @override
   String get password => 'Password';
   @override
@@ -11039,6 +11042,8 @@ final class ArStrings extends AppStrings {
       'التحكم.';
   @override
   String get username => 'اسم المستخدم';
+  @override
+  String get pinTypeHint => 'اضغط Enter أو Tab ثم اكتب الرقم السري';
   @override
   String get password => 'كلمة المرور';
   @override
