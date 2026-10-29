@@ -224,14 +224,6 @@ class XorderPosApp extends ConsumerWidget {
               final strings = AppStrings.of(ref.watch(localeProvider));
               final arabic = ref.watch(localeProvider).languageCode == 'ar';
 
-              // What is on screen right now, which is not the same as what was
-              // chosen: while following the machine the override is null and
-              // says nothing about which way the toggle should go.
-              final showing =
-                  ref.watch(brightnessProvider) ??
-                  MediaQuery.platformBrightnessOf(context);
-              final dark = showing == Brightness.dark;
-
               final staff = ref.watch(signedInStaffProvider);
               final managesTerminal =
                   staff?.can(PosCapability.terminalManage) ?? false;
@@ -469,24 +461,10 @@ class XorderPosApp extends ConsumerWidget {
                                 .read(localeProvider.notifier)
                                 .apply(arabic ? 'en' : 'ar'),
                           ),
-                          // Reads as the theme you would GET, for the same reason the
-                          // language item does.
-                          MenuButton(
-                            text: Text(
-                              dark
-                                  ? strings.switchToLight
-                                  : strings.switchToDark,
-                            ),
-                            icon: Icon(
-                              dark
-                                  ? Icons.light_mode_outlined
-                                  : Icons.dark_mode_outlined,
-                              size: 16,
-                            ),
-                            onTap: () => ref
-                                .read(brightnessProvider.notifier)
-                                .toggle(showing),
-                          ),
+                          // No theme item here (XORD-040): Settings › Appearance
+                          // offers light, dark and system, and the welcome
+                          // screen keeps its own corner toggle for the one
+                          // moment before anybody can reach that page.
                           // Switch user and About are the account menu's now
                           // (XORD-022-D); Settings holds configuration, and the
                           // one act the machine's installer needs.
