@@ -194,6 +194,7 @@ how much other work unblocks. Sizes: S ≤ 1 day, M 2–4 days, L 1–2 weeks.
 | A5 | Plan badge + trial/upgrade banner + in-dashboard "My plan" page with limit meters | S–M | — |
 | A6 | Notification preferences (per event, per channel) + the new events listed in 2.7 | M | A1 for status events |
 | A7 | Tables page: occupancy badge + available / occupied filter | S | — |
+| A8 | Sidebar regrouping: section headings (Main, Menu, Inventory & purchasing, Customers & marketing, Reports, Team, Settings), page search, tabbed Purchasing and Stock screens, Staff/Roles to Team, Branches/Dining areas into Settings, old URLs redirected — **done 2026-11-03** | S | — |
 
 ### Phase B — money and fulfilment (P1)
 | ID | Item | Size | Depends on |

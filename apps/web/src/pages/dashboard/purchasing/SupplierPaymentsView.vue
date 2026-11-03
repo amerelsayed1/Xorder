@@ -10,6 +10,8 @@ import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { fmtDay, money } from './format.js'
+import PageTabs from '../../../components/PageTabs.vue'
+import { PURCHASING_TABS } from '../tabs.config.js'
 
 // CB-09 slice c. Supplier payments, newest first. A voided payment stays on
 // the list, flagged; it no longer counts anywhere. What went on invoices and
@@ -64,6 +66,8 @@ const show = (p, minor) => money(minor, p.exponent, p.currency, locale.value)
 
 <template>
     <div class="space-y-5">
+        <PageTabs :tabs="PURCHASING_TABS" />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.payments_title') }}</h1>

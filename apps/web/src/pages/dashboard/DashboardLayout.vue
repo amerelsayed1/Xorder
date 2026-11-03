@@ -202,7 +202,7 @@ const nav = computed(() => buildDashboardNav({
 </script>
 
 <template>
-    <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="!bilingual">
+    <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="!bilingual" searchable>
         <template #topbar-actions>
             <FullscreenToggle />
             <NotificationBell />

@@ -20,8 +20,17 @@ export const SETTINGS_GROUPS = [
         labelKey: 'settings_shell.group_account',
         items: [
             { key: 'profile', labelKey: 'nav.profile', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, capability: 'settings.view' },
-            { key: 'users', labelKey: 'nav.staff', icon: 'pi pi-users', to: { name: 'dashboard.staff' }, capability: 'staff.view' },
-            { key: 'roles', labelKey: 'nav.roles', icon: 'pi pi-shield', to: { name: 'dashboard.roles' }, capability: 'staff.view' },
+        ],
+    },
+    // Set up once, rarely touched — so they live here rather than in the
+    // sidebar. Tables stays in the sidebar's Main section: staff use it all
+    // day. Staff and roles moved the other way, to the sidebar's Team section.
+    {
+        key: 'place',
+        labelKey: 'settings_shell.group_place',
+        items: [
+            { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' }, feature: 'multi_branch', capability: 'branches.view' },
+            { key: 'areas', labelKey: 'nav.areas', icon: 'pi pi-th-large', to: { name: 'dashboard.areas' }, feature: 'table_management', capability: 'tables.view' },
         ],
     },
     {
@@ -42,6 +51,12 @@ export const SETTINGS_GROUPS = [
         ],
     },
 ]
+
+// Every route name a settings section can show, for the sidebar entry's active
+// state: the shell's index route (Profile) is not a parent of its siblings, so
+// the link alone would go dark on every section but Profile. Prefix-matched, so
+// create/edit pages under a section count too.
+export const SETTINGS_ROUTE_NAMES = SETTINGS_GROUPS.flatMap((g) => g.items.map((i) => i.to.name))
 
 const allowed = (features, can) => (item) =>
     (!item.feature || features.includes(item.feature))

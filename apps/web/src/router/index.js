@@ -129,10 +129,12 @@ const restaurantRoutes = [
             { path: 'reports/areas', name: 'dashboard.reports.areas', component: () => import('../pages/dashboard/AreasComparisonView.vue'), meta: { capability: 'reports.view' } },
             { path: 'customers', name: 'dashboard.customers', component: () => import('../pages/dashboard/CustomersView.vue'), meta: { capability: 'customers.view' } },
             { path: 'customers/:id', name: 'dashboard.customer', component: () => import('../pages/dashboard/CustomerDetailView.vue'), meta: { capability: 'customers.view' } },
-            { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue'), meta: { capability: 'branches.view' } },
-            { path: 'branches/create', name: 'dashboard.branches.create', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.create' } },
-            { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
-            { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
+            // Branches and dining areas moved into the settings shell (below);
+            // their old paths redirect there.
+            { path: 'branches', redirect: { name: 'dashboard.branches' } },
+            { path: 'branches/create', redirect: { name: 'dashboard.branches.create' } },
+            { path: 'branches/:id/edit', redirect: (to) => ({ name: 'dashboard.branches.edit', params: to.params }) },
+            { path: 'dining-areas', redirect: { name: 'dashboard.areas' } },
             { path: 'tables', name: 'dashboard.tables', component: () => import('../pages/dashboard/TablesView.vue'), meta: { capability: 'tables.view' } },
             // Purchasing and inventory (CB-09). The server stacks
             // feature:purchasing + can:purchase.manage; as elsewhere, the
@@ -156,7 +158,7 @@ const restaurantRoutes = [
             { path: 'purchasing/payments/:id', name: 'dashboard.purchasing.payment', component: () => import('../pages/dashboard/purchasing/SupplierPaymentView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'purchasing/suppliers/:id', name: 'dashboard.purchasing.supplier', component: () => import('../pages/dashboard/purchasing/SupplierAccountView.vue'), meta: { capability: 'purchase.manage' } },
             // ------------------------------------------------------ settings
-            // Five sections, one shell. The route *names* are the ones these
+            // One shell over every settings section (see settings.config.js). The route *names* are the ones these
             // pages have always had, so every existing RouterLink keeps
             // resolving; only the URLs moved under /settings, which is what
             // makes each section linkable and the back button meaningful.
@@ -167,12 +169,14 @@ const restaurantRoutes = [
                 children: [
                     // Profile lives at the bare /settings — see settingsIndexGuard.
                     { path: '', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue'), beforeEnter: settingsIndexGuard },
-                    { path: 'users', name: 'dashboard.staff', component: () => import('../pages/dashboard/StaffView.vue'), meta: { capability: 'staff.view' } },
-                    { path: 'users/create', name: 'dashboard.staff.create', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.create' } },
-                    { path: 'users/:id/edit', name: 'dashboard.staff.edit', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.update' } },
-                    { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
-                    { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
-                    { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+                    // Branches and dining areas: set up once, so they live here.
+                    // The server gates branches with can:branches.* (create also
+                    // feature:multi_branch) and areas with feature:table_management
+                    // + can:tables.*; the feature halves live on the sub-menu entry.
+                    { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue'), meta: { capability: 'branches.view' } },
+                    { path: 'branches/create', name: 'dashboard.branches.create', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.create' } },
+                    { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
+                    { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
                     // POS terminal provisioning (POS-BE-023). The server stacks
                     // feature:pos on top of can:pos.provision; client-side the
                     // feature gate lives on the settings sub-menu entry
@@ -202,6 +206,31 @@ const restaurantRoutes = [
                     { path: 'units', name: 'dashboard.inventory.units', component: () => import('../pages/dashboard/inventory/UnitsView.vue'), meta: { capability: 'purchase.manage' } },
                 ],
             },
+            // ---------------------------------------------------------- team
+            // Staff and roles have their own sidebar section. They reuse the
+            // settings card styles but not its sub-menu: the sidebar already
+            // lists both pages. Route names are unchanged.
+            {
+                path: 'team',
+                component: () => import('../pages/dashboard/settings/TeamLayout.vue'),
+                meta: { crumbKey: 'nav.section_team' },
+                children: [
+                    { path: '', redirect: { name: 'dashboard.staff' } },
+                    { path: 'users', name: 'dashboard.staff', component: () => import('../pages/dashboard/StaffView.vue'), meta: { capability: 'staff.view' } },
+                    { path: 'users/create', name: 'dashboard.staff.create', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.create' } },
+                    { path: 'users/:id/edit', name: 'dashboard.staff.edit', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.update' } },
+                    { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
+                    { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
+                    { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+                ],
+            },
+            // Where staff and roles lived inside the settings shell.
+            { path: 'settings/users', redirect: { name: 'dashboard.staff' } },
+            { path: 'settings/users/create', redirect: { name: 'dashboard.staff.create' } },
+            { path: 'settings/users/:id/edit', redirect: (to) => ({ name: 'dashboard.staff.edit', params: to.params }) },
+            { path: 'settings/roles', redirect: { name: 'dashboard.roles' } },
+            { path: 'settings/roles/create', redirect: { name: 'dashboard.roles.create' } },
+            { path: 'settings/roles/:id/edit', redirect: (to) => ({ name: 'dashboard.roles.edit', params: to.params }) },
             { path: 'settings/profile', redirect: { name: 'dashboard.profile' } },
             // Units lived under Inventory until they moved into Settings.
             { path: 'inventory/units', redirect: { name: 'dashboard.inventory.units' } },

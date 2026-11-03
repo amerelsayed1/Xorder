@@ -10,6 +10,8 @@ import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { statusBadge, STATUSES, fmtDate, money } from './format.js'
+import PageTabs from '../../../components/PageTabs.vue'
+import { PURCHASING_TABS } from '../tabs.config.js'
 
 // CB-09 slice b. Purchase orders, per branch, newest first, filterable by
 // branch, status and supplier. Totals come from the server: the snapshot
@@ -65,6 +67,8 @@ function open(o) {
 
 <template>
     <div class="space-y-5">
+        <PageTabs :tabs="PURCHASING_TABS" />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.orders_title') }}</h1>

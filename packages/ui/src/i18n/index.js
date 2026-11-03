@@ -150,6 +150,12 @@ const messages = {
             suppliers: 'Suppliers', units: 'Units',
             purchase_orders: 'Purchase orders', stock: 'Recorded stock', stock_items: 'Stock items',
             supplier_invoices: 'Supplier invoices', supplier_payments: 'Payments',
+            // Sidebar section headings and the entries that stand for a whole screen.
+            section_main: 'Main', section_menu: 'Menu', section_stock: 'Inventory & purchasing',
+            section_customers: 'Customers & marketing', section_reports: 'Reports',
+            section_team: 'Team', section_settings: 'Settings',
+            stock_short: 'Stock', purchasing: 'Purchasing', restaurant_settings: 'Restaurant settings',
+            search_pages: 'Search pages…', search_none: 'No matching page',
         },
         tbl: {
             areas_title: 'Dining Areas', areas_sub: '{count} areas',
@@ -1569,13 +1575,14 @@ const messages = {
             password_mismatch: 'The two passwords do not match.',
             password_changed: 'Password changed',
         },
-        // The restaurant-side Settings shell: one screen, five sections, one
+        // The restaurant-side Settings shell: one screen, several sections, one
         // sub-menu. `settings_admin` below is the unrelated Super Admin CMS.
         settings_shell: {
             title: 'Settings',
             group_account: 'Account',
             group_pos: 'Point of sale & money',
             group_purchasing: 'Purchasing',
+            group_place: 'Branches & floor',
         },
         settings_admin: {
             title: 'Settings',
@@ -1790,6 +1797,11 @@ const messages = {
             suppliers: 'الموردون', units: 'الوحدات',
             purchase_orders: 'أوامر الشراء', stock: 'المخزون المسجّل', stock_items: 'أصناف المخزون',
             supplier_invoices: 'فواتير الموردين', supplier_payments: 'المدفوعات',
+            section_main: 'الرئيسية', section_menu: 'المنيو', section_stock: 'المخزون والمشتريات',
+            section_customers: 'العملاء والتسويق', section_reports: 'التقارير',
+            section_team: 'فريق العمل', section_settings: 'الإعدادات',
+            stock_short: 'المخزون', purchasing: 'المشتريات', restaurant_settings: 'إعدادات المطعم',
+            search_pages: 'ابحث في الصفحات…', search_none: 'لا توجد صفحة مطابقة',
         },
         tbl: {
             areas_title: 'مناطق الجلوس', areas_sub: '{count} منطقة',
@@ -3187,6 +3199,7 @@ const messages = {
             group_account: 'الحساب',
             group_pos: 'نقاط البيع والمالية',
             group_purchasing: 'المشتريات',
+            group_place: 'الفروع والصالة',
         },
         settings_admin: {
             title: 'الإعدادات',

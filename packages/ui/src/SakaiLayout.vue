@@ -13,9 +13,17 @@ const props = defineProps({
     role: { type: String, required: true },
     mark: { type: String, default: 'X' },
     logo: { type: String, default: '' }, // optional brand logo (e.g. restaurant) shown in the topbar
-    // Flat items [{ to, labelKey, icon }] or collapsible groups
-    // [{ key, labelKey, icon, badge?, children: [{ to, labelKey, icon, badge? }] }].
+    // Three node shapes, freely mixed:
+    //   flat item   { to, labelKey, icon, badge?, end?, match? }
+    //   group       { key, labelKey, icon, badge?, children: [item] }   accordion, one open at a time
+    //   section     { key, labelKey, section: true, children: [item] }  heading + always-visible items
+    // `match` is an optional list of route-NAME prefixes that also light the
+    // item up, for one entry that stands for several pages (tabbed screens,
+    // a settings shell whose index route is not a parent of its sections).
     nav: { type: Array, required: true },
+    // Show a "search pages" box above the menu. It filters every reachable
+    // leaf by its translated label, so it can only offer what `nav` offers.
+    searchable: { type: Boolean, default: false },
     // Hide the EN/AR toggle. The restaurant dashboard locks its language to the
     // Super-Admin-configured default, so it passes true; the admin keeps it.
     hideLangToggle: { type: Boolean, default: false },
@@ -41,7 +49,7 @@ function isChildActive(child) {
     return route.path === path || route.path.startsWith(path + '/')
 }
 function isGroupActive(group) {
-    return Array.isArray(group.children) && group.children.some(isChildActive)
+    return Array.isArray(group.children) && group.children.some((c) => isChildActive(c) || matchesName(c))
 }
 function toggleGroup(key) {
     openGroup.value = openGroup.value === key ? null : key
@@ -58,6 +66,71 @@ function syncActiveGroup() {
 // every badge poll, which would otherwise snap a hand-opened group shut.
 watch(() => route.path, syncActiveGroup, { immediate: true })
 watch(() => props.nav.map((n) => n.key).join('|'), syncActiveGroup)
+
+// --- Route-name matching -----------------------------------------------------
+function matchesName(item) {
+    const name = String(route.name || '')
+    return Array.isArray(item.match) && item.match.some((p) => name.startsWith(p))
+}
+// RouterLink's own isActive, widened by `match`.
+function itemActive(item, isActive, isExactActive) {
+    if (matchesName(item)) return true
+    return item.end ? isExactActive : isActive
+}
+
+// --- Sections (always-visible headings) ------------------------------------
+// A section can be folded by hand; the choice is a per-browser convenience, so
+// storage that throws (private window, blocked site data) must never break the
+// menu. The section holding the current page is always shown regardless.
+const COLLAPSE_KEY = 'xorder.nav.collapsed'
+const collapsed = ref((() => {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}') || {} } catch { return {} }
+})())
+function sectionActive(section) {
+    return (section.children || []).some((c) => {
+        if (matchesName(c)) return true
+        let path
+        try { path = router.resolve(c.to).path } catch { return false }
+        return c.end ? route.path === path : (route.path === path || route.path.startsWith(path + '/'))
+    })
+}
+function sectionOpen(section) {
+    return !collapsed.value[section.key] || sectionActive(section)
+}
+function toggleSection(section) {
+    collapsed.value = { ...collapsed.value, [section.key]: sectionOpen(section) }
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed.value)) } catch { /* storage unavailable */ }
+}
+// A folded section still says something is waiting inside it.
+const sectionBadge = (section) => (section.children || []).reduce((n, c) => n + (Number(c.badge) || 0), 0)
+const hasSections = computed(() => props.nav.some((n) => n.section))
+
+// --- Page search -------------------------------------------------------------
+const query = ref('')
+const leaves = computed(() => props.nav.flatMap((n) => (n.children
+    ? n.children.map((c) => ({ ...c, parentLabelKey: n.labelKey }))
+    : [n])))
+const results = computed(() => {
+    const q = query.value.trim().toLowerCase()
+    if (!q) return []
+    // Match in both languages: an owner on the Arabic UI often types the
+    // English name of a page (and vice versa).
+    const labels = (key) => ['ar', 'en'].map((lng) => t(key, {}, { locale: lng }).toLowerCase())
+    return leaves.value.filter((l) => labels(l.labelKey).some((x) => x.includes(q))
+        || (l.parentLabelKey && labels(l.parentLabelKey).some((x) => x.includes(q))))
+})
+function goFirstResult() {
+    const first = results.value[0]
+    if (!first) return
+    router.push(first.to)
+    query.value = ''
+    mobileOpen.value = false
+}
+function pickResult(navigate, e) {
+    navigate(e)
+    query.value = ''
+    mobileOpen.value = false
+}
 
 const userInitial = computed(() => (auth.user?.name || 'U').trim().charAt(0).toUpperCase())
 const homeTo = computed(() => auth.homeRoute())
@@ -93,11 +166,57 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
         <!-- Sidebar -->
         <div v-if="mobileOpen" class="sakai-scrim sakai-mobile-only" @click="mobileOpen = false"></div>
         <aside class="sakai-sidebar" :class="{ open: mobileOpen }">
-            <ul class="sakai-menu">
-                <li class="sakai-menu-label">{{ t('common.menu') }}</li>
+            <div v-if="searchable" class="sakai-search">
+                <i class="pi pi-search" aria-hidden="true" />
+                <input v-model="query" type="search" class="sakai-search-input"
+                    :placeholder="t('nav.search_pages')" :aria-label="t('nav.search_pages')"
+                    @keydown.enter.prevent="goFirstResult" @keydown.esc="query = ''" />
+            </div>
+
+            <!-- Search results replace the menu while a query is typed. -->
+            <ul v-if="query.trim()" class="sakai-menu">
+                <li v-for="r in results" :key="'s-' + (r.key ?? r.to?.name)">
+                    <RouterLink :to="r.to" custom v-slot="{ href, navigate }">
+                        <a :href="href" class="sakai-menu-item" @click="pickResult(navigate, $event)">
+                            <i :class="r.icon" />
+                            <span class="sakai-result-text">
+                                <span>{{ t(r.labelKey) }}</span>
+                                <small v-if="r.parentLabelKey">{{ t(r.parentLabelKey) }}</small>
+                            </span>
+                        </a>
+                    </RouterLink>
+                </li>
+                <li v-if="!results.length" class="sakai-search-empty">{{ t('nav.search_none') }}</li>
+            </ul>
+
+            <ul v-else class="sakai-menu">
+                <li v-if="!hasSections" class="sakai-menu-label">{{ t('common.menu') }}</li>
                 <li v-for="link in nav" :key="link.key ?? link.to?.name ?? link.labelKey">
+                    <!-- Section: a heading with its items always listed beneath -->
+                    <template v-if="link.section">
+                        <button type="button" class="sakai-section-toggle"
+                            :aria-expanded="sectionOpen(link)"
+                            :aria-controls="`sakai-section-${link.key}`"
+                            @click="toggleSection(link)">
+                            <span>{{ t(link.labelKey) }}</span>
+                            <span v-if="!sectionOpen(link) && sectionBadge(link)" class="sakai-menu-badge">{{ sectionBadge(link) }}</span>
+                            <i class="pi pi-angle-down sakai-group-arrow" :class="{ open: sectionOpen(link) }" aria-hidden="true" />
+                        </button>
+                        <ul v-show="sectionOpen(link)" :id="`sakai-section-${link.key}`" class="sakai-section-list">
+                            <li v-for="child in link.children" :key="child.key ?? child.to.name">
+                                <RouterLink :to="child.to" custom v-slot="{ href, navigate, isActive, isExactActive }">
+                                    <a :href="href" class="sakai-menu-item"
+                                        :class="{ active: itemActive(child, isActive, isExactActive) }"
+                                        @click="navigate($event); mobileOpen = false">
+                                        <i :class="child.icon" /><span>{{ t(child.labelKey) }}</span>
+                                        <span v-if="child.badge" class="sakai-menu-badge">{{ child.badge }}</span>
+                                    </a>
+                                </RouterLink>
+                            </li>
+                        </ul>
+                    </template>
                     <!-- Collapsible group -->
-                    <template v-if="link.children">
+                    <template v-else-if="link.children">
                         <button type="button" class="sakai-menu-item sakai-group-toggle"
                             :class="{ 'has-active': isGroupActive(link) }"
                             :aria-expanded="openGroup === link.key"
@@ -113,7 +232,7 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
                                 <li v-for="child in link.children" :key="child.key ?? child.to.name">
                                     <RouterLink :to="child.to" custom v-slot="{ href, navigate, isActive, isExactActive }">
                                         <a :href="href" class="sakai-menu-item sakai-submenu-item"
-                                            :class="{ active: child.end ? isExactActive : isActive }"
+                                            :class="{ active: itemActive(child, isActive, isExactActive) }"
                                             @click="navigate($event); mobileOpen = false">
                                             <i :class="child.icon" /><span>{{ t(child.labelKey) }}</span>
                                             <span v-if="child.badge" class="sakai-menu-badge">{{ child.badge }}</span>
@@ -125,7 +244,7 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
                     </template>
                     <!-- Flat item -->
                     <RouterLink v-else :to="link.to" custom v-slot="{ href, navigate, isActive, isExactActive }">
-                        <a :href="href" class="sakai-menu-item" :class="{ active: link.end ? isExactActive : isActive }"
+                        <a :href="href" class="sakai-menu-item" :class="{ active: itemActive(link, isActive, isExactActive) }"
                             @click="navigate($event); mobileOpen = false">
                             <i :class="link.icon" /><span>{{ t(link.labelKey) }}</span>
                             <span v-if="link.badge" class="sakai-menu-badge">{{ link.badge }}</span>
@@ -206,6 +325,31 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
 /* A badge before the arrow shouldn't also claim the auto margin. */
 .sakai-group-toggle .sakai-menu-badge { margin-inline-start: auto; }
 .sakai-group-toggle .sakai-menu-badge + .sakai-group-arrow { margin-inline-start: 8px; }
+
+/* Section heading: quiet, uppercase-free label that folds its list. */
+.sakai-section-toggle { display: flex; align-items: center; gap: 8px; width: 100%;
+    margin-top: 14px; padding: 6px 12px; background: transparent; border: none; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .02em; text-align: start;
+    color: var(--p-text-muted-color); border-radius: 7px; }
+.sakai-menu > li:first-child > .sakai-section-toggle { margin-top: 0; }
+.sakai-section-toggle:hover { color: var(--p-text-color); }
+.sakai-section-toggle .sakai-group-arrow { font-size: 11px !important; }
+.sakai-section-toggle .sakai-menu-badge { margin-inline-start: auto; }
+.sakai-section-toggle .sakai-menu-badge + .sakai-group-arrow { margin-inline-start: 6px; }
+.sakai-section-list { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.sakai-section-list .sakai-menu-item { padding: 9px 12px; }
+
+/* Page search */
+.sakai-search { position: relative; margin-bottom: 6px; }
+.sakai-search > i { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 12px;
+    font-size: 13px; color: var(--p-text-muted-color); pointer-events: none; }
+.sakai-search-input { width: 100%; height: 38px; padding-inline: 34px 10px; border-radius: 9px;
+    border: 1px solid var(--p-content-border-color); background: var(--p-surface-50);
+    font: inherit; font-size: 13.5px; color: var(--p-text-color); outline: none; }
+.sakai-search-input:focus { border-color: var(--p-primary-color); background: var(--p-content-background); }
+.sakai-result-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.sakai-result-text small { font-size: 11.5px; color: var(--p-text-muted-color); font-weight: 400; }
+.sakai-search-empty { padding: 12px; font-size: 13px; color: var(--p-text-muted-color); }
 
 /* Smooth expand/collapse via animatable grid rows (0fr → 1fr). */
 .sakai-submenu-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s ease; }
