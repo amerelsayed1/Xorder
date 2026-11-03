@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Models\Role;
 use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -454,7 +455,7 @@ class OrderTest extends TestCase
     {
         $r = Restaurant::factory()->create();
         $this->enableSystemOrdering($r);
-        $role = new \App\Models\Role(['name' => 'Menu only']);
+        $role = new Role(['name' => 'Menu only']);
         $role->forceFill(['restaurant_id' => $r->id, 'capabilities' => ['menu.view']])->save();
         $staff = User::factory()->staff($r->id, $role->id)->create();
 
