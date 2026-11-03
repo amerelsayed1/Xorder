@@ -160,6 +160,8 @@ const messages = {
         tbl: {
             areas_title: 'Dining Areas', areas_sub: '{count} areas',
             tables_title: 'Tables', tables_sub: '{count} tables',
+            occupancy: 'Occupancy', occ_available: 'Available', occ_occupied: 'Occupied', occ_bill: 'Bill requested',
+            occ_minutes: '{n} min', occ_hours: '{h} h {m} min', occ_orders: '{n} open order | {n} open orders',
             area: 'Dining area', branch: 'Branch', type: 'Area type', display_order: 'Display order',
             label: 'Table name / number', seats: 'Seats', notes: 'Notes',
             type_indoor: 'Indoor', type_outdoor: 'Outdoor', type_custom: 'Custom',
@@ -1816,6 +1818,8 @@ const messages = {
         tbl: {
             areas_title: 'مناطق الجلوس', areas_sub: '{count} منطقة',
             tables_title: 'الطاولات', tables_sub: '{count} طاولة',
+            occupancy: 'الإشغال', occ_available: 'متاحة', occ_occupied: 'مشغولة', occ_bill: 'طلب الحساب',
+            occ_minutes: '{n} د', occ_hours: '{h} س {m} د', occ_orders: 'طلب مفتوح واحد | {n} طلبات مفتوحة',
             area: 'منطقة الجلوس', branch: 'الفرع', type: 'نوع المنطقة', display_order: 'ترتيب العرض',
             label: 'اسم/رقم الطاولة', seats: 'المقاعد', notes: 'ملاحظات',
             type_indoor: 'داخلي', type_outdoor: 'خارجي', type_custom: 'مخصص',

@@ -19,9 +19,12 @@ use App\Models\TableVisit;
 use App\Services\QrCodeService;
 use App\Services\TableQrExportService;
 use App\Services\TableVisitService;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use ZipArchive;
@@ -30,6 +33,10 @@ class TableController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'occupancy' => ['sometimes', 'nullable', 'in:available,occupied'],
+        ]);
+
         $tables = DiningTable::with('diningArea')
             ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
             ->when($request->filled('dining_area_id'), fn ($q) => $q->where('dining_area_id', $request->integer('dining_area_id')))
@@ -39,7 +46,78 @@ class TableController extends Controller
             ->orderBy('dining_area_id')->orderBy('label')
             ->get();
 
-        return DiningTableResource::collection($tables)->response();
+        // The same signals the live board draws from, so the two screens can
+        // never disagree about a table. A switched-off table seats nobody, so
+        // it is neither available nor occupied — it only shows under "All".
+        $signals = $this->occupancySignals($tables->pluck('id'));
+        foreach ($tables as $table) {
+            $state = $signals($table->id);
+            $state['state'] = ! $table->is_active ? 'inactive' : ($state['occupied'] ? 'occupied' : 'available');
+            $table->setAttribute('occupancy', $state);
+        }
+
+        // Tab counts answer "what would I get if I clicked this?", so they are
+        // taken before the occupancy filter and after every other one.
+        $summary = [
+            'all' => $tables->count(),
+            'available' => $tables->where('occupancy.state', 'available')->count(),
+            'occupied' => $tables->where('occupancy.state', 'occupied')->count(),
+        ];
+
+        if ($request->filled('occupancy')) {
+            $tables = $tables->where('occupancy.state', $request->input('occupancy'))->values();
+        }
+
+        return DiningTableResource::collection($tables)
+            ->additional(['summary' => ['occupancy' => $summary]])
+            ->response();
+    }
+
+    /**
+     * Per-table occupancy signals for a set of tables, in four grouped
+     * queries (no per-table N+1). Tenant scoping comes from the
+     * BelongsToRestaurant global scope on each model.
+     *
+     * @param  Collection<int, int>  $tableIds
+     * @return Closure(int): array{occupied: bool, active_orders: int, has_request: bool, has_new_order: bool, since: ?string}
+     */
+    private function occupancySignals(Collection $tableIds): Closure
+    {
+        // Occupancy is an explicit visit lifecycle, shared by every device at
+        // the table, instead of whichever browser session happens to be alive.
+        $visits = TableVisit::whereIn('table_id', $tableIds)
+            ->where('status', TableVisitStatus::OPEN->value)
+            ->where('opened_at', '>', now()->subMinutes((int) config('platform.table_session_ttl_minutes', 240)))
+            ->pluck('opened_at', 'table_id');
+
+        // Active orders per table (still NEW — completed/cancelled ones drop
+        // out). A table with one is also flagged as having a new order.
+        $activeOrders = Order::whereIn('table_id', $tableIds)
+            ->where('status', OrderStatus::NEW->value)
+            ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
+            ->pluck('c', 'table_id');
+
+        // Tables with an open bill request → they pulse.
+        $openRequests = BillRequest::whereIn('table_id', $tableIds)
+            ->whereIn('status', [
+                BillRequestStatus::REQUESTED->value,
+                BillRequestStatus::SEEN->value,
+                BillRequestStatus::IN_PROGRESS->value,
+            ])->pluck('table_id')->flip();
+
+        return function (int $id) use ($visits, $activeOrders, $openRequests): array {
+            $orders = (int) ($activeOrders[$id] ?? 0);
+            $since = $visits[$id] ?? null;
+
+            return [
+                // Occupied if a guest visit is live or there are active orders.
+                'occupied' => $since !== null || $orders > 0,
+                'active_orders' => $orders,
+                'has_request' => $openRequests->has($id),
+                'has_new_order' => $orders > 0,
+                'since' => $since ? Carbon::parse($since)->toIso8601String() : null,
+            ];
+        };
     }
 
     /**
@@ -58,36 +136,10 @@ class TableController extends Controller
             ->orderBy('dining_area_id')->orderBy('label')
             ->get();
 
-        $tableIds = $tables->pluck('id');
+        $signals = $this->occupancySignals($tables->pluck('id'));
 
-        // Occupancy is an explicit visit lifecycle, shared by every device at
-        // the table, instead of whichever browser session happens to be alive.
-        $occupied = TableVisit::whereIn('table_id', $tableIds)
-            ->where('status', TableVisitStatus::OPEN->value)
-            ->where('opened_at', '>', now()->subMinutes((int) config('platform.table_session_ttl_minutes', 240)))
-            ->pluck('table_id')->flip();
-
-        // Active orders per table (still NEW — completed/cancelled ones drop out).
-        $activeOrders = Order::whereIn('table_id', $tableIds)
-            ->where('status', OrderStatus::NEW->value)
-            ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
-            ->pluck('c', 'table_id');
-
-        // Tables with a freshly-placed (NEW) order → they flash for attention.
-        $newOrders = Order::whereIn('table_id', $tableIds)
-            ->where('status', OrderStatus::NEW->value)
-            ->pluck('table_id')->flip();
-
-        // Tables with an open bill request → they pulse.
-        $openRequests = BillRequest::whereIn('table_id', $tableIds)
-            ->whereIn('status', [
-                BillRequestStatus::REQUESTED->value,
-                BillRequestStatus::SEEN->value,
-                BillRequestStatus::IN_PROGRESS->value,
-            ])->pluck('table_id')->flip();
-
-        $data = $tables->map(function ($t) use ($occupied, $activeOrders, $openRequests, $newOrders) {
-            $orders = (int) ($activeOrders[$t->id] ?? 0);
+        $data = $tables->map(function ($t) use ($signals) {
+            $state = $signals($t->id);
 
             return [
                 'id' => $t->id,
@@ -95,12 +147,11 @@ class TableController extends Controller
                 'dining_area_id' => $t->dining_area_id,
                 'area_name_en' => $t->diningArea?->name_en,
                 'area_name_ar' => $t->diningArea?->name_ar,
-                'active_orders' => $orders,
-                'has_request' => $openRequests->has($t->id),
+                'active_orders' => $state['active_orders'],
+                'has_request' => $state['has_request'],
                 // A new order that staff hasn't acknowledged yet → flash the card.
-                'has_new_order' => $newOrders->has($t->id),
-                // Occupied if a guest session is live or there are active orders.
-                'occupied' => $occupied->has($t->id) || $orders > 0,
+                'has_new_order' => $state['has_new_order'],
+                'occupied' => $state['occupied'],
             ];
         });
 

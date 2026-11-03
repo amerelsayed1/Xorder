@@ -7,6 +7,7 @@ use App\Models\DiningArea;
 use App\Models\DiningTable;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Models\TableVisit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -307,6 +308,71 @@ class TableTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.occupied', false)
             ->assertJsonPath('data.0.has_new_order', false);
+    }
+
+    public function test_tables_list_shows_occupancy_with_counts_and_a_filter(): void
+    {
+        $free = $this->makeTable('T1');
+        $seated = $this->makeTable('T2');
+        $ordered = $this->makeTable('T3');
+        $off = $this->makeTable('T4');
+        $off->update(['is_active' => false]);
+
+        // A live guest visit seats T2…
+        $visit = new TableVisit([
+            'branch_id' => $this->branch->id, 'dining_area_id' => $this->area->id,
+            'table_id' => $seated->id, 'status' => 'OPEN', 'opened_at' => now()->subMinutes(20),
+        ]);
+        $visit->restaurant_id = $this->restaurant->id;
+        $visit->save();
+
+        // …and an open order (no visit) occupies T3.
+        $order = new Order(['status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP', 'table_id' => $ordered->id]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+
+        $res = $this->actingAs($this->admin)->getJson('/api/dashboard/tables')
+            ->assertOk()
+            // A switched-off table seats nobody: in "All", in neither tab.
+            ->assertJsonPath('summary.occupancy', ['all' => 4, 'available' => 1, 'occupied' => 2]);
+        $byLabel = collect($res->json('data'))->keyBy('label');
+        $this->assertSame('available', $byLabel['T1']['occupancy']['state']);
+        $this->assertSame('occupied', $byLabel['T2']['occupancy']['state']);
+        $this->assertNotNull($byLabel['T2']['occupancy']['since']);
+        $this->assertSame(1, $byLabel['T3']['occupancy']['active_orders']);
+        $this->assertSame('inactive', $byLabel['T4']['occupancy']['state']);
+
+        // The filter narrows the rows; the counts still describe every tab.
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables?occupancy=occupied')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('summary.occupancy.all', 4);
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables?occupancy=available')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.label', 'T1');
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables?occupancy=bogus')
+            ->assertStatus(422);
+    }
+
+    public function test_a_visit_past_its_time_limit_no_longer_occupies_the_table(): void
+    {
+        $table = $this->makeTable('Old');
+        $visit = new TableVisit([
+            'branch_id' => $this->branch->id, 'dining_area_id' => $this->area->id,
+            'table_id' => $table->id, 'status' => 'OPEN',
+            'opened_at' => now()->subMinutes((int) config('platform.table_session_ttl_minutes', 240) + 5),
+        ]);
+        $visit->restaurant_id = $this->restaurant->id;
+        $visit->save();
+
+        // Same rule as the live board: a forgotten visit stops counting.
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables')
+            ->assertOk()
+            ->assertJsonPath('data.0.occupancy.state', 'available');
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables/live')
+            ->assertOk()
+            ->assertJsonPath('data.0.occupied', false);
     }
 
     public function test_bulk_create_stores_each_typed_name_with_a_token(): void
