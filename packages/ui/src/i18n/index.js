@@ -1589,6 +1589,11 @@ const messages = {
         },
         // The restaurant-side Settings shell: one screen, several sections, one
         // sub-menu. `settings_admin` below is the unrelated Super Admin CMS.
+        branding: {
+            title: 'Menu look', sub: 'Your brand colour and how the public menu shows your items. Guests see the change as soon as you save.',
+            preview: 'Preview menu', presets: 'Suggested colours', color_invalid: 'Use a full hex colour, e.g. #1E7A46.',
+            sample_category: 'Grills', sample_add: 'Add to cart',
+        },
         settings_shell: {
             title: 'Settings',
             group_account: 'Account',
@@ -3217,6 +3222,11 @@ const messages = {
             password_rule: '12 حرفًا على الأقل، مع أحرف كبيرة وصغيرة ورقم.',
             password_mismatch: 'كلمتا المرور غير متطابقتين.',
             password_changed: 'تم تغيير كلمة المرور',
+        },
+        branding: {
+            title: 'شكل المنيو', sub: 'لون علامتك وطريقة عرض الأصناف في المنيو. يرى الضيوف التغيير فور الحفظ.',
+            preview: 'معاينة المنيو', presets: 'ألوان مقترحة', color_invalid: 'اكتب لونًا كاملًا بصيغة hex، مثل ‎#1E7A46.',
+            sample_category: 'المشويات', sample_add: 'أضف للسلة',
         },
         settings_shell: {
             title: 'الإعدادات',
