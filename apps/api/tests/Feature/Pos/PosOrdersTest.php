@@ -221,6 +221,21 @@ class PosOrdersTest extends PosTestCase
         );
     }
 
+    public function test_the_dashboard_list_shows_a_till_sale_paid_and_who_rang_it_up(): void
+    {
+        $order = $this->postJson('/api/pos/orders', $this->payload(), $this->deviceHeaders($this->token()))
+            ->assertCreated()->json('data');
+
+        $stored = Order::withoutGlobalScopes()->find($order['id']);
+        $this->assertNotNull($stored->completed_at, 'paid in full stamps the completion time');
+
+        $row = $this->actingAs($this->owner)->getJson('/api/dashboard/orders')
+            ->assertOk()->json('data.0');
+        $this->assertSame('PAID', $row['payment_status']);
+        $this->assertSame('Maadi', $row['branch']['name_en']);
+        $this->assertNotNull($row['completed_at']);
+    }
+
     public function test_an_unpaid_ticket_stays_open(): void
     {
         // The other half of the rule. A bill rung up against a table and sent

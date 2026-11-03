@@ -34,9 +34,9 @@ Insights, the per-table counters.
   bill; closing it completes every open order. Per-round kitchen progress is
   part of F2.
 - `NEW` keeps meaning "nobody has touched it", so the badge and alarm don't move.
-- Add nullable `preparing_at`, `ready_at`, `completed_at` timestamps. They
-  power the "time to complete" column and average prep time. `cancelled_at`
-  already exists (2026-11-03).
+- Add nullable `preparing_at` and `ready_at` timestamps for average prep
+  time. `completed_at`/`completed_by` and `cancelled_at`/`cancelled_by` already
+  exist (2026-11-03) and drive the Orders page's "time to complete".
 - Code that today reads `status = NEW` as "open" must read "any open state":
   `TableController@live`, `TableVisitService::finish/expire`, and the open-order
   lookup in `PublicOrderController@store`.

@@ -450,6 +450,8 @@ Route::prefix('dashboard')
             Route::middleware('can:orders.read')->group(function () {
                 Route::get('orders', [DashboardOrderController::class, 'index']);
                 Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
+                // CSV of everything the current filters match (not just a page).
+                Route::get('orders/export', [DashboardOrderController::class, 'export'])->middleware('throttle:10,1');
             });
             Route::middleware('can:orders.update')
                 ->patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);

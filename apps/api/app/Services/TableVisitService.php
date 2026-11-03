@@ -54,7 +54,8 @@ class TableVisitService
         Order::withoutGlobalScopes()
             ->where('table_visit_id', $visit->id)
             ->where('status', OrderStatus::NEW->value)
-            ->update(['status' => OrderStatus::COMPLETED->value, 'updated_at' => now()]);
+            // Expired by time, so there is a when but no who.
+            ->update(['status' => OrderStatus::COMPLETED->value, 'completed_at' => now(), 'updated_at' => now()]);
 
         $sessionIds = MenuSession::withoutGlobalScopes()
             ->where('table_visit_id', $visit->id)
@@ -120,11 +121,12 @@ class TableVisitService
             $orderStatus = $status === TableVisitStatus::CLOSED
                 ? OrderStatus::COMPLETED
                 : OrderStatus::CANCELLED;
-            // A cancelled visit cancels its running bill; record who and when,
-            // as a direct cancellation would (no reason — the visit has none).
+            // Closing or cancelling the visit finishes its running bill; record
+            // who and when, as a direct status change would (a cancelled visit
+            // carries no reason — it has none).
             $cancelStamp = $orderStatus === OrderStatus::CANCELLED
                 ? ['cancelled_at' => now(), 'cancelled_by' => $user->id]
-                : [];
+                : ['completed_at' => now(), 'completed_by' => $user->id];
             Order::where('table_visit_id', $visit->id)
                 ->where('status', OrderStatus::NEW->value)
                 ->update(['status' => $orderStatus->value, 'updated_at' => now()] + $cancelStamp);

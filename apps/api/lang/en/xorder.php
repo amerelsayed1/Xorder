@@ -351,4 +351,14 @@ return [
         'staff_manage' => 'Manage staff & roles',
         'purchase_manage' => 'Manage purchasing, suppliers & stock',
     ],
+    'orders_export' => [
+        'code' => 'Order', 'placed_at' => 'Placed at', 'type' => 'Type', 'source' => 'Channel',
+        'branch' => 'Branch', 'table' => 'Table', 'customer' => 'Customer', 'phone' => 'Phone',
+        'items' => 'Items', 'total' => 'Total', 'currency' => 'Currency', 'status' => 'Status',
+        'payment' => 'Payment', 'handled_by' => 'Handled by', 'closed_at' => 'Completed / cancelled at',
+        'minutes_to_complete' => 'Minutes to complete', 'cancellation_reason' => 'Cancellation reason', 'note' => 'Note',
+        'status_NEW' => 'New', 'status_COMPLETED' => 'Completed', 'status_CANCELLED' => 'Cancelled',
+        'source_system' => 'Online', 'source_whatsapp' => 'WhatsApp', 'source_pos' => 'Till',
+        'type_dine_in' => 'Dine-in', 'type_pickup' => 'Pickup', 'type_takeaway' => 'Pickup', 'type_take_away' => 'Pickup', 'type_delivery' => 'Delivery',
+    ],
 ];
