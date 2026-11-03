@@ -50,6 +50,8 @@ class Order extends Model
     {
         return [
             'status' => OrderStatus::class,
+            // Stamped by the server on cancellation; never mass-assignable.
+            'cancelled_at' => 'datetime',
             'items' => 'array',
             'total' => 'decimal:2',
             // POS columns (Cloud Wave 1) — integer minor units + the client's
@@ -101,6 +103,12 @@ class Order extends Model
     public function menuSession(): BelongsTo
     {
         return $this->belongsTo(MenuSession::class);
+    }
+
+    /** The staff member who cancelled it (null for older or till orders). */
+    public function canceller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 
     public function tableVisit(): BelongsTo

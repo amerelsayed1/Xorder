@@ -6,7 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
-import { confirm } from '@xorder/ui/confirm.js'
+import { confirm, confirmWithInput } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
@@ -176,11 +176,25 @@ async function openTableModal(tbl) {
 function closeModal() { openTable.value = null; modalOrders.value = [] }
 
 async function setOrderStatus(order, status) {
-    if (status === 'CANCELLED' && ! await confirmCancel('orders')) return
+    const payload = { status }
+    if (status === 'CANCELLED') {
+        // Optional reason; null means the user backed out.
+        const reason = await confirmWithInput({
+            title: t('orders.cancel_title'),
+            message: t('orders.cancel_message'),
+            confirmText: t('orders.cancel_order'),
+            cancelText: t('common.back'),
+            danger: true,
+            inputLabel: t('orders.cancel_reason_label'),
+            inputPlaceholder: t('orders.cancel_reason_ph'),
+        })
+        if (reason === null) return
+        payload.reason = reason
+    }
     updating.value = 'o' + order.id
     try {
         await ensureCsrf()
-        await api.patch(`api/dashboard/orders/${order.id}/status`, { status })
+        await api.patch(`api/dashboard/orders/${order.id}/status`, payload)
         // Drops off both the modal and the left feed once it leaves the NEW set.
         modalOrders.value = modalOrders.value.filter((o) => o.id !== order.id)
         orders.value = orders.value.filter((o) => o.id !== order.id)

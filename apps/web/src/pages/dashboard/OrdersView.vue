@@ -10,7 +10,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
-import { confirm } from '@xorder/ui/confirm.js'
+import { confirmWithInput } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
@@ -173,20 +173,25 @@ function goToPage(nextPage) {
 }
 
 async function setStatus(order, status) {
+    const payload = { status }
     if (status === 'CANCELLED') {
-        const ok = await confirm({
+        // The reason is optional; null means the user backed out.
+        const reason = await confirmWithInput({
             title: t('orders.cancel_title'),
             message: t('orders.cancel_message'),
             confirmText: t('orders.cancel_order'),
             cancelText: t('common.back'),
             danger: true,
+            inputLabel: t('orders.cancel_reason_label'),
+            inputPlaceholder: t('orders.cancel_reason_ph'),
         })
-        if (!ok) return
+        if (reason === null) return
+        payload.reason = reason
     }
     updating.value = order.id
     try {
         await ensureCsrf()
-        const { data } = await api.patch(`api/dashboard/orders/${order.id}/status`, { status })
+        const { data } = await api.patch(`api/dashboard/orders/${order.id}/status`, payload)
         const i = rows.value.findIndex((r) => r.id === order.id)
         if (i !== -1) rows.value[i] = data.data
         toast(data.message || t('common.saved'))
@@ -471,6 +476,13 @@ function fmtTime(iso) {
                     </div>
                 </div>
 
+                <div v-if="receiptOrder.status === 'CANCELLED' && (receiptOrder.cancellation_reason || receiptOrder.cancelled_at)" class="receipt-note receipt-cancel">
+                    <div v-if="receiptOrder.cancellation_reason"><span style="color:var(--muted)">{{ t('orders.cancel_reason') }}:</span> {{ receiptOrder.cancellation_reason }}</div>
+                    <div v-if="receiptOrder.cancelled_at" class="receipt-cancel-by">
+                        {{ receiptOrder.cancelled_by_name ? t('orders.cancelled_by_at', { name: receiptOrder.cancelled_by_name, time: fmtTime(receiptOrder.cancelled_at) }) : t('orders.cancelled_at', { time: fmtTime(receiptOrder.cancelled_at) }) }}
+                    </div>
+                </div>
+
                 <div v-if="receiptOrder.note" class="receipt-note">
                     <span style="color:var(--muted)">{{ t('orders.note') }}:</span> {{ receiptOrder.note }}
                 </div>
@@ -591,4 +603,6 @@ function fmtTime(iso) {
     100% { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .order-row-new { animation: none; } }
+.receipt-cancel { border-inline-start: 3px solid #d83a2a; }
+.receipt-cancel-by { font-size: 12px; color: var(--muted); margin-top: 4px; }
 </style>

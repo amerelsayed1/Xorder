@@ -268,6 +268,95 @@ class OrderTest extends TestCase
             ->assertJsonPath('data.status', 'CANCELLED');
     }
 
+    public function test_cancelling_records_reason_time_and_who(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", [
+            'status' => 'CANCELLED',
+            'reason' => '  Customer did not answer the phone  ',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'CANCELLED')
+            ->assertJsonPath('data.cancellation_reason', 'Customer did not answer the phone')
+            ->assertJsonPath('data.cancelled_by_name', $admin->name);
+
+        $fresh = $order->fresh();
+        $this->assertNotNull($fresh->cancelled_at);
+        $this->assertSame($admin->id, $fresh->cancelled_by);
+
+        // The list carries the same fields, so the receipt dialog can show them.
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?status=CANCELLED')
+            ->assertOk()
+            ->assertJsonPath('data.0.cancellation_reason', 'Customer did not answer the phone');
+    }
+
+    public function test_the_cancellation_reason_is_optional(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        // An empty reason is stored as null, not as an empty string.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => '   '])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null);
+        $this->assertNotNull($order->fresh()->cancelled_at);
+    }
+
+    public function test_the_cancellation_reason_is_length_limited(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => str_repeat('x', 256)])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+        $this->assertSame('NEW', $order->fresh()->status->value);
+    }
+
+    public function test_correcting_a_cancellation_clears_its_reason(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => 'Wrong order'])
+            ->assertOk();
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null)
+            ->assertJsonPath('data.cancelled_at', null);
+
+        $fresh = $order->fresh();
+        $this->assertNull($fresh->cancelled_by);
+        $this->assertNull($fresh->cancellation_reason);
+    }
+
+    public function test_a_reason_sent_with_a_completion_is_ignored(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED', 'reason' => 'nope'])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null);
+    }
+
     public function test_public_can_read_own_order_status(): void
     {
         $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);

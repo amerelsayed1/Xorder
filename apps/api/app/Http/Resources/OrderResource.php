@@ -30,6 +30,9 @@ class OrderResource extends JsonResource
             'address' => $this->whenLoaded('customerAddress', fn () => $this->customerAddress?->address),
             'note' => $this->note,
             'source' => $this->source,
+            'cancellation_reason' => $this->cancellation_reason,
+            'cancelled_at' => $this->cancelled_at?->toIso8601String(),
+            'cancelled_by_name' => $this->whenLoaded('canceller', fn () => $this->canceller?->name),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

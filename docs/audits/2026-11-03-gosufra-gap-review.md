@@ -187,7 +187,7 @@ how much other work unblocks. Sizes: S ≤ 1 day, M 2–4 days, L 1–2 weeks.
 ### Phase A — close the visible gaps (P0)
 | ID | Item | Size | Depends on |
 |---|---|---|---|
-| A1 | Order lifecycle: ACCEPTED / PREPARING / READY / SERVED + transitions, tabs, Live board, public status, POS contract note | M | — |
+| A1 | Order lifecycle. **Split 2026-11-03:** optional cancellation reason (with who/when) **done**. Kitchen steps → `docs/FUTURE_PLAN.md` F1; Served step → F2 (waiter app); diner tracking → F3 | M | — |
 | A2 | Orders: date range + CSV export + payment / branch / handled-by / duration columns | M | A1 for the duration column |
 | A3 | Home: waiting-now / preparing-now tiles, completion & cancel rate, order-type donut | S | A1 |
 | A4 | Restaurant edits its own brand colour, accent colour and menu layout from Profile | S | — |

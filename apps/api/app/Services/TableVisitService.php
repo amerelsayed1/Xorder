@@ -120,9 +120,14 @@ class TableVisitService
             $orderStatus = $status === TableVisitStatus::CLOSED
                 ? OrderStatus::COMPLETED
                 : OrderStatus::CANCELLED;
+            // A cancelled visit cancels its running bill; record who and when,
+            // as a direct cancellation would (no reason — the visit has none).
+            $cancelStamp = $orderStatus === OrderStatus::CANCELLED
+                ? ['cancelled_at' => now(), 'cancelled_by' => $user->id]
+                : [];
             Order::where('table_visit_id', $visit->id)
                 ->where('status', OrderStatus::NEW->value)
-                ->update(['status' => $orderStatus->value, 'updated_at' => now()]);
+                ->update(['status' => $orderStatus->value, 'updated_at' => now()] + $cancelStamp);
 
             $billStatus = $status === TableVisitStatus::CLOSED
                 ? BillRequestStatus::COMPLETED

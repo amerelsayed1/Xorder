@@ -9,6 +9,7 @@ const typed = ref('')
 const cancelButton = ref(null)
 const confirmButton = ref(null)
 const confirmationInput = ref(null)
+const freeInput = ref(null)
 
 const needsTypedConfirmation = computed(() => Boolean(confirmState.confirmationText))
 const canConfirm = computed(() => {
@@ -36,6 +37,7 @@ watch(() => confirmState.open, (open) => {
         window.addEventListener('keydown', onKey)
         nextTick(() => {
             if (needsTypedConfirmation.value) confirmationInput.value?.focus()
+            else if (confirmState.inputLabel) freeInput.value?.focus()
             else if (confirmState.danger) cancelButton.value?.focus()
             else confirmButton.value?.focus()
         })
@@ -73,6 +75,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
                         />
                         <small v-if="confirmState.confirmationHint">{{ confirmState.confirmationHint }}</small>
                     </label>
+                    <label v-if="confirmState.inputLabel" class="cd-confirm-field">
+                        <span>{{ confirmState.inputLabel }}</span>
+                        <textarea
+                            ref="freeInput"
+                            v-model="confirmState.inputValue"
+                            class="cd-input cd-textarea"
+                            rows="2"
+                            :maxlength="confirmState.inputMaxlength"
+                            :placeholder="confirmState.inputPlaceholder"
+                        ></textarea>
+                    </label>
                     <div class="cd-actions">
                         <button ref="cancelButton" class="cd-btn cd-btn-cancel" @click="resolveConfirm(false)">{{ confirmState.cancelText || t('common.cancel') }}</button>
                         <button
@@ -106,6 +119,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .cd-confirm-field small { display: block; font-size: 12.5px; line-height: 1.45; color: #6b7280; margin-top: 6px; }
 .cd-input { width: 100%; height: 42px; border-radius: 10px; border: 1px solid #d8dbe2;
     padding: 0 12px; color: #20242f; font-size: 15px; outline: none; }
+.cd-textarea { height: auto; min-height: 64px; padding: 10px 12px; resize: vertical; font-family: inherit; line-height: 1.45; }
 .cd-input:focus { border-color: #f89a06; box-shadow: 0 0 0 3px rgba(248,154,6,.14); }
 .cd-actions { display: flex; gap: 10px; margin-top: 24px; }
 .cd-btn { flex: 1; height: 44px; border-radius: 11px; font-size: 15px; font-weight: 600; cursor: pointer;

@@ -55,7 +55,7 @@ class OrderController extends Controller
             }));
 
         $orders = $scoped()
-            ->with('rounds.items')
+            ->with('rounds.items', 'canceller')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->latest()
             ->paginate(20);
@@ -119,6 +119,8 @@ class OrderController extends Controller
     {
         $request->validate([
             'status' => ['required', Rule::in(OrderStatus::values())],
+            // Optional, and only meaningful on a cancellation; ignored otherwise.
+            'reason' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         $status = $request->input('status');
@@ -140,7 +142,26 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $order->update(['status' => $status]);
+        // Who, when and why travel with the CANCELLED state: stamped when an
+        // order becomes cancelled, cleared when a cancellation is corrected,
+        // so they always describe the order as it stands now. Set outside
+        // $fillable on purpose — the server decides them, not the payload.
+        $order->status = OrderStatus::from($status);
+        if ($status === OrderStatus::CANCELLED->value) {
+            $reason = trim((string) $request->input('reason', ''));
+            if ($order->isDirty('status')) {
+                $order->cancelled_at = Carbon::now();
+                $order->cancelled_by = $request->user()->id;
+            }
+            if ($request->has('reason') || $order->isDirty('status')) {
+                $order->cancellation_reason = $reason !== '' ? $reason : null;
+            }
+        } else {
+            $order->cancelled_at = null;
+            $order->cancelled_by = null;
+            $order->cancellation_reason = null;
+        }
+        $order->save();
 
         // Once an order is acted on (moved out of NEW), its "new order" alert is
         // no longer new — clear the unread dot so the bell stays trustworthy.
@@ -155,7 +176,7 @@ class OrderController extends Controller
         }
 
         return response()->json([
-            'data' => OrderResource::make($order->fresh()->load('rounds.items')),
+            'data' => OrderResource::make($order->fresh()->load('rounds.items', 'canceller')),
             'message' => __('xorder.messages.order_updated'),
         ]);
     }
