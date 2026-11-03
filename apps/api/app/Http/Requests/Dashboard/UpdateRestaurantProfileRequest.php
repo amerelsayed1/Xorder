@@ -2,12 +2,15 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Enums\MenuLayout;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Restaurant Admin profile edit. Deliberately excludes slug, status and
  * subscription fields — those are Super-Admin-only and never accepted here.
+ * Since 2026-11-03 it includes the brand colour and the menu layout.
  */
 class UpdateRestaurantProfileRequest extends FormRequest
 {
@@ -59,10 +62,17 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'social_links.instagram' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.facebook' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.tiktok' => ['nullable', 'string', 'url', 'max:2048'],
-            // Branding (brand_color, secondary_color), default_language and the
-            // ordering channel (ordering_mode) are NOT editable here — they are
-            // set by the Super Admin per the restaurant's plan. Any such keys in
-            // the payload are ignored (never reach ->update(validated())).
+            // The menu's look is the owner's call (owner decision 2026-11-03):
+            // the brand colour tints the public menu and the till's accent,
+            // the layout picks photos or a text-only menu. The colour column is
+            // NOT NULL, so it can be changed but never cleared.
+            'brand_color' => ['sometimes', 'required', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'menu_layout' => ['sometimes', 'required', Rule::enum(MenuLayout::class)],
+            // secondary_color, default_language and the ordering channel
+            // (ordering_mode) stay Super-Admin-only: the public menu does not
+            // use a second colour yet, and the other two follow the plan. Any
+            // such keys in the payload are ignored (never reach
+            // ->update(validated())).
         ];
     }
 

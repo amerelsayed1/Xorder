@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Models\Role;
 use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class OrderTest extends TestCase
@@ -266,6 +268,198 @@ class OrderTest extends TestCase
         $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED'])
             ->assertOk()
             ->assertJsonPath('data.status', 'CANCELLED');
+    }
+
+    public function test_cancelling_records_reason_time_and_who(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", [
+            'status' => 'CANCELLED',
+            'reason' => '  Customer did not answer the phone  ',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'CANCELLED')
+            ->assertJsonPath('data.cancellation_reason', 'Customer did not answer the phone')
+            ->assertJsonPath('data.cancelled_by_name', $admin->name);
+
+        $fresh = $order->fresh();
+        $this->assertNotNull($fresh->cancelled_at);
+        $this->assertSame($admin->id, $fresh->cancelled_by);
+
+        // The list carries the same fields, so the receipt dialog can show them.
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?status=CANCELLED')
+            ->assertOk()
+            ->assertJsonPath('data.0.cancellation_reason', 'Customer did not answer the phone');
+    }
+
+    public function test_the_cancellation_reason_is_optional(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        // An empty reason is stored as null, not as an empty string.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => '   '])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null);
+        $this->assertNotNull($order->fresh()->cancelled_at);
+    }
+
+    public function test_the_cancellation_reason_is_length_limited(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => str_repeat('x', 256)])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+        $this->assertSame('NEW', $order->fresh()->status->value);
+    }
+
+    public function test_correcting_a_cancellation_clears_its_reason(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED', 'reason' => 'Wrong order'])
+            ->assertOk();
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null)
+            ->assertJsonPath('data.cancelled_at', null);
+
+        $fresh = $order->fresh();
+        $this->assertNull($fresh->cancelled_by);
+        $this->assertNull($fresh->cancellation_reason);
+    }
+
+    public function test_a_reason_sent_with_a_completion_is_ignored(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED', 'reason' => 'nope'])
+            ->assertOk()
+            ->assertJsonPath('data.cancellation_reason', null);
+    }
+
+    public function test_completing_records_who_when_and_how_long(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+
+        Carbon::setTestNow('2026-11-03 10:00:00');
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload())->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        Carbon::setTestNow('2026-11-03 10:17:40');
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
+            ->assertOk()
+            ->assertJsonPath('data.handled_by_name', $admin->name)
+            ->assertJsonPath('data.minutes_to_complete', 17)
+            // An online order records no payment, so it claims none.
+            ->assertJsonPath('data.payment_status', null);
+        $this->assertSame($admin->id, $order->fresh()->completed_by);
+
+        // Corrected to cancelled: the completion stamp goes, the cancel one comes.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED'])
+            ->assertOk()
+            ->assertJsonPath('data.completed_at', null)
+            ->assertJsonPath('data.minutes_to_complete', null)
+            ->assertJsonPath('data.handled_by_name', $admin->name);
+        $this->assertNull($order->fresh()->completed_by);
+        Carbon::setTestNow();
+    }
+
+    public function test_orders_filter_by_restaurant_local_date_range(): void
+    {
+        // Cairo is UTC+2 in November. An order at 23:30 local on the 2nd is
+        // 21:30 UTC — it belongs to the 2nd, never the 3rd.
+        $r = Restaurant::factory()->create(['timezone' => 'Africa/Cairo']);
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+
+        foreach (['2026-11-01 10:00:00', '2026-11-02 21:30:00', '2026-11-03 09:00:00'] as $utc) {
+            Carbon::setTestNow($utc);
+            $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload())->assertCreated();
+        }
+        Carbon::setTestNow();
+
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?from=2026-11-02&to=2026-11-02')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('summary.counts.all', 1);
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?from=2026-11-02')
+            ->assertOk()->assertJsonCount(2, 'data');
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?to=2026-11-01')
+            ->assertOk()->assertJsonCount(1, 'data');
+
+        // A range that ends before it starts is a mistake, not an empty list.
+        $this->actingAs($admin)->getJson('/api/dashboard/orders?from=2026-11-03&to=2026-11-01')
+            ->assertStatus(422)->assertJsonValidationErrors(['to']);
+    }
+
+    public function test_orders_export_is_a_csv_of_the_filtered_list(): void
+    {
+        $r = Restaurant::factory()->create(['default_language' => 'en']);
+        $other = Restaurant::factory()->withOrdering()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload())->assertCreated();
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", array_merge($this->payload(), ['customer_name' => 'Second Guest']))->assertCreated();
+        $this->postJson("/api/public/restaurants/{$other->slug}/orders", array_merge($this->payload(), ['customer_name' => 'Foreign Guest']))->assertCreated();
+
+        $first = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->orderBy('id')->first();
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$first->id}/status", ['status' => 'CANCELLED', 'reason' => 'No answer'])
+            ->assertOk();
+
+        $res = $this->actingAs($admin)->get('/api/dashboard/orders/export');
+        $res->assertOk();
+        $this->assertStringContainsString('text/csv', $res->headers->get('Content-Type'));
+        $csv = $res->streamedContent();
+
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $csv, 'BOM so Excel reads Arabic');
+        $lines = array_values(array_filter(explode("\n", trim(substr($csv, 3)))));
+        $this->assertCount(3, $lines, 'header + this restaurant\'s two orders only');
+        $this->assertStringContainsString('Order,"Placed at"', $lines[0]);
+        $this->assertStringNotContainsString('Foreign Guest', $csv);
+        $this->assertStringContainsString('No answer', $csv);
+        $this->assertStringContainsString('Cancelled', $csv);
+        $this->assertStringContainsString(',Online,', $csv, 'channel is a word, not an internal code');
+
+        // The status filter narrows the export just as it narrows the list.
+        $onlyNew = $this->actingAs($admin)->get('/api/dashboard/orders/export?status=NEW')->streamedContent();
+        $this->assertStringContainsString('Second Guest', $onlyNew);
+        $this->assertStringNotContainsString('No answer', $onlyNew);
+    }
+
+    public function test_orders_export_needs_the_orders_capability(): void
+    {
+        $r = Restaurant::factory()->create();
+        $this->enableSystemOrdering($r);
+        $role = new Role(['name' => 'Menu only']);
+        $role->forceFill(['restaurant_id' => $r->id, 'capabilities' => ['menu.view']])->save();
+        $staff = User::factory()->staff($r->id, $role->id)->create();
+
+        $this->actingAs($staff)->get('/api/dashboard/orders/export')->assertForbidden();
     }
 
     public function test_public_can_read_own_order_status(): void

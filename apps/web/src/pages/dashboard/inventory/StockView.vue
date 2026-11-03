@@ -10,6 +10,8 @@ import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import { money, qty } from '../purchasing/format.js'
 import StockAdjustDialog from './StockAdjustDialog.vue'
+import PageTabs from '../../../components/PageTabs.vue'
+import { STOCK_TABS } from '../tabs.config.js'
 
 // CB-09. RECORDED STOCK, per branch, at the moving average: deliveries
 // received (slice b) plus opening stock and adjustments, less waste (slice
@@ -86,6 +88,8 @@ function saved() {
 
 <template>
     <div class="space-y-5">
+        <PageTabs :tabs="STOCK_TABS" />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.stock_title') }}</h1>

@@ -378,7 +378,13 @@ class PosOrderService
     private function completeIfSettled(Order $order): void
     {
         if ($order->status === OrderStatus::NEW && $this->settlementStatus($order) === 'PAID') {
-            $order->update(['status' => OrderStatus::COMPLETED->value]);
+            // Paid in full on the till: completed now, by the cashier who rang
+            // it up (null for a terminal-only sale). Stamped outside $fillable.
+            $order->forceFill([
+                'status' => OrderStatus::COMPLETED->value,
+                'completed_at' => now(),
+                'completed_by' => $order->acting_user_id,
+            ])->save();
         }
     }
 

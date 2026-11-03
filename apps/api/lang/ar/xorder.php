@@ -336,4 +336,14 @@ return [
         'staff_manage' => 'إدارة الموظفين والأدوار',
         'purchase_manage' => 'إدارة المشتريات والموردين والمخزون',
     ],
+    'orders_export' => [
+        'code' => 'الطلب', 'placed_at' => 'وقت الطلب', 'type' => 'النوع', 'source' => 'القناة',
+        'branch' => 'الفرع', 'table' => 'الطاولة', 'customer' => 'العميل', 'phone' => 'الهاتف',
+        'items' => 'عدد الأصناف', 'total' => 'الإجمالي', 'currency' => 'العملة', 'status' => 'الحالة',
+        'payment' => 'الدفع', 'handled_by' => 'بواسطة', 'closed_at' => 'وقت الإتمام / الإلغاء',
+        'minutes_to_complete' => 'دقائق حتى الإتمام', 'cancellation_reason' => 'سبب الإلغاء', 'note' => 'ملاحظة',
+        'status_NEW' => 'جديد', 'status_COMPLETED' => 'مكتمل', 'status_CANCELLED' => 'ملغى',
+        'source_system' => 'أونلاين', 'source_whatsapp' => 'واتساب', 'source_pos' => 'الكاشير',
+        'type_dine_in' => 'داخل المكان', 'type_pickup' => 'استلام', 'type_takeaway' => 'استلام', 'type_take_away' => 'استلام', 'type_delivery' => 'توصيل',
+    ],
 ];

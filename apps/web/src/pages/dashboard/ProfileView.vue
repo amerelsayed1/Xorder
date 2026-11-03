@@ -3,6 +3,7 @@ import { computed, reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
+import { asPreview } from '../../lib/host.js'
 import FormError from '@xorder/ui/FormError.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
@@ -25,7 +26,24 @@ const form = reactive({
     logo_url: '', cover_image_url: '',
     social_links: { instagram: '', facebook: '', tiktok: '' },
     accepts_orders: true,
+    // The menu's look (owner-editable since 2026-11-03).
+    brand_color: '#f89a06',
+    menu_layout: 'photo',
+    public_url: '',
 })
+
+// A short palette that reads well on the white menu; any other colour can be
+// picked with the colour well or typed as hex.
+const COLOR_PRESETS = ['#f89a06', '#d83a2a', '#c2185b', '#7b3fa0', '#1f5fbf', '#0f8a7e', '#2e7d32', '#3b2f2f', '#111827']
+// Mirrors App\Enums\MenuLayout; labels resolve via t('restaurant.menu_layout_*').
+const MENU_LAYOUTS = ['photo', 'text-grid', 'text-list']
+const colorValid = computed(() => /^#[0-9a-fA-F]{6}$/.test(form.brand_color || ''))
+// Typing "1e7a46" without the hash is the common slip; accept it.
+function normalizeColor() {
+    const v = (form.brand_color || '').trim()
+    if (/^[0-9a-fA-F]{6}$/.test(v)) form.brand_color = '#' + v
+    else form.brand_color = v
+}
 // The plan decides whether ordering exists; the switch below only turns an
 // entitled channel on and off. With no entitled channel there is nothing to
 // switch, so the control is hidden rather than shown doing nothing.
@@ -93,6 +111,10 @@ async function submit() {
         // Blank number inputs arrive as '' — send null so nullable/required_with
         // rules (e.g. latitude↔longitude) see a truly absent value.
         const payload = { ...form }
+        // A half-typed colour would only come back as a 422 on the whole
+        // profile; keep the saved one until the hex is complete.
+        if (!colorValid.value) delete payload.brand_color
+        delete payload.public_url
         for (const k of ['latitude', 'longitude', 'minimum_order', 'delivery_time_min', 'delivery_time_max']) {
             if (payload[k] === '' || payload[k] === undefined || (typeof payload[k] === 'number' && Number.isNaN(payload[k]))) {
                 payload[k] = null
@@ -272,6 +294,61 @@ async function changePassword() {
             </div>
         </form>
 
+        <!-- Menu look: saved by the same header Save as the profile above. -->
+        <section class="set-card" :aria-label="t('branding.title')">
+            <div class="set-card-head">
+                <div class="set-card-head-text">
+                    <span class="set-card-title">{{ t('branding.title') }}</span>
+                    <span class="set-card-desc">{{ t('branding.sub') }}</span>
+                </div>
+                <a v-if="form.public_url" :href="asPreview(form.public_url)" target="_blank" rel="noopener"
+                    class="set-btn" style="margin-inline-start:auto">{{ t('branding.preview') }}</a>
+            </div>
+
+            <div class="set-form">
+                <div class="set-field" style="gap: 10px">
+                    <span class="label">{{ t('restaurant.brand_color') }}</span>
+                    <div class="brand-row">
+                        <input v-model="form.brand_color" type="color" class="brand-well" :disabled="!canUpdate"
+                            :aria-label="t('restaurant.brand_color')" />
+                        <input v-model="form.brand_color" class="input brand-hex" dir="ltr" maxlength="7" :disabled="!canUpdate"
+                            :aria-invalid="!colorValid" @blur="normalizeColor" />
+                        <div class="brand-swatches" role="group" :aria-label="t('branding.presets')">
+                            <button v-for="c in COLOR_PRESETS" :key="c" type="button" class="brand-swatch"
+                                :class="{ on: (form.brand_color || '').toLowerCase() === c }" :style="{ background: c }"
+                                :disabled="!canUpdate" :aria-label="c" :title="c" @click="form.brand_color = c"></button>
+                        </div>
+                    </div>
+                    <p v-if="!colorValid" class="set-inset-hint" style="color:#c0392b">{{ t('branding.color_invalid') }}</p>
+                    <FormError :errors="errors" field="brand_color" />
+                    <!-- What the colour does on the menu: buttons, prices, the active category. -->
+                    <div class="brand-sample" :style="{ '--b': colorValid ? form.brand_color : '#f89a06' }" aria-hidden="true">
+                        <span class="brand-sample-chip">{{ t('branding.sample_category') }}</span>
+                        <span class="brand-sample-price">45.00</span>
+                        <span class="brand-sample-btn">{{ t('branding.sample_add') }}</span>
+                    </div>
+                </div>
+
+                <div class="set-field" style="gap: 10px">
+                    <span class="label">{{ t('restaurant.menu_layout') }}</span>
+                    <div class="layout-grid" role="radiogroup" :aria-label="t('restaurant.menu_layout')">
+                        <button v-for="m in MENU_LAYOUTS" :key="m" type="button" role="radio"
+                            class="layout-card" :class="{ on: form.menu_layout === m }" :aria-checked="form.menu_layout === m"
+                            :disabled="!canUpdate" @click="form.menu_layout = m">
+                            <span class="layout-art" :class="'art-' + m" aria-hidden="true">
+                                <template v-if="m === 'photo'"><i class="art-img"></i><i class="art-img"></i><i class="art-line"></i><i class="art-line"></i></template>
+                                <template v-else-if="m === 'text-grid'"><i class="art-box"></i><i class="art-box"></i><i class="art-box"></i><i class="art-box"></i></template>
+                                <template v-else><i class="art-row"></i><i class="art-row"></i><i class="art-row"></i><i class="art-row"></i></template>
+                            </span>
+                            <span class="layout-name">{{ t('restaurant.menu_layout_' + m.replace('-', '_')) }}</span>
+                        </button>
+                    </div>
+                    <p class="set-inset-hint">{{ t('restaurant.menu_layout_hint') }}</p>
+                    <FormError :errors="errors" field="menu_layout" />
+                </div>
+            </div>
+        </section>
+
         <!-- Change password — deliberately its own card and its own endpoint,
              and not disabled when the restaurant is read-only: a lapsed
              subscription must not lock someone out of their own password. -->
@@ -320,4 +397,28 @@ async function changePassword() {
     text-align: center;
     flex: none;
 }
+/* Menu look */
+.brand-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.brand-well { width: 46px; height: 42px; padding: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); cursor: pointer; }
+.brand-hex { width: 110px; margin-top: 0; font-family: var(--font-mono, ui-monospace, monospace); text-transform: uppercase; }
+.brand-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.brand-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.brand-swatch.on { box-shadow: 0 0 0 2px var(--ink); }
+.brand-swatch:disabled, .layout-card:disabled { cursor: not-allowed; opacity: .6; }
+.brand-sample { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
+    background: var(--page); border: 1px dashed var(--line); }
+.brand-sample-chip { font-size: 12.5px; font-weight: 600; padding: 4px 12px; border-radius: 20px; background: var(--b); color: #fff; }
+.brand-sample-price { font-weight: 700; color: var(--b); }
+.brand-sample-btn { margin-inline-start: auto; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 10px; background: var(--b); color: #fff; }
+.layout-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.layout-card { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1.5px solid var(--line); border-radius: 12px;
+    background: var(--card); cursor: pointer; text-align: start; font: inherit; }
+.layout-card.on { border-color: var(--accent); background: var(--accent-soft); }
+.layout-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.layout-art { display: grid; gap: 5px; height: 72px; padding: 7px; border-radius: 8px; background: var(--page); }
+.layout-art i { display: block; border-radius: 4px; background: var(--line); }
+.art-photo { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 6px 6px; }
+.art-photo .art-img { background: #d9d4cc; }
+.art-text-grid { grid-template-columns: 1fr 1fr; }
+.art-text-list { grid-template-rows: repeat(4, 1fr); }
 </style>

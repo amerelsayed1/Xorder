@@ -181,6 +181,30 @@ class OrderTableAssociationTest extends TestCase
         ]))->assertStatus(422);
     }
 
+    public function test_cancelling_a_visit_records_who_cancelled_its_order(): void
+    {
+        app(RestaurantFeatureService::class)->apply($this->restaurant, [
+            'qr_menu' => true,
+            'system_ordering' => true,
+            'table_management' => true,
+        ]);
+        $admin = User::factory()->restaurantAdmin($this->restaurant->id)->create();
+        $session = $this->makeSession();
+        $orderId = $this->postJson('/api/public/restaurants/cafe/orders', $this->orderPayload([
+            'session_token' => $session->session_token,
+        ]))->assertCreated()->json('data.id');
+
+        $this->actingAs($admin)->postJson("/api/dashboard/tables/{$this->table->id}/visit/finish", [
+            'status' => 'CANCELLED',
+        ])->assertOk();
+
+        $order = Order::withoutGlobalScopes()->findOrFail($orderId);
+        $this->assertSame('CANCELLED', $order->status->value);
+        $this->assertSame($admin->id, $order->cancelled_by);
+        $this->assertNotNull($order->cancelled_at);
+        $this->assertNull($order->cancellation_reason);
+    }
+
     public function test_stale_session_token_still_records_the_order_untagged(): void
     {
         $res = $this->postJson('/api/public/restaurants/cafe/orders', $this->orderPayload([

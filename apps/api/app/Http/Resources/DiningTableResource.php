@@ -21,6 +21,9 @@ class DiningTableResource extends JsonResource
             'public_token' => $this->public_token,
             'is_active' => $this->is_active,
             'qr_generated_at' => $this->qr_generated_at,
+            // Set by TableController@index only: {state, occupied, active_orders,
+            // has_request, has_new_order, since}. Absent everywhere else.
+            'occupancy' => $this->whenHas('occupancy'),
             'area_name_en' => $this->whenLoaded('diningArea', fn () => $this->diningArea->name_en),
             'area_name_ar' => $this->whenLoaded('diningArea', fn () => $this->diningArea->name_ar),
         ];

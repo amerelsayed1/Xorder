@@ -14,6 +14,8 @@ import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
+import PageTabs from '../../../components/PageTabs.vue'
+import { STOCK_TABS } from '../tabs.config.js'
 
 // CB-09 slice b. What a business buys and counts: its own table, optionally
 // linked to one menu item, never counted against the menu's item limit.
@@ -171,6 +173,8 @@ async function setActive(s, active) {
 
 <template>
     <div class="space-y-5">
+        <PageTabs :tabs="STOCK_TABS" />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.stock_items_title') }}</h1>

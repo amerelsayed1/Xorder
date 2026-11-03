@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -14,6 +14,7 @@ import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { useCaps } from '../../lib/useCaps.js'
+import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -34,7 +35,11 @@ const editing = ref(null)
 // reopening the dialog per table.
 const bulkMode = ref(false)
 const errors = ref({})
-const filters = reactive({ dining_area_id: '', status: '', search: '' })
+const filters = reactive({ dining_area_id: '', status: '', search: '', occupancy: '' })
+// Tab counts for All / Available / Occupied, as the server counted them
+// (every filter applied except occupancy itself).
+const occupancyCounts = ref(null)
+const OCCUPANCY_TABS = ['', 'available', 'occupied']
 
 const blank = () => ({
     dining_area_id: '', label: '', seats_count: null, notes: '', is_active: true,
@@ -65,20 +70,24 @@ async function loadAreas() {
     const { data } = await api.get('api/dashboard/dining-areas')
     areas.value = data.data
 }
-async function loadTables() {
-    loading.value = true
-    failed.value = null
+// `silent` keeps the rows on screen: used by the live refresh, where a
+// skeleton every few seconds would make the list unreadable.
+async function loadTables({ silent = false } = {}) {
+    if (!silent) { loading.value = true; failed.value = null }
     const params = {}
     if (filters.dining_area_id) params.dining_area_id = filters.dining_area_id
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
+    if (filters.occupancy) params.occupancy = filters.occupancy
     try {
-        const { data } = await withMinDuration(api.get('api/dashboard/tables', { params }))
+        const req = api.get('api/dashboard/tables', { params })
+        const { data } = await (silent ? req : withMinDuration(req))
         rows.value = data.data
+        occupancyCounts.value = data.summary?.occupancy || null
     } catch (err) {
-        failed.value = err?.response?.status === 403 ? 'plan' : 'error'
+        if (!silent) failed.value = err?.response?.status === 403 ? 'plan' : 'error'
     } finally {
-        loading.value = false
+        if (!silent) loading.value = false
     }
 }
 async function load() {
@@ -91,11 +100,22 @@ async function load() {
     }
     await loadTables()
 }
-onMounted(load)
-watch(() => [filters.dining_area_id, filters.status], loadTables)
+// Occupancy changes as guests sit, order and leave. Re-read on the shared
+// pulse (new orders / bill requests) and on a slow timer for visits that
+// open or close without one; a hidden tab doesn't poll.
+const rt = useRealtime()
+let offTick, occupancyTimer
+const refreshQuietly = () => { if (!document.hidden && !loading.value && !failed.value && !showModal.value) loadTables({ silent: true }) }
+onMounted(() => {
+    load()
+    offTick = rt.onTick(refreshQuietly)
+    occupancyTimer = setInterval(refreshQuietly, 30_000)
+})
+onUnmounted(() => { offTick?.(); clearInterval(occupancyTimer) })
+watch(() => [filters.dining_area_id, filters.status, filters.occupancy], () => loadTables())
 
 let searchTimer
-watch(() => filters.search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadTables, 300) })
+watch(() => filters.search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadTables(), 300) })
 
 function openCreate() {
     editing.value = null; bulkMode.value = false; errors.value = {}
@@ -242,12 +262,23 @@ async function regenerateQr() {
 }
 
 const areaName = (a) => pickLocalized(a, 'name', locale.value)
+// "Occupied · 25 min · 2 orders" — how long, and how much is open.
+function occupancyDetail(occ) {
+    if (!occ || occ.state !== 'occupied') return ''
+    const parts = []
+    if (occ.since) {
+        const mins = Math.max(0, Math.floor((Date.now() - new Date(occ.since).getTime()) / 60000))
+        parts.push(mins < 60 ? t('tbl.occ_minutes', { n: mins }) : t('tbl.occ_hours', { h: Math.floor(mins / 60), m: mins % 60 }))
+    }
+    if (occ.active_orders) parts.push(t('tbl.occ_orders', { n: occ.active_orders }, occ.active_orders))
+    return parts.join(' · ')
+}
 const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return a ? areaName(a) : '—' }
 </script>
 
 <template>
     <div class="space-y-5">
-        <div class="flex items-start justify-between gap-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('tbl.tables_title') }}</h1>
                 <p class="page-sub">{{ t('tbl.tables_sub', { count: rows.length }) }}</p>
@@ -264,7 +295,16 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 
         <p v-if="!failed && !loading && !areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
 
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="segmented tabs" role="tablist" :aria-label="t('tbl.occupancy')">
+                <button v-for="key in OCCUPANCY_TABS" :key="key || 'all'" type="button" role="tab"
+                    :class="{ active: filters.occupancy === key }" :aria-selected="filters.occupancy === key"
+                    @click="filters.occupancy = key">
+                    <span v-if="key" class="occ-dot" :class="'occ-dot-' + key" aria-hidden="true"></span>
+                    {{ key ? t('tbl.occ_' + key) : t('common.all') }}
+                    <span v-if="occupancyCounts" class="tab-count">{{ occupancyCounts[key || 'all'] }}</span>
+                </button>
+            </div>
             <select v-model="filters.dining_area_id" class="input" style="max-width:14rem">
                 <option value="">{{ t('tbl.all_areas') }}</option>
                 <option v-for="a in areas" :key="a.id" :value="a.id">{{ areaName(a) }}</option>
@@ -311,13 +351,23 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                         :class="{ 'row-selected': selected.has(tbl.id) }" style="border-color:var(--line)">
                         <input v-if="canDelete" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
                             :aria-label="tbl.label" @change="toggleSelect(tbl.id)" />
-                        <span class="tbl-num" style="color:var(--muted)">{{ i + 1 }}</span>
-                        <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
+                        <span class="tbl-num hide-sm" style="color:var(--muted)">{{ i + 1 }}</span>
+                        <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0 hide-sm" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
                         <div class="flex-1 min-w-0">
                             <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
                             <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
                         </div>
-                        <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
+                        <div v-if="tbl.occupancy && tbl.occupancy.state !== 'inactive'" class="occ">
+                            <span class="occ-badge" :class="'occ-' + tbl.occupancy.state">
+                                <span class="occ-dot" :class="'occ-dot-' + tbl.occupancy.state" aria-hidden="true"></span>
+                                {{ t('tbl.occ_' + tbl.occupancy.state) }}
+                            </span>
+                            <span v-if="tbl.occupancy.has_request" class="occ-badge occ-request">{{ t('tbl.occ_bill') }}</span>
+                            <span v-if="occupancyDetail(tbl.occupancy)" class="occ-detail">{{ occupancyDetail(tbl.occupancy) }}</span>
+                        </div>
+                        <!-- The switch beside it already says active/inactive; on a phone
+                             the chip is dropped to leave room for occupancy. -->
+                        <StatusBadge class="hide-sm" :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
                         <button v-if="canUpdate" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
                         <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
                         <button v-if="canUpdate" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
@@ -422,4 +472,24 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-danger:hover:not(:disabled) { filter: brightness(.94); }
 .btn-danger:disabled { opacity: .6; cursor: default; }
+/* Occupancy tabs + per-table badge */
+.tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.tab-count { font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 0 6px; border-radius: 20px;
+    background: var(--line); color: var(--muted); }
+.tabs button.active .tab-count { background: var(--accent); color: #fff; }
+.occ { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 120px; }
+.occ-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.occ-available { background: var(--green-soft); color: var(--green); }
+.occ-occupied { background: #fdecea; color: #c0392b; }
+.occ-request { background: var(--accent-soft); color: var(--accent-dark, var(--accent)); }
+.occ-detail { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.occ-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.occ-dot-available { background: var(--green); }
+.occ-dot-occupied { background: #d83a2a; }
+@media (max-width: 640px) {
+    .occ { min-width: 0; }
+    .occ-detail { display: none; }
+    .hide-sm { display: none !important; }
+}
 </style>

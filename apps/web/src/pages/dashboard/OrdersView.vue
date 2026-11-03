@@ -10,7 +10,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
-import { confirm } from '@xorder/ui/confirm.js'
+import { confirmWithInput } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
@@ -50,6 +50,10 @@ const failed = ref(null)
 const statusFilter = ref('')
 const typeFilter = ref('')
 const query = ref('')
+// Restaurant-local calendar days (YYYY-MM-DD), inclusive. Empty = unbounded.
+const dateFrom = ref('')
+const dateTo = ref('')
+const exporting = ref(false)
 const page = ref(1)
 const updating = ref(null)
 const newIds = ref(new Set())
@@ -57,7 +61,8 @@ const readAt = ref(null) // when the list was last read from the server
 const receiptOrder = ref(null) // order shown in the bill/receipt sheet, or null
 let pollTimer, offTick, searchTimer
 
-const filtersActive = computed(() => !!statusFilter.value || !!typeFilter.value || !!query.value.trim())
+const filtersActive = computed(() => !!statusFilter.value || !!typeFilter.value || !!query.value.trim()
+    || !!dateFrom.value || !!dateTo.value)
 const statusCount = (key) => summary.value?.counts?.[key] ?? null
 const metrics = computed(() => summary.value?.metrics || null)
 // Prices in the day figures carry the restaurant's currency, not an order's.
@@ -73,7 +78,44 @@ function params() {
         status: statusFilter.value || undefined,
         order_type: typeFilter.value || undefined,
         q: query.value.trim() || undefined,
+        from: dateFrom.value || undefined,
+        to: dateTo.value || undefined,
         page: page.value,
+    }
+}
+
+// A range typed backwards is almost always the two fields swapped; fix it
+// rather than ask the server for an error.
+watch([dateFrom, dateTo], () => {
+    if (dateFrom.value && dateTo.value && dateFrom.value > dateTo.value) {
+        [dateFrom.value, dateTo.value] = [dateTo.value, dateFrom.value]
+        return
+    }
+    page.value = 1
+    load()
+})
+
+// Everything the current filters match, as CSV — not just this page. Fetched
+// as a blob because the API needs the auth header a plain link can't carry.
+async function exportCsv() {
+    if (exporting.value) return
+    exporting.value = true
+    try {
+        const { page: _ignored, ...filters } = params()
+        const res = await api.get('api/dashboard/orders/export', { params: filters, responseType: 'blob' })
+        const name = /filename="?([^";]+)"?/.exec(res.headers?.['content-disposition'] || '')?.[1] || 'orders.csv'
+        const url = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+        alert(t('orders.export_failed'))
+    } finally {
+        exporting.value = false
     }
 }
 
@@ -162,8 +204,13 @@ function resetFilters() {
     statusFilter.value = ''
     typeFilter.value = ''
     query.value = ''
+    // Clearing the dates triggers their watcher, which reloads; only reload
+    // here when they were already empty.
+    const hadDates = !!dateFrom.value || !!dateTo.value
+    dateFrom.value = ''
+    dateTo.value = ''
     page.value = 1
-    load()
+    if (!hadDates) load()
 }
 
 function goToPage(nextPage) {
@@ -173,20 +220,25 @@ function goToPage(nextPage) {
 }
 
 async function setStatus(order, status) {
+    const payload = { status }
     if (status === 'CANCELLED') {
-        const ok = await confirm({
+        // The reason is optional; null means the user backed out.
+        const reason = await confirmWithInput({
             title: t('orders.cancel_title'),
             message: t('orders.cancel_message'),
             confirmText: t('orders.cancel_order'),
             cancelText: t('common.back'),
             danger: true,
+            inputLabel: t('orders.cancel_reason_label'),
+            inputPlaceholder: t('orders.cancel_reason_ph'),
         })
-        if (!ok) return
+        if (reason === null) return
+        payload.reason = reason
     }
     updating.value = order.id
     try {
         await ensureCsrf()
-        const { data } = await api.patch(`api/dashboard/orders/${order.id}/status`, { status })
+        const { data } = await api.patch(`api/dashboard/orders/${order.id}/status`, payload)
         const i = rows.value.findIndex((r) => r.id === order.id)
         if (i !== -1) rows.value[i] = data.data
         toast(data.message || t('common.saved'))
@@ -228,6 +280,21 @@ function itemCount(order) {
 
 // Clock time is what staff read back to a customer; the relative line under it
 // answers "how long has this been sitting?" at a glance.
+// Branch names follow the dashboard language, falling back to the other one.
+const branchName = (order) => {
+    const b = order.branch
+    if (!b) return ''
+    return locale.value === 'ar' ? (b.name_ar || b.name_en) : (b.name_en || b.name_ar)
+}
+const PAYMENT_BADGE = { PAID: 'badge-green', UNPAID: 'badge-amber', PARTIALLY_REFUNDED: 'badge-amber', REFUNDED: 'badge-red' }
+// "Handled by" and "time to complete" as one quiet line under the status.
+function handledLine(order) {
+    const parts = []
+    if (order.handled_by_name) parts.push(order.handled_by_name)
+    if (order.minutes_to_complete != null) parts.push(t('orders.minutes', { n: order.minutes_to_complete }))
+    return parts.join(' · ')
+}
+
 function fmtClock(iso) {
     if (!iso) return ''
     return new Date(iso).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
@@ -263,6 +330,28 @@ function fmtTime(iso) {
                     <Icon name="refresh" :size="16" />{{ t('orders.refresh') }}
                 </button>
             </div>
+        </div>
+
+        <!-- Date range + export. The range narrows the list, its tab counts and
+             the export alike; the day figures below stay "today" on purpose. -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="date-range">
+                <label class="date-field">
+                    <span>{{ t('orders.date_from') }}</span>
+                    <input v-model="dateFrom" type="date" class="input" :max="dateTo || undefined" :aria-label="t('orders.date_from')" />
+                </label>
+                <span class="date-sep" aria-hidden="true">→</span>
+                <label class="date-field">
+                    <span>{{ t('orders.date_to') }}</span>
+                    <input v-model="dateTo" type="date" class="input" :min="dateFrom || undefined" :aria-label="t('orders.date_to')" />
+                </label>
+                <button v-if="dateFrom || dateTo" type="button" class="btn btn-ghost btn-sm" @click="dateFrom = ''; dateTo = ''">
+                    {{ t('orders.clear_dates') }}
+                </button>
+            </div>
+            <button type="button" class="btn btn-ghost" :disabled="exporting || failed === 'plan'" @click="exportCsv">
+                <Icon name="download" :size="16" />{{ exporting ? t('orders.exporting') : t('orders.export_csv') }}
+            </button>
         </div>
 
         <!-- The day at a glance. Unfiltered on purpose — these describe the
@@ -339,7 +428,10 @@ function fmtTime(iso) {
                              never the previous filter's rows underneath it. -->
                         <template v-else-if="rows.length">
                             <tr v-for="order in rows" :key="order.id" class="orders-row" :class="{ 'order-row-new': newIds.has(order.id) }">
-                                <td class="px-5 py-3 whitespace-nowrap cell-code">{{ order.code }}</td>
+                                <td class="px-5 py-3 whitespace-nowrap cell-code">
+                                    {{ order.code }}
+                                    <div v-if="branchName(order)" class="cell-sub">{{ branchName(order) }}</div>
+                                </td>
                                 <td class="px-3 py-3 cell-items">
                                     <div class="cell-strong truncate">{{ itemSummary(order) }}</div>
                                     <div class="cell-sub">{{ t('orders.items_n', { n: itemCount(order) }) }}</div>
@@ -366,9 +458,13 @@ function fmtTime(iso) {
                                 </td>
                                 <td class="px-3 py-3 whitespace-nowrap cell-total">
                                     {{ order.total }} <span class="cell-cur">{{ currencyLabel(order.currency, locale) }}</span>
+                                    <div v-if="order.payment_status" class="cell-sub">
+                                        <span class="pay-tag" :class="PAYMENT_BADGE[order.payment_status]">{{ t('orders.payment.' + order.payment_status) }}</span>
+                                    </div>
                                 </td>
                                 <td class="px-3 py-3">
                                     <span class="badge" :class="badgeClass[order.status]"><span class="dot"></span>{{ t('orders.status.' + order.status) }}</span>
+                                    <div v-if="handledLine(order)" class="cell-sub">{{ handledLine(order) }}</div>
                                 </td>
                                 <td class="px-5 py-3 text-end whitespace-nowrap">
                                     <div class="inline-flex items-center gap-2">
@@ -455,6 +551,22 @@ function fmtTime(iso) {
                         <span style="color:var(--muted)">{{ t('common.status') }}</span>
                         <span class="badge" :class="badgeClass[receiptOrder.status]">{{ t('orders.status.' + receiptOrder.status) }}</span>
                     </div>
+                    <div v-if="branchName(receiptOrder)" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.branch') }}</span>
+                        <span style="color:var(--ink)">{{ branchName(receiptOrder) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.payment_status" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.payment_label') }}</span>
+                        <span class="pay-tag" :class="PAYMENT_BADGE[receiptOrder.payment_status]">{{ t('orders.payment.' + receiptOrder.payment_status) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.handled_by_name" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.handled_by') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.handled_by_name }}</span>
+                    </div>
+                    <div v-if="receiptOrder.minutes_to_complete != null" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.time_to_complete') }}</span>
+                        <span style="color:var(--ink)">{{ t('orders.minutes', { n: receiptOrder.minutes_to_complete }) }}</span>
+                    </div>
                 </div>
 
                 <div class="receipt-divider"></div>
@@ -468,6 +580,13 @@ function fmtTime(iso) {
                             <span v-if="it.note" class="receipt-line-sub receipt-line-note">✎ {{ it.note }}</span>
                         </span>
                         <span v-if="it.line_total != null" class="receipt-line-total">{{ it.line_total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
+                    </div>
+                </div>
+
+                <div v-if="receiptOrder.status === 'CANCELLED' && (receiptOrder.cancellation_reason || receiptOrder.cancelled_at)" class="receipt-note receipt-cancel">
+                    <div v-if="receiptOrder.cancellation_reason"><span style="color:var(--muted)">{{ t('orders.cancel_reason') }}:</span> {{ receiptOrder.cancellation_reason }}</div>
+                    <div v-if="receiptOrder.cancelled_at" class="receipt-cancel-by">
+                        {{ receiptOrder.cancelled_by_name ? t('orders.cancelled_by_at', { name: receiptOrder.cancelled_by_name, time: fmtTime(receiptOrder.cancelled_at) }) : t('orders.cancelled_at', { time: fmtTime(receiptOrder.cancelled_at) }) }}
                     </div>
                 </div>
 
@@ -591,4 +710,12 @@ function fmtTime(iso) {
     100% { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .order-row-new { animation: none; } }
+.receipt-cancel { border-inline-start: 3px solid #d83a2a; }
+.date-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.date-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.date-field .input { margin-top: 0; width: 160px; height: 38px; }
+.date-sep { color: var(--muted); padding-bottom: 9px; }
+[dir=rtl] .date-sep { transform: scaleX(-1); }
+.pay-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; margin-top: 3px; }
+.receipt-cancel-by { font-size: 12px; color: var(--muted); margin-top: 4px; }
 </style>

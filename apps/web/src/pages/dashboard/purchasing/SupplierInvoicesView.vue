@@ -10,6 +10,8 @@ import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { invoiceBadge, INVOICE_STATES, fmtDay, money } from './format.js'
+import PageTabs from '../../../components/PageTabs.vue'
+import { PURCHASING_TABS } from '../tabs.config.js'
 
 // CB-09 slice c. Supplier invoices, newest first, filterable by branch,
 // supplier and state. Paid, outstanding and the state are derived by the
@@ -69,6 +71,8 @@ const show = (i, minor) => money(minor, i.exponent, i.currency, locale.value)
 
 <template>
     <div class="space-y-5">
+        <PageTabs :tabs="PURCHASING_TABS" />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('purchasing.invoices_title') }}</h1>

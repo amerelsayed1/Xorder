@@ -30,10 +30,13 @@ class RestaurantProfileController extends Controller
         // a new cover image is not a bundle change (PosConfigVersion).
         $trnChanged = array_key_exists('tax_registration_number', $data)
             && (string) $data['tax_registration_number'] !== (string) $restaurant->tax_registration_number;
+        // The brand colour rides the bundle too, as the till's accent_hex.
+        $accentChanged = array_key_exists('brand_color', $data)
+            && strtolower((string) $data['brand_color']) !== strtolower((string) $restaurant->brand_color);
 
         $restaurant->update($data);
 
-        if ($trnChanged) {
+        if ($trnChanged || $accentChanged) {
             PosConfigVersion::bump($restaurant);
         }
 

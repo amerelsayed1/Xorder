@@ -50,6 +50,9 @@ class Order extends Model
     {
         return [
             'status' => OrderStatus::class,
+            // Stamped by the server on cancellation; never mass-assignable.
+            'cancelled_at' => 'datetime',
+            'completed_at' => 'datetime',
             'items' => 'array',
             'total' => 'decimal:2',
             // POS columns (Cloud Wave 1) — integer minor units + the client's
@@ -101,6 +104,50 @@ class Order extends Model
     public function menuSession(): BelongsTo
     {
         return $this->belongsTo(MenuSession::class);
+    }
+
+    /** The staff member who cancelled it (null for older or till orders). */
+    public function canceller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    /** The staff member who completed it (null for older orders and expired visits). */
+    public function completer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'completed_by');
+    }
+
+    /** POS: the cashier who rang the sale up (null for QR orders). */
+    public function actingUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'acting_user_id');
+    }
+
+    /**
+     * Who handled the order, for the Orders page and its export: whoever
+     * closed it out, else the cashier who rang it up. Reads only relations
+     * already loaded, so a list never lazy-loads per row.
+     */
+    public function handledByName(): ?string
+    {
+        $name = fn (string $rel) => $this->relationLoaded($rel) ? $this->getRelation($rel)?->name : null;
+
+        return match ($this->status) {
+            OrderStatus::CANCELLED => $name('canceller'),
+            OrderStatus::COMPLETED => $name('completer') ?? $name('actingUser'),
+            default => $name('actingUser'),
+        };
+    }
+
+    /** Whole minutes from placement to completion, or null when not completed. */
+    public function minutesToComplete(): ?int
+    {
+        if ($this->status !== OrderStatus::COMPLETED || $this->completed_at === null || $this->created_at === null) {
+            return null;
+        }
+
+        return max(0, (int) floor($this->created_at->diffInSeconds($this->completed_at) / 60));
     }
 
     public function tableVisit(): BelongsTo
