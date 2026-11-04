@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -8,12 +8,10 @@ import FormError from '@xorder/ui/FormError.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
-import { useAuth } from '@xorder/api-client/auth.js'
 import { useCaps } from '../../lib/useCaps.js'
 import SettingsHeader from './settings/SettingsHeader.vue'
 
 const { t, locale } = useI18n()
-const auth = useAuth()
 // The page opens on settings.view; every field and the save button
 // additionally require settings.update.
 const { canUpdate } = useCaps('settings')
@@ -77,6 +75,15 @@ const saving = ref(false)
 const loading = ref(true)
 const loadError = ref(false)
 
+// Save bar state. The bar sits at the bottom of the viewport while the profile
+// cards scroll past it, and its button only lights up once something actually
+// changed, so a stray tap never re-sends the same profile.
+const snapshot = ref('')
+const serialize = () => JSON.stringify(form)
+const dirty = computed(() => snapshot.value !== '' && serialize() !== snapshot.value)
+// Editing again after a save: the "saved" chip gives way to the unsaved hint.
+watch(dirty, (d) => { if (d) saved.value = false })
+
 async function load() {
     loading.value = true
     loadError.value = false
@@ -89,6 +96,7 @@ async function load() {
             social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
         })
         orderingEntitled.value = !!data.data.ordering_entitled
+        snapshot.value = serialize()
     } catch (err) {
         loadError.value = true
     } finally {
@@ -121,6 +129,7 @@ async function submit() {
             }
         }
         await api.put('api/dashboard/restaurant', payload)
+        snapshot.value = serialize()
         saved.value = true
     } catch (err) {
         errors.value = err.response?.data?.errors || {}
@@ -128,53 +137,12 @@ async function submit() {
         saving.value = false
     }
 }
-
-// --- Change password ---
-// A self-service change (separate from the profile save): verifies the current
-// password server-side and, on success, swaps in the fresh token the API
-// returns so the session keeps working. Stays enabled even for a read-only /
-// expired restaurant — locking a user out of their own password would be wrong.
-const pw = reactive({ current_password: '', password: '', password_confirmation: '' })
-const pwErrors = ref({})
-const pwSaved = ref(false)
-const pwSaving = ref(false)
-
-async function changePassword() {
-    pwErrors.value = {}
-    pwSaved.value = false
-    if (pw.password !== pw.password_confirmation) {
-        pwErrors.value = { password_confirmation: [t('profile.password_mismatch')] }
-        return
-    }
-    pwSaving.value = true
-    try {
-        await ensureCsrf()
-        await auth.changePassword({ ...pw })
-        pwSaved.value = true
-        pw.current_password = ''
-        pw.password = ''
-        pw.password_confirmation = ''
-    } catch (err) {
-        pwErrors.value = err.response?.data?.errors || {}
-    } finally {
-        pwSaving.value = false
-    }
-}
 </script>
 
 <template>
-    <SettingsHeader :title="t('nav.profile')" :desc="t('profile.subtitle')">
-        <template #actions>
-            <span v-if="saved" class="set-chip set-chip-green"><span class="dot"></span>{{ t('common.saved') }}</span>
-            <!-- Outside the <form> on purpose: the header belongs to the shell,
-                 the form to the card. Calling submit() directly keeps one save
-                 path rather than a second one via form="" association. -->
-            <button v-if="!loading && !loadError" type="button" class="set-btn-primary"
-                :disabled="saving || !canUpdate" @click="submit">
-                {{ saving ? t('common.saving') : t('common.save') }}
-            </button>
-        </template>
-    </SettingsHeader>
+    <!-- No action in the header: the Save bar at the end of the cards is the
+         one save control, and it stays on screen while the page scrolls. -->
+    <SettingsHeader :title="t('nav.profile')" :desc="t('profile.subtitle')" />
 
     <div v-if="loading" class="set-stack-lg">
         <div class="set-skel" style="height: 420px"></div>
@@ -184,6 +152,7 @@ async function changePassword() {
     <ErrorState v-else-if="loadError" @retry="load" />
 
     <template v-else>
+      <div class="prof-stack">
         <form class="set-card set-form" @submit.prevent="submit">
             <div class="set-grid">
                 <label v-for="lng in langs" :key="'n' + lng" class="set-field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
@@ -349,48 +318,34 @@ async function changePassword() {
             </div>
         </section>
 
-        <!-- Change password — deliberately its own card and its own endpoint,
-             and not disabled when the restaurant is read-only: a lapsed
-             subscription must not lock someone out of their own password. -->
-        <form class="set-card" @submit.prevent="changePassword">
-            <div class="set-card-head">
-                <div class="set-card-head-text">
-                    <span class="set-card-title">{{ t('profile.change_password') }}</span>
-                    <span class="set-card-desc">{{ t('profile.change_password_sub') }}</span>
-                </div>
-                <span v-if="pwSaved" class="set-chip set-chip-green" style="margin-inline-start:auto"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
-            </div>
-
-            <div class="set-form">
-                <label class="set-field" style="max-width: 340px">
-                    <span class="label">{{ t('profile.current_password') }}</span>
-                    <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
-                    <FormError :errors="pwErrors" field="current_password" />
-                </label>
-
-                <div class="set-grid-sm">
-                    <label class="set-field">
-                        <span class="label">{{ t('profile.new_password') }}</span>
-                        <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                        <span class="set-inset-hint" style="margin-top: 6px">{{ t('profile.password_rule') }}</span>
-                        <FormError :errors="pwErrors" field="password" />
-                    </label>
-                    <label class="set-field">
-                        <span class="label">{{ t('profile.confirm_password') }}</span>
-                        <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                        <FormError :errors="pwErrors" field="password_confirmation" />
-                    </label>
-                </div>
-            </div>
-
-            <div class="set-card-foot">
-                <button type="submit" class="set-btn-primary" :disabled="pwSaving">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
-            </div>
-        </form>
+        <!-- Save bar: sticky to the bottom of the viewport while the profile
+             cards run past it, then parks under the last card. -->
+        <div class="save-bar">
+            <span v-if="saved" class="set-chip set-chip-green"><span class="dot"></span>{{ t('common.saved') }}</span>
+            <span v-else-if="dirty" class="save-bar-hint">{{ t('common.unsaved_changes') }}</span>
+            <button type="button" class="set-btn-primary" :disabled="saving || !canUpdate || !dirty" @click="submit">
+                {{ saving ? t('common.saving') : t('common.save_changes') }}
+            </button>
+        </div>
+      </div>
     </template>
 </template>
 
 <style scoped>
+/* The profile form + menu look share one Save; the bar is sticky inside
+   this box. */
+.prof-stack { display: flex; flex-direction: column; gap: 18px; }
+.save-bar {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+    padding: 14px 18px; border: 1px solid var(--line); border-radius: 15px;
+    background: var(--card); box-shadow: 0 -6px 24px rgba(31, 27, 22, .08);
+}
+.save-bar-hint { font-size: 13.5px; color: var(--body); }
+@media (max-width: 640px) {
+    .save-bar { padding: 12px 14px; }
+    .save-bar .set-btn-primary { flex: 1; }
+}
 .social-ico {
     font-size: 20px;
     width: 24px;

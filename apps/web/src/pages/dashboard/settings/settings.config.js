@@ -20,6 +20,8 @@ export const SETTINGS_GROUPS = [
         labelKey: 'settings_shell.group_account',
         items: [
             { key: 'profile', labelKey: 'nav.profile', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, capability: 'settings.view' },
+            // No gate: every signed-in user may change their own password.
+            { key: 'password', labelKey: 'profile.change_password', icon: 'pi pi-lock', to: { name: 'dashboard.password' } },
         ],
     },
     // Set up once, rarely touched — so they live here rather than in the
