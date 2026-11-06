@@ -354,7 +354,16 @@ void main() {
         isNull,
       );
     } finally {
-      expect(await PosMigrator(db).migrate(pg.config), [55]);
+      // Put 55 back by hand: its statements name `pos_staff`, which migration
+      // 62 renamed, so the migrator can no longer replay it on this schema.
+      final m55 = posMigrations.singleWhere((m) => m.version == 55);
+      for (final statement in m55.statements) {
+        await db.query(pg.config, statement.replaceAll('pos_staff', 'pos_users'));
+      }
+      await db.query(
+        pg.config,
+        'INSERT INTO schema_migrations (version) VALUES (55)',
+      );
     }
     expect(
       (await staff.setOwnPassword(by: owner, password: password)).succeeded,

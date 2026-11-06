@@ -40,7 +40,9 @@ void main() {
 
   const slug = 'installer-owner';
   const restaurant = 'Installer Owner';
-  final databaseName = PgFixture.nameFor('installer_owner');
+  // The database `PgFixture.open` hands out — the shared one — since the CLI
+  // and the repository have to be looking at the same rows (XORD-029).
+  final databaseName = PgFixture.sharedName;
 
   late PgFixture pg;
   late PosDatabase db;

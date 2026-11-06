@@ -67,7 +67,9 @@ void main() {
   const ownerPassword = 'owner-password';
   const terminal = '55555555-5555-4555-8555-555555555555';
 
-  final source = PgFixture.nameFor('pg_archive_restore');
+  // The database `PgFixture.open` hands out — the shared one — so the grants
+  // and the archive name the database the rows are actually in (XORD-029).
+  final source = PgFixture.sharedName;
   final target = PgFixture.nameFor('pg_archive_restore_target');
 
   late PgFixture pg;

@@ -57,6 +57,10 @@ class PgFixture {
 
     final databaseName = sharedName;
     await _ensureDatabase(address, databaseName);
+    if (!_freshForThisFile) {
+      await _resetSchema(address, databaseName);
+      _freshForThisFile = true;
+    }
 
     return PgFixture._(
       PosDatabase(credentials: InMemoryPosDbCredentials(password)),
@@ -129,6 +133,49 @@ class PgFixture {
       hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
     }
     return hash.toRadixString(16).padLeft(8, '0');
+  }
+
+  /// Whether this test file has already been given an empty schema.
+  ///
+  /// Static, so once per isolate — and `flutter test` runs each test file in
+  /// its own isolate. See [_resetSchema].
+  static bool _freshForThisFile = false;
+
+  /// Start each test FILE on an empty schema (XORD-029).
+  ///
+  /// Sharing one database meant one suite's leftovers broke every suite after
+  /// it, in two ways. A suite that leaves money history behind (an order, a
+  /// shift, a combo) makes the next one's `DELETE FROM pos_restaurants` fail:
+  /// those references are RESTRICT on purpose, because a sale must never be
+  /// deleted with its cashier. And a suite that replays an old migration by
+  /// deleting its `schema_migrations` row, and fails, leaves that row deleted —
+  /// so every later suite tries to re-run it while migrating. Rebuilding the
+  /// schema once per file keeps the one-database rule (and its single cleanup)
+  /// while making each file independent of the order it runs in. Tests inside
+  /// one file still share it, as they always did.
+  ///
+  /// Only ever this checkout's own test database ([sharedName]).
+  static Future<void> _resetSchema(String address, String name) async {
+    final connection = await Connection.open(
+      Endpoint(
+        host: address,
+        port: port,
+        database: name,
+        username: user,
+        password: password,
+      ),
+      settings: const ConnectionSettings(sslMode: SslMode.disable),
+    );
+    try {
+      await connection.execute('DROP SCHEMA IF EXISTS public CASCADE');
+      await connection.execute('CREATE SCHEMA public');
+      // As a new database leaves it, so roles the suites create can still
+      // reach their tables once granted.
+      await connection.execute('ALTER SCHEMA public OWNER TO pg_database_owner');
+      await connection.execute('GRANT USAGE ON SCHEMA public TO PUBLIC');
+    } finally {
+      await connection.close();
+    }
   }
 
   /// `CREATE DATABASE` has no `IF NOT EXISTS`, so check first. It also cannot

@@ -56,12 +56,30 @@ void main() {
     parameters: {'r': restaurantId, 'code': code},
   )).first[0]! as List).cast<String>();
 
+  /// A database as 55 left it, with roles on it, brought up to 56.
+  ///
+  /// Rebuilt rather than rewound: 56 names `pos_staff`, which 62 renamed, so it
+  /// can only run on a schema from before 62 — which is the only kind of
+  /// database it will ever meet.
+  Future<List<int>> upTo56() =>
+      PosMigrator(db, migrations: posMigrations.where((m) => m.version <= 56).toList())
+          .migrate(pg.config);
+
   Future<List<int>> before() async {
+    await db.query(pg.config, 'DROP SCHEMA public CASCADE');
+    await db.query(pg.config, 'CREATE SCHEMA public');
+    await PosMigrator(
+      db,
+      migrations: posMigrations.where((m) => m.version < 56).toList(),
+    ).migrate(pg.config);
+    restaurantId = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+    )).first[0]! as int;
     await role('manager', {PosCapability.operate, PosCapability.settingsManage});
     await role('floor_lead', {PosCapability.operate, PosCapability.settingsManage});
     await role('cashier', {PosCapability.operate});
-    await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 56');
-    return PosMigrator(db).migrate(pg.config);
+    return upTo56();
   }
 
   test('every role that managed settings keeps the order types', () async {
@@ -79,7 +97,7 @@ void main() {
   test('nothing is taken away, and running it again adds it once', () async {
     await before();
     await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 56');
-    await PosMigrator(db).migrate(pg.config);
+    await upTo56();
 
     final manager = await held('manager');
     expect(manager.where((c) => c == PosCapability.orderTypesManage), hasLength(1));
