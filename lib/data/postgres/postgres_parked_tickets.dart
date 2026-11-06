@@ -203,7 +203,10 @@ class PostgresParkedTickets {
   /// The table is matched only at the [expectedVersion] this till holds
   /// (XORD-044): a row on that table under another transaction is another
   /// till's ticket, and clearing a table must never delete somebody else's
-  /// check. Without a version only the transaction is matched.
+  /// check. With a version the transaction is matched only at it too: a copy
+  /// another till has saved over since is that till's check now, and clearing
+  /// an outdated copy — a ticket voided before anything was sent, say — must
+  /// leave it. Without a version only the transaction is matched.
   Future<void> remove({
     int? tableId,
     required String transactionId,
@@ -213,7 +216,8 @@ class PostgresParkedTickets {
       config,
         'DELETE FROM pos_parked_tickets '
         'WHERE restaurant_id = @restaurant '
-        '  AND (client_transaction_id = @txn '
+        '  AND ((client_transaction_id = @txn '
+        '        AND (@expected::int IS NULL OR version = @expected::int)) '
         '       OR (@table::bigint IS NOT NULL AND table_id = @table '
         '           AND version = @expected::int))',
         parameters: {

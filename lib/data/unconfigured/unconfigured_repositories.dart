@@ -205,6 +205,7 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async => throw StateError(
     'This terminal has nowhere to record a void. It is not connected to a '
     'database, so this cannot be recorded on this till.',

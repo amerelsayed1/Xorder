@@ -95,6 +95,7 @@ class FilingOrdersRepository implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) => _inner.voidOrder(
     ticket,
     by: by,
@@ -102,5 +103,6 @@ class FilingOrdersRepository implements OrdersRepository {
     note: note,
     approval: approval,
     servedBy: servedBy,
+    parkedVersion: parkedVersion,
   );
 }

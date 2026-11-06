@@ -1334,6 +1334,7 @@ class SyncingOrdersRepository implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async {
     final result = await _inner.voidOrder(
       ticket,
@@ -1342,6 +1343,7 @@ class SyncingOrdersRepository implements OrdersRepository {
       note: note,
       approval: approval,
       servedBy: servedBy,
+      parkedVersion: parkedVersion,
     );
     _kick();
     return result;

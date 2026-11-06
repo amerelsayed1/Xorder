@@ -266,6 +266,7 @@ class PostgresOrdersRepository implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async {
     // Before the transaction, for the reason the refund's is: `runTx` would
     // turn "you may not" into a database failure. The approver is not written
@@ -280,7 +281,7 @@ class PostgresOrdersRepository implements OrdersRepository {
     final totals = ticket.totals;
     final occurredAt = _now().toUtc();
 
-    return _db.runTx(_config, (tx) async {
+    final outcome = await _db.runTx(_config, (tx) async {
       // Same replay guard as a settlement, and for the same reason: a till that
       // retried after a timeout must not record the waste twice.
       final replay = await tx.execute(
@@ -298,6 +299,10 @@ class PostgresOrdersRepository implements OrdersRepository {
           invoiceNumber: replay.first[1] as String?,
         );
       }
+
+      // As in [submit], and before anything is numbered: a void of an outdated
+      // copy records nothing (XORD-046 follow-up).
+      if (!await _takeParkedCheck(tx, ticket, parkedVersion)) return null;
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
 
@@ -394,6 +399,7 @@ class PostgresOrdersRepository implements OrdersRepository {
         invoiceNumber: inserted.first[1] as String?,
       );
     });
+    return outcome ?? (throw CheckChangedElsewhere(ticket.tableId));
   }
 
   /// Claim this sale for the platform, in the **same transaction** that wrote it.

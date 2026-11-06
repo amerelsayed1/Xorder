@@ -557,6 +557,11 @@ abstract interface class OrdersRepository {
   /// Refused with `PermissionRefused` unless [by] holds `order.void` or
   /// [approval] is a supervisor's for this ticket — asked here as well as on
   /// the screen, so nothing that goes round the screen voids a sale.
+  ///
+  /// [parkedVersion] is checked exactly as in [submit]: voiding a copy of a
+  /// check another till has changed since throws [CheckChangedElsewhere] and
+  /// records nothing, so the other till's newer lines are neither lost from the
+  /// floor nor left out of the waste.
   Future<SubmitOrderResult> voidOrder(
     Ticket ticket, {
     required PosStaff by,
@@ -564,6 +569,7 @@ abstract interface class OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   });
 }
 

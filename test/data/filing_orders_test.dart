@@ -170,6 +170,7 @@ class _Orders implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async {
     voided.add(ticket);
     return const SubmitOrderResult(

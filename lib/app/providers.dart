@@ -1210,14 +1210,16 @@ class OpenTicketsController extends Notifier<OpenTickets> {
   /// Only this ticket is let go: another till's check on the same table is
   /// not this ticket's to clear (XORD-044).
   Future<void> settle(Ticket ticket) async {
-    final tableId = ticket.tableId;
-    final ours = tableId != null && state.onTables[tableId]?.id == ticket.id;
+    // Only at the version this till holds: an outdated copy let go here — a
+    // ticket cleared before anything was sent — must not delete the newer
+    // check another till has saved over it.
+    final version = versionOf(ticket);
     _writes++;
     try {
       await _store?.remove(
-        tableId: tableId,
+        tableId: ticket.tableId,
         transactionId: ticket.id,
-        expectedVersion: ours ? _versions[tableId] : null,
+        expectedVersion: version,
       );
     } on Object {
       // The order/void has already committed.  `load` excludes a parked row

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -225,6 +227,16 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     final outcome = await OrderVoidFlow.run(context, ref, ticket: ticket);
     if (outcome == null || !mounted) return;
 
+    if (outcome.changedElsewhere) {
+      // Another till saved over this check: voiding this copy would leave its
+      // newer lines out of the waste. Catch the floor up and say so.
+      unawaited(ref.read(openTicketsProvider.notifier).refresh());
+      posToast(
+        context,
+        context.strings.tableChangedElsewhere(ticket.tableLabel),
+      );
+      return;
+    }
     if (!outcome.shouldDiscard) {
       // The write failed and the ticket is still here on purpose. Clearing it
       // anyway would lose the food and the record of it together.

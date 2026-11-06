@@ -818,6 +818,7 @@ class FakeOrdersRepository implements OrdersRepository {
     String? note,
     Approval? approval,
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async {
     Authorization.require(
       by,

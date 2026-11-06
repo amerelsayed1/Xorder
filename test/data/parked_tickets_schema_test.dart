@@ -10,6 +10,7 @@ import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_parked_tickets.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
@@ -325,6 +326,57 @@ void main() {
           throwsA(isA<ParkedTicketChanged>()),
         );
         expect(await rowCount(), 0, reason: 'no paid check comes back');
+      });
+
+      // Voiding goes through the same guard (XORD-046 follow-up).
+      PosStaff supervisor() => PosStaff(
+        id: nour.id,
+        name: nour.name,
+        role: const PosRole(
+          id: 1,
+          code: SystemRoles.supervisorCode,
+          nameEn: 'Supervisor',
+          capabilities: SystemRoles.supervisor,
+        ),
+      );
+
+      test('voiding the current check records it and lets the table go',
+          () async {
+        final v0 = await store.save(seated(first));
+        await orders.voidOrder(
+          seated(first),
+          by: supervisor(),
+          parkedVersion: v0,
+        );
+        expect(await orderCount(), 1);
+        expect(await rowCount(), 0);
+      });
+
+      test('voiding an outdated copy is refused and nothing is recorded',
+          () async {
+        final v0 = await store.save(seated(first));
+        await other.save(seated(first, extra: 1), expectedVersion: v0);
+
+        await expectLater(
+          orders.voidOrder(seated(first), by: supervisor(), parkedVersion: v0),
+          throwsA(isA<CheckChangedElsewhere>()),
+        );
+        expect(await orderCount(), 0);
+        expect(await quantityStored(), 2, reason: "the other till's round");
+      });
+
+      test('clearing an outdated copy leaves the newer check', () async {
+        // A ticket cleared before anything was sent writes no order; it only
+        // lets go of its parked row — and must not let go of a newer one.
+        final v0 = await store.save(seated(first));
+        await other.save(seated(first, extra: 1), expectedVersion: v0);
+
+        await store.remove(
+          tableId: tableId,
+          transactionId: first,
+          expectedVersion: v0,
+        );
+        expect(await quantityStored(), 2);
       });
 
       test('paying the same sale again replays it, version or not', () async {

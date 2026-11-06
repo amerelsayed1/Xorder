@@ -8,6 +8,8 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/models/ticket.dart';
+import '../../../domain/repositories/repositories.dart'
+    show CheckChangedElsewhere;
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
 import '../../admin/presentation/supervisor_override.dart';
@@ -339,8 +341,14 @@ abstract final class OrderVoidFlow {
             reasonId: reasonId,
             note: note,
             approval: approval,
+            // As at payment: an outdated copy of a check is not voided.
+            parkedVersion: ref
+                .read(openTicketsProvider.notifier)
+                .versionOf(ticket),
           );
       return OrderVoidOutcome.recorded(result.invoiceNumber);
+    } on CheckChangedElsewhere {
+      return const OrderVoidOutcome.changedElsewhere();
     } on Object catch (error) {
       return OrderVoidOutcome.failed('$error');
     }
@@ -352,19 +360,31 @@ class OrderVoidOutcome {
   const OrderVoidOutcome.discard()
     : invoiceNumber = null,
       error = null,
+      changedElsewhere = false,
       shouldDiscard = true;
 
   const OrderVoidOutcome.recorded(this.invoiceNumber)
     : error = null,
+      changedElsewhere = false,
       shouldDiscard = true;
 
   /// The write failed. **The ticket is kept**, so the food and the record of it
   /// are not both lost.
   const OrderVoidOutcome.failed(this.error)
     : invoiceNumber = null,
+      changedElsewhere = false,
+      shouldDiscard = false;
+
+  /// Refused because another till changed this check since (XORD-046
+  /// follow-up). Nothing was recorded and the ticket is kept.
+  const OrderVoidOutcome.changedElsewhere()
+    : invoiceNumber = null,
+      error = null,
+      changedElsewhere = true,
       shouldDiscard = false;
 
   final String? invoiceNumber;
   final String? error;
+  final bool changedElsewhere;
   final bool shouldDiscard;
 }
