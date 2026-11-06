@@ -775,7 +775,11 @@ class FakeOrdersRepository implements OrdersRepository {
   var _sequence = 1041;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  }) async {
     await Future<void>.delayed(const Duration(milliseconds: 150));
 
     // Idempotent on the ticket id, exactly as the server contract requires: a

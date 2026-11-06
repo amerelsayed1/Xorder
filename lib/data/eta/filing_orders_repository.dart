@@ -40,8 +40,16 @@ class FilingOrdersRepository implements OrdersRepository {
   final void Function(EtaFilingSkipped)? onProblem;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
-    final result = await _inner.submit(ticket, servedBy: servedBy);
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  }) async {
+    final result = await _inner.submit(
+      ticket,
+      servedBy: servedBy,
+      parkedVersion: parkedVersion,
+    );
     await _file(result);
     return result;
   }

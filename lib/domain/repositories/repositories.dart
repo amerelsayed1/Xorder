@@ -486,6 +486,18 @@ class SubmitOrderResult {
   final bool totalsMismatch;
 }
 
+/// A sale refused because the table's check was changed, paid, voided or moved
+/// on another till after this till read it (XORD-045). Nothing was recorded.
+class CheckChangedElsewhere implements Exception {
+  const CheckChangedElsewhere(this.tableId);
+
+  /// The table, or null for a held ticket (XORD-046).
+  final int? tableId;
+
+  @override
+  String toString() => 'CheckChangedElsewhere(table $tableId)';
+}
+
 abstract interface class OrdersRepository {
   /// Submit a settled ticket.
   ///
@@ -499,7 +511,18 @@ abstract interface class OrdersRepository {
   /// different people, and the sale belongs to the one who closed it. Null is
   /// permitted — a till selling before anybody has signed in still records the
   /// order, unattributed, rather than refusing it.
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy});
+  ///
+  /// [parkedVersion] is the version of the table's parked check this till is
+  /// paying from (XORD-045), or null when this till never parked or opened
+  /// it. A datastore that shares the floor between tills records the sale only
+  /// if that is still the table's check, and lets go of the parked check in
+  /// the same transaction; otherwise it throws [CheckChangedElsewhere] and
+  /// records nothing.
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  });
 
   /// How many settled sales this terminal still owes the platform.
   ///

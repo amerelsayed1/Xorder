@@ -531,9 +531,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// — the parked one and the one in front of them — and whichever they then
   /// charged, the other would still be there at the day close.
   Future<void> _park(Ticket ticket) async {
-    final saved = await ref.read(openTicketsProvider.notifier).park(ticket);
-    if (!saved || !mounted) {
-      if (mounted) posToast(context, context.strings.cashCouldNotBeRecorded);
+    final outcome = await ref.read(openTicketsProvider.notifier).park(ticket);
+    if (!mounted) return;
+    if (outcome != ParkOutcome.parked) {
+      _parkRefused(outcome, ticket);
       return;
     }
     ref.read(ticketProvider.notifier).reset();
@@ -544,6 +545,15 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     });
     posToast(context, context.strings.ticketParked);
   }
+
+  /// Why [ticket] is still on screen: the database could not take it, or its
+  /// table was changed on another till (XORD-044).
+  void _parkRefused(ParkOutcome outcome, Ticket ticket) => posToast(
+    context,
+    outcome == ParkOutcome.changedElsewhere
+        ? context.strings.tableChangedElsewhere(ticket.tableLabel)
+        : context.strings.cashCouldNotBeRecorded,
+  );
 
   /// Pick a held ticket back up.
   ///
@@ -556,9 +566,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     final chosen = await HeldTicketsDialog.show(context, tickets: held);
     if (chosen == null || !mounted) return;
 
-    final saved = await ref.read(openTicketsProvider.notifier).park(live);
-    if (!saved || !mounted) {
-      if (mounted) posToast(context, context.strings.cashCouldNotBeRecorded);
+    final outcome = await ref.read(openTicketsProvider.notifier).park(live);
+    if (!mounted) return;
+    if (outcome != ParkOutcome.parked) {
+      _parkRefused(outcome, live);
       return;
     }
     ref.read(ticketProvider.notifier).adopt(chosen);

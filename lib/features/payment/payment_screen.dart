@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,7 +18,8 @@ import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
-import '../../domain/repositories/repositories.dart' show SubmitOrderResult;
+import '../../domain/repositories/repositories.dart'
+    show CheckChangedElsewhere, SubmitOrderResult;
 import '../../domain/services/authorization.dart';
 import '../admin/presentation/supervisor_override.dart';
 
@@ -183,7 +186,28 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           // Read here rather than baked into the repository: the sale belongs to
           // whoever took the money, and on a seated table that is routinely not
           // the person who opened the ticket.
-          .submit(updated, servedBy: ref.read(signedInStaffProvider));
+          .submit(
+            updated,
+            servedBy: ref.read(signedInStaffProvider),
+            // The check this till is paying from, so a copy another till has
+            // changed since is refused rather than charged short (XORD-045).
+            parkedVersion: ref
+                .read(openTicketsProvider.notifier)
+                .versionOf(updated),
+          );
+    } on CheckChangedElsewhere {
+      // Nothing was recorded. Put the ticket back as it was before the tender
+      // and catch the floor up, so the cashier reopens the table's current
+      // check and charges that.
+      controller.applyEdit(ticket);
+      unawaited(ref.read(openTicketsProvider.notifier).refresh());
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _message = strings.paymentCheckChanged(ticket.tableLabel);
+        });
+      }
+      return;
     } on Object {
       // The database did not commit the order. Restore the exact pre-tender
       // ticket so the cashier can retry without a supervisor removing a payment

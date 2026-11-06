@@ -41,7 +41,7 @@ void main() {
     final ticket = seatAndRing();
     final open = container.read(openTicketsProvider.notifier);
 
-    expect(await open.park(ticket), isTrue);
+    expect(await open.park(ticket), ParkOutcome.parked);
     // Resuming must hand back the SAME transaction: the parked ticket is the
     // sale in progress, and a new id on resume would make its settlement a
     // different sale to the server's idempotency.
@@ -61,7 +61,7 @@ void main() {
     final ticket = ringUpTakeaway();
     final open = container.read(openTicketsProvider.notifier);
 
-    expect(await open.park(ticket), isTrue);
+    expect(await open.park(ticket), ParkOutcome.parked);
 
     expect(container.read(openTicketsProvider).onTables, isEmpty);
     expect(container.read(openTicketsProvider).held, hasLength(1));
@@ -74,7 +74,7 @@ void main() {
       await container
           .read(openTicketsProvider.notifier)
           .park(container.read(ticketProvider)),
-      isTrue,
+      ParkOutcome.parked,
     );
 
     expect(container.read(openTicketsProvider).isEmpty, isTrue);
@@ -83,12 +83,12 @@ void main() {
   test('parking a held ticket again replaces it rather than doubling it', () async {
     final open = container.read(openTicketsProvider.notifier);
     final first = ringUpTakeaway();
-    expect(await open.park(first), isTrue);
+    expect(await open.park(first), ParkOutcome.parked);
 
     // Resumed, one more item rung up, put down again — the same sale.
     container.read(ticketProvider.notifier).adopt(first);
     container.read(ticketProvider.notifier).addProduct(_burger());
-    expect(await open.park(container.read(ticketProvider)), isTrue);
+    expect(await open.park(container.read(ticketProvider)), ParkOutcome.parked);
 
     final held = container.read(openTicketsProvider).held;
     expect(held, hasLength(1));
@@ -99,7 +99,7 @@ void main() {
   test('the live ticket is not offered back to itself', () async {
     final open = container.read(openTicketsProvider.notifier);
     final ticket = ringUpTakeaway();
-    expect(await open.park(ticket), isTrue);
+    expect(await open.park(ticket), ParkOutcome.parked);
 
     // A resumed hold keeps its parked row until it is paid, so it is still
     // held while it is on screen. It must not be listed as something to resume.
@@ -113,7 +113,7 @@ void main() {
   test('settlement frees the table; settling a free table is a no-op', () async {
     final ticket = seatAndRing();
     final open = container.read(openTicketsProvider.notifier);
-    expect(await open.park(ticket), isTrue);
+    expect(await open.park(ticket), ParkOutcome.parked);
     expect(container.read(openTicketsProvider).onTables, hasLength(1));
 
     await open.settle(ticket);
@@ -126,7 +126,7 @@ void main() {
   test('settling a held ticket lets go of it', () async {
     final open = container.read(openTicketsProvider.notifier);
     final ticket = ringUpTakeaway();
-    expect(await open.park(ticket), isTrue);
+    expect(await open.park(ticket), ParkOutcome.parked);
 
     await open.settle(ticket);
     expect(container.read(openTicketsProvider).held, isEmpty);
@@ -139,11 +139,40 @@ void main() {
     // coming back on the floor as a bill nobody owes.
     final open = container.read(openTicketsProvider.notifier);
     final seated = seatAndRing();
-    expect(await open.park(seated), isTrue);
+    expect(await open.park(seated), ParkOutcome.parked);
 
     container.read(ticketProvider.notifier).setOrderType(OrderType.takeaway);
     await open.settle(container.read(ticketProvider));
 
     expect(container.read(openTicketsProvider).isEmpty, isTrue);
+  });
+
+  test('a second ticket cannot be parked over a table that holds one '
+      '(XORD-044)', () async {
+    final open = container.read(openTicketsProvider.notifier);
+    final first = seatAndRing();
+    expect(await open.park(first), ParkOutcome.parked);
+
+    // A different sale seated at the same table — what a till whose floor was
+    // stale used to do, silently replacing the check already there.
+    container.read(ticketProvider.notifier).reset();
+    final second = seatAndRing();
+    expect(second.id, isNot(first.id));
+
+    expect(await open.park(second), ParkOutcome.changedElsewhere);
+    expect(open.at(12)!.id, first.id, reason: 'the first check is intact');
+    expect(open.at(12)!.lines.single.quantity, 2);
+  });
+
+  test('settling a ticket leaves another ticket on its table alone', () async {
+    final open = container.read(openTicketsProvider.notifier);
+    final first = seatAndRing();
+    expect(await open.park(first), ParkOutcome.parked);
+
+    container.read(ticketProvider.notifier).reset();
+    final stranger = seatAndRing();
+    await open.settle(stranger);
+
+    expect(open.at(12)!.id, first.id);
   });
 }

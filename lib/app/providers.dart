@@ -949,7 +949,27 @@ class OpenTickets {
 ///
 /// Write-through to `pos_parked_tickets`, so all of it survives a restart:
 /// parking upserts, settling and voiding delete, and the boot hydrates.
+/// How putting a ticket down went.
+enum ParkOutcome {
+  /// Stored, and on the floor or under Held.
+  parked,
+
+  /// The database could not take it; the live ticket stays on screen.
+  failed,
+
+  /// Refused because another till seated, changed or cleared that table since
+  /// this till last saw it (XORD-044). The floor has been asked to refresh;
+  /// the live ticket stays on screen so nothing the cashier rang up is lost.
+  changedElsewhere,
+}
+
 class OpenTicketsController extends Notifier<OpenTickets> {
+  /// How often a till re-reads the branch's parked tickets, so a table another
+  /// till seats shows busy here without a restart (XORD-044). A poll rather
+  /// than `LISTEN`: a pooled connection cannot hold a subscription, and the
+  /// compare-and-swap on save — not this refresh — is what stops an overwrite.
+  static const refreshEvery = Duration(seconds: 5);
+
   @override
   OpenTickets build() {
     ref.onDispose(() => _disposed = true);
@@ -958,10 +978,39 @@ class OpenTicketsController extends Notifier<OpenTickets> {
     // so a table seated in the seconds before hydration lands wins over its
     // own stale disk copy.
     Future.microtask(_hydrate);
+    ref.onDispose(() => _timer?.cancel());
+    _startRefreshing();
     return const OpenTickets();
   }
 
   bool _disposed = false;
+
+  Timer? _timer;
+
+  /// Start the floor refresh once this till has a database to read it from.
+  ///
+  /// Not unconditionally in [build]: a till with no database has no other
+  /// till's floor to see, and a timer ticking for nothing would outlive every
+  /// widget test that never configured one. Called again on each park, for a
+  /// till adopted after its first build.
+  void _startRefreshing() {
+    if (_timer != null || _disposed || _store == null) return;
+    _timer = Timer.periodic(refreshEvery, (_) => refresh());
+  }
+
+  /// Table id → the version of its `pos_parked_tickets` row this till last
+  /// read or wrote: what the next save of that table must still find.
+  final Map<int, int> _versions = {};
+
+  /// The same for held tickets, by transaction id (XORD-046): every till on
+  /// the branch sees the counter's held tickets and can resume one.
+  final Map<String, int> _heldVersions = {};
+
+  /// Bumped by every local write, so a refresh that was already reading when
+  /// this till parked or settled does not put the older floor back.
+  int _writes = 0;
+
+  Future<void>? _inFlight;
 
   PostgresParkedTickets? get _store {
     final config = ref.read(deploymentProvider);
@@ -995,6 +1044,12 @@ class OpenTicketsController extends Notifier<OpenTickets> {
       // landed wins over its own stale disk copy — and is not listed twice
       // beside it, which is what a plain concatenation would have done.
       final live = {for (final ticket in state.held) ticket.id};
+      for (final entry in parked.versions.entries) {
+        _versions.putIfAbsent(entry.key, () => entry.value);
+      }
+      for (final entry in parked.heldVersions.entries) {
+        _heldVersions.putIfAbsent(entry.key, () => entry.value);
+      }
       state = OpenTickets(
         onTables: {...parked.onTables, ...state.onTables},
         held: [
@@ -1009,23 +1064,110 @@ class OpenTicketsController extends Notifier<OpenTickets> {
     }
   }
 
+  /// Re-read what the branch has parked, and show it (XORD-044).
+  ///
+  /// The database is the floor now, not this till's memory: a table another
+  /// till seated appears busy, one it settled appears free. Every save to the
+  /// database happens before the state changes, so replacing the state with
+  /// what was read loses nothing this till parked — except a write that landed
+  /// while the read was in flight, which is why such a read is thrown away.
+  /// An outage keeps the floor already shown.
+  ///
+  /// A call while a refresh is already reading waits for that one.
+  Future<void> refresh() {
+    final store = _store;
+    if (store == null || _disposed) return Future.value();
+    return _inFlight ??= _refresh(store).whenComplete(() => _inFlight = null);
+  }
+
+  Future<void> _refresh(PostgresParkedTickets store) async {
+    final started = _writes;
+    try {
+      final catalog = await ref.read(catalogProvider.future);
+      final floor = await store.refresh(catalog);
+      if (_disposed || started != _writes) return;
+      if (_sameAs(floor)) return;
+      _versions
+        ..clear()
+        ..addAll(floor.versions);
+      _heldVersions
+        ..clear()
+        ..addAll(floor.heldVersions);
+      state = OpenTickets(onTables: floor.onTables, held: floor.held);
+    } on Object {
+      // Keep the floor already on screen; the next tick tries again.
+    }
+  }
+
+  /// Whether [floor] is what this till already shows — so a quiet branch does
+  /// not repaint every screen watching the floor every five seconds.
+  bool _sameAs(ParkedFloor floor) {
+    if (floor.versions.length != _versions.length ||
+        floor.onTables.length != state.onTables.length) {
+      return false;
+    }
+    for (final entry in floor.versions.entries) {
+      if (_versions[entry.key] != entry.value) return false;
+      if (state.onTables[entry.key]?.id != floor.onTables[entry.key]?.id) {
+        return false;
+      }
+    }
+    if (floor.held.length != state.held.length) return false;
+    for (var i = 0; i < floor.held.length; i++) {
+      final id = floor.held[i].id;
+      if (id != state.held[i].id) return false;
+      if (_heldVersions[id] != floor.heldVersions[id]) return false;
+    }
+    return true;
+  }
+
   /// Put a ticket down.
   ///
   /// A seated ticket goes onto its table; anything else joins [OpenTickets.held]
   /// under its own transaction id. An empty ticket is ignored rather than
   /// refused — leaving the sale screen with nothing rung up is normal, not an
   /// error, and there is nothing to come back to.
-  Future<bool> park(Ticket ticket) async {
-    if (ticket.lines.isEmpty) return true;
+  ///
+  /// **A table holds one check, whichever till wrote it (XORD-044).** A seated
+  /// ticket is saved only over the version of the table this till last saw,
+  /// and never over another ticket this till already knows is on that table;
+  /// either refusal is [ParkOutcome.changedElsewhere], and nothing is replaced.
+  /// A held ticket is saved only over the version this till last saw of it
+  /// (XORD-046): two tills that resumed the same takeaway cannot each put
+  /// theirs down over the other's.
+  Future<ParkOutcome> park(Ticket ticket) async {
+    if (ticket.lines.isEmpty) return ParkOutcome.parked;
+    final tableId = ticket.tableId;
+    final there = tableId == null ? null : state.onTables[tableId];
+    if (there != null && there.id != ticket.id) {
+      return ParkOutcome.changedElsewhere;
+    }
+    _startRefreshing();
+    _writes++;
+    int? version;
     try {
-      await _store?.save(ticket);
+      version = await _store?.save(
+        ticket,
+        expectedVersion: tableId == null
+            ? _heldVersions[ticket.id]
+            : _versions[tableId],
+      );
+    } on ParkedTicketChanged {
+      unawaited(refresh());
+      return ParkOutcome.changedElsewhere;
     } on Object {
       // Do not change the visible floor until the durable copy exists.  The
       // caller keeps the live ticket and can tell the cashier exactly that.
-      return false;
+      return ParkOutcome.failed;
     }
-    if (_disposed) return false;
-    final tableId = ticket.tableId;
+    if (_disposed) return ParkOutcome.failed;
+    if (version != null) {
+      if (tableId != null) {
+        _versions[tableId] = version;
+      } else {
+        _heldVersions[ticket.id] = version;
+      }
+    }
 
     state = tableId != null
         ? state.copyWith(onTables: {...state.onTables, tableId: ticket})
@@ -1041,10 +1183,22 @@ class OpenTicketsController extends Notifier<OpenTickets> {
             ],
           );
 
-    return true;
+    return ParkOutcome.parked;
   }
 
   Ticket? at(int tableId) => state.onTables[tableId];
+
+  /// The version of [ticket]'s parked check this till holds, for paying it
+  /// (XORD-045, XORD-046): null when this till has not parked or opened it.
+  int? versionOf(Ticket ticket) {
+    final tableId = ticket.tableId;
+    if (tableId == null) {
+      final held = state.held.any((parked) => parked.id == ticket.id);
+      return held ? _heldVersions[ticket.id] : null;
+    }
+    if (state.onTables[tableId]?.id != ticket.id) return null;
+    return _versions[tableId];
+  }
 
   /// This ticket's money has been dealt with — paid, or voided. Let it go.
   ///
@@ -1052,9 +1206,19 @@ class OpenTicketsController extends Notifier<OpenTickets> {
   /// to be identified by, and a ticket that was seated when it was parked and
   /// is not now (somebody switched a dine-in order to takeaway, which clears
   /// the table) has to release the row it actually left behind.
+  ///
+  /// Only this ticket is let go: another till's check on the same table is
+  /// not this ticket's to clear (XORD-044).
   Future<void> settle(Ticket ticket) async {
+    final tableId = ticket.tableId;
+    final ours = tableId != null && state.onTables[tableId]?.id == ticket.id;
+    _writes++;
     try {
-      await _store?.remove(tableId: ticket.tableId, transactionId: ticket.id);
+      await _store?.remove(
+        tableId: tableId,
+        transactionId: ticket.id,
+        expectedVersion: ours ? _versions[tableId] : null,
+      );
     } on Object {
       // The order/void has already committed.  `load` excludes a parked row
       // with a committed order, so a failed cleanup cannot resurrect a bill.
@@ -1062,10 +1226,9 @@ class OpenTicketsController extends Notifier<OpenTickets> {
       // the money a second time.
     }
     final tables = {...state.onTables}
-      ..removeWhere(
-        (tableId, parked) =>
-            tableId == ticket.tableId || parked.id == ticket.id,
-      );
+      ..removeWhere((_, parked) => parked.id == ticket.id);
+    _versions.removeWhere((id, _) => !tables.containsKey(id));
+    _heldVersions.remove(ticket.id);
     final held = [
       for (final parked in state.held)
         if (parked.id != ticket.id) parked,

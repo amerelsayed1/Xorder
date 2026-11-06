@@ -1306,8 +1306,16 @@ class SyncingOrdersRepository implements OrdersRepository {
   final void Function() _kick;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
-    final result = await _inner.submit(ticket, servedBy: servedBy);
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  }) async {
+    final result = await _inner.submit(
+      ticket,
+      servedBy: servedBy,
+      parkedVersion: parkedVersion,
+    );
     _kick();
     return result;
   }

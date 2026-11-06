@@ -69,11 +69,15 @@ class PostgresOrdersRepository implements OrdersRepository {
   final DateTime Function() _now;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  }) async {
     final totals = ticket.totals;
     final occurredAt = _now().toUtc();
 
-    return _db.runTx(_config, (tx) async {
+    final outcome = await _db.runTx(_config, (tx) async {
       // A replay must not consume an invoice number, so look first. The unique
       // constraint below is still the authority — this is the fast path, not the
       // guarantee.
@@ -93,6 +97,10 @@ class PostgresOrdersRepository implements OrdersRepository {
           invoiceNumber: row[1] as String?,
         );
       }
+
+      // Before anything is written or numbered: a refusal must leave no order
+      // behind, and returning from here commits nothing.
+      if (!await _takeParkedCheck(tx, ticket, parkedVersion)) return null;
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
 
@@ -194,6 +202,60 @@ class PostgresOrdersRepository implements OrdersRepository {
         invoiceNumber: inserted.first[1] as String?,
       );
     });
+    // Refused inside the transaction, thrown out here: `runTx` translates
+    // anything thrown inside it into a database failure, and this is not one.
+    return outcome ?? (throw CheckChangedElsewhere(ticket.tableId));
+  }
+
+  /// Let go of [ticket]'s parked check as part of the sale, and confirm it is
+  /// the check being paid (XORD-045, XORD-046 for a held ticket). False
+  /// refuses the sale.
+  ///
+  /// **Why inside the order's transaction.** The parked row used to be deleted
+  /// after the sale committed, by the payment screen. In that gap another till
+  /// could park a new round over the check — its version still matched — and
+  /// the delete then took the round with it: food served and never charged.
+  /// Deleting here, under the row's lock, means a park that arrives later finds
+  /// no row and is refused, and one that arrived earlier has moved the version,
+  /// so this sale is refused instead.
+  ///
+  /// Refused when the table holds this ticket at a version other than
+  /// [parkedVersion] (another till changed it), or holds nothing of this ticket
+  /// although this till paid from a parked copy (another till voided or moved
+  /// it). A ticket that was never parked — rung up and paid in one go — has no
+  /// row and no version, and is not refused. Neither is a sale on a table that
+  /// holds a different ticket: that check is not touched, and this money is
+  /// still owed. A held ticket is found by its own transaction id and judged
+  /// the same way.
+  Future<bool> _takeParkedCheck(
+    TxSession tx,
+    Ticket ticket,
+    int? parkedVersion,
+  ) async {
+    final tableId = ticket.tableId;
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT client_transaction_id::text, version FROM pos_parked_tickets '
+        'WHERE restaurant_id = @restaurant AND '
+        '${tableId != null ? 'table_id = @table' : 'client_transaction_id = @txn AND table_id IS NULL'} '
+        'FOR UPDATE',
+      ),
+      parameters: {
+        'restaurant': _context.restaurantId,
+        if (tableId != null) 'table': tableId else 'txn': ticket.id,
+      },
+    );
+    final ours = rows.isNotEmpty && rows.first[0] == ticket.id;
+    if (ours && rows.first[1] != parkedVersion) return false;
+    if (!ours && parkedVersion != null) return false;
+    await tx.execute(
+      Sql.named(
+        'DELETE FROM pos_parked_tickets '
+        'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+      ),
+      parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+    );
+    return true;
   }
 
   @override

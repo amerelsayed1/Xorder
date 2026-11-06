@@ -184,6 +184,7 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
   Future<SubmitOrderResult> submit(
     Ticket ticket, {
     PosStaff? servedBy,
+    int? parkedVersion,
   }) async => throw StateError(
     'This terminal has nowhere to record a sale. It is not connected to a '
     'database, so this sale cannot be taken on this till.',

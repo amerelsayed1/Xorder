@@ -4931,6 +4931,22 @@ const posMigrations = <PosMigration>[
     END $fn$
     ''',
   ]),
+  // A table's open check carries a version, so two tills on one branch cannot
+  // silently replace each other's check (XORD-044). Before this the seated
+  // upsert overwrote the row on `(restaurant_id, table_id)` with no check at
+  // all: a till whose floor still showed T3 free put its own ticket over the
+  // one another till had sent to the kitchen. The till's save moves it on
+  // (`PostgresParkedTickets.save`); no till older than this exists in a
+  // restaurant, so there is no blind writer to guard against.
+  //
+  // **Cost.** `ADD COLUMN ... NOT NULL DEFAULT 0` with a constant default is a
+  // catalogue change on PostgreSQL 11 and later: no table rewrite.
+  PosMigration(63, 'a table\'s open check carries a version', [
+    '''
+    ALTER TABLE pos_parked_tickets
+      ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

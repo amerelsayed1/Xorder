@@ -135,8 +135,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     // down is what Park is for, and it is one key away.
     final ticket = ref.read(ticketProvider);
     if (ticket.isSeated && ticket.lines.isNotEmpty) {
-      final saved = await ref.read(openTicketsProvider.notifier).park(ticket);
-      if (!saved || !context.mounted) return;
+      final outcome = await ref.read(openTicketsProvider.notifier).park(ticket);
+      if (!context.mounted) return;
+      if (outcome != ParkOutcome.parked) {
+        final strings = ref.read(stringsProvider);
+        posToast(
+          context,
+          outcome == ParkOutcome.changedElsewhere
+              ? strings.tableChangedElsewhere(ticket.tableLabel)
+              : strings.cashCouldNotBeRecorded,
+        );
+        return;
+      }
       ref.read(ticketProvider.notifier).reset();
     }
     if (context.mounted) context.go(location);

@@ -144,7 +144,11 @@ class _Orders implements OrdersRepository {
   final voided = <Ticket>[];
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+    int? parkedVersion,
+  }) async {
     submitted.add(ticket);
     return _result ??
         const SubmitOrderResult(

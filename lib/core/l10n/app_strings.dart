@@ -147,6 +147,14 @@ sealed class AppStrings {
   String cartStatusLine(String cashier, bool online);
   String get changeTable;
   String tableTaken(String label);
+  /// A table's check was changed on another till since this one read it, so
+  /// this till's save was refused instead of overwriting it (XORD-044).
+  /// [label] is the table's, or null for a held ticket (XORD-046).
+  String tableChangedElsewhere(String? label);
+
+  /// Payment refused: the table's check changed on another till (XORD-045).
+  /// [label] is the table's, or null for a held ticket.
+  String paymentCheckChanged(String? label);
   String get cartEmptyHelp;
   String alreadySent(int lines);
   String get newRound;
@@ -3855,6 +3863,22 @@ final class EnStrings extends AppStrings {
   @override
   String tableTaken(String label) =>
       'Table $label already has an order on it — pick an empty table.';
+  @override
+  String tableChangedElsewhere(String? label) => label == null
+      ? 'This held ticket was changed on another till, so it was not saved '
+            'over it. It is still on screen; open it again from Held to see '
+            'the current one.'
+      : 'Table $label was changed on another till, so this ticket was not '
+            'saved over it. It is still on screen; open the table again to see '
+            'its check.';
+  @override
+  String paymentCheckChanged(String? label) => label == null
+      ? 'This held ticket was changed on another till, so this payment was not '
+            'recorded. Close this, open it again from Held, and take payment '
+            'for the current one.'
+      : 'Table $label was changed on another till, so this payment was not '
+            'recorded. Close this, open the table again, and take payment for '
+            'its current check.';
   @override
   String get cartEmptyHelp =>
       'Ticket is empty. Tap a product, or press F2 and type to search. '
@@ -9429,6 +9453,18 @@ final class ArStrings extends AppStrings {
   @override
   String tableTaken(String label) =>
       'الطاولة $label عليها طلب بالفعل — اختر طاولة فارغة.';
+  @override
+  String tableChangedElsewhere(String? label) => label == null
+      ? 'تم تعديل هذا الطلب المعلَّق من جهاز آخر، فلم يُحفظ فوقه. '
+            'الطلب ما زال على الشاشة؛ افتحه مرة أخرى من المعلَّقة لترى الأحدث.'
+      : 'تم تعديل الطاولة $label من جهاز آخر، فلم يُحفظ هذا الطلب فوقها. '
+            'الطلب ما زال على الشاشة؛ افتح الطاولة مرة أخرى لترى حسابها.';
+  @override
+  String paymentCheckChanged(String? label) => label == null
+      ? 'تم تعديل هذا الطلب المعلَّق من جهاز آخر، فلم يُسجَّل هذا الدفع. '
+            'أغلق هذه الشاشة، وافتحه مرة أخرى من المعلَّقة، وحصّل الأحدث.'
+      : 'تم تعديل الطاولة $label من جهاز آخر، فلم يُسجَّل هذا الدفع. '
+            'أغلق هذه الشاشة، وافتح الطاولة مرة أخرى، وحصّل حسابها الحالي.';
   @override
   String get cartEmptyHelp =>
       'الطلب فارغ. اضغط على أي صنف، أو اضغط F2 واكتب للبحث. الأصناف التي لها '
