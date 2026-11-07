@@ -22,7 +22,7 @@ abstract final class LicenseKeys {
   ///
   /// They are build-time values rather than a checked-in release constant so a
   /// compromised/retired issuer can be rotated without giving the development
-  /// issuer authority over restaurant binaries.  A release build that omits
+  /// issuer authority over business binaries.  A release build that omits
   /// either value fails closed when the verifier is constructed.
   static const _releaseB64 = String.fromEnvironment(
     'XORDER_LICENSE_PUBLIC_KEY_B64',

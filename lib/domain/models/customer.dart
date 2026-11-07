@@ -1,7 +1,7 @@
 /// Somebody the food is for.
 ///
 /// **The phone is the identity** (POS-BE-014). The platform's directory keys on
-/// `restaurant_id + phone` and normalises Arabic-Indic digits before it looks,
+/// `business_id + phone` and normalises Arabic-Indic digits before it looks,
 /// so the till does the same and matches on the same form — a second rule here
 /// would split one regular into two the first time somebody typed ٠١٠ instead
 /// of 010, and nobody would notice until a report asked how often they order.

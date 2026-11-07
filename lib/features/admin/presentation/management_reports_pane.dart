@@ -743,7 +743,7 @@ class _Payments extends StatelessWidget {
                     color: colors[i % colors.length],
                   ),
                   const SizedBox(width: PosSpace.sm),
-                  // As written on the payment rows — the restaurant's own
+                  // As written on the payment rows — the business's own
                   // name for the method, in whatever language it chose.
                   Expanded(
                     child: Text(

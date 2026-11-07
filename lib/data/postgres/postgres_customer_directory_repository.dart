@@ -16,7 +16,7 @@ class PostgresCustomerDirectoryRepository
   const PostgresCustomerDirectoryRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.currency = 'EGP',
     this.exponent = 2,
@@ -24,7 +24,7 @@ class PostgresCustomerDirectoryRepository
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String currency;
   final int exponent;
@@ -62,14 +62,14 @@ class PostgresCustomerDirectoryRepository
              AND o.branch_id = @branch
              AND o.status = ANY(@settled::text[])
         ) AS s ON true
-       WHERE c.restaurant_id = @r
+       WHERE c.business_id = @r
          ${trimmed.isEmpty ? '' : 'AND (lower(c.name) LIKE @name '
               '${digits.isEmpty ? '' : 'OR c.phone LIKE @phone'})'}
        ORDER BY s.last_at DESC NULLS LAST, lower(c.name), c.id
        LIMIT @limit
       ''',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'branch': branchId,
         'settled': _settled,
         'limit': limit,
@@ -115,7 +115,7 @@ class PostgresCustomerDirectoryRepository
         FROM pos_orders AS o
         JOIN pos_customers AS c ON c.id = o.customer_id
        WHERE o.customer_id = @customer
-         AND c.restaurant_id = @r
+         AND c.business_id = @r
          AND o.branch_id = @branch
          AND o.status = ANY(@settled::text[])
        ORDER BY o.occurred_at DESC, o.id DESC
@@ -123,7 +123,7 @@ class PostgresCustomerDirectoryRepository
       ''',
       parameters: {
         'customer': customerId,
-        'r': restaurantId,
+        'r': businessId,
         'branch': branchId,
         'settled': _settled,
         'limit': limit,

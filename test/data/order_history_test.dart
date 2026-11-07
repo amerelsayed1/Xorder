@@ -25,7 +25,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int nourId;
@@ -52,7 +52,7 @@ void main() {
   }) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, table_label, guest_count, '
       '  currency, exponent, subtotal_minor, discount_minor, service_minor, '
       '  vat_minor, total_minor, occurred_at, status, served_by, voided_by, '
@@ -62,7 +62,7 @@ void main() {
       '  @at::timestamptz, @status, @served, @voidedBy, '
       '  @voidedAt::timestamptz, @reason, @note) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         'invoice': invoice,
         'type': orderType,
@@ -128,12 +128,12 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('hist', 'History') RETURNING id",
                 ))
                 .first[0]
@@ -142,9 +142,9 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'HST', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -152,19 +152,19 @@ void main() {
     otherBranchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'HS2', 'Second') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
 
     Future<int> staff(String name, String username) async => (await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, 'salt', 'hash') RETURNING id",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'n': name,
         'u': username,
@@ -177,10 +177,10 @@ void main() {
     reasonId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_reason_codes (restaurant_id, scope, code, '
+                  'INSERT INTO pos_reason_codes (business_id, scope, code, '
                   "  name_en, name_ar) VALUES (@r, 'void', 'wrong_order', "
                   "  'Wrong order', 'طلب خاطئ') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -188,7 +188,7 @@ void main() {
     repository = PostgresOrderHistoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -265,7 +265,7 @@ void main() {
       ]);
     });
 
-    test('never returns another branch, even in the same restaurant', () async {
+    test('never returns another branch, even in the same business', () async {
       await insertOrder(invoice: 'MINE', occurredAt: DateTime(2026, 9, 7, 12));
       await insertOrder(
         invoice: 'THEIRS',

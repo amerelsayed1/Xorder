@@ -14,7 +14,7 @@ import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 import 'stock_item_dialog.dart';
 
-/// What the restaurant buys and counts — on the menu or not.
+/// What the business buys and counts — on the menu or not.
 ///
 /// Chicken, cooking oil, gas cylinders: bought from suppliers, received into
 /// stock, never rung up at the till. And the bottled water it also sells,

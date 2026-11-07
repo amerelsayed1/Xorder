@@ -16,7 +16,7 @@ import 'pg_fixture.dart';
 /// XORD-044, through the real provider graph: two tills on one branch database.
 ///
 /// Each till is its own [ProviderContainer] with its own floor in memory, both
-/// bound to the same PostgreSQL — which is exactly a restaurant with a counter
+/// bound to the same PostgreSQL — which is exactly a business with a counter
 /// till and a second till by the terrace. Before the fix the second till's
 /// floor never changed after boot, and parking on a table it believed free
 /// replaced the first till's check on that table.
@@ -29,7 +29,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late DiningTable t3;
 
@@ -37,24 +37,24 @@ void main() {
     pg = await PgFixture.open('floor_two_tills');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('floor', 'Floor') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('floor', 'Floor') "
       'RETURNING id',
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     final tableId = (await db.query(
       pg.config,
-      'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) '
+      'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats) '
       "VALUES (@r, @b, 'T3', 4) RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     )).first[0]! as int;
     t3 = DiningTable(id: tableId, label: 'T3', seats: 4);
   });
@@ -73,7 +73,7 @@ void main() {
     addTearDown(container.dispose);
     container.read(deploymentProvider.notifier).apply(pg.config);
     container.read(terminalProfileProvider.notifier).apply(TerminalProfile(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           branchCode: 'MAIN',
           branchName: 'Main',

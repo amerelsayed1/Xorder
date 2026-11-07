@@ -29,8 +29,8 @@ class PostgresBranchRepository implements BranchRepository {
     final rows = await _db.query(
       _config,
       'SELECT id, name, code, supported_order_types, is_active FROM pos_branches '
-      'WHERE restaurant_id = @restaurant AND is_active ORDER BY name',
-      parameters: {'restaurant': tenant.id},
+      'WHERE business_id = @business AND is_active ORDER BY name',
+      parameters: {'business': tenant.id},
     );
 
     return [
@@ -50,7 +50,7 @@ class PostgresBranchRepository implements BranchRepository {
 ///
 /// Both paths land on the same `pos_terminals` row, which is the point: a till
 /// set up by hand and a till claimed with a code are equally visible to whoever
-/// is looking at the restaurant's terminals.
+/// is looking at the business's terminals.
 class PostgresProvisioningRepository implements ProvisioningRepository {
   PostgresProvisioningRepository({
     required PosDatabase database,
@@ -77,8 +77,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
       _config,
       'SELECT t.id, t.name, t.sync_policy, t.claimed_at, b.id, b.name, b.code '
       'FROM pos_terminals t JOIN pos_branches b ON b.id = t.branch_id '
-      'WHERE t.restaurant_id = @restaurant AND t.pairing_code = @code',
-      parameters: {'restaurant': tenant.id, 'code': normalised},
+      'WHERE t.business_id = @business AND t.pairing_code = @code',
+      parameters: {'business': tenant.id, 'code': normalised},
     );
 
     if (rows.isEmpty) {
@@ -126,7 +126,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
         branchId: row[4] as int,
         branchName: row[5] as String,
         branchCode: row[6] as String?,
-        restaurantId: tenant.id,
+        businessId: tenant.id,
       ),
     );
   }
@@ -148,7 +148,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
       return TenantConnection(
         code: 'TENANT_UNKNOWN',
         message:
-            'No restaurant named "${tenantSlug.trim()}" exists on this '
+            'No business named "${tenantSlug.trim()}" exists on this '
             'server. Check the short name on the previous step.',
       );
     }
@@ -156,8 +156,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     final staff = await _db.query(
       _config,
       'SELECT pin_salt, pin_hash FROM pos_users '
-      'WHERE restaurant_id = @restaurant AND username = @username AND is_active',
-      parameters: {'restaurant': tenant.id, 'username': username.trim()},
+      'WHERE business_id = @business AND username = @username AND is_active',
+      parameters: {'business': tenant.id, 'username': username.trim()},
     );
     final authorised =
         staff.isNotEmpty &&
@@ -178,8 +178,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     final branches = await _db.query(
       _config,
       'SELECT id, name, code, supported_order_types FROM pos_branches '
-      'WHERE restaurant_id = @restaurant AND is_active ORDER BY name',
-      parameters: {'restaurant': tenant.id},
+      'WHERE business_id = @business AND is_active ORDER BY name',
+      parameters: {'business': tenant.id},
     );
     return TenantConnection(
       tenantName: tenant.name,
@@ -236,8 +236,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     final staff = await _db.query(
       _config,
       'SELECT pin_salt, pin_hash FROM pos_users '
-      'WHERE restaurant_id = @restaurant AND username = @username AND is_active',
-      parameters: {'restaurant': tenant.id, 'username': username.trim()},
+      'WHERE business_id = @business AND username = @username AND is_active',
+      parameters: {'business': tenant.id, 'username': username.trim()},
     );
 
     final authorised =
@@ -262,8 +262,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     final branch = await _db.query(
       _config,
       'SELECT id, name, code FROM pos_branches '
-      'WHERE id = @branch AND restaurant_id = @restaurant AND is_active',
-      parameters: {'branch': branchId, 'restaurant': tenant.id},
+      'WHERE id = @branch AND business_id = @business AND is_active',
+      parameters: {'branch': branchId, 'business': tenant.id},
     );
     if (branch.isEmpty) {
       return const ClaimResult(
@@ -275,9 +275,9 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     // An upsert on the machine, not an insert per call. This used to mint a
     // fresh id every time, so a wizard retried, killed and re-run, or run again
     // after a reset left one row per attempt — and a child's seat check counts
-    // those rows against `max_terminals`, so a restaurant could run out of
+    // those rows against `max_terminals`, so a business could run out of
     // terminals it never had. Keyed on the installation id (migration 54) and
-    // scoped to the restaurant, so the same machine moved to another tenant is
+    // scoped to the business, so the same machine moved to another tenant is
     // a new terminal there. The fresh uuid is only used when no row matches:
     // RETURNING hands back the id the machine registered with the first time,
     // which is the id its orders and shifts already carry.
@@ -294,15 +294,15 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     final rows = await _db.query(
       _config,
       'INSERT INTO pos_terminals '
-      '(id, restaurant_id, branch_id, name, install_id, claimed_at) '
-      'VALUES (@id, @restaurant, @branch, @name, @install, now()) '
-      'ON CONFLICT (restaurant_id, install_id) WHERE install_id IS NOT NULL '
+      '(id, business_id, branch_id, name, install_id, claimed_at) '
+      'VALUES (@id, @business, @branch, @name, @install, now()) '
+      'ON CONFLICT (business_id, install_id) WHERE install_id IS NOT NULL '
       'DO UPDATE SET name = EXCLUDED.name, branch_id = EXCLUDED.branch_id, '
       'claimed_at = now() '
       'RETURNING id',
       parameters: {
         'id': _uuid.v4(),
-        'restaurant': tenant.id,
+        'business': tenant.id,
         'branch': branchId,
         'name': terminalName.trim(),
         'install': switch (installId?.trim()) {
@@ -321,7 +321,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
         branchId: branch.first[0] as int,
         branchName: branch.first[1] as String,
         branchCode: branch.first[2] as String?,
-        restaurantId: tenant.id,
+        businessId: tenant.id,
       ),
     );
   }
@@ -330,7 +330,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     if (slug.trim().isEmpty) return null;
     final rows = await _db.query(
       _config,
-      'SELECT id, name FROM pos_restaurants WHERE slug = @slug AND is_active',
+      'SELECT id, name FROM pos_businesses WHERE slug = @slug AND is_active',
       parameters: {'slug': slug.trim().toLowerCase()},
     );
     if (rows.isEmpty) return null;
@@ -340,7 +340,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
   ClaimResult _unknownTenant(String slug) => ClaimResult(
     code: 'TENANT_UNKNOWN',
     message:
-        'No restaurant named "${slug.trim()}" exists on this server. '
+        'No business named "${slug.trim()}" exists on this server. '
         'Check the short name on the previous step.',
   );
 }
@@ -356,14 +356,14 @@ class PostgresSessionRepository implements SessionRepository {
   const PostgresSessionRepository({
     required PosDatabase database,
     required this._config,
-    required this._restaurantId,
+    required this._businessId,
     required this._branchId,
     required this._terminalId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
-  final int _restaurantId;
+  final int _businessId;
   final int _branchId;
   final String _terminalId;
 
@@ -372,7 +372,7 @@ class PostgresSessionRepository implements SessionRepository {
     final rows = await _db.query(
       _config,
       'SELECT r.name, b.name, t.name, s.name, s.capabilities '
-      'FROM pos_restaurants r '
+      'FROM pos_businesses r '
       'JOIN pos_branches b ON b.id = @branch '
       // `id::text`, not `id = @terminal`: the parameter arrives as a string and
       // PostgreSQL will not compare uuid to text without being told to.
@@ -384,13 +384,13 @@ class PostgresSessionRepository implements SessionRepository {
       "  SELECT st.name, st.capabilities || coalesce(ro.capabilities, '{}'::text[]) "
       '    AS capabilities '
       '  FROM pos_users st LEFT JOIN pos_roles ro ON ro.id = st.role_id '
-      '  WHERE st.restaurant_id = r.id AND st.is_active '
+      '  WHERE st.business_id = r.id AND st.is_active '
       '    AND (st.branch_id IS NULL OR st.branch_id = @branch) '
       '  ORDER BY st.id LIMIT 1'
       ') s ON true '
-      'WHERE r.id = @restaurant',
+      'WHERE r.id = @business',
       parameters: {
-        'restaurant': _restaurantId,
+        'business': _businessId,
         'branch': _branchId,
         'terminal': _terminalId,
       },
@@ -398,7 +398,7 @@ class PostgresSessionRepository implements SessionRepository {
 
     if (rows.isEmpty) {
       throw StateError(
-        'This terminal is configured for a restaurant, branch or terminal that '
+        'This terminal is configured for a business, branch or terminal that '
         'is no longer on the branch server. Re-run setup.',
       );
     }
@@ -441,7 +441,7 @@ class PostgresSessionRepository implements SessionRepository {
   /// **Checked inside the walk, not after it.** The first version asked
   /// [signIn] for whoever held the PIN and then compared the username to that
   /// answer — which fails the moment two people share a PIN, and two people
-  /// sharing a PIN is not exotic: it is what a restaurant does on its first
+  /// sharing a PIN is not exotic: it is what a business does on its first
   /// afternoon. The lower staff id always won the match, so everybody else with
   /// that PIN was refused under their own name, with a message that read as
   /// though they had typed it wrong.
@@ -478,12 +478,12 @@ class PostgresSessionRepository implements SessionRepository {
         'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, '
         '       $joinedRoleColumns, s.password_hash '
         'FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
-        'WHERE s.restaurant_id = @restaurant AND s.is_active '
+        'WHERE s.business_id = @business AND s.is_active '
         '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
         '  AND lower(trim(s.username)) = @username '
         'ORDER BY s.id',
         parameters: {
-          'restaurant': _restaurantId,
+          'business': _businessId,
           'branch': _branchId,
           'username': wanted,
         },
@@ -532,10 +532,10 @@ class PostgresSessionRepository implements SessionRepository {
       'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, $joinedRoleColumns, '
       '       s.pin_salt, s.pin_hash '
       'FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
-      'WHERE s.restaurant_id = @restaurant AND s.is_active '
+      'WHERE s.business_id = @business AND s.is_active '
       '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
       'ORDER BY s.id',
-      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+      parameters: {'business': _businessId, 'branch': _branchId},
     );
 
     PosStaff? matched;
@@ -601,12 +601,12 @@ class PostgresSessionRepository implements SessionRepository {
         _config,
         'SELECT subject_type, limit_key, limit_bp, limit_minor '
         'FROM pos_permission_limits '
-        'WHERE restaurant_id = @restaurant AND ('
+        'WHERE business_id = @business AND ('
         "  (subject_type = 'staff' AND subject_id = @staff) OR "
         "  (subject_type = 'role' AND subject_id = ANY(@roles))) "
         'ORDER BY subject_type DESC',
         parameters: {
-          'restaurant': _restaurantId,
+          'business': _businessId,
           'staff': staff.id,
           'roles': [
             if (staff.role case final own?) own.id,

@@ -13,7 +13,7 @@ class PostgresStockLevelsRepository implements StockLevelsRepository {
   const PostgresStockLevelsRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.currency = 'EGP',
     this.exponent = 2,
@@ -21,7 +21,7 @@ class PostgresStockLevelsRepository implements StockLevelsRepository {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String currency;
   final int exponent;
@@ -41,10 +41,10 @@ class PostgresStockLevelsRepository implements StockLevelsRepository {
       'FROM pos_products p '
       'LEFT JOIN pos_stock_levels l '
       '  ON l.product_id = p.id AND l.branch_id = @branch '
-      'WHERE p.restaurant_id = @restaurant '
+      'WHERE p.business_id = @business '
       '  AND (p.is_stocked OR l.product_id IS NOT NULL) '
       'ORDER BY lower(p.name_en), p.id',
-      parameters: {'restaurant': restaurantId, 'branch': branchId},
+      parameters: {'business': businessId, 'branch': branchId},
     );
     return [
       for (final row in rows)

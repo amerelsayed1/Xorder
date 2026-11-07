@@ -10,7 +10,7 @@ enum StaffStatusFilter { all, active, disabled }
 
 /// The Users table's filters: status, role and a name search.
 ///
-/// In memory over the directory the pane has already loaded. A restaurant has
+/// In memory over the directory the pane has already loaded. A business has
 /// tens of staff, not thousands, and a query per keystroke would put a round
 /// trip to the branch server between a manager and a list that fits on screen.
 class StaffFilter {
@@ -101,7 +101,7 @@ class UsersKpis {
 ///
 /// **Generated, never drawn.** Rows are [CapabilityGroup], the grouping the
 /// Roles pane edits in, so a row here reads against the section of the editor
-/// that changes it; columns are the restaurant's roles as loaded; each cell is
+/// that changes it; columns are the business's roles as loaded; each cell is
 /// counted from the role's own capability set. A hand-drawn table would have
 /// been simpler to lay out and would have been wrong the first time an owner
 /// ticked a box — and a matrix that disagrees with the Roles pane is worse

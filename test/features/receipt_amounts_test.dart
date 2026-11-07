@@ -427,7 +427,7 @@ void main() {
       expect(find.text('115.00 EGP'), findsOneWidget);
     });
 
-    testWidgets('a logo is drawn above the restaurant name, in a box', (
+    testWidgets('a logo is drawn above the business name, in a box', (
       tester,
     ) async {
       await pump(

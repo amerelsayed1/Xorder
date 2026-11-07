@@ -28,7 +28,7 @@ abstract final class E2eAppFiles {
   /// suite activates a licence for its own throwaway tenant, so a run left the
   /// developer's machine holding `e2e-diner` — and since the wizard adopts the
   /// tenant off whatever licence is installed, the next real licence pasted in
-  /// by hand was refused as belonging to the wrong restaurant. The suite has to
+  /// by hand was refused as belonging to the wrong business. The suite has to
   /// leave the machine as it found it.
   static Future<void> preserveTerminalConfig() async {
     final directory = await getApplicationSupportDirectory();

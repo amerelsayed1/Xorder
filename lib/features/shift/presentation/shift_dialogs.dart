@@ -133,7 +133,7 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     // the same act by another name: the person becomes the operator, and the
     // drawer becomes theirs to answer for. A PIN alone hands that to whichever
     // active member of staff happens to hold those four digits — which, in a
-    // restaurant where two people were set up on the same PIN, is not
+    // business where two people were set up on the same PIN, is not
     // necessarily the person standing at the till.
     final staff = await ref
         .read(sessionRepositoryProvider)
@@ -378,7 +378,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
 
   /// Whether the expected figure is hidden while this person counts.
   ///
-  /// Two conditions, and both have to hold: the restaurant asked for blind
+  /// Two conditions, and both have to hold: the business asked for blind
   /// counting, **and** this person does not hold `shift.view_expected_cash`.
   /// A manager counting their own drawer under a blind policy still sees the
   /// figure, because withholding it from the person who set the policy

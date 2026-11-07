@@ -8,14 +8,14 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 
 import '../support/fakes.dart';
 
-/// The restaurant's named rates reach the ticket.
+/// The business's named rates reach the ticket.
 ///
 /// **This is the half that was missing.** `pos_tax_groups` has been seeded since
 /// the installer wrote it and `pos_products.tax_group_id` has pointed at it since
 /// Wave M; the domain has been taxing per group correctly all along —
 /// `tax_lines_test.dart` proves it. What nothing did was *load* the groups, so
 /// `TaxConfig.taxGroups` arrived empty on every till, `defaultTaxGroup` answered
-/// every lookup, and a bottle of water a restaurant had marked zero-rated was
+/// every lookup, and a bottle of water a business had marked zero-rated was
 /// charged the standard rate anyway.
 void main() {
   const standard = TaxGroup(
@@ -39,7 +39,7 @@ void main() {
   }
 
   test('with no groups configured, nothing changes', () async {
-    // The property that lets this ship: a restaurant that has configured none is
+    // The property that lets this ship: a business that has configured none is
     // charged exactly what it was.
     final container = withGroups(const []);
     await container.read(taxGroupsProvider.future);

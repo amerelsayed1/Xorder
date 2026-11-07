@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// The Windows installer is three files in two languages that must agree, on a
 /// platform none of this suite runs on. So they are read as text and checked
 /// against each other: the one kind of break that would otherwise only show up
-/// on a restaurant's machine.
+/// on a business's machine.
 void main() {
   final ps1 = File('installer/provision.ps1').readAsStringSync();
 

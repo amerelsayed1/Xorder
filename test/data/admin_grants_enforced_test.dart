@@ -97,7 +97,7 @@ void main() {
     // Menu pane makes, and every one of them was refused.
     expect(
       await refusalFor(
-        "INSERT INTO pos_categories (restaurant_id, name_en) "
+        "INSERT INTO pos_categories (business_id, name_en) "
         "VALUES (1, 'Grills')",
       ),
       isNot('42501'),
@@ -145,7 +145,7 @@ void main() {
     expect(await refusalFor('DELETE FROM pos_modifier_groups'), isNull);
   });
 
-  test('Management can author what the restaurant charges', () async {
+  test('Management can author what the business charges', () async {
     expect(await refusalFor('SELECT 1 FROM pos_money_config'), isNull);
     expect(await refusalFor('SELECT 1 FROM pos_tax_groups'), isNull);
   });
@@ -185,7 +185,7 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_financial_accounts'), isNull);
     expect(
       await refusalFor(
-        'INSERT INTO pos_financial_accounts (restaurant_id, name, kind) '
+        'INSERT INTO pos_financial_accounts (business_id, name, kind) '
         "VALUES (1, 'probe', 'cash')",
       ),
       isNot('42501'),

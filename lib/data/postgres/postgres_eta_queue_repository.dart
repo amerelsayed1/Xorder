@@ -19,13 +19,13 @@ class PostgresEtaQueueRepository implements EtaQueueRepository {
   const PostgresEtaQueueRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   @override
@@ -56,16 +56,16 @@ class PostgresEtaQueueRepository implements EtaQueueRepository {
     final inserted = await tx.execute(
       Sql.named('''
       INSERT INTO pos_eta_receipts
-        (restaurant_id, branch_id, order_id, refund_id, device_serial, uuid,
+        (business_id, branch_id, order_id, refund_id, device_serial, uuid,
          previous_uuid, receipt_number, receipt_type, document, canonical,
          issued_at, status)
       VALUES
-        (@restaurant, @branch, @order, @refund, @device, @uuid, @previous,
+        (@business, @branch, @order, @refund, @device, @uuid, @previous,
          @number, @type, @document::jsonb, @canonical, @issued, 'pending')
       RETURNING id
       '''),
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'order': orderId,
         'refund': refundId,

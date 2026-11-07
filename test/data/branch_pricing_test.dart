@@ -12,7 +12,7 @@ import 'pg_fixture.dart';
 ///
 /// Delivery prices differ from dine-in almost universally, and a two-branch
 /// group rarely prices both shops the same. The schema had one price per
-/// product per restaurant and no way to say otherwise.
+/// product per business and no way to say otherwise.
 void main() {
   if (PgFixture.host == null) {
     test('branch pricing (skipped — set POS_PG_HOST)', () {}, skip: true);
@@ -21,7 +21,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int mainId;
   late int secondId;
   late int categoryId;
@@ -49,12 +49,12 @@ void main() {
     pg = await PgFixture.open('branch_pricing');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('bp', 'Branch Pricing') RETURNING id",
                 ))
                 .first[0]
@@ -63,37 +63,37 @@ void main() {
     mainId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'BP1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     secondId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'BP2', 'Second') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     categoryId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_categories (restaurant_id, name_en) '
+                  'INSERT INTO pos_categories (business_id, name_en) '
                   "VALUES (@r, 'Mains') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     productId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_products (restaurant_id, category_id, '
+                  'INSERT INTO pos_products (business_id, category_id, '
                   "  name_en, price_minor) VALUES (@r, @c, 'Koshari', 5000) "
                   'RETURNING id',
-                  parameters: {'r': restaurantId, 'c': categoryId},
+                  parameters: {'r': businessId, 'c': categoryId},
                 ))
                 .first[0]
             as int;
@@ -104,7 +104,7 @@ void main() {
   Future<int> priceAt(int? branch) async {
     final catalog = await PostgresCatalogRepository(
       database: db,
-      // The slug is how a till names its restaurant — every read repository
+      // The slug is how a till names its business — every read repository
       // resolves the tenant from it before it can ask anything.
       config: pg.config.copyWith(tenantSlug: 'bp'),
       branchId: branch,

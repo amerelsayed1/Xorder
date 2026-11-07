@@ -14,7 +14,7 @@ import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 import 'service_charge_dialog.dart';
 
-/// What the restaurant adds on top of the food (§38).
+/// What the business adds on top of the food (§38).
 ///
 /// **Its own pane, out of the Money pane.** It sat under the single service rate
 /// it supersedes, which was the right place while it was a new section beside
@@ -22,7 +22,7 @@ import 'service_charge_dialog.dart';
 /// a manager had to scroll past tax to reach it.
 ///
 /// Local on both deployments. Nothing seeds `pos_service_charges`, so a cloud
-/// restaurant configures its own — unlike the tax rates, which are the
+/// business configures its own — unlike the tax rates, which are the
 /// platform's.
 class ManagementChargesPane extends ConsumerStatefulWidget {
   const ManagementChargesPane({required this.admin, super.key});

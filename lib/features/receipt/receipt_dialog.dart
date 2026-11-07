@@ -294,7 +294,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   /// and are not: `countsAsCash` decides what a cash-up says a drawer should
   /// have held weeks later, so it has to be frozen at the moment the money
   /// moved. This decides whether a solenoid fires in the next half second, and
-  /// the only correct answer to that is what the restaurant has configured
+  /// the only correct answer to that is what the business has configured
   /// right now.
   /// The till's tender types, for the Arabic name on the slip. The seeded list
   /// while they load, which is what the payment screen falls back to as well.

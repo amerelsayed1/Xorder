@@ -3,7 +3,7 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 
-/// What the restaurant asked for, and what arrived.
+/// What the business asked for, and what arrived.
 ///
 /// The rules worth testing are the ones about *when* an order may change. A
 /// buyer editing an order that has already gone out is normal operation, and
@@ -192,7 +192,7 @@ void main() {
 
     test('a sent order does not', () {
       // It has gone to the supplier. Changing what it says here would leave
-      // the restaurant and the supplier holding different pieces of paper.
+      // the business and the supplier holding different pieces of paper.
       final result = PurchaseEngine.addLine(
         order(status: PurchaseStatus.sent),
         line(id: 2),

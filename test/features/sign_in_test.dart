@@ -212,7 +212,7 @@ void main() {
       branchName: 'Maadi',
       terminalName: 'Counter 1',
       terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
-      restaurantId: 7,
+      businessId: 7,
       branchCode: 'MAA',
     );
     const saved = SavedTerminalConfig(

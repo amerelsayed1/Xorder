@@ -4,7 +4,7 @@ import 'package:xorder_pos/data/cloud/bootstrap_bundle.dart';
 /// XORD-021 — what the bundle's `branding` block means to a till.
 ///
 /// No PostgreSQL needed: this is parsing only. The part that matters is the
-/// difference between "the restaurant has no logo" (a block with a null) and
+/// difference between "the business has no logo" (a block with a null) and
 /// "this platform says nothing about logos" (no block), because one removes a
 /// logo from the till and the other must leave it alone.
 void main() {

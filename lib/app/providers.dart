@@ -141,8 +141,8 @@ const _uuid = Uuid();
 /// **Every one of these reads the branch server's PostgreSQL, or returns
 /// nothing.** Until recently they all resolved to a `Fake…` implementation, and
 /// because nothing distinguished a release build from a debug one, that meant a
-/// real restaurant installing the till opened it to a menu, a floor plan and a
-/// cashier belonging to a fictional restaurant — while the money path wrote real
+/// real business installing the till opened it to a menu, a floor plan and a
+/// cashier belonging to a fictional business — while the money path wrote real
 /// rows to a real database. Convincing and wrong is the worst combination a
 /// point of sale can have.
 ///
@@ -166,7 +166,7 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
     return const UnconfiguredCatalogRepository();
   }
 
-  // Scoped by tenant slug rather than by the numeric restaurant id, because the
+  // Scoped by tenant slug rather than by the numeric business id, because the
   // catalogue is first pulled during setup — before a terminal has been claimed
   // and an id is known.
   return PostgresCatalogRepository(
@@ -177,7 +177,7 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
   );
 });
 
-/// The discounts this restaurant offers, and the ceiling a role may give away.
+/// The discounts this business offers, and the ceiling a role may give away.
 final discountsRepositoryProvider = Provider<DiscountsRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
@@ -192,11 +192,11 @@ final discountsRepositoryProvider = Provider<DiscountsRepository>((ref) {
   return PostgresDiscountsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
   );
 });
 
-/// Everything the restaurant currently offers. Refreshed when the till does.
+/// Everything the business currently offers. Refreshed when the till does.
 final discountsProvider = FutureProvider<List<Discount>>(
   (ref) => ref.watch(discountsRepositoryProvider).all(),
 );
@@ -208,7 +208,7 @@ final discountLimitProvider = FutureProvider<DiscountLimit>(
       .limitFor(ref.watch(signedInStaffProvider)),
 );
 
-/// The reason lists this restaurant picks from.
+/// The reason lists this business picks from.
 final reasonsRepositoryProvider = Provider<ReasonsRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
@@ -219,7 +219,7 @@ final reasonsRepositoryProvider = Provider<ReasonsRepository>((ref) {
   return PostgresReasonsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
   );
 });
 
@@ -239,7 +239,7 @@ final tablesRepositoryProvider = Provider<TablesRepository>((ref) {
   return PostgresFloorRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -254,7 +254,7 @@ final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
   return PostgresSessionRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -330,8 +330,8 @@ final orderHistoryRepositoryProvider = Provider<OrderHistoryRepository>((ref) {
   return PostgresOrderHistoryRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
-    // Branch-scoped, not merely restaurant-scoped. A till lists the orders
+    businessId: context.businessId,
+    // Branch-scoped, not merely business-scoped. A till lists the orders
     // taken at the counter it is standing on; showing another shop's takings
     // would be a privacy problem before it was a usability one.
     branchId: context.branchId,
@@ -498,9 +498,9 @@ final branchDatabaseProvider = FutureProvider<PosDbFailure?>((ref) async {
   return ref.watch(posDatabaseProvider).probe(config);
 });
 
-/// What the restaurant has configured.
+/// What the business has configured.
 ///
-/// Read once and resolved — restaurant, then branch, then terminal. Everything
+/// Read once and resolved — business, then branch, then terminal. Everything
 /// policy-shaped is derived from this rather than read out of it directly: see
 /// the note on [PosSettings] about the map never being the public surface.
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -513,7 +513,7 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   return PostgresSettingsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -836,7 +836,7 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
 /// operator could select and then discover at service time was never attached.
 ///
 /// USB printers arrive through the spooler as RAW jobs (owner decision,
-/// 22 Sep 2026: "it can be usb or network"). Most Egyptian restaurants own a
+/// 22 Sep 2026: "it can be usb or network"). Most Egyptian businesses own a
 /// USB printer, and until this a till with one always landed on the hardware
 /// screen with nothing found. Which port a job goes down is decided by the
 /// shape of the printer's name — see [PrinterConfig.transportOf].
@@ -1014,7 +1014,7 @@ class OpenTicketsController extends Notifier<OpenTickets> {
 
   PostgresParkedTickets? get _store {
     final config = ref.read(deploymentProvider);
-    // The write context rather than the restaurant id alone, because a parked
+    // The write context rather than the business id alone, because a parked
     // ticket with no table can only say which shop it belongs to by carrying
     // the branch — and a held ticket the day-close check cannot see is an
     // unpaid sale that disappears at midnight. A till that cannot name its
@@ -1026,7 +1026,7 @@ class OpenTicketsController extends Notifier<OpenTickets> {
     return PostgresParkedTickets(
       database: ref.read(posDatabaseProvider),
       config: config,
-      restaurantId: context.restaurantId,
+      businessId: context.businessId,
       branchId: context.branchId,
     );
   }
@@ -1295,7 +1295,7 @@ final Provider<SyncQueueRepository> syncQueueRepositoryProvider =
       return PostgresSyncQueueRepository(
         database: ref.watch(posDatabaseProvider),
         config: config,
-        restaurantId: context.restaurantId,
+        businessId: context.businessId,
         branchId: context.branchId,
         terminalId: context.terminalId,
       );
@@ -1445,7 +1445,7 @@ final orderTypesAllProvider = FutureProvider<List<OrderTypeConfig>>((
   final repository = ref.watch(orderTypesRepositoryProvider);
   if (repository == null) return OrderTypeConfig.seeded;
   final configured = await repository.all(includeInactive: true);
-  // Seeded rather than empty: migration 25 seeds four rows, and a restaurant
+  // Seeded rather than empty: migration 25 seeds four rows, and a business
   // whose seed has not run yet still has four types to name.
   return configured.isEmpty ? OrderTypeConfig.seeded : configured;
 });
@@ -1457,13 +1457,13 @@ final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
   return PostgresOrderTypesRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
   );
 });
 
 /// Which languages the menu is written in (XORD-005).
 ///
-/// Read from the restaurant row, where an offline install authors it and a cloud
+/// Read from the business row, where an offline install authors it and a cloud
 /// till's bundle writes it. `both` while the query is in flight and on a till
 /// with no database: asking for more fields than necessary is the safe way to
 /// be wrong, and it is exactly how every till behaved before this existed.
@@ -1477,8 +1477,8 @@ final contentLanguagesProvider = FutureProvider<ContentLanguages>((ref) async {
       .watch(posDatabaseProvider)
       .query(
         config,
-        'SELECT content_languages FROM pos_restaurants WHERE id = @r',
-        parameters: {'r': context.restaurantId},
+        'SELECT content_languages FROM pos_businesses WHERE id = @r',
+        parameters: {'r': context.businessId},
       );
   return rows.isEmpty
       ? ContentLanguages.both
@@ -1487,7 +1487,7 @@ final contentLanguagesProvider = FutureProvider<ContentLanguages>((ref) async {
 
 /// The business logo this till shows (XORD-021), or null for "none yet".
 ///
-/// Read from the restaurant row on the till's own credential, so it is the copy
+/// Read from the business row on the till's own credential, so it is the copy
 /// stored on the branch server: no network is involved and a restart changes
 /// nothing. **Never throws.** A missing database, an unreadable row or a bad
 /// column is "no logo", because the start screen that draws this must open
@@ -1502,8 +1502,8 @@ final businessLogoProvider = FutureProvider<BusinessLogo?>((ref) async {
         .query(
           config,
           'SELECT logo_bytes, logo_mime, logo_source, logo_updated_at '
-          'FROM pos_restaurants WHERE id = @r AND logo_bytes IS NOT NULL',
-          parameters: {'r': context.restaurantId},
+          'FROM pos_businesses WHERE id = @r AND logo_bytes IS NOT NULL',
+          parameters: {'r': context.businessId},
         );
     if (rows.isEmpty) return null;
     final row = rows.first;
@@ -1521,7 +1521,7 @@ final businessLogoProvider = FutureProvider<BusinessLogo?>((ref) async {
   }
 });
 
-/// The logo a receipt carries (XORD-024): the restaurant's, as bytes, or null.
+/// The logo a receipt carries (XORD-024): the business's, as bytes, or null.
 ///
 /// Null when this till is set not to print it (Settings › Printer) and null
 /// when there is none. **Never throws**, like [businessLogoProvider] beneath
@@ -1551,7 +1551,7 @@ final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>((ref) {
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
     offline: true,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -1561,7 +1561,7 @@ final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>((ref) {
 /// form that cannot wait on a future.
 ///
 /// Never `both`: the stored `both` (the default, an unanswered query, a
-/// bilingual cloud restaurant) is the till's own language, so no form ever
+/// bilingual cloud business) is the till's own language, so no form ever
 /// asks for a translation. Read at the moment a dialog opens.
 final contentLanguagesNowProvider = Provider<ContentLanguages>(
   (ref) =>
@@ -1578,10 +1578,10 @@ final contentLanguagesNowProvider = Provider<ContentLanguages>(
 /// list on the branch means "everything allowed" there, so it means the same
 /// here, and an unknown wire value is dropped rather than thrown on (rule 11).
 ///
-/// And the restaurant's own switch in the back office. Turning delivery off
+/// And the business's own switch in the back office. Turning delivery off
 /// there used to change nothing on the till, because this read only the
 /// branch; `orderTypeConfigProvider` already hides the inactive rows, and it
-/// also supplies the order the restaurant sorted them into.
+/// also supplies the order the business sorted them into.
 final branchOrderTypesProvider = Provider<List<OrderType>>((ref) {
   final active = ref.watch(orderTypeRulesProvider).active;
   final branchId = ref.watch(terminalProfileProvider).branchId;
@@ -1617,7 +1617,7 @@ final taxConfigProvider = Provider<TaxConfig>((ref) {
   // §38's charges are folded in here rather than read separately by the ticket,
   // so there is still exactly one object that says what a sale costs on top of
   // the food. An empty list leaves `stored` untouched, which is why every
-  // restaurant that has not opened the new screen is charged exactly what it
+  // business that has not opened the new screen is charged exactly what it
   // was.
   final charges = ref.watch(serviceChargesProvider).valueOrNull ?? const [];
   final withCharges = charges.isEmpty
@@ -1628,13 +1628,13 @@ final taxConfigProvider = Provider<TaxConfig>((ref) {
   // seeded since the installer wrote it and `pos_products.tax_group_id` has
   // pointed at it since Wave M, but `TaxConfig.taxGroups` arrived empty on every
   // till — so `defaultTaxGroup` answered every lookup, and a bottle of water a
-  // restaurant had marked zero-rated was charged the standard rate anyway. Same
+  // business had marked zero-rated was charged the standard rate anyway. Same
   // shape as the charges above: empty changes nothing.
   final groups = ref.watch(taxGroupsProvider).valueOrNull ?? const [];
   return groups.isEmpty ? withCharges : withCharges.withTaxGroups(groups);
 });
 
-/// The restaurant's named rates (§17).
+/// The business's named rates (§17).
 ///
 /// On the **till's** credential, unlike the editor's write: a ticket cannot be
 /// priced without them, and the catalogue query already reads the group id off
@@ -1648,8 +1648,8 @@ final taxGroupsProvider = FutureProvider<List<TaxGroup>>((ref) async {
     final rows = await ref.watch(posDatabaseProvider).query(
       config,
       'SELECT id, name_en, name_ar, rate_bp, is_default FROM pos_tax_groups '
-      'WHERE restaurant_id = @r AND is_active ORDER BY is_default DESC, id',
-      parameters: {'r': context.restaurantId},
+      'WHERE business_id = @r AND is_active ORDER BY is_default DESC, id',
+      parameters: {'r': context.businessId},
     );
     return [
       for (final row in rows)
@@ -1680,9 +1680,9 @@ final taxGroupsAllProvider = FutureProvider<List<TaxGroup>>((ref) async {
   final rows = await ref.watch(adminPosDatabaseProvider).query(
     config,
     'SELECT id, name_en, name_ar, rate_bp, is_default, is_active '
-    'FROM pos_tax_groups WHERE restaurant_id = @r '
+    'FROM pos_tax_groups WHERE business_id = @r '
     'ORDER BY is_default DESC, id',
-    parameters: {'r': context.restaurantId},
+    parameters: {'r': context.businessId},
   );
   return [
     for (final row in rows)
@@ -1699,16 +1699,16 @@ final taxGroupsAllProvider = FutureProvider<List<TaxGroup>>((ref) async {
 
 final moneyConfigProvider = FutureProvider<TaxConfig?>((ref) async {
   final config = ref.watch(deploymentProvider);
-  final restaurantId = ref.watch(terminalProfileProvider).restaurantId;
-  if (restaurantId == null || PosDatabase.hostFor(config) == null) return null;
+  final businessId = ref.watch(terminalProfileProvider).businessId;
+  if (businessId == null || PosDatabase.hostFor(config) == null) return null;
 
   try {
     final rows = await ref
         .watch(posDatabaseProvider)
         .query(
           config,
-          'SELECT payload FROM pos_money_config WHERE restaurant_id = @restaurant',
-          parameters: {'restaurant': restaurantId},
+          'SELECT payload FROM pos_money_config WHERE business_id = @business',
+          parameters: {'business': businessId},
         );
     if (rows.isEmpty) return null;
     final payload = switch (rows.first[0]) {
@@ -1749,7 +1749,7 @@ class TicketController extends Notifier<Ticket> {
     });
 
     // The back office can turn a kind of order off while this till is open,
-    // and the restaurant's rules arrive a beat after the first ticket does. An
+    // and the business's rules arrive a beat after the first ticket does. An
     // empty ticket left on a type nobody offers any more moves to the first one
     // that is. A ticket with lines or a table keeps its type: switching it
     // would detach a seated party's bill, and the cashier can see the bar.
@@ -1763,7 +1763,7 @@ class TicketController extends Notifier<Ticket> {
     return Ticket(
       id: _uuid.v4(),
       // Dine in when the till sells it, as it always has; otherwise whatever
-      // the restaurant sorted first. Never empty — see the provider.
+      // the business sorted first. Never empty — see the provider.
       orderType: offered.contains(OrderType.dineIn)
           ? OrderType.dineIn
           : offered.first,
@@ -1831,7 +1831,7 @@ class TicketController extends Notifier<Ticket> {
   void setOrderType(OrderType type) => state = TicketEngine.setOrderType(
     state,
     type,
-    // The restaurant's answer, not a comparison against `dineIn`. Read rather
+    // The business's answer, not a comparison against `dineIn`. Read rather
     // than watched: switching type is a one-off act, and rebuilding the
     // controller because somebody edited an order type in the back office
     // mid-ticket would be worse than reading a value one second stale.
@@ -1938,7 +1938,7 @@ final shiftRepositoryProvider = Provider<ShiftRepository>((ref) {
   return PostgresShiftRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
     onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
@@ -2199,7 +2199,7 @@ final licenceServiceProvider = Provider<LicenceService>((ref) {
       source: ref.watch(siteLicenceSourceProvider) ?? InMemorySiteLicenceSource(),
       verifySignature: verifier.verifySignature,
       clock: DateTime.now,
-      restaurantId: ref.watch(terminalProfileProvider).restaurantId,
+      businessId: ref.watch(terminalProfileProvider).businessId,
       keyId: LicenseKeys.currentId,
     );
   }
@@ -2331,8 +2331,8 @@ class _PostgresSiteLicenceSource implements SiteLicenceSource {
   final PostgresSiteLicence _table;
 
   @override
-  Future<SiteLicence?> read({int? restaurantId}) async {
-    final row = await _table.read(restaurantId: restaurantId);
+  Future<SiteLicence?> read({int? businessId}) async {
+    final row = await _table.read(businessId: businessId);
     if (row == null) return null;
     return SiteLicence(
       file: LicenseFile(
@@ -2340,7 +2340,7 @@ class _PostgresSiteLicenceSource implements SiteLicenceSource {
         signatureB64: row.signature,
         keyId: row.keyId,
       ),
-      restaurantId: row.restaurantId,
+      businessId: row.businessId,
       // The CHECK constraint admits only the two wire values, so the fallback
       // is for a newer build's mode this one does not know.
       mode: DeploymentMode.fromWire(row.mode) ?? DeploymentMode.offline,
@@ -2350,12 +2350,12 @@ class _PostgresSiteLicenceSource implements SiteLicenceSource {
 
   @override
   Future<void> publish({
-    required int restaurantId,
+    required int businessId,
     required LicenseFile file,
     required DeploymentMode mode,
   }) => _table.publish(
     SiteLicenceRow(
-      restaurantId: restaurantId,
+      businessId: businessId,
       payload: file.payloadB64,
       signature: file.signatureB64,
       keyId: file.keyId,
@@ -2385,9 +2385,9 @@ class SiteLicencePublisher {
   Future<void> publish() async {
     final config = _ref.read(deploymentProvider);
     if (config.isChild) return;
-    final restaurantId = _ref.read(terminalProfileProvider).restaurantId;
+    final businessId = _ref.read(terminalProfileProvider).businessId;
     final source = _ref.read(siteLicenceSourceProvider);
-    if (restaurantId == null || source == null) return;
+    if (businessId == null || source == null) return;
 
     try {
       final file = await _ref.read(licenceServiceProvider).installed();
@@ -2395,7 +2395,7 @@ class SiteLicencePublisher {
       // A one-terminal licence has nobody to share with.
       if ((LicenseVerifier.claimsOf(file)?.maxTerminals ?? 1) <= 1) return;
       await source.publish(
-        restaurantId: restaurantId,
+        businessId: businessId,
         file: file,
         mode: config.mode,
       );
@@ -2420,7 +2420,7 @@ class TerminalLocaleController extends Notifier<Locale> {
   Locale build() =>
       Locale(ref.watch(terminalBootProvider).config?.languageCode ?? _default);
 
-  /// Arabic, because the restaurants this ships to are in Egypt.
+  /// Arabic, because the businesses this ships to are in Egypt.
   ///
   /// Only the fallback moves: a terminal that has been set up reads its own
   /// `languageCode` and keeps whatever was chosen, so this is what a machine
@@ -2536,7 +2536,7 @@ final stringsProvider = Provider<AppStrings>(
 /// `FutureProvider` on purpose: the router decides where the first frame goes
 /// by reading it synchronously, and a till that flashed the setup wizard for
 /// one frame every morning before redirecting would read as broken to the
-/// person opening the restaurant.
+/// person opening the business.
 ///
 /// [TerminalBoot.none] — the default — is what every widget test gets, and what
 /// a machine that has never been set up gets: the wizard.
@@ -2549,8 +2549,8 @@ final terminalBootProvider = Provider<TerminalBoot>((ref) => TerminalBoot.none);
 /// a reset that deleted `config.json` left everything seeded from that snapshot
 /// still holding the configuration the operator had just cleared, until the
 /// next launch. The wizard is where that showed: reset a till, activate another
-/// restaurant's licence, and the tenant read off the DELETED config refused the
-/// new one as a mismatch — naming a restaurant no longer on the machine, and
+/// business's licence, and the tenant read off the DELETED config refused the
+/// new one as a mismatch — naming a business no longer on the machine, and
 /// blaming a licence that was perfectly good.
 ///
 /// The same value, made correctable. Read this; override [terminalBootProvider].
@@ -2641,10 +2641,10 @@ class TerminalReset {
     await _ref.read(terminalConfigStoreProvider).clear();
     // And a claim the wizard never finished with. A reset is "start over", and
     // a progress file left behind would reopen the wizard halfway through the
-    // last attempt, on the last restaurant's terminal.
+    // last attempt, on the last business's terminal.
     await _ref.read(setupProgressStoreProvider).clear();
     await _ref.read(posDbCredentialsStoreProvider).forget();
-    // And the back office's. A till moved onto another restaurant's database
+    // And the back office's. A till moved onto another business's database
     // must not arrive holding the last one's administrator password.
     await _ref.read(adminDbSecretStoreProvider).clear();
     _ref.read(adminDbCredentialProvider.notifier).forget();
@@ -2652,7 +2652,7 @@ class TerminalReset {
     // Then the snapshot the process booted from, which now describes a file
     // that is gone. Without this the wizard reopens seeded from the terminal
     // just cleared — and the tenant on that dead config refuses the next
-    // restaurant's licence as though the licence were the thing at fault.
+    // business's licence as though the licence were the thing at fault.
     _ref.read(terminalSeedProvider.notifier).clear();
 
     _ref.read(setupCompleteProvider.notifier).reset();
@@ -2683,7 +2683,7 @@ class TerminalReset {
     await _ref.read(secretsFileProvider).deleteFile();
     // The OS store as well as the file. On Windows and macOS the secrets have
     // not been in `secrets.json` since the migration, and deleting only the
-    // file would hand the next restaurant this one's device token.
+    // file would hand the next business this one's device token.
     await _ref.read(secretStoreProvider).deleteAll();
 
     _ref.read(terminalProfileProvider.notifier).renew();
@@ -2825,23 +2825,23 @@ final publishedServerCertificateProvider =
 /// Which tenant, branch and terminal a write belongs to.
 ///
 /// Null until provisioning has supplied all four facts — which is deliberate:
-/// an order that cannot say which restaurant and branch it belongs to must not
+/// an order that cannot say which business and branch it belongs to must not
 /// be written at all.
 final posWriteContextProvider = Provider<PosWriteContext?>((ref) {
   final profile = ref.watch(terminalProfileProvider);
-  final restaurantId = profile.restaurantId;
+  final businessId = profile.businessId;
   final branchId = profile.branchId;
   final terminalId = profile.terminalId;
   final branchCode = profile.branchCode;
 
-  if (restaurantId == null ||
+  if (businessId == null ||
       branchId == null ||
       terminalId == null ||
       branchCode == null) {
     return null;
   }
   return PosWriteContext(
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branchId,
     terminalId: terminalId,
     branchCode: branchCode,
@@ -2956,7 +2956,7 @@ final technicianPasswordResetProvider = Provider<TechnicianPasswordReset>((
       return await PostgresStaffDirectoryRepository(
         database: database,
         config: config,
-        restaurantId: context.restaurantId,
+        businessId: context.businessId,
         branchId: context.branchId,
         terminalId: context.terminalId,
       ).clearPasswordAsTechnician(username: username);
@@ -2971,7 +2971,7 @@ final technicianPasswordResetProvider = Provider<TechnicianPasswordReset>((
 ///
 /// **The only thing that upgrades an installed till.** The till's own role has
 /// no DDL, the wizard runs once, and `bin/pos_migrate.dart` is a command nobody
-/// at a restaurant runs — so a new version met a database a version behind it,
+/// at a business runs — so a new version met a database a version behind it,
 /// and the first pane that read a new table said so in SQL. The back-office
 /// door is the one moment the app holds a credential that can change the
 /// schema, so that is where this runs.
@@ -3021,7 +3021,7 @@ class DatabaseBuildReport {
 /// A function provider for the same reason [schemaUpgraderProvider] is one: it
 /// opens a PostgreSQL connection, and a widget test has none. The offline path
 /// deliberately does NOT come through here — `bootstrapDatabase` also seeds a
-/// restaurant, a branch, the system roles and the first person, none of which a
+/// business, a branch, the system roles and the first person, none of which a
 /// cloud terminal wants, because all of them arrive in the bootstrap bundle and
 /// would be written over by it on the next seed.
 final databaseBuilderProvider =
@@ -3087,7 +3087,7 @@ final databaseBuilderProvider =
 /// Seed what the bundle has no field for, as the administrator role.
 ///
 /// Void, refund, discount and price-override reasons, and what each kind of
-/// order requires. The platform authors the restaurant and `BootstrapSeeder`
+/// order requires. The platform authors the business and `BootstrapSeeder`
 /// writes it, but neither carries these — they are the till's own defaults,
 /// and on the offline path `bootstrapDatabase` seeds them. The cloud path
 /// never did, so a cloud till opened with an empty list behind every void and
@@ -3100,20 +3100,20 @@ final databaseBuilderProvider =
 /// group, and an empty table costs nothing.
 ///
 /// A function provider for the reason [databaseBuilderProvider] is one. Runs
-/// AFTER the seeder, because the lists hang off a restaurant row only the
+/// AFTER the seeder, because the lists hang off a business row only the
 /// bundle can create. Upserts on the code, so a re-run keeps a renamed or
 /// retired reason.
 final cloudDefaultsSeederProvider =
     Provider<Future<void> Function(DeploymentConfig, String, int)>((ref) {
-      return (config, adminPassword, restaurantId) async {
+      return (config, adminPassword, businessId) async {
         final admin = config.copyWith(databaseUser: config.adminDatabaseUser);
         final credentials = MutablePosDbCredentials()..set(adminPassword);
         final database = PosDatabase(credentials: credentials);
         final bootstrap = LocalBootstrap(database);
 
         try {
-          await bootstrap.seedReasonCodes(admin, restaurantId);
-          await bootstrap.seedOrderTypes(admin, restaurantId);
+          await bootstrap.seedReasonCodes(admin, businessId);
+          await bootstrap.seedOrderTypes(admin, businessId);
         } finally {
           await database.close();
         }
@@ -3145,7 +3145,7 @@ final schemaUpgradeFailureProvider =
 /// DELETEs the whole catalogue and re-inserts the platform's rows, so a menu
 /// authored on a CLOUD till survives until its next bundle and no longer. The
 /// platform is the single author there — the coordination docs say so, and add
-/// "do not build a merge path for data with one author". An offline restaurant
+/// "do not build a merge path for data with one author". An offline business
 /// has no platform to be that author, which is the only reason this exists.
 ///
 /// Returns null rather than an Unconfigured double, because "this terminal
@@ -3166,7 +3166,7 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
     offline: true,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -3183,7 +3183,7 @@ final inactiveCategoriesProvider = FutureProvider<List<Category>>((ref) async {
 // ── Purchasing ──────────────────────────────────────────────────────────────
 //
 // All three run on the administrator connection and none on the till's: a
-// counter credential has no use for who the restaurant owes money to.
+// counter credential has no use for who the business owes money to.
 
 bool _canBuy(Ref ref) => ref.watch(adminDbCredentialProvider) != null;
 
@@ -3194,7 +3194,7 @@ final suppliersRepositoryProvider = Provider<SuppliersRepository>((ref) {
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: _canBuy(ref),
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3212,7 +3212,7 @@ final purchaseOrdersRepositoryProvider = Provider<PurchaseOrdersRepository>((
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: _canBuy(ref),
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3228,7 +3228,7 @@ final receivingRepositoryProvider = Provider<ReceivingRepository>((ref) {
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: _canBuy(ref),
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3241,14 +3241,14 @@ final supplierInvoicesRepositoryProvider =
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
     adminAvailable: _canBuy(ref),
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
 
 /// Everything with money still on it, oldest due first.
 ///
-/// **The unpaid list rather than every invoice**, because a restaurant that has
+/// **The unpaid list rather than every invoice**, because a business that has
 /// been open three years has thousands of settled ones and the screen is a
 /// worklist: what has to be paid, and what is late.
 final unpaidInvoicesProvider = FutureProvider<List<SupplierInvoice>>(
@@ -3265,7 +3265,7 @@ final supplierBalancesProvider = FutureProvider<List<SupplierBalance>>(
   (ref) => ref.watch(supplierInvoicesRepositoryProvider).balances(),
 );
 
-/// What the restaurant adds on top of the food (§38).
+/// What the business adds on top of the food (§38).
 ///
 /// Reads on the till's credential because a ticket cannot be priced without
 /// them; writes on Management's.
@@ -3283,7 +3283,7 @@ final serviceChargesRepositoryProvider = Provider<ServiceChargesRepository>((
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3299,7 +3299,7 @@ final stockLevelsRepositoryProvider = Provider<StockLevelsRepository>((ref) {
   return PostgresStockLevelsRepository(
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3310,7 +3310,7 @@ final stockLevelsProvider = FutureProvider.autoDispose<List<StockLevel>>(
   (ref) => ref.watch(stockLevelsRepositoryProvider).all(),
 );
 
-/// What the restaurant buys and counts. Read on the till's credential,
+/// What the business buys and counts. Read on the till's credential,
 /// written on the administrator's — see [PostgresStockItemsRepository].
 final stockItemsRepositoryProvider = Provider<StockItemsRepository>((ref) {
   final config = ref.watch(deploymentProvider);
@@ -3324,7 +3324,7 @@ final stockItemsRepositoryProvider = Provider<StockItemsRepository>((ref) {
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3353,7 +3353,7 @@ final unitsRepositoryProvider = Provider<UnitsRepository>((ref) {
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3378,7 +3378,7 @@ final serviceChargesAllProvider = FutureProvider<List<ServiceCharge>>(
       ref.watch(serviceChargesRepositoryProvider).all(includeInactive: true),
 );
 
-/// The payment methods this restaurant takes (§40).
+/// The payment methods this business takes (§40).
 ///
 /// Read on the till's own credential — a cashier needs the list to take money,
 /// and a back-office password at the counter is not a thing that can exist.
@@ -3393,7 +3393,7 @@ final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
   return PostgresCustomersRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     syncsToPlatform: config.mode.syncsSalesToPlatform,
     onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
@@ -3409,7 +3409,7 @@ final tenderTypesRepositoryProvider = Provider<TenderTypesRepository>((ref) {
   return PostgresTenderTypesRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
   );
 });
 
@@ -3446,7 +3446,7 @@ final financialAccountsRepositoryProvider =
       return PostgresFinancialAccountsRepository(
         database: ref.watch(posDatabaseProvider),
         config: config,
-        restaurantId: context.restaurantId,
+        businessId: context.businessId,
       );
     });
 
@@ -3485,7 +3485,7 @@ final financialAccountsAdminRepositoryProvider =
         config: ref.watch(adminDeploymentProvider),
         adminAvailable: ref.watch(adminDbCredentialProvider) != null,
         offline: true,
-        restaurantId: context.restaurantId,
+        businessId: context.businessId,
         branchId: context.branchId,
         terminalId: context.terminalId,
       );
@@ -3500,7 +3500,7 @@ final etaFilingEnabledProvider = Provider<bool>((_) => etaFilingEnabled);
 ///
 /// Null where there is no database to queue into, and wherever filing is off —
 /// which takes the filer, the reconciler and every warning they raise with it.
-/// Not null on a cloud till: the obligation is the restaurant's, not the
+/// Not null on a cloud till: the obligation is the business's, not the
 /// deployment's, and a cloud terminal in Cairo owes the same receipts an
 /// offline one does.
 final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
@@ -3512,7 +3512,7 @@ final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
   return PostgresEtaQueueRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3531,7 +3531,7 @@ final etaFilerProvider = Provider<EtaFiler?>((ref) {
     config: ref.watch(deploymentProvider),
     branchId: context.branchId,
     // ETA's chain is per POS serial. The terminal id is what this product has
-    // that is stable per till and unique per restaurant; the serial registered
+    // that is stable per till and unique per business; the serial registered
     // with the authority is set alongside the seal, and until that exists this
     // keeps two tills in one branch on two chains, which is the property that
     // matters.
@@ -3581,7 +3581,7 @@ final etaReconcilerProvider = Provider<EtaReconciler?>((ref) {
 ///
 /// Only what somebody can act on reaches here — a half-typed receipt profile,
 /// a queue that refused a write. Held so the screens a manager actually opens
-/// can say it: an alarm raised into nothing is how a restaurant files nothing
+/// can say it: an alarm raised into nothing is how a business files nothing
 /// for a month and hears it from the authority.
 class EtaFilingProblem extends Notifier<EtaFilingSkipped?> {
   @override
@@ -3637,7 +3637,7 @@ final etaOutstandingProvider = FutureProvider<List<EtaSubmission>>((ref) async {
 /// Who the receipt says sold the food.
 ///
 /// Bound whenever the TILL connection works, unlike the menu author: every
-/// terminal prints a slip with the restaurant's name and address on it, cloud
+/// terminal prints a slip with the business's name and address on it, cloud
 /// and offline alike, and only the write side needs Management's credential.
 final receiptProfileRepositoryProvider = Provider<ReceiptProfileRepository?>((
   ref,
@@ -3652,7 +3652,7 @@ final receiptProfileRepositoryProvider = Provider<ReceiptProfileRepository?>((
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });
@@ -3661,7 +3661,7 @@ final receiptProfileRepositoryProvider = Provider<ReceiptProfileRepository?>((
 ///
 /// A blank profile on a branch nobody has set up, never an error: a till that
 /// refused to print because nobody typed an address would be a till that
-/// stopped the restaurant trading over a settings field.
+/// stopped the business trading over a settings field.
 final receiptProfileProvider = FutureProvider<ReceiptProfile>((ref) async {
   final repository = ref.watch(receiptProfileRepositoryProvider);
   if (repository == null) return const ReceiptProfile(branchId: 0);
@@ -3686,7 +3686,7 @@ final rolesRepositoryProvider = Provider<RolesRepository>((ref) {
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -3716,7 +3716,7 @@ final staffDirectoryRepositoryProvider = Provider<StaffDirectoryRepository>((
     readDatabase: ref.watch(posDatabaseProvider),
     readConfig: config,
     adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -3736,7 +3736,7 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
   return PostgresAuditRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -3744,7 +3744,7 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
 
 // ── Backup ──────────────────────────────────────────────────────────────────
 //
-// A restaurant on one Windows box with no backup is one failed disk away from
+// A business on one Windows box with no backup is one failed disk away from
 // losing its whole trading history. Everything here exists to make that not be
 // true, and to be loud about the ways in which it still is — see
 // `BackupService` for what a copy on the same disk does and does not protect
@@ -3766,7 +3766,7 @@ final backupRepositoryProvider = Provider<BackupRepository>((ref) {
   return PostgresBackupRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
@@ -3878,7 +3878,7 @@ final backupServiceProvider = FutureProvider<BackupService?>((ref) async {
     // where every other till-written row goes.
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
     directory: BackupPaths.resolve(ref.watch(backupPolicyProvider)),
     backups: ref.watch(backupRepositoryProvider),

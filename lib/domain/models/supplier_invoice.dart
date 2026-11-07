@@ -1,4 +1,4 @@
-/// What the restaurant owes, and what it has paid (§37).
+/// What the business owes, and what it has paid (§37).
 ///
 /// The end of the purchasing chain, and the point of the rest of it. A purchase
 /// order is a request and a goods receipt is a fact about the store room;
@@ -101,7 +101,7 @@ class SupplierInvoice {
 
   /// Off the paper as well. Not the day it was entered: an invoice dated the
   /// 3rd and typed on the 20th is due on the supplier's terms from the 3rd, and
-  /// stamping it with `now()` would quietly give the restaurant three free
+  /// stamping it with `now()` would quietly give the business three free
   /// weeks that the supplier does not agree to.
   final DateTime issuedAt;
 
@@ -122,7 +122,7 @@ class SupplierInvoice {
   /// visibly cancelled rather than deleted — the supplier's numbering is the
   /// evidence, and a gap in it is a question nobody can answer later.
   ///
-  /// **The reason is one of the restaurant's own codes**, not a sentence
+  /// **The reason is one of the business's own codes**, not a sentence
   /// somebody typed. `ReasonScope.invoiceVoid` holds the list, and the point of
   /// a code is that "how many did we cancel for *entered twice* last month" is
   /// a question with an answer — which is what finds the process that keeps
@@ -246,8 +246,8 @@ class SupplierInvoice {
 /// How the money left the business.
 ///
 /// **Deliberately not `pos_tender_types`.** Those describe how a customer pays
-/// the restaurant and carry `counts_as_cash` so the drawer can be counted;
-/// these describe how the restaurant pays somebody else, and the two lists
+/// the business and carry `counts_as_cash` so the drawer can be counted;
+/// these describe how the business pays somebody else, and the two lists
 /// share nothing but the word "cash". Modelling them once would mean a Visa
 /// terminal appearing as a way to pay a vegetable supplier.
 enum SupplierPaymentMethod {
@@ -301,7 +301,7 @@ class SupplierPayment {
 
   /// The invoice this settles, or null for money paid **on account**.
   ///
-  /// A real and common case: a restaurant hands the dairy man 2,000 on Friday
+  /// A real and common case: a business hands the dairy man 2,000 on Friday
   /// against a running tab. It reduces what the supplier is owed straight away
   /// — see [SupplierBalance.outstanding] — but it does **not** clear any
   /// particular bill, so it does not make an overdue invoice stop being
@@ -421,7 +421,7 @@ class SupplierPaymentRequest {
 /// reason [SupplierPayment.isOnAccount] money reduces [outstanding] without
 /// touching [overdue]: deciding which bill an unallocated payment cleared would
 /// make the answer depend on the order the rows arrived in, and two screens
-/// would disagree about whether the restaurant was late.
+/// would disagree about whether the business was late.
 class SupplierAccount {
   const SupplierAccount({
     required this.supplierId,

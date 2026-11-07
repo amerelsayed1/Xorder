@@ -9,7 +9,7 @@ import 'pos_widgets.dart';
 /// **The colour law: an offline till is a healthy till.** `danger` is reserved
 /// for a till that has stopped, or an act that was refused. Being offline,
 /// holding a queue, or approaching a licence expiry are all `warn` — they are
-/// conditions a restaurant trades through every day, and colouring them like an
+/// conditions a business trades through every day, and colouring them like an
 /// outage teaches cashiers to ignore red. Red has to keep meaning *stop*.
 enum FailureTone {
   /// Working, with a condition worth knowing about.

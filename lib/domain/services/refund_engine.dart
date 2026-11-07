@@ -10,7 +10,7 @@ sealed class RefundRefusal {
   const RefundRefusal();
 }
 
-/// The restaurant has refunds switched off.
+/// The business has refunds switched off.
 class RefundsDisabled extends RefundRefusal {
   const RefundsDisabled();
 }

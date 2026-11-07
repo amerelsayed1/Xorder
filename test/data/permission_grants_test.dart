@@ -30,7 +30,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresSessionRepository session;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
   late int cashierRoleId;
@@ -43,29 +43,29 @@ void main() {
     pg = await PgFixture.open('permission_grants');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@s, 'Grants') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@s, 'Grants') "
       'RETURNING id',
       parameters: {'s': slug},
     )).first[0]! as int;
 
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     Future<int> role(String code, Set<String> capabilities) async =>
         (await db.query(
           pg.config,
-          'INSERT INTO pos_roles (restaurant_id, code, name_en, capabilities) '
+          'INSERT INTO pos_roles (business_id, code, name_en, capabilities) '
           'VALUES (@r, @c, @c, @caps) RETURNING id',
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'c': code,
             'caps': capabilities.toList(),
           },
@@ -77,11 +77,11 @@ void main() {
     final salt = PinHash.newSalt();
     staffId = (await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, role_id, name, '
+      'INSERT INTO pos_users (business_id, branch_id, role_id, name, '
       "  username, pin_salt, pin_hash) "
       "VALUES (@r, @b, @role, 'Rana', 'rana', @salt, @hash) RETURNING id",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'role': cashierRoleId,
         'salt': salt,
@@ -91,15 +91,15 @@ void main() {
 
     final terminal = (await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (gen_random_uuid(), @r, @b, 'Counter 1') RETURNING id::text",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     )).first[0]! as String;
 
     session = PostgresSessionRepository(
       database: db,
       config: pg.config.copyWith(tenantSlug: slug),
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
     );
@@ -134,11 +134,11 @@ void main() {
     int? minor,
   }) => db.query(
     pg.config,
-    'INSERT INTO pos_permission_limits (restaurant_id, subject_type, '
+    'INSERT INTO pos_permission_limits (business_id, subject_type, '
     '  subject_id, limit_key, limit_bp, limit_minor) '
     'VALUES (@r, @t, @i, @k, @bp, @m)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       't': subjectType,
       'i': subjectId,
       'k': key,
@@ -265,16 +265,16 @@ void main() {
       expect(staff.limitFor(LimitKey.discount).maxBp, 1000);
     });
 
-    test('another restaurant\'s ceiling does not reach this one', () async {
+    test('another business\'s ceiling does not reach this one', () async {
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') "
+        "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') "
         'RETURNING id',
       )).first[0]! as int;
       await limit('staff', staffId, LimitKey.discount, bp: 100);
       await db.query(
         pg.config,
-        'UPDATE pos_permission_limits SET restaurant_id = @o',
+        'UPDATE pos_permission_limits SET business_id = @o',
         parameters: {'o': other},
       );
 
@@ -357,7 +357,7 @@ void main() {
       discounts = PostgresDiscountsRepository(
         database: db,
         config: pg.config.copyWith(tenantSlug: slug),
-        restaurantId: restaurantId,
+        businessId: businessId,
       );
     });
 
@@ -367,7 +367,7 @@ void main() {
     });
 
     test("the role's old column still binds", () async {
-      // `pos_roles.max_discount_bp` predates Wave C and restaurants have set
+      // `pos_roles.max_discount_bp` predates Wave C and businesses have set
       // it. Reading only the new table would silently lift every ceiling
       // already configured.
       await db.query(
@@ -461,7 +461,7 @@ void main() {
       directory = PostgresStaffDirectoryRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
       );
       final all = await directory.all();
       owner = all.firstWhere((s) => s.id == staffId).copyWith(

@@ -10,7 +10,7 @@ import 'package:xorder_pos/domain/services/ticket_engine.dart';
 /// This wave exists to delete one comparison — `type == OrderType.dineIn` —
 /// from three files where what it actually meant was *"does this kind of order
 /// have a table"*. The tests that matter are the ones where those two answers
-/// differ, which is a restaurant that seats something other than dine-in.
+/// differ, which is a business that seats something other than dine-in.
 void main() {
   const product = Product(
     id: 1,
@@ -62,7 +62,7 @@ void main() {
     });
   });
 
-  group('a restaurant that seats something else', () {
+  group('a business that seats something else', () {
     // The case the hardcoded comparison could not express: catering is seated
     // and is not dine-in; this branch does no dine-in at all.
     const rules = OrderTypeRules([
@@ -130,7 +130,7 @@ void main() {
   });
 
   test('the seeded config matches what migration 25 writes', () {
-    // Two definitions of "what a restaurant starts with" is how a fresh
+    // Two definitions of "what a business starts with" is how a fresh
     // install and a migrated one end up different.
     expect(
       OrderTypeConfig.seeded.map((c) => c.type.wire),

@@ -315,7 +315,7 @@ class _Row extends StatelessWidget {
 /// The sentence for a filing problem a person can fix, or null for none.
 ///
 /// Public because the start screen says the same thing: the problem is the
-/// restaurant's, whichever screen somebody happens to open.
+/// business's, whichever screen somebody happens to open.
 String? etaProblemText(AppStrings strings, EtaFilingSkipped? problem) =>
     switch (problem) {
       ProfileIncomplete(:final problems) => strings.etaProblemProfile(

@@ -54,10 +54,10 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
     final rows = await _db.query(
       config,
       'SELECT $_columns FROM pos_business_days AS d $_joins '
-      'WHERE d.restaurant_id = @restaurant AND d.branch_id = @branch '
+      'WHERE d.business_id = @business AND d.branch_id = @branch '
       '  AND d.closed_at IS NULL',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
       },
     );
@@ -69,12 +69,12 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
     final rows = await _db.query(
       config,
       'SELECT $_columns FROM pos_business_days AS d $_joins '
-      'WHERE d.restaurant_id = @restaurant AND d.branch_id = @branch '
+      'WHERE d.business_id = @business AND d.branch_id = @branch '
       '  AND d.closed_at IS NOT NULL '
       '  AND (@before::date IS NULL OR d.business_date < @before::date) '
       'ORDER BY d.business_date DESC LIMIT 1',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
         'before': before == null ? null : _dateText(before),
       },
@@ -93,11 +93,11 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
     // cashier has to read at 7 a.m.
     await _db.query(
       config,
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
-      '  opened_by) VALUES (@restaurant, @branch, @date::date, @by) '
-      'ON CONFLICT (restaurant_id, branch_id, business_date) DO NOTHING',
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
+      '  opened_by) VALUES (@business, @branch, @date::date, @by) '
+      'ON CONFLICT (business_id, branch_id, business_date) DO NOTHING',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
         'date': _dateText(date),
         'by': by.id,
@@ -129,7 +129,7 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
       '''
       SELECT
         (SELECT count(*) FROM pos_shifts s
-          WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
+          WHERE s.business_id = @business AND s.branch_id = @branch
             AND s.closed_at IS NULL),
         -- Every parked ticket, seated or not. `branch_id` was added to the
         -- table in migration 32 for this count: an INNER JOIN through
@@ -140,15 +140,15 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
         -- migration whose table has since been deleted.
         (SELECT count(*) FROM pos_parked_tickets t
           LEFT JOIN pos_dining_tables dt ON dt.id = t.table_id
-         WHERE t.restaurant_id = @restaurant
+         WHERE t.business_id = @business
            AND coalesce(t.branch_id, dt.branch_id) = @branch),
         (SELECT count(*) FROM pos_orders o
-          WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
+          WHERE o.business_id = @business AND o.branch_id = @branch
             AND o.business_day_id = @day
             AND o.status IN ('DRAFT', 'OPEN', 'SENT_TO_KITCHEN', 'READY'))
       ''',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
         'day': day.id,
       },

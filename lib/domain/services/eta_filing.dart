@@ -3,14 +3,14 @@
 /// **Deliberately not inside the order's transaction.** The tempting design is
 /// to write the order and queue its e-receipt atomically, so one cannot exist
 /// without the other. It is the wrong one, for a reason that only shows up
-/// later: a restaurant that starts filing after six weeks of trading, or one
+/// later: a business that starts filing after six weeks of trading, or one
 /// whose receipt profile was incomplete on Tuesday, has orders that need
 /// queueing and no transaction to put them in.
 ///
 /// So the relationship is a *query* rather than a coupling — an order with no
 /// row in `pos_eta_receipts` is one that still owes a receipt, whether it was
 /// rung up a second ago or last month — and the same reconciler covers a crash
-/// between the two writes and a restaurant that turned this on late. Coupling
+/// between the two writes and a business that turned this on late. Coupling
 /// them would have handled the first case and none of the others.
 library;
 
@@ -23,7 +23,7 @@ import 'eta_receipt.dart';
 
 /// Whether this build files e-receipts at all. **Off, for now.**
 ///
-/// Decided 13 September 2026: the restaurants this is being sold to do not
+/// Decided 13 September 2026: the businesses this is being sold to do not
 /// need e-invoicing yet. Everything built for it stays built — the queue, the
 /// document, the pane — but nothing is queued, the reconciler never runs, and
 /// the screens that only matter to a filer are not shown. One switch rather

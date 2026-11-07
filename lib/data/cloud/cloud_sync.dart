@@ -226,12 +226,12 @@ class CloudSync {
   }
 
   Future<bool> _syncLogo() async {
-    final restaurantId = profile.restaurantId;
-    if (restaurantId == null) return false;
+    final businessId = profile.businessId;
+    if (businessId == null) return false;
     return LogoSync(
       database: _db,
       config: config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       platformBase: api.baseUrl,
     ).run();
   }
@@ -261,14 +261,14 @@ class CloudSync {
   /// honest answer to "has my money gone up", and a timestamp of a pass that
   /// sent nothing would say a till was fine while it held a day of sales.
   Future<DateTime?> lastSyncedAt() async {
-    final restaurantId = profile.restaurantId;
-    if (restaurantId == null) return null;
+    final businessId = profile.businessId;
+    if (businessId == null) return null;
     try {
       final rows = await _db.query(
         config,
         'SELECT bootstrap_synced_at FROM pos_cloud_state '
-        'WHERE restaurant_id = @restaurant',
-        parameters: {'restaurant': restaurantId},
+        'WHERE business_id = @restaurant',
+        parameters: {'restaurant': businessId},
       );
       return rows.isEmpty ? null : (rows.first[0] as DateTime?)?.toLocal();
     } on Object {
@@ -277,13 +277,13 @@ class CloudSync {
   }
 
   Future<int> _localConfigVersion() async {
-    final restaurantId = profile.restaurantId;
-    if (restaurantId == null) return -1;
+    final businessId = profile.businessId;
+    if (businessId == null) return -1;
     try {
       final rows = await _db.query(
         config,
-        'SELECT config_version FROM pos_cloud_state WHERE restaurant_id = @restaurant',
-        parameters: {'restaurant': restaurantId},
+        'SELECT config_version FROM pos_cloud_state WHERE business_id = @restaurant',
+        parameters: {'restaurant': businessId},
       );
       return rows.isEmpty ? -1 : rows.first[0] as int;
     } on Object {
@@ -316,13 +316,13 @@ class CloudSync {
                count(*) FILTER (WHERE quarantined_at IS NOT NULL)
         FROM (
           SELECT enqueued_at, quarantined_at FROM pos_outbox
-           WHERE restaurant_id = @restaurant AND delivered_at IS NULL
+           WHERE business_id = @restaurant AND delivered_at IS NULL
           UNION ALL
           SELECT enqueued_at, quarantined_at FROM pos_sync_outbox
-           WHERE restaurant_id = @restaurant AND delivered_at IS NULL
+           WHERE business_id = @restaurant AND delivered_at IS NULL
         ) owed
         ''',
-        parameters: {'restaurant': profile.restaurantId},
+        parameters: {'restaurant': profile.businessId},
       );
       pending = rows.first[0] as int;
       oldest = (rows.first[1] as DateTime?)?.toUtc().toIso8601String();

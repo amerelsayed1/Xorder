@@ -225,8 +225,8 @@ void main() {
   testWidgets('a filing problem is said on the start screen, with the way '
       'to it', (tester) async {
     // Raised at settlement into a provider nobody watched, a half-typed profile
-    // meant a restaurant filed nothing for a month and heard it from the
-    // authority. It is said where the restaurant is opened from.
+    // meant a business filed nothing for a month and heard it from the
+    // authority. It is said where the business is opened from.
     final app = await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: [
       BackupRecord(
         id: 1,

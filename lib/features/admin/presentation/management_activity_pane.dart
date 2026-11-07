@@ -162,7 +162,7 @@ class _EntryRow extends StatelessWidget {
   ///
   /// Rules rather than a map, so a column added next year comes out right the
   /// first time and there is no list to fall out of date. The words themselves
-  /// stay English: these are the restaurant's own field names as the database
+  /// stay English: these are the business's own field names as the database
   /// records them, and inventing Arabic for a column nobody has translated
   /// would be inventing meaning rather than showing it.
   static String _fieldName(String key) {

@@ -849,13 +849,13 @@ class _AccountPane extends ConsumerWidget {
     final controller = ref.read(setupProvider.notifier);
 
     // A child signs in as a manager its main device already has. The
-    // restaurant came with the shared licence, so it is shown and not asked.
+    // business came with the shared licence, so it is shown and not asked.
     if (draft.deployment.isChild) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Field(
-            label: context.strings.restaurant,
+            label: context.strings.business,
             value: draft.tenantName ??
                 draft.claims?.tenantName ??
                 draft.deployment.tenantSlug ??
@@ -890,13 +890,13 @@ class _AccountPane extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The restaurant, STATED. The licence names exactly one tenant and it
+        // The business, STATED. The licence names exactly one tenant and it
         // was installed a screen ago; letting an operator retype it here could
         // only ever produce a slug that contradicts their own licence, which
         // the verifier would then reject as a tenant mismatch on a licence that
         // was perfectly good.
         _Field(
-          label: s.restaurant,
+          label: s.business,
           value: draft.deployment.tenantSlug ?? '',
           mono: true,
           hint: 'mahsoub',
@@ -905,8 +905,8 @@ class _AccountPane extends ConsumerWidget {
           // Usernames are unique per tenant on the server, so the tenant has
           // to be known before a cashier can even be looked up.
           help: draft.claims != null
-              ? s.restaurantFromLicenceHelp
-              : s.restaurantHelp,
+              ? s.businessFromLicenceHelp
+              : s.businessHelp,
         ),
         const SizedBox(height: PosSpace.s28),
         // One road, not a junction. The two tiles that used to be here asked
@@ -1339,7 +1339,7 @@ class _TerminalPane extends ConsumerWidget {
       children: [
         // Since a tenant is created with its terminals provisioned in advance,
         // the first question is WHICH till this is — not what to call a new one.
-        // Registering another beside them is how a two-seat restaurant ends up
+        // Registering another beside them is how a two-seat business ends up
         // with four rows and a seat limit nobody can explain.
         if (draft.method == SetupMethod.manual && adoptable.isNotEmpty) ...[
           MicroLabel(s.whichTillIsThis),
@@ -1454,11 +1454,11 @@ class _TerminalPane extends ConsumerWidget {
 /// The cloud path's one automatic screen (owner decision, 2026-09-15).
 ///
 /// Nothing on it is a question. It reads the database off the installation,
-/// builds and migrates it, pulls the restaurant's own configuration from the
+/// builds and migrates it, pulls the business's own configuration from the
 /// platform and looks for a printer — the four screens this replaced, minus the
 /// asking. What it shows is what it did, line by line, because a progress
 /// screen with nothing on it but a spinner is indistinguishable from one that
-/// has hung, and the person watching is standing in a restaurant.
+/// has hung, and the person watching is standing in a business.
 class _ConnectingPane extends ConsumerStatefulWidget {
   const _ConnectingPane({required this.draft});
 
@@ -1924,7 +1924,7 @@ class _CataloguePane extends ConsumerWidget {
           ),
         ),
         // A download that returned nothing is not a success, and painting it
-        // green is how a till reaches a restaurant with an empty menu and a
+        // green is how a till reaches a business with an empty menu and a
         // tick beside it. The step still advances — an installer may genuinely
         // be setting up before the menu is authored, and blocking would strand
         // them — but the consequence is stated rather than implied.
@@ -2006,7 +2006,7 @@ class _SummaryPane extends ConsumerWidget {
     final rows = short
         ? <(String, String)>[
             (
-              s.summaryRestaurant,
+              s.summaryBusiness,
               draft.tenantName ??
                   draft.claims?.tenantName ??
                   draft.deployment.tenantSlug ??
@@ -2027,7 +2027,7 @@ class _SummaryPane extends ConsumerWidget {
                   ? s.summaryThisMachine
                   : draft.deployment.databaseHost,
             ),
-            (s.summaryRestaurant, draft.deployment.tenantSlug ?? s.notSet),
+            (s.summaryBusiness, draft.deployment.tenantSlug ?? s.notSet),
             (s.summaryBranch, draft.branchLabel ?? s.notSet),
             (s.summaryTerminal, draft.terminalName),
             (s.summaryPrinter, draft.printerName ?? s.summaryNoPrinter),
@@ -2129,7 +2129,7 @@ class _SummaryPane extends ConsumerWidget {
         ],
         // The hardware screen is where this used to live, and a cloud till no
         // longer sees that screen when exactly one printer was found. Somebody
-        // has to be able to put paper through the thing before the restaurant
+        // has to be able to put paper through the thing before the business
         // opens, and this is now the last place they can.
         if (draft.printerName case final printer?) ...[
           const SizedBox(height: PosSpace.lg),
@@ -2162,7 +2162,7 @@ class _SummaryPane extends ConsumerWidget {
 /// Build this machine's database from the wizard (pos-setup-owner-step).
 ///
 /// The offline path used to begin at a command line — `PosMigrator` ran only on
-/// the cloud claim path, so an offline restaurant needed somebody at a terminal
+/// the cloud claim path, so an offline business needed somebody at a terminal
 /// with `bin/pos_migrate.dart` before the wizard could do anything at all. This
 /// is that command, on the screen the operator is already looking at.
 ///

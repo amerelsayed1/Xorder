@@ -68,16 +68,16 @@ void main() {
     final applied = await bootstrap.migrate(admin);
     expect(applied, isNotEmpty);
 
-    final restaurantId =
-        await bootstrap.seedRestaurant(admin, slug: 'probe', name: 'Probe');
+    final businessId =
+        await bootstrap.seedBusiness(admin, slug: 'probe', name: 'Probe');
     final branchId = await bootstrap.seedBranch(admin,
-        restaurantId: restaurantId, name: 'Main', code: 'MAIN');
-    final roles = await bootstrap.seedSystemRoles(admin, restaurantId);
+        businessId: businessId, name: 'Main', code: 'MAIN');
+    final roles = await bootstrap.seedSystemRoles(admin, businessId);
     expect(roles.created, 4);
 
     expect(
       await bootstrap.seedOwner(admin,
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           roleId: roles.ids['owner']!,
           name: 'Amer',
@@ -88,12 +88,12 @@ void main() {
 
     // Re-running is safe: every step is an upsert, and the PIN is NOT reset.
     // Compared field by field — a record holding a Map is not value-equal.
-    final again = await bootstrap.seedSystemRoles(admin, restaurantId);
+    final again = await bootstrap.seedSystemRoles(admin, businessId);
     expect(again.created, 0, reason: 'a re-run creates nothing');
     expect(again.ids, roles.ids, reason: 'and returns the same ids');
     expect(
       await bootstrap.seedOwner(admin,
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           roleId: roles.ids['owner']!,
           name: 'Someone Else',
@@ -104,8 +104,8 @@ void main() {
     );
 
     final staff = await database.query(admin,
-        'SELECT name FROM pos_users WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId});
+        'SELECT name FROM pos_users WHERE business_id = @r',
+        parameters: {'r': businessId});
     expect(staff.first[0], 'Amer', reason: 'the first name survived the re-run');
   }, timeout: const Timeout(Duration(minutes: 2)));
 

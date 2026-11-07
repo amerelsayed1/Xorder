@@ -54,14 +54,14 @@ class BootstrapSeeder {
     if (!bundle.seedable) {
       return const SeedReport.skipped('incomplete');
     }
-    final restaurant = bundle.restaurant!;
+    final business = bundle.business!;
 
     return _db.runTx(config, (tx) async {
       final held = await tx.execute(
         Sql.named(
-          'SELECT config_version FROM pos_cloud_state WHERE restaurant_id = @restaurant',
+          'SELECT config_version FROM pos_cloud_state WHERE business_id = @restaurant',
         ),
-        parameters: {'restaurant': restaurant.id},
+        parameters: {'restaurant': business.id},
       );
       final cached = held.isEmpty ? -1 : held.first[0] as int;
 
@@ -89,13 +89,13 @@ class BootstrapSeeder {
 
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_cloud_state (restaurant_id, config_version, bootstrap_synced_at, updated_at)
+          INSERT INTO pos_cloud_state (business_id, config_version, bootstrap_synced_at, updated_at)
           VALUES (@restaurant, @version, @syncedAt, now())
-          ON CONFLICT (restaurant_id) DO UPDATE
+          ON CONFLICT (business_id) DO UPDATE
             SET config_version = @version, bootstrap_synced_at = @syncedAt, updated_at = now()
         '''),
         parameters: {
-          'restaurant': restaurant.id,
+          'restaurant': business.id,
           'version': bundle.configVersion,
           'syncedAt': (bundle.syncedAt ?? DateTime.now()).toUtc(),
         },
@@ -110,12 +110,12 @@ class BootstrapSeeder {
   /// must not wait on a network.
   ///
   /// No `branding` block at all is an older platform and changes nothing. A
-  /// block with no logo means the restaurant has none: the platform's copy on
+  /// block with no logo means the business has none: the platform's copy on
   /// this till is removed, but a logo chosen on the till itself is not, because
   /// the platform never sent that one and has no say over it.
   Future<void> _seedLogo(
     TxSession tx,
-    int restaurantId,
+    int businessId,
     BootstrapBranding? branding,
   ) async {
     if (branding == null) return;
@@ -123,15 +123,15 @@ class BootstrapSeeder {
     if (url != null) {
       await tx.execute(
         Sql.named(
-          'UPDATE pos_restaurants SET logo_remote_url = @url WHERE id = @id',
+          'UPDATE pos_businesses SET logo_remote_url = @url WHERE id = @id',
         ),
-        parameters: {'id': restaurantId, 'url': url},
+        parameters: {'id': businessId, 'url': url},
       );
       return;
     }
     await tx.execute(
       Sql.named(
-        'UPDATE pos_restaurants '
+        'UPDATE pos_businesses '
         '   SET logo_remote_url = NULL, '
         '       logo_bytes = CASE WHEN logo_source = \'platform\' '
         '                         THEN NULL ELSE logo_bytes END, '
@@ -145,55 +145,55 @@ class BootstrapSeeder {
         '                          THEN NULL ELSE logo_source END '
         ' WHERE id = @id',
       ),
-      parameters: {'id': restaurantId},
+      parameters: {'id': businessId},
     );
   }
 
   Future<void> _seedIdentity(TxSession tx, BootstrapBundle bundle) async {
-    final restaurant = bundle.restaurant!;
+    final business = bundle.business!;
     final terminal = bundle.terminal!;
 
     await tx.execute(
       Sql.named('''
-        INSERT INTO pos_restaurants (id, slug, name, name_ar, tax_number, is_active)
+        INSERT INTO pos_businesses (id, slug, name, name_ar, tax_number, is_active)
         VALUES (@id, @slug, @name, @nameAr, @tax, true)
         ON CONFLICT (id) DO UPDATE
           SET slug = @slug, name = @name, name_ar = @nameAr, tax_number = @tax, is_active = true
       '''),
       parameters: {
-        'id': restaurant.id,
-        'slug': restaurant.slug,
-        'name': restaurant.name,
-        'nameAr': restaurant.nameAr,
-        'tax': restaurant.taxRegistrationNumber,
+        'id': business.id,
+        'slug': business.slug,
+        'name': business.name,
+        'nameAr': business.nameAr,
+        'tax': business.taxRegistrationNumber,
       },
     );
 
     // Which languages the menu is written in (XORD-005). Only when the platform
     // said: an older platform sends nothing, and the till keeps what it has.
-    if (restaurant.contentLanguages case final languages?) {
+    if (business.contentLanguages case final languages?) {
       await tx.execute(
         Sql.named(
-          'UPDATE pos_restaurants SET content_languages = @languages '
+          'UPDATE pos_businesses SET content_languages = @languages '
           'WHERE id = @id',
         ),
-        parameters: {'id': restaurant.id, 'languages': languages},
+        parameters: {'id': business.id, 'languages': languages},
       );
     }
 
-    await _seedLogo(tx, restaurant.id, bundle.branding);
+    await _seedLogo(tx, business.id, bundle.branding);
 
     for (final branch in bundle.branches) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_branches (id, restaurant_id, code, name, supported_order_types, is_active)
+          INSERT INTO pos_branches (id, business_id, code, name, supported_order_types, is_active)
           VALUES (@id, @restaurant, @code, @name, @orderTypes, true)
           ON CONFLICT (id) DO UPDATE
             SET code = @code, name = @name, supported_order_types = @orderTypes, is_active = true
         '''),
         parameters: {
           'id': branch.id,
-          'restaurant': restaurant.id,
+          'restaurant': business.id,
           // The code is the invoice prefix and the local column is NOT NULL; a
           // branch the platform never gave one falls back to its id, which is
           // ugly on a receipt and unmistakably a configuration gap.
@@ -207,10 +207,10 @@ class BootstrapSeeder {
       await tx.execute(
         Sql.named(
           'UPDATE pos_branches SET is_active = false '
-          'WHERE restaurant_id = @restaurant AND NOT (id = ANY(@keep))',
+          'WHERE business_id = @restaurant AND NOT (id = ANY(@keep))',
         ),
         parameters: {
-          'restaurant': restaurant.id,
+          'restaurant': business.id,
           'keep': [for (final b in bundle.branches) b.id],
         },
       );
@@ -218,7 +218,7 @@ class BootstrapSeeder {
 
     await tx.execute(
       Sql.named('''
-        INSERT INTO pos_terminals (id, restaurant_id, branch_id, name, sync_policy, claimed_at)
+        INSERT INTO pos_terminals (id, business_id, branch_id, name, sync_policy, claimed_at)
         VALUES (@id, @restaurant, @branch, @name, @policy, now())
         ON CONFLICT (id) DO UPDATE
           SET branch_id = @branch, name = @name, sync_policy = @policy,
@@ -226,7 +226,7 @@ class BootstrapSeeder {
       '''),
       parameters: {
         'id': terminal.id,
-        'restaurant': restaurant.id,
+        'restaurant': business.id,
         'branch': terminal.branchId,
         'name': terminal.name,
         'policy': switch (terminal.syncPolicy) {
@@ -241,7 +241,7 @@ class BootstrapSeeder {
   ///
   /// **The bug this closes.** Nothing in `data/cloud/` wrote this table, so
   /// every cloud till printed and filed with `ReceiptProfile(branchId: 0)` —
-  /// the compiled-in blank — no matter what the restaurant had typed anywhere.
+  /// the compiled-in blank — no matter what the business had typed anywhere.
   /// The platform is the author now, and the bundle carries one row per active
   /// branch whether anybody authored it or not, so the till has something to
   /// print on day one.
@@ -272,7 +272,7 @@ class BootstrapSeeder {
     // "absent" and "empty" the same statement here.
     if (bundle.receiptProfiles.isEmpty) return;
 
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
     final knownBranches = {for (final b in bundle.branches) b.id};
 
     for (final profile in bundle.receiptProfiles) {
@@ -281,7 +281,7 @@ class BootstrapSeeder {
       await tx.execute(
         Sql.named('''
           INSERT INTO pos_receipt_profiles
-            (restaurant_id, branch_id, trade_name, registration_number,
+            (business_id, branch_id, trade_name, registration_number,
              activity_code, branch_code, country, governate, region_city,
              street, building_number, postal_code, floor, room, landmark,
              additional_info, phone, header_note, footer_note, revision,
@@ -316,7 +316,7 @@ class BootstrapSeeder {
             updated_by = NULL
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'branch': profile.branchId,
           'trade': profile.tradeName.trim(),
           'rin': profile.registrationNumber.trim(),
@@ -358,13 +358,13 @@ class BootstrapSeeder {
   Future<void> _seedMoney(TxSession tx, BootstrapBundle bundle) async {
     await tx.execute(
       Sql.named('''
-        INSERT INTO pos_money_config (restaurant_id, payload, synced_at)
+        INSERT INTO pos_money_config (business_id, payload, synced_at)
         VALUES (@restaurant, @payload, now())
-        ON CONFLICT (restaurant_id) DO UPDATE
+        ON CONFLICT (business_id) DO UPDATE
           SET payload = @payload, synced_at = now()
       '''),
       parameters: {
-        'restaurant': bundle.restaurant!.id,
+        'restaurant': bundle.business!.id,
         'payload': jsonEncode(bundle.money),
       },
     );
@@ -392,7 +392,7 @@ class BootstrapSeeder {
   ) async {
     if (!bundle.sendsFinancialAccounts) return;
 
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
     final kept = <int>[];
 
     for (final account in bundle.financialAccounts) {
@@ -400,19 +400,19 @@ class BootstrapSeeder {
       if (branchId != null) {
         final branch = await tx.execute(
           Sql.named(
-            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+            'SELECT 1 FROM pos_branches WHERE id = @b AND business_id = @r',
           ),
-          parameters: {'b': branchId, 'r': restaurantId},
+          parameters: {'b': branchId, 'r': businessId},
         );
         if (branch.isEmpty) continue;
       }
 
-      // `WHERE … restaurant_id` on the conflict: an id that already belongs to
-      // another restaurant on this database is left alone rather than
-      // overwritten. A branch server holds one restaurant, so this is a belt.
+      // `WHERE … business_id` on the conflict: an id that already belongs to
+      // another business on this database is left alone rather than
+      // overwritten. A branch server holds one business, so this is a belt.
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_financial_accounts (id, restaurant_id, branch_id,
+          INSERT INTO pos_financial_accounts (id, business_id, branch_id,
             name, kind, currency, reference_label, is_active, sort_order)
           VALUES (@id, @restaurant, @branch, @name, @kind, @currency,
             @reference, @active, @sort)
@@ -420,11 +420,11 @@ class BootstrapSeeder {
             SET branch_id = @branch, name = @name, kind = @kind,
                 currency = @currency, reference_label = @reference,
                 is_active = @active, sort_order = @sort
-            WHERE pos_financial_accounts.restaurant_id = @restaurant
+            WHERE pos_financial_accounts.business_id = @restaurant
         '''),
         parameters: {
           'id': account.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'branch': branchId,
           'name': account.name,
           'kind': account.kind.wire,
@@ -440,9 +440,9 @@ class BootstrapSeeder {
     await tx.execute(
       Sql.named(
         'UPDATE pos_financial_accounts SET is_active = false '
-        'WHERE restaurant_id = @restaurant AND NOT (id = ANY(@keep))',
+        'WHERE business_id = @restaurant AND NOT (id = ANY(@keep))',
       ),
-      parameters: {'restaurant': restaurantId, 'keep': kept},
+      parameters: {'restaurant': businessId, 'keep': kept},
     );
   }
 
@@ -463,22 +463,22 @@ class BootstrapSeeder {
   ) async {
     if (!bundle.sendsTenderAccountDefaults) return;
 
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
 
     await tx.execute(
       Sql.named(
-        'DELETE FROM pos_tender_account_defaults WHERE restaurant_id = @r',
+        'DELETE FROM pos_tender_account_defaults WHERE business_id = @r',
       ),
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     for (final row in bundle.tenderAccountDefaults) {
       final tender = await tx.execute(
         Sql.named(
           'SELECT id FROM pos_tender_types '
-          'WHERE restaurant_id = @r AND platform_id = @p',
+          'WHERE business_id = @r AND platform_id = @p',
         ),
-        parameters: {'r': restaurantId, 'p': row.tenderTypeId},
+        parameters: {'r': businessId, 'p': row.tenderTypeId},
       );
       if (tender.isEmpty) continue;
 
@@ -486,9 +486,9 @@ class BootstrapSeeder {
       if (branchId != null) {
         final branch = await tx.execute(
           Sql.named(
-            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+            'SELECT 1 FROM pos_branches WHERE id = @b AND business_id = @r',
           ),
-          parameters: {'b': branchId, 'r': restaurantId},
+          parameters: {'b': branchId, 'r': businessId},
         );
         if (branch.isEmpty) continue;
       }
@@ -496,22 +496,22 @@ class BootstrapSeeder {
       final account = await tx.execute(
         Sql.named(
           'SELECT 1 FROM pos_financial_accounts '
-          'WHERE id = @a AND restaurant_id = @r',
+          'WHERE id = @a AND business_id = @r',
         ),
-        parameters: {'a': row.accountId, 'r': restaurantId},
+        parameters: {'a': row.accountId, 'r': businessId},
       );
       if (account.isEmpty) continue;
 
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_tender_account_defaults (restaurant_id,
+          INSERT INTO pos_tender_account_defaults (business_id,
             tender_type_id, branch_id, branch_key, financial_account_id)
           VALUES (@r, @t, @b, @k, @a)
           ON CONFLICT (tender_type_id, branch_key) DO UPDATE
             SET financial_account_id = @a
         '''),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           't': tender.first[0]! as int,
           'b': branchId,
           'k': branchId ?? 0,
@@ -538,14 +538,14 @@ class BootstrapSeeder {
   /// has no foreign key onto this table, so a DELETE would orphan a payment in
   /// silence where a retired row stays readable.
   Future<void> _seedTenderTypes(TxSession tx, BootstrapBundle bundle) async {
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
     final tenders = bundle.tenderTypes;
 
     // An empty list leaves the table as it is. Retiring everything would drop
     // the payment screen onto its compiled-in fallback, and every payment
     // taken on that would be held by the drain anyway — no better than what
     // is here, and a crash would be worse than both. The platform guarantees
-    // a POS restaurant is never delivered an empty list; this is the till not
+    // a POS business is never delivered an empty list; this is the till not
     // relying on that.
     if (tenders.isEmpty) return;
 
@@ -570,21 +570,21 @@ class BootstrapSeeder {
 
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_tender_types (restaurant_id, platform_id, code,
+          INSERT INTO pos_tender_types (business_id, platform_id, code,
             name_en, name_ar, kind, counts_as_cash, opens_drawer,
             requires_reference, refund_allowed, is_active, sort_order)
           VALUES (@restaurant, @platformId, @code, @name, NULL, @kind, @cash,
             @cash, false, true, @active, @sort)
-          ON CONFLICT (restaurant_id, platform_id) DO UPDATE
+          ON CONFLICT (business_id, platform_id) DO UPDATE
             SET code = @code, name_en = @name, name_ar = NULL, kind = @kind,
                 counts_as_cash = @cash, opens_drawer = @cash,
                 requires_reference = false, refund_allowed = true,
                 is_active = @active, sort_order = @sort
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'platformId': tender.id,
-          // Unique by construction: platform_id is unique per restaurant, and
+          // Unique by construction: platform_id is unique per business, and
           // migration 41 keeps the prefix off every row the platform did not
           // send.
           'code': 'platform-${tender.id}',
@@ -613,11 +613,11 @@ class BootstrapSeeder {
     await tx.execute(
       Sql.named(
         'UPDATE pos_tender_types SET is_active = false '
-        'WHERE restaurant_id = @restaurant '
+        'WHERE business_id = @restaurant '
         '  AND (platform_id IS NULL OR NOT (platform_id = ANY(@keep)))',
       ),
       parameters: {
-        'restaurant': restaurantId,
+        'restaurant': businessId,
         'keep': [for (final t in tenders) t.id],
       },
     );
@@ -639,16 +639,16 @@ class BootstrapSeeder {
   /// of leaving a duplicate the cashier can see.
   Future<void> _seedCustomers(TxSession tx, BootstrapBundle bundle) async {
     if (bundle.customers.isEmpty) return;
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
 
     for (final customer in bundle.customers) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_customers (restaurant_id, client_transaction_id,
+          INSERT INTO pos_customers (business_id, client_transaction_id,
                                      platform_id, name, phone, email, address)
           VALUES (@restaurant, gen_random_uuid(), @platform, @name, @phone,
                   @email, @address)
-          ON CONFLICT (restaurant_id, phone) DO UPDATE
+          ON CONFLICT (business_id, phone) DO UPDATE
             SET platform_id = @platform,
                 name        = @name,
                 email       = COALESCE(@email, pos_customers.email),
@@ -656,7 +656,7 @@ class BootstrapSeeder {
                 updated_at  = now()
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'platform': customer.id,
           'name': customer.name,
           'phone': PosCustomer.normalisePhone(customer.phone),
@@ -668,12 +668,12 @@ class BootstrapSeeder {
   }
 
   Future<void> _seedStaff(TxSession tx, BootstrapBundle bundle) async {
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
 
     for (final member in bundle.staff) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_users (id, restaurant_id, name, username, pin_salt, pin_hash, capabilities, is_active)
+          INSERT INTO pos_users (id, business_id, name, username, pin_salt, pin_hash, capabilities, is_active)
           VALUES (@id, @restaurant, @name, @username, @salt, @hash, @capabilities, @active)
           ON CONFLICT (id) DO UPDATE
             SET name = @name, username = @username,
@@ -682,7 +682,7 @@ class BootstrapSeeder {
         '''),
         parameters: {
           'id': member.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'name': member.name,
           'username': member.username,
           // Empty strings, not nulls: the columns are NOT NULL, and an empty
@@ -707,10 +707,10 @@ class BootstrapSeeder {
       await tx.execute(
         Sql.named(
           'UPDATE pos_users SET is_active = false '
-          'WHERE restaurant_id = @restaurant AND NOT (id = ANY(@keep))',
+          'WHERE business_id = @restaurant AND NOT (id = ANY(@keep))',
         ),
         parameters: {
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'keep': [for (final s in bundle.staff) s.id],
         },
       );
@@ -718,7 +718,7 @@ class BootstrapSeeder {
   }
 
   Future<void> _seedCatalog(TxSession tx, BootstrapBundle bundle) async {
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
 
     // Children before parents; the platform's catalog replaces the local one
     // whole. Order lines snapshot name and price at sale time, so history
@@ -726,16 +726,16 @@ class BootstrapSeeder {
     await tx.execute(
       Sql.named(
         'DELETE FROM pos_product_modifier_groups WHERE product_id IN '
-        '(SELECT id FROM pos_products WHERE restaurant_id = @restaurant)',
+        '(SELECT id FROM pos_products WHERE business_id = @restaurant)',
       ),
-      parameters: {'restaurant': restaurantId},
+      parameters: {'restaurant': businessId},
     );
     await tx.execute(
       Sql.named(
         'DELETE FROM pos_modifiers WHERE group_id IN '
-        '(SELECT id FROM pos_modifier_groups WHERE restaurant_id = @restaurant)',
+        '(SELECT id FROM pos_modifier_groups WHERE business_id = @restaurant)',
       ),
-      parameters: {'restaurant': restaurantId},
+      parameters: {'restaurant': businessId},
     );
     // `pos_modifier_group_categories` goes with the groups and the categories
     // — it cascades from both (migration 45). Deliberately not deleted by
@@ -747,20 +747,20 @@ class BootstrapSeeder {
       'pos_categories',
     ]) {
       await tx.execute(
-        Sql.named('DELETE FROM $table WHERE restaurant_id = @restaurant'),
-        parameters: {'restaurant': restaurantId},
+        Sql.named('DELETE FROM $table WHERE business_id = @restaurant'),
+        parameters: {'restaurant': businessId},
       );
     }
 
     for (final category in bundle.categories) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_categories (id, restaurant_id, name_en, name_ar, slug, sort_order, is_active)
+          INSERT INTO pos_categories (id, business_id, name_en, name_ar, slug, sort_order, is_active)
           VALUES (@id, @restaurant, @nameEn, @nameAr, @slug, @sort, @active)
         '''),
         parameters: {
           'id': category.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'nameEn': category.nameEn,
           'nameAr': category.nameAr,
           'slug': category.slug,
@@ -773,12 +773,12 @@ class BootstrapSeeder {
     for (final group in bundle.optionGroups) {
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_modifier_groups (id, restaurant_id, name_en, name_ar, is_required, max_select, is_variant, sort_order)
+          INSERT INTO pos_modifier_groups (id, business_id, name_en, name_ar, is_required, max_select, is_variant, sort_order)
           VALUES (@id, @restaurant, @nameEn, @nameAr, @required, @maxSelect, @variant, @sort)
         '''),
         parameters: {
           'id': group.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'nameEn': group.nameEn,
           'nameAr': group.nameAr,
           'required': group.isRequired,
@@ -816,7 +816,7 @@ class BootstrapSeeder {
 
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_products (id, restaurant_id, category_id, name_en, name_ar,
+          INSERT INTO pos_products (id, business_id, category_id, name_en, name_ar,
                                     price_minor, discounted_price_minor, sku, barcode,
                                     is_available, sort_order)
           VALUES (@id, @restaurant, @category, @nameEn, @nameAr,
@@ -824,7 +824,7 @@ class BootstrapSeeder {
         '''),
         parameters: {
           'id': product.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'category': product.categoryId,
           'nameEn': product.nameEn,
           'nameAr': product.nameAr,
@@ -857,25 +857,25 @@ class BootstrapSeeder {
   }
 
   Future<void> _seedTables(TxSession tx, BootstrapBundle bundle) async {
-    final restaurantId = bundle.restaurant!.id;
+    final businessId = bundle.business!.id;
     final knownBranches = {for (final b in bundle.branches) b.id};
 
     await tx.execute(
       Sql.named(
-        'DELETE FROM pos_dining_tables WHERE restaurant_id = @restaurant',
+        'DELETE FROM pos_dining_tables WHERE business_id = @restaurant',
       ),
-      parameters: {'restaurant': restaurantId},
+      parameters: {'restaurant': businessId},
     );
     for (final table in bundle.tables) {
       if (!knownBranches.contains(table.branchId)) continue;
       await tx.execute(
         Sql.named('''
-          INSERT INTO pos_dining_tables (id, restaurant_id, branch_id, label, seats, area_name, is_active)
+          INSERT INTO pos_dining_tables (id, business_id, branch_id, label, seats, area_name, is_active)
           VALUES (@id, @restaurant, @branch, @label, @seats, @area, @active)
         '''),
         parameters: {
           'id': table.id,
-          'restaurant': restaurantId,
+          'restaurant': businessId,
           'branch': table.branchId,
           'label': table.label,
           'seats': table.seats,
@@ -890,7 +890,7 @@ class BootstrapSeeder {
   /// authored row can never be assigned an id the next resync will also use.
   Future<void> _bumpSequences(TxSession tx) async {
     const tables = [
-      'pos_restaurants',
+      'pos_businesses',
       'pos_branches',
       'pos_users',
       'pos_categories',

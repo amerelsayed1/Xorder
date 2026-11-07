@@ -17,7 +17,7 @@ import 'shift_history_bits.dart' show shiftStamp;
 /// Customers: everyone on file, and what each has bought at this branch.
 ///
 /// **Read-only.** A customer is added at the counter, where an order is being
-/// taken for them; this is where the restaurant looks at the people it serves.
+/// taken for them; this is where the business looks at the people it serves.
 /// The phone is a customer's identity, so changing one is not a field edit.
 ///
 /// Read through [customerDirectoryProvider], which asks `reports.view` of the

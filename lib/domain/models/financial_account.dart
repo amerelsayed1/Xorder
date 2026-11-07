@@ -56,7 +56,7 @@ class FinancialAccount {
   final int? branchId;
 
   /// The platform's value on a cloud till; null offline, where nothing here
-  /// knows the restaurant's currency. Shown, never compared.
+  /// knows the business's currency. Shown, never compared.
   final String? currency;
 
   /// A short hint to tell accounts apart ("CIB 4521"). Not an account number.
@@ -110,7 +110,7 @@ enum AccountProblem {
   /// The name is blank.
   nameMissing,
 
-  /// Another account of this restaurant already has the name.
+  /// Another account of this business already has the name.
   nameTaken,
 
   /// The reference looks like an account number (nine or more digits).
@@ -120,13 +120,13 @@ enum AccountProblem {
   /// goes to the audit log, so it gets the same guard as the reference.
   nameLooksLikeNumber,
 
-  /// The branch is not one of this restaurant's.
+  /// The branch is not one of this business's.
   branchUnknown,
 
-  /// The payment method is not one of this restaurant's.
+  /// The payment method is not one of this business's.
   methodUnknown,
 
-  /// The account is not one of this restaurant's, or it is switched off.
+  /// The account is not one of this business's, or it is switched off.
   accountUnavailable,
 
   /// A branch's own account cannot serve another branch, nor be the

@@ -12,7 +12,7 @@ import '../../../domain/models/tender_method.dart';
 ///
 /// **The two switches are not the same question, and the dialog says so.**
 /// "Counts as cash" decides what the drawer is expected to hold; "opens the
-/// drawer" decides whether the till kicks it. A restaurant that keeps meal
+/// drawer" decides whether the till kicks it. A business that keeps meal
 /// vouchers in the till opens the drawer for them and does not count them —
 /// putting the two on one checkbox is how a cash-up starts reporting a surplus
 /// nobody can explain.
@@ -26,7 +26,7 @@ class TenderTypeDialog extends StatefulWidget {
   /// Null creates a new one.
   final TenderMethod? method;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<TenderMethod?> show(
@@ -73,7 +73,7 @@ class _TenderTypeDialogState extends State<TenderTypeDialog> {
   /// A code from the English name, for a method being created.
   ///
   /// Generated rather than asked for: a code is machine identity and nobody
-  /// setting up a restaurant has an opinion about it. It stays editable because
+  /// setting up a business has an opinion about it. It stays editable because
   /// the one case that matters — matching a code an integration already
   /// expects — is one only the operator knows about.
   void _suggestCode(String nameEn) {

@@ -63,7 +63,7 @@ class HomeSales {
 /// Net ÷ orders, in whole minor units, rounded half up — once, here.
 ///
 /// Net rather than gross, because gross before discounts and refunds is money
-/// the restaurant never had: an average built on it flatters every day that
+/// the business never had: an average built on it flatters every day that
 /// gave anything away. Null with no orders, rather than zero: a zero average
 /// is a claim about orders, and there were none.
 Money? averageOrder(BranchSales sales) => sales.orders == 0
@@ -82,7 +82,7 @@ int? deltaBp(int now, int before) =>
 
 /// Where to cut [previous]: as long after it opened as [day] has been open.
 ///
-/// **Elapsed since opening, not the clock time.** A restaurant that opened at
+/// **Elapsed since opening, not the clock time.** A business that opened at
 /// 10 today and at 8 yesterday is two hours into its day at noon, and
 /// yesterday at noon it was four — comparing the clock would make today look
 /// short by two hours of trade it never had the chance to do. The rule is the

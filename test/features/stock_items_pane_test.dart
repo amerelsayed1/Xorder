@@ -12,7 +12,7 @@ import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 import '../support/fakes.dart';
 import '../support/fonts.dart';
 
-/// The Stock items pane: what the restaurant buys and counts.
+/// The Stock items pane: what the business buys and counts.
 void main() {
   // The bundled faces, not the test font's, so what fits here is what a till
   // shows (see `loadPosFonts`).

@@ -1,7 +1,7 @@
-/// What a restaurant adds on top of the food (§38).
+/// What a business adds on top of the food (§38).
 ///
 /// **Data, not a single rate.** The ticket carried one `serviceBp` and one
-/// rule — *dine-in only* — which cannot express the two things restaurants
+/// rule — *dine-in only* — which cannot express the two things businesses
 /// here actually do: a delivery fee that is a flat amount rather than a
 /// percentage, and a second charge that applies to a different set of order
 /// types than the first.
@@ -40,13 +40,13 @@ class ServiceCharge {
   /// A flat amount in minor units. Null on a percentage charge.
   ///
   /// Held as minor units rather than as [Money] for the same reason a
-  /// permission ceiling is: a charge belongs to a restaurant and the currency
-  /// question is the restaurant's, answered once when the ticket is priced.
+  /// permission ceiling is: a charge belongs to a business and the currency
+  /// question is the business's, answered once when the ticket is priced.
   final int? fixedMinor;
 
   /// Which order types it applies to.
   ///
-  /// **Empty means every one.** A restaurant that has not thought about it
+  /// **Empty means every one.** A business that has not thought about it
   /// gets a charge that applies, which is the reading that matches what the
   /// single `serviceDineInOnly` flag replaced — and a charge that silently
   /// applied to nothing would be a charge somebody configured and never saw.

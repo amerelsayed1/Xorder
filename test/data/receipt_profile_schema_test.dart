@@ -15,7 +15,7 @@ import 'pg_fixture.dart';
 /// Who the receipt says sold the food, stored.
 ///
 /// The thing worth testing against a real server is the half-finished state: a
-/// restaurant types its trade name on Monday and rings its accountant about
+/// business types its trade name on Monday and rings its accountant about
 /// the activity code on Thursday, and a store that would not hold Monday's
 /// version is a store nobody finishes filling in.
 void main() {
@@ -38,21 +38,21 @@ void main() {
     pg = await PgFixture.open('receipt_profile');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Profile Test') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Profile Test') "
       'RETURNING id',
       parameters: {'slug': slug},
     );
-    final restaurantId = restaurant.first[0]! as int;
+    final businessId = business.first[0]! as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0]! as int;
 
@@ -61,11 +61,11 @@ void main() {
     Future<PosStaff> staff(String name, String username, Set<String> caps) async {
       final rows = await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         "pin_salt, pin_hash, capabilities) VALUES (@r, @b, @n, @u, 'x', 'y', @c) "
         'RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'n': name,
           'u': username,
@@ -92,7 +92,7 @@ void main() {
       readDatabase: db,
       readConfig: pg.config.copyWith(tenantSlug: slug),
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -226,7 +226,7 @@ void main() {
       readDatabase: db,
       readConfig: pg.config.copyWith(tenantSlug: slug),
       adminAvailable: false,
-      restaurantId: 1,
+      businessId: 1,
       branchId: branchId,
     );
 

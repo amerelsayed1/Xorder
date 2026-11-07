@@ -26,7 +26,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int categoryId;
 
   const slug = 'size-price-test';
@@ -39,17 +39,17 @@ void main() {
     pg = await PgFixture.open('size_price_derivation');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = await insert(
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Sizes') "
+    businessId = await insert(
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Sizes') "
       'RETURNING id',
       {'slug': slug},
     );
     categoryId = await insert(
-      "INSERT INTO pos_categories (restaurant_id, name_en) VALUES (@r, 'Burgers') "
+      "INSERT INTO pos_categories (business_id, name_en) VALUES (@r, 'Burgers') "
       'RETURNING id',
-      {'r': restaurantId},
+      {'r': businessId},
     );
   });
 
@@ -59,20 +59,20 @@ void main() {
   /// writes it: one charged figure per option, no sale price column.
   Future<int> sizedBurger({required int price, int? discounted}) async {
     final product = await insert(
-      'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+      'INSERT INTO pos_products (business_id, category_id, name_en, '
       '  price_minor, discounted_price_minor) '
       "VALUES (@r, @c, 'Burger', @price, @discounted) RETURNING id",
       {
-        'r': restaurantId,
+        'r': businessId,
         'c': categoryId,
         'price': price,
         'discounted': discounted,
       },
     );
     final group = await insert(
-      'INSERT INTO pos_modifier_groups (restaurant_id, name_en, is_required, '
+      'INSERT INTO pos_modifier_groups (business_id, name_en, is_required, '
       "  is_variant) VALUES (@r, 'Size', true, true) RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     for (final (name, charged, sort) in [('Medium', 8000, 1), ('Large', 11000, 2)]) {
       await db.query(

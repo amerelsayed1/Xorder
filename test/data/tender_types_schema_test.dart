@@ -16,7 +16,7 @@ import 'pg_fixture.dart';
 
 /// Payment methods, as data (§40).
 ///
-/// The interesting part is not the table. It is that a restaurant editing its
+/// The interesting part is not the table. It is that a business editing its
 /// payment methods must not change what a shift that closed last week said the
 /// drawer should have held — so `counts_as_cash` is snapshotted onto the
 /// payment when the money moves, and this is where that is proved.
@@ -29,7 +29,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresTenderTypesRepository tenders;
-  late int restaurantId;
+  late int businessId;
 
   const slug = 'tender-types-test';
 
@@ -37,23 +37,23 @@ void main() {
     pg = await PgFixture.open('tender_types');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@s, 'Tenders') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@s, 'Tenders') "
       'RETURNING id',
       parameters: {'s': slug},
     )).first[0]! as int;
 
-    // The migration seeds every restaurant that existed when it ran. One
+    // The migration seeds every business that existed when it ran. One
     // created afterwards is seeded by the bootstrap; here it is done directly
     // so the test is about the table rather than about the seeder.
     await db.query(
       pg.config,
       '''
       INSERT INTO pos_tender_types
-        (restaurant_id, code, name_en, name_ar, kind, counts_as_cash,
+        (business_id, code, name_en, name_ar, kind, counts_as_cash,
          opens_drawer, requires_reference, sort_order)
       SELECT @r, v.code, v.name_en, v.name_ar, v.kind, v.cash, v.drawer,
              v.reference, v.sort
@@ -64,21 +64,21 @@ void main() {
           ('account', 'On account',       'على الحساب', 'account', false, false, false, 4)
         ) AS v(code, name_en, name_ar, kind, cash, drawer, reference, sort)
       ''',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     tenders = PostgresTenderTypesRepository(
       database: db,
       config: pg.config.copyWith(tenantSlug: slug),
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
   });
 
   tearDown(() => pg.close());
 
-  group('what a restaurant starts with', () {
+  group('what a business starts with', () {
     test('is exactly what the code calls seeded', () async {
-      // Two definitions of "what a new restaurant starts with" is how a fresh
+      // Two definitions of "what a new business starts with" is how a fresh
       // install and a migrated one end up different.
       final stored = await tenders.all();
 
@@ -115,7 +115,7 @@ void main() {
       );
     });
 
-    test('comes back in the order the restaurant put them in', () async {
+    test('comes back in the order the business put them in', () async {
       await db.query(
         pg.config,
         "UPDATE pos_tender_types SET sort_order = 0 WHERE code = 'card'",
@@ -154,28 +154,28 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+          'INSERT INTO pos_tender_types (business_id, code, name_en) '
           "VALUES (@r, 'cash', 'Cash again')",
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ),
         throwsA(isA<Object>()),
       );
     });
 
-    test('two restaurants may each have a method called cash', () async {
+    test('two businesses may each have a method called cash', () async {
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') "
+        "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') "
         'RETURNING id',
       )).first[0]! as int;
 
       await db.query(
         pg.config,
-        'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+        'INSERT INTO pos_tender_types (business_id, code, name_en) '
         "VALUES (@r, 'cash', 'Cash')",
         parameters: {'r': other},
       );
-      // And it does not appear on this restaurant's till.
+      // And it does not appear on this business's till.
       expect((await tenders.all()), hasLength(4));
     });
 
@@ -183,9 +183,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_tender_types (restaurant_id, code, name_en, kind) '
+          'INSERT INTO pos_tender_types (business_id, code, name_en, kind) '
           "VALUES (@r, 'crypto', 'Crypto', 'bitcoin')",
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ),
         throwsA(isA<Object>()),
       );
@@ -200,18 +200,18 @@ void main() {
     });
   });
 
-  test('a restaurant created after the migration is seeded by the installer',
+  test('a business created after the migration is seeded by the installer',
       () async {
-    // **Found by installing one.** Migration 23 seeds every restaurant present
+    // **Found by installing one.** Migration 23 seeds every business present
     // when it runs, and a fresh install runs the migrations first and creates
-    // the restaurant second — so without `seedTenderTypes` the new restaurant
+    // the business second — so without `seedTenderTypes` the new business
     // has none, the till falls back to the compiled-in four, and Management
     // shows an empty list beside a payment screen offering four methods.
     await db.query(pg.config, 'DELETE FROM pos_tender_types');
 
     final created = await LocalBootstrap(db).seedTenderTypes(
       pg.config,
-      restaurantId,
+      businessId,
     );
 
     expect(created, 4);
@@ -229,7 +229,7 @@ void main() {
 
     final created = await LocalBootstrap(db).seedTenderTypes(
       pg.config,
-      restaurantId,
+      businessId,
     );
 
     expect(created, 0, reason: 'nothing was missing');
@@ -239,7 +239,7 @@ void main() {
     );
   });
 
-  test('a restaurant with no rows still gets a till that can take money',
+  test('a business with no rows still gets a till that can take money',
       () async {
     // The migration has not run, or the seed was wiped. An empty payment
     // screen is a till that cannot trade.
@@ -267,15 +267,15 @@ void main() {
     setUp(() async {
       final branchId = (await db.query(
         pg.config,
-        "INSERT INTO pos_branches (restaurant_id, code, name) "
+        "INSERT INTO pos_branches (business_id, code, name) "
         "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       )).first[0]! as int;
 
       admin = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
     });
@@ -331,7 +331,7 @@ void main() {
     });
 
     test('retiring the last cash method is refused', () async {
-      // A restaurant that does this has a till that can put nothing in the
+      // A business that does this has a till that can put nothing in the
       // drawer and a cash-up that reads zero for the rest of time. The fix
       // afterwards is a database edit, and whoever did it will not know that
       // is what they did.
@@ -386,7 +386,7 @@ void main() {
       expect(result.refusal, isA<CatalogInvalid>());
     });
 
-    test('a cashier cannot change how the restaurant takes money', () async {
+    test('a cashier cannot change how the business takes money', () async {
       final result = await admin.saveTenderType(
         const TenderMethod(id: 0, code: 'x', nameEn: 'Anything'),
         by: cashier,

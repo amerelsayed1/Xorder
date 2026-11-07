@@ -92,7 +92,7 @@ void main() {
     test('a fully comped meal costs nothing at all', () {
       // The case that decides the whole design. If service were charged on the
       // gross, a customer whose meal was comped would still be handed a bill
-      // for service and VAT on food the restaurant gave away.
+      // for service and VAT on food the business gave away.
       final base = ticket(lines: [line(product(10000), 1)]);
       final after = ok(
         TicketEngine.applyOrderDiscount(

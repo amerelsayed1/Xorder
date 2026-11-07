@@ -18,14 +18,14 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     required PosDatabase database,
     required this.config,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _orderColumns =
@@ -58,10 +58,10 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
       config,
       'SELECT ${_orderColumns.split(', ').map((c) => 'o.$c').join(', ')} '
       'FROM pos_purchase_orders o '
-      'WHERE o.restaurant_id = @r AND o.branch_id = @b $where '
+      'WHERE o.business_id = @r AND o.branch_id = @b $where '
       'ORDER BY o.id DESC LIMIT @limit',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'limit': limit,
         ...parameters,
@@ -133,9 +133,9 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     final held = await tx.execute(
       Sql.named(
         'SELECT $_orderColumns FROM pos_purchase_orders '
-        'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+        'WHERE id = @id AND business_id = @r FOR UPDATE',
       ),
-      parameters: {'id': id, 'r': restaurantId},
+      parameters: {'id': id, 'r': businessId},
     );
     if (held.isEmpty) return null;
 
@@ -181,9 +181,9 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
         final held = await tx.execute(
           Sql.named(
             'SELECT status FROM pos_purchase_orders '
-            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @id AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'id': order.id, 'r': restaurantId},
+          parameters: {'id': order.id, 'r': businessId},
         );
         if (held.isEmpty) {
           return const AdminResult<int>.refused(EditedElsewhere(0));
@@ -278,7 +278,7 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
 
     final rows = await tx.execute(
       Sql.named(
-        'INSERT INTO pos_purchase_orders (restaurant_id, branch_id, '
+        'INSERT INTO pos_purchase_orders (business_id, branch_id, '
         '  supplier_id, supplier_name, reference, status, currency, exponent, '
         '  subtotal_minor, tax_minor, total_minor, expected_at, notes, '
         '  created_by, updated_by) '
@@ -287,7 +287,7 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
         '        @by) RETURNING id',
       ),
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'supplier': order.supplierId,
         'name': order.supplierName ?? '',
@@ -305,7 +305,7 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     return rows.first[0]! as int;
   }
 
-  /// `PO-2026-000042`, counted per restaurant per year.
+  /// `PO-2026-000042`, counted per business per year.
   ///
   /// Claimed inside the caller's transaction, so a draft that fails to save
   /// does not burn a number — the same discipline `_nextInvoiceNumber` uses.
@@ -313,13 +313,13 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     final period = '${DateTime.now().toUtc().year}';
     final rows = await tx.execute(
       Sql.named(
-        'INSERT INTO pos_purchase_sequences (restaurant_id, period, next_number) '
+        'INSERT INTO pos_purchase_sequences (business_id, period, next_number) '
         'VALUES (@r, @p, 2) '
-        'ON CONFLICT (restaurant_id, period) DO UPDATE '
+        'ON CONFLICT (business_id, period) DO UPDATE '
         '  SET next_number = pos_purchase_sequences.next_number + 1 '
         'RETURNING next_number - 1',
       ),
-      parameters: {'r': restaurantId, 'p': period},
+      parameters: {'r': businessId, 'p': period},
     );
     final number = rows.first[0]! as int;
     return 'PO-$period-${number.toString().padLeft(6, '0')}';
@@ -386,13 +386,13 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,

@@ -153,7 +153,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   }
 
   Future<void> afterShift(BuildContext context) async {
-    // **Decided on the restaurant's answer, not on the fallback.** Nothing has
+    // **Decided on the business's answer, not on the fallback.** Nothing has
     // asked for the order-type configuration or the branch's supported types
     // by the time Start is pressed, so a bare read would see the seeded four
     // and send a one-way branch to a home screen it then has to leave. Start
@@ -227,7 +227,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // A branch that does not seat anybody has no floor. Sending a takeaway
       // counter to a table picker asks a question it has no answer to.
       // "Does anything this branch sells have tables", not "does it sell
-      // dine-in". A restaurant that seats catering orders and calls them
+      // dine-in". A business that seats catering orders and calls them
       // nothing of the sort still has a floor plan (§31).
       if (at == PosRoutes.floor && !ref.read(orderTypeRulesProvider).hasSeating) {
         return PosRoutes.sale;
@@ -284,7 +284,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           // A CLAIMED cloud tenant, not merely `mode == cloud`:
           // `DeploymentConfig.unconfigured` is cloud, so guarding on the mode
           // alone locked a machine out of its own back office before it had a
-          // restaurant — including the Terminal pane, which is how a till is
+          // business — including the Terminal pane, which is how a till is
           // reconfigured. A tenant slug is the signal that a platform actually
           // authors this till's rows.
           final deployment = ref.read(deploymentProvider);

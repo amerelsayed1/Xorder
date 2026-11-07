@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// settlement writes the last two. None had a grant. Every database suite runs
 /// as the superuser, who needs no grant at all, so nothing failed — an offline
 /// till on its own credential would have been unable to load its menu or record
-/// a sale, and the first person to find out would have been a restaurant.
+/// a sale, and the first person to find out would have been a business.
 ///
 /// A grant list only ever grows and nobody re-reads it. This reads it, by
 /// scanning the source rather than the schema, so it holds with no server —
@@ -94,7 +94,7 @@ void main() {
     'postgres_order_history_repository.dart',
     // Who the food is for (POS-BE-014). On the till's credential because a
     // cashier creates one at the counter during an outage — the one piece of
-    // the restaurant's own data the till WRITES rather than displays.
+    // the business's own data the till WRITES rather than displays.
     'postgres_customers_repository.dart',
     'postgres_branch_sales_repository.dart',
     // Wave G's reports. On the till's credential, as the branch view it grew
@@ -112,7 +112,7 @@ void main() {
     'postgres_print_queue_repository.dart',
     'postgres_receipt_profile_repository.dart',
     // Read at the till and written in the back office, so they are in both
-    // lists. A cashier takes a payment method and charges what the restaurant
+    // lists. A cashier takes a payment method and charges what the business
     // set; they do not invent either.
     'postgres_tender_types_repository.dart',
     // Where the money goes (XORD-015): read at the till, authored in the back
@@ -265,7 +265,7 @@ void main() {
   test('the grant list names no sequence that does not exist', () {
     // **The mirror of the test below, and written because the sequence grants
     // were added by hand and one of them was for a table with no sequence.**
-    // `pos_stock_levels` is keyed by (restaurant, branch, product), so
+    // `pos_stock_levels` is keyed by (business, branch, product), so
     // `pos_stock_levels_id_seq` has never existed — and
     // `GRANT ... ON SEQUENCE` on a missing sequence throws, taking the whole
     // bootstrap down on a machine nobody is watching. Exactly the failure the

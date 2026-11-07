@@ -30,7 +30,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   const terminal = '66666666-6666-4666-8666-666666666666';
 
@@ -40,10 +40,10 @@ void main() {
   Future<int> taxGroup(String name, int rateBp, {bool isDefault = false}) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_tax_groups (restaurant_id, name_en, rate_bp, is_default) '
+      'INSERT INTO pos_tax_groups (business_id, name_en, rate_bp, is_default) '
       'VALUES (@r, @name, @rate, @def) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'name': name,
         'rate': rateBp,
         'def': isDefault,
@@ -56,7 +56,7 @@ void main() {
     database: db,
     config: pg.config,
     context: const PosWriteContext(
-      restaurantId: 0,
+      businessId: 0,
       branchId: 0,
       terminalId: terminal,
       branchCode: 'TX',
@@ -71,12 +71,12 @@ void main() {
       pg.config,
       'TRUNCATE pos_orders, pos_invoice_sequences RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('tax', 'Tax') RETURNING id",
                 ))
                 .first[0]
@@ -84,9 +84,9 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'TX1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -95,7 +95,7 @@ void main() {
   tearDown(() => pg.close());
 
   group('tax groups', () {
-    test('a restaurant may only have one default', () async {
+    test('a business may only have one default', () async {
       // "What does an unclassified product cost" must have one answer.
       await taxGroup('VAT', 1400, isDefault: true);
       await expectLater(
@@ -115,7 +115,7 @@ void main() {
       await expectLater(taxGroup('Sillier', 10001), throwsA(anything));
     });
 
-    test('a name is unique within a restaurant', () async {
+    test('a name is unique within a business', () async {
       await taxGroup('VAT', 1400);
       await expectLater(taxGroup('VAT', 500), throwsA(anything));
     });
@@ -129,18 +129,18 @@ void main() {
       final categoryId =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_categories (restaurant_id, name_en, '
+                    'INSERT INTO pos_categories (business_id, name_en, '
                     "  tax_group_id) VALUES (@r, 'Bakery', @g) RETURNING id",
-                    parameters: {'r': restaurantId, 'g': zeroRated},
+                    parameters: {'r': businessId, 'g': zeroRated},
                   ))
                   .first[0]
               as int;
 
       await db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        'INSERT INTO pos_products (business_id, category_id, name_en, '
         "  price_minor) VALUES (@r, @c, 'Baladi bread', 500)",
-        parameters: {'r': restaurantId, 'c': categoryId},
+        parameters: {'r': businessId, 'c': categoryId},
       );
 
       final catalog = await PostgresCatalogRepository(
@@ -162,18 +162,18 @@ void main() {
       final categoryId =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_categories (restaurant_id, name_en, '
+                    'INSERT INTO pos_categories (business_id, name_en, '
                     "  tax_group_id) VALUES (@r, 'Bakery 2', @g) RETURNING id",
-                    parameters: {'r': restaurantId, 'g': zeroRated},
+                    parameters: {'r': businessId, 'g': zeroRated},
                   ))
                   .first[0]
               as int;
 
       await db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        'INSERT INTO pos_products (business_id, category_id, name_en, '
         "  price_minor, tax_group_id) VALUES (@r, @c, 'Birthday cake', 9000, @g)",
-        parameters: {'r': restaurantId, 'c': categoryId, 'g': standard},
+        parameters: {'r': businessId, 'c': categoryId, 'g': standard},
       );
 
       final catalog = await PostgresCatalogRepository(
@@ -194,18 +194,18 @@ void main() {
       final categoryId =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_categories (restaurant_id, name_en) '
+                    'INSERT INTO pos_categories (business_id, name_en) '
                     "VALUES (@r, 'Drinks') RETURNING id",
-                    parameters: {'r': restaurantId},
+                    parameters: {'r': businessId},
                   ))
                   .first[0]
               as int;
       await db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        'INSERT INTO pos_products (business_id, category_id, name_en, '
         '  price_minor, tax_group_id) VALUES (@r, @c, @n, 1000, @g)',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'c': categoryId,
           'n': 'Water',
           'g': id,
@@ -213,7 +213,7 @@ void main() {
       );
 
       // ON DELETE SET NULL: deleting a rate must not delete the product, and
-      // an unclassified product falls back to the restaurant's default.
+      // an unclassified product falls back to the business's default.
       await db.query(
         pg.config,
         'DELETE FROM pos_tax_groups WHERE id = @id',
@@ -351,10 +351,10 @@ void main() {
       final staffId =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+                    'INSERT INTO pos_users (business_id, branch_id, name, '
                     "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour', "
                     "  'nour', 's', 'h') RETURNING id",
-                    parameters: {'r': restaurantId, 'b': branchId},
+                    parameters: {'r': businessId, 'b': branchId},
                   ))
                   .first[0]
               as int;
@@ -384,29 +384,29 @@ void main() {
   });
 
   group('seeding a rate', () {
-    test('a restaurant created after the migration gets one', () async {
-      // Migration 16 backfills every restaurant that existed when it ran. This
+    test('a business created after the migration gets one', () async {
+      // Migration 16 backfills every business that existed when it ran. This
       // one was created afterwards, which is the case `seedTaxGroup` exists to
       // handle — without it, products can never be classified and an ETA
       // filing carries an unnamed rate.
       final before = await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_tax_groups WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT count(*) FROM pos_tax_groups WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(before.first[0], 0);
 
       final created = await LocalBootstrap(db).seedTaxGroup(
         pg.config,
-        restaurantId,
+        businessId,
       );
       expect(created, isTrue);
 
       final rows = await db.query(
         pg.config,
         'SELECT name_en, rate_bp, is_default FROM pos_tax_groups '
-        'WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(rows.first[0], 'VAT');
       expect(rows.first[1], 1400);
@@ -416,30 +416,30 @@ void main() {
     test('it keeps the rate the branch actually charges', () async {
       // Defaulting a 15% branch back to Egypt's headline rate would change
       // what customers pay.
-      await LocalBootstrap(db).seedTaxGroup(pg.config, restaurantId, rateBp: 1500);
+      await LocalBootstrap(db).seedTaxGroup(pg.config, businessId, rateBp: 1500);
       final rows = await db.query(
         pg.config,
-        'SELECT rate_bp FROM pos_tax_groups WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT rate_bp FROM pos_tax_groups WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(rows.first[0], 1500);
     });
 
     test('re-running setup does not reset an accountant\u2019s decision', () async {
-      await LocalBootstrap(db).seedTaxGroup(pg.config, restaurantId);
+      await LocalBootstrap(db).seedTaxGroup(pg.config, businessId);
       await db.query(
         pg.config,
-        "UPDATE pos_tax_groups SET rate_bp = 500 WHERE restaurant_id = @r",
-        parameters: {'r': restaurantId},
+        "UPDATE pos_tax_groups SET rate_bp = 500 WHERE business_id = @r",
+        parameters: {'r': businessId},
       );
 
-      final again = await LocalBootstrap(db).seedTaxGroup(pg.config, restaurantId);
+      final again = await LocalBootstrap(db).seedTaxGroup(pg.config, businessId);
       expect(again, isFalse);
 
       final rows = await db.query(
         pg.config,
-        'SELECT rate_bp FROM pos_tax_groups WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT rate_bp FROM pos_tax_groups WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(rows.first[0], 500);
     });

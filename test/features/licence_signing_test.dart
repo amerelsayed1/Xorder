@@ -254,7 +254,7 @@ void main() {
     expect(result.succeeded, isFalse);
   });
 
-  test('a licence for another restaurant is refused, and says whose it is', () async {
+  test('a licence for another business is refused, and says whose it is', () async {
     final pair = await Ed25519().newKeyPair();
     final service = await serviceFor((await pair.extractPublicKey()).bytes);
 

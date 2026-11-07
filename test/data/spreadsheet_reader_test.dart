@@ -5,7 +5,7 @@ import 'package:xorder_pos/domain/services/menu_import.dart';
 
 /// Turning a real file's text into rows.
 ///
-/// The cases here are the ones a restaurant's actual export produces — a BOM
+/// The cases here are the ones a business's actual export produces — a BOM
 /// Excel wrote, Windows line endings, a comma inside a product name — each of
 /// which silently breaks a naive split.
 void main() {
@@ -95,7 +95,7 @@ void main() {
   });
 
   group('what it offers a file chooser', () {
-    test('the formats a restaurant will actually hand over', () {
+    test('the formats a business will actually hand over', () {
       expect(SpreadsheetReader.extensions, contains('csv'));
       expect(SpreadsheetReader.extensions, contains('xlsx'));
     });

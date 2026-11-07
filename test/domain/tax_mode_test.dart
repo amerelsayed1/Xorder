@@ -28,7 +28,7 @@ void main() {
         product,
       ).ticket!;
 
-  group('exclusive — what every restaurant is on today', () {
+  group('exclusive — what every business is on today', () {
     const config = TaxConfig(serviceBp: 0, vatBp: 1400);
 
     test('the rate goes on top', () {
@@ -152,7 +152,7 @@ void main() {
     });
 
     test('an unknown or absent mode is exclusive', () {
-      // The mode every existing restaurant is on, so a row this build cannot
+      // The mode every existing business is on, so a row this build cannot
       // read changes nobody's bill.
       expect(TaxMode.fromWire(null), TaxMode.exclusive);
       expect(TaxMode.fromWire('compound'), TaxMode.exclusive);

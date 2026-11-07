@@ -22,7 +22,7 @@ import '../support/fakes.dart';
 ///
 /// **The picker that made the named rates usable.** `tax_group_id` has been on
 /// `pos_products` since Wave M and read by the catalogue query ever since; no
-/// statement in the app wrote it, so a restaurant could define a zero-rated
+/// statement in the app wrote it, so a business could define a zero-rated
 /// group and had no way to put a bottle of water on it.
 void main() {
   const manager = PosStaff(
@@ -102,7 +102,7 @@ void main() {
   }
 
   testWidgets('the picker offers every rate with its percent', (tester) async {
-    // The percent is on the chip because "Reduced" tells a restaurant owner
+    // The percent is on the chip because "Reduced" tells a business owner
     // nothing about what the customer pays.
     await pump(tester);
     await openEditor(tester);
@@ -171,7 +171,7 @@ void main() {
   });
 
   testWidgets('an item can be counted in stock, in a unit', (tester) async {
-    // The bottled water a restaurant also sells: counted when bought, so how
+    // The bottled water a business also sells: counted when bought, so how
     // much is left is a number somebody can check.
     await pump(tester);
     await openEditor(tester);

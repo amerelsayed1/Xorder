@@ -7,7 +7,7 @@ import 'package:xorder_pos/domain/models/tender_method.dart';
 ///
 /// This is the gap-closure plan's named Wave B risk, closed early. The drawer's
 /// cash used to be found with `label.toLowerCase().contains('cash')`, which is
-/// wrong in both directions — and catastrophically so the day a restaurant
+/// wrong in both directions — and catastrophically so the day a business
 /// renames its payment methods into Arabic.
 void main() {
   ShiftSummary summary(

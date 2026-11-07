@@ -78,7 +78,7 @@ enum TicketHoldAction {
   /// there is no table for the runner to bring the food to.
   /// Which of the two this ticket's secondary button means.
   ///
-  /// **[seated] is the restaurant's answer, not `Ticket.isSeated`.** That getter
+  /// **[seated] is the business's answer, not `Ticket.isSeated`.** That getter
   /// reads `orderType == OrderType.dineIn`, and deleting exactly that comparison
   /// is what §31 and `pos_order_types.requires_table` exist for: a caterer who
   /// seats people turns it on for takeaway, and their takeaway tickets have
@@ -134,10 +134,10 @@ class CartPanel extends StatelessWidget {
 
   final Ticket ticket;
 
-  /// Whether this kind of order has tables, from the restaurant's own
+  /// Whether this kind of order has tables, from the business's own
   /// configuration (§31). Passed in rather than derived from
   /// `ticket.orderType == OrderType.dineIn`, which was never the question: a
-  /// restaurant that seats catering orders has one that is seated and is not
+  /// business that seats catering orders has one that is seated and is not
   /// dine-in.
   ///
   /// Defaults to false so a caller that has not been updated shows no table

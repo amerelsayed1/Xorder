@@ -22,7 +22,7 @@ enum AppearancePart { language, theme }
 /// mockup's card), and the owner's map (14 Sep 2026) gives language and
 /// appearance an item each. Somebody who looks for the language under the
 /// word that names it should find it there — not be sent to General to scroll
-/// past the restaurant's address, nor meet the theme first and wonder whether
+/// past the business's address, nor meet the theme first and wonder whether
 /// they chose the wrong line.
 class ManagementAppearancePane extends StatelessWidget {
   const ManagementAppearancePane({required this.part, this.admin, super.key});

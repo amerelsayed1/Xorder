@@ -19,13 +19,13 @@ class PostgresFloorRepository implements TablesRepository {
   const PostgresFloorRepository({
     required PosDatabase database,
     required this._config,
-    required this._restaurantId,
+    required this._businessId,
     required this._branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
-  final int _restaurantId;
+  final int _businessId;
   final int _branchId;
 
   @override
@@ -33,9 +33,9 @@ class PostgresFloorRepository implements TablesRepository {
     final rows = await _db.query(
       _config,
       'SELECT id, label, seats, area_name FROM pos_dining_tables '
-      'WHERE restaurant_id = @restaurant AND branch_id = @branch AND is_active '
+      'WHERE business_id = @business AND branch_id = @branch AND is_active '
       'ORDER BY sort_order, id',
-      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+      parameters: {'business': _businessId, 'branch': _branchId},
     );
 
     return [

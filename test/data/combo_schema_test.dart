@@ -21,7 +21,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int categoryId;
   late int sandwichId;
@@ -32,10 +32,10 @@ void main() {
   Future<int> insertProduct(String name, int price) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+      'INSERT INTO pos_products (business_id, category_id, name_en, '
       '  price_minor) VALUES (@r, @c, @n, @p) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'c': categoryId,
         'n': name,
         'p': price,
@@ -68,19 +68,19 @@ void main() {
     await PosMigrator(db).migrate(pg.config);
     // Combos first, explicitly. `pos_combo_options.product_id` is RESTRICT —
     // deliberately, so deleting a product cannot silently empty a combo group
-    // — and that also blocks the cascade from `DELETE FROM pos_restaurants`,
+    // — and that also blocks the cascade from `DELETE FROM pos_businesses`,
     // because Postgres has no way to know this one is a teardown.
     await db.query(
       pg.config,
       'TRUNCATE pos_combos, pos_orders, pos_invoice_sequences '
       'RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('cb', 'Combos') RETURNING id",
                 ))
                 .first[0]
@@ -88,18 +88,18 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'CB1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     categoryId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_categories (restaurant_id, name_en) '
+                  'INSERT INTO pos_categories (business_id, name_en) '
                   "VALUES (@r, 'Meals') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -110,10 +110,10 @@ void main() {
     comboId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_combos (restaurant_id, category_id, '
+                  'INSERT INTO pos_combos (business_id, category_id, '
                   "  name_en, price_minor) VALUES (@r, @c, 'Lunch meal', 6000) "
                   'RETURNING id',
-                  parameters: {'r': restaurantId, 'c': categoryId},
+                  parameters: {'r': businessId, 'c': categoryId},
                 ))
                 .first[0]
             as int;
@@ -144,9 +144,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_combos (restaurant_id, category_id, name_en, '
+          'INSERT INTO pos_combos (business_id, category_id, name_en, '
           "  price_minor) VALUES (@r, @c, 'Free lunch', -1)",
-          parameters: {'r': restaurantId, 'c': categoryId},
+          parameters: {'r': businessId, 'c': categoryId},
         ),
         throwsA(anything),
       );
@@ -243,7 +243,7 @@ void main() {
         database: db,
         config: pg.config,
         context: PosWriteContext(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           terminalId: terminal,
           branchCode: 'CB1',

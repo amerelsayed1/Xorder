@@ -16,7 +16,7 @@ import '../../domain/repositories/repositories.dart';
 /// **They return nothing rather than something.** The bindings that used to sit
 /// here were the `Fake…` repositories, which meant an unconfigured till — and,
 /// because nothing distinguished a release build, *every* till — opened showing
-/// a menu, a floor plan and a cashier belonging to a restaurant that does not
+/// a menu, a floor plan and a cashier belonging to a business that does not
 /// exist. Empty is the honest answer to "what is on this terminal's menu"
 /// before anyone has told it. The one thing that must never be quietly empty is
 /// taking money, so [UnconfiguredOrdersRepository] refuses out loud instead.
@@ -240,7 +240,7 @@ class UndiscoverableHardwarePorts implements HardwarePorts {
 /// Reads come back empty and writes come back refused with
 /// [NoDatabaseConfigured], so the Management screen renders its "this terminal
 /// is not set up" state rather than either crashing or — worse — showing an
-/// empty staff list that reads as a restaurant with nobody working at it.
+/// empty staff list that reads as a business with nobody working at it.
 class UnconfiguredRolesRepository implements RolesRepository {
   const UnconfiguredRolesRepository();
 

@@ -33,7 +33,7 @@ void main() {
   late PostgresEtaQueueRepository queue;
   late int branchId;
   late int orderId;
-  late int restaurantId;
+  late int businessId;
 
   const slug = 'eta-queue-test';
 
@@ -55,47 +55,47 @@ void main() {
     pg = await PgFixture.open('eta_queue');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'ETA Test') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'ETA Test') "
       'RETURNING id',
       parameters: {'slug': slug},
     );
-    restaurantId = restaurant.first[0]! as int;
+    businessId = business.first[0]! as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0]! as int;
 
     const terminal = '11111111-1111-4111-8111-111111111111';
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1')",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
 
     final order = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, service_minor, vat_minor, total_minor, occurred_at) '
       "VALUES (gen_random_uuid(), @r, @b, @t::uuid, 'INV-1', 'takeaway', "
       "  'EGP', 2, 4500, 0, 630, 5130, now()) RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId, 't': terminal},
+      parameters: {'r': businessId, 'b': branchId, 't': terminal},
     );
     orderId = order.first[0]! as int;
 
     queue = PostgresEtaQueueRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -147,12 +147,12 @@ void main() {
   Future<int> newOrder(String number) async {
     final order = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, service_minor, vat_minor, total_minor, occurred_at) '
       "VALUES (gen_random_uuid(), @r, @b, '11111111-1111-4111-8111-111111111111', "
       "  @n, 'takeaway', 'EGP', 2, 4500, 0, 630, 5130, now()) RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId, 'n': number},
+      parameters: {'r': businessId, 'b': branchId, 'n': number},
     );
     return order.first[0]! as int;
   }
@@ -238,9 +238,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_eta_receipts (restaurant_id, branch_id, order_id, '
+          'INSERT INTO pos_eta_receipts (business_id, branch_id, order_id, '
           'device_serial, uuid, receipt_number, receipt_type, document, '
-          'canonical, issued_at) SELECT restaurant_id, branch_id, order_id, '
+          'canonical, issued_at) SELECT business_id, branch_id, order_id, '
           'device_serial, uuid, receipt_number, receipt_type, document, '
           'canonical, issued_at FROM pos_eta_receipts LIMIT 1',
         ),

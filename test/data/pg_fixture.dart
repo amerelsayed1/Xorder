@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:postgres/postgres.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 
 /// Shared setup for the suites that need a real PostgreSQL.
@@ -28,8 +29,8 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 ///
 /// **Each checkout gets its own database**, which is the same lesson one level
 /// out: two git worktrees running `test/data` against the same server used to
-/// share one database and each suite's `DELETE FROM pos_restaurants` wiped the
-/// other's rows mid-test, surfacing as a foreign key violation on a restaurant
+/// share one database and each suite's `DELETE FROM pos_businesses` wiped the
+/// other's rows mid-test, surfacing as a foreign key violation on a business
 /// that had existed a millisecond earlier.
 ///
 /// The discriminator is derived from the checkout path rather than passed in, so
@@ -145,7 +146,7 @@ class PgFixture {
   ///
   /// Sharing one database meant one suite's leftovers broke every suite after
   /// it, in two ways. A suite that leaves money history behind (an order, a
-  /// shift, a combo) makes the next one's `DELETE FROM pos_restaurants` fail:
+  /// shift, a combo) makes the next one's `DELETE FROM pos_businesses` fail:
   /// those references are RESTRICT on purpose, because a sale must never be
   /// deleted with its cashier. And a suite that replays an old migration by
   /// deleting its `schema_migrations` row, and fails, leaves that row deleted —
@@ -203,6 +204,39 @@ class PgFixture {
       await admin.close();
     }
   }
+
+  /// Re-run migration [version] on today's schema, as it would read today.
+  ///
+  /// A suite that proves a migration is safe to run twice used to delete its
+  /// `schema_migrations` row and let the migrator run it again. Migrations
+  /// keep the names of their day, and later ones renamed tables and columns
+  /// (62: `pos_staff` → `pos_users`; 64: `pos_restaurants` → `pos_businesses`,
+  /// `restaurant_id` → `business_id`), so the old text no longer runs. This
+  /// runs the same statements with those renames applied, and records the
+  /// version, in one transaction. Returns `[version]`, as the migrator would.
+  Future<List<int>> replay(int version) async {
+    final migration = posMigrations.singleWhere((m) => m.version == version);
+    await database.runTx(config, (tx) async {
+      for (final statement in migration.statements) {
+        await tx.execute(_asToday(statement));
+      }
+      await tx.execute(
+        Sql.named(
+          'INSERT INTO schema_migrations (version) VALUES (@v) '
+          'ON CONFLICT DO NOTHING',
+        ),
+        parameters: {'v': version},
+      );
+    });
+    return [version];
+  }
+
+  static String _asToday(String sql) => sql
+      .replaceAll('pos_staff_permission_overrides', 'pos_user_permission_overrides')
+      .replaceAll('pos_staff_roles', 'pos_user_roles')
+      .replaceAll('pos_staff', 'pos_users')
+      .replaceAll('pos_restaurants', 'pos_businesses')
+      .replaceAll('restaurant_id', 'business_id');
 
   /// Empty ledger, same schema. Run between tests.
   Future<void> truncate() => database.runTx(

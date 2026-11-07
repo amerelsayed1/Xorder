@@ -20,7 +20,7 @@ import 'tender_method.dart';
 /// One rate's tax over a range: what the sales were charged, and what the
 /// refunds issued in the range gave back.
 ///
-/// Keyed by rate AND name, as `pos_order_taxes` is: a restaurant that renamed
+/// Keyed by rate AND name, as `pos_order_taxes` is: a business that renamed
 /// "VAT" mid-month sees two rows, because that is what its receipts said.
 class TaxCollected {
   const TaxCollected({
@@ -466,7 +466,7 @@ sealed class FinanceTransaction {
   int get sourceId;
   DateTime get occurredAt;
 
-  /// Signed as money moves for the restaurant: a sale in, the rest out. A
+  /// Signed as money moves for the business: a sale in, the rest out. A
   /// supplier invoice is a bill rather than money that moved, and is signed
   /// as what it will cost; its payment is a row of its own.
   Money get amount;

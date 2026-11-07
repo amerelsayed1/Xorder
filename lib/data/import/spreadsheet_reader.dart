@@ -69,7 +69,7 @@ abstract final class SpreadsheetReader {
 
   /// Rows from the **first** sheet of a workbook.
   ///
-  /// The first, not a named one: a restaurant's menu file has its menu on the
+  /// The first, not a named one: a business's menu file has its menu on the
   /// sheet that opens, and asking somebody to rename a tab before they can
   /// import is asking them to do the computer's job.
   static List<List<String>> _excel(List<int> bytes) {

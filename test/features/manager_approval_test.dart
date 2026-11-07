@@ -226,7 +226,7 @@ void main() {
       expect(isOpen(), isTrue, reason: 'still no reason given');
     });
 
-    testWidgets('a reason is not asked for when the restaurant switched it off',
+    testWidgets('a reason is not asked for when the business switched it off',
         (tester) async {
       final result = await open(tester, requirement: ReasonRequirement.disabled);
 

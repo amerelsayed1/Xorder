@@ -66,8 +66,8 @@ void main() {
   });
 
   group('the tables verification insists on', () {
-    test('they are the ones a restaurant could not trade without', () {
-      // Not every table — the question is whether the restaurant could trade
+    test('they are the ones a business could not trade without', () {
+      // Not every table — the question is whether the business could trade
       // and answer a tax audit from this file.
       expect(
         BackupService.essentialTables,

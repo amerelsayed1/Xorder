@@ -13,7 +13,7 @@ import '../../../domain/models/order_type_config.dart';
 ///
 /// **No "new" and no "delete".** The four codes are an `OrderType` enum and
 /// every place that renders one reads its name off that enum, so a fifth would
-/// have nowhere to appear. What a restaurant actually wants here is to rename
+/// have nowhere to appear. What a business actually wants here is to rename
 /// them into its own words — "Delivery" is *دليفري* on half the tills in Cairo —
 /// and to say which of the four it sells.
 ///
@@ -32,7 +32,7 @@ class OrderTypeDialog extends StatefulWidget {
 
   final OrderTypeConfig config;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<OrderTypeConfig?> show(

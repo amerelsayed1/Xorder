@@ -21,7 +21,7 @@ class TillDriver {
   /// A till is a fixed installation, so the window is pinned rather than left
   /// to whatever size the host hands us. The three-pane sale shell only exists
   /// above 1100dp; testing at some other width would exercise a layout no
-  /// restaurant runs.
+  /// business runs.
   static const window = Size(1440, 900);
 
   /// How long any one wait may take before the test gives up.
@@ -157,7 +157,7 @@ class TillDriver {
     // the till name come back from the platform instead of being typed. On the
     // cloud path the tenant is typed here (no licence step precedes it: a
     // cloud licence rides the bootstrap bundle at registration).
-    await enterField('Restaurant', tenantSlug);
+    await enterField('Business', tenantSlug);
     await tapButton('Setup code');
     await enterField('Setup code', pairingCode);
     await tapButton('Claim this terminal');

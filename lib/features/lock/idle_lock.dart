@@ -15,7 +15,7 @@ const tillIdleTimeout = Duration(minutes: 5);
 /// [tillIdleTimeout], as a provider only so a test can say how long it is.
 ///
 /// **Not a setting.** There is no screen for it on purpose: the number is a
-/// security rule the restaurant accepted, and a till where somebody behind the
+/// security rule the business accepted, and a till where somebody behind the
 /// counter could make it a day is a till where somebody would.
 final tillIdleTimeoutProvider = Provider<Duration>((ref) => tillIdleTimeout);
 

@@ -131,7 +131,7 @@ void main() {
     });
 
     test('is allowed to go negative', () {
-      // A restaurant selling something the system does not know arrived is
+      // A business selling something the system does not know arrived is
       // telling the truth about the sale and the wrong thing about the stock.
       // Refusing the sale to protect the number would be the wrong way round.
       final after = StockCosting.issue(
@@ -196,7 +196,7 @@ void main() {
     });
 
     test('negative stock is worth a negative — it is not hidden', () {
-      // A valuation that clamped at zero would let a restaurant hold an
+      // A valuation that clamped at zero would let a business hold an
       // unrecorded liability that nothing on the screen adds up to.
       expect(position(-2000, 4500).value.minor, -9000);
     });

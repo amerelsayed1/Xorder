@@ -45,7 +45,7 @@ class NetworkPrinterPorts implements HardwarePorts {
   /// Sweep this machine's own /24s for anything listening on [port].
   ///
   /// Only /24 — 254 probes per interface, which finishes in about a second in
-  /// parallel. Restaurant LANs are /24 essentially without exception, and
+  /// parallel. Business LANs are /24 essentially without exception, and
   /// sweeping a /16 would be 65,000 connections for a printer that is not there.
   @override
   Future<List<DiscoveredPrinter>> discoverPrinters() async {

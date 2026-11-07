@@ -1,4 +1,4 @@
-/// What the restaurant has configured.
+/// What the business has configured.
 ///
 /// **The shape here is a deliberate answer to a named risk.** The gap-closure
 /// plan warns that a settings table sprawls: *"a raw map read at forty call
@@ -17,7 +17,7 @@ import '../../core/money/money.dart';
 /// **These strings are data** — the `scope` column's CHECK constraint in
 /// migration 14.
 enum SettingScope {
-  restaurant('restaurant'),
+  business('business'),
   branch('branch'),
   terminal('terminal');
 
@@ -26,7 +26,7 @@ enum SettingScope {
   final String wire;
 
   /// Higher wins. A terminal's answer beats its branch's, which beats the
-  /// restaurant's — the till standing in front of somebody is the most specific
+  /// business's — the till standing in front of somebody is the most specific
   /// statement anybody made about it.
   int get specificity => index;
 
@@ -49,7 +49,7 @@ class PosSettingRow {
 
   final SettingScope scope;
 
-  /// Empty for [SettingScope.restaurant]; a branch id or terminal uuid
+  /// Empty for [SettingScope.business]; a branch id or terminal uuid
   /// otherwise. Empty rather than null because the database's uniqueness
   /// constraint depends on it — see migration 14.
   final String scopeId;
@@ -79,7 +79,7 @@ abstract final class SettingKey {
   static const cashDrawerOpenReason = 'cash.drawer_open_requires_reason';
   static const cashPayOutMax = 'cash.pay_out_max_minor';
 
-  // Backups. Restaurant-scoped rather than terminal-scoped on purpose: there
+  // Backups. Business-scoped rather than terminal-scoped on purpose: there
   // is one database per branch, and two tills disagreeing about where its
   // copies go is two half-filled folders and no complete history in either.
   static const backupDirectory = 'backup.directory';
@@ -99,7 +99,7 @@ class PosSettings {
   /// Resolve rows into one map, most specific wins.
   ///
   /// Ties cannot happen — the database's uniqueness constraint is per
-  /// (restaurant, scope, scope_id, key) — but rows for *another* branch or
+  /// (business, scope, scope_id, key) — but rows for *another* branch or
   /// another terminal can arrive in the same read, which is why both ids are
   /// checked rather than assumed filtered.
   factory PosSettings.resolve(
@@ -111,7 +111,7 @@ class PosSettings {
 
     for (final row in rows) {
       final applies = switch (row.scope) {
-        SettingScope.restaurant => true,
+        SettingScope.business => true,
         SettingScope.branch => row.scopeId == branchId,
         SettingScope.terminal => row.scopeId == terminalId,
       };
@@ -181,7 +181,7 @@ class DayPolicy {
 
   /// Six in the morning, per the SRS.
   ///
-  /// Not midnight: a restaurant that closes at 2 a.m. takes money on Saturday
+  /// Not midnight: a business that closes at 2 a.m. takes money on Saturday
   /// that belongs to Friday's takings, and a calendar day would split one
   /// evening's trading across two reports.
   static const defaults = DayPolicy();
@@ -225,7 +225,7 @@ class CashPolicy {
 
   /// Blind close **off** by default.
   ///
-  /// The safe default is the one that surprises nobody: a restaurant that has
+  /// The safe default is the one that surprises nobody: a business that has
   /// not asked for blind counting gets the figure it has always seen. Turning
   /// it on is a decision somebody makes, and §25 makes it a setting precisely
   /// so it can be made.

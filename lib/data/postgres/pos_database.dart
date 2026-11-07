@@ -9,7 +9,7 @@ import 'pos_tls.dart';
 
 /// Why a connection failed, as data rather than a string.
 ///
-/// A cashier or an installer standing in a restaurant needs to know *which*
+/// A cashier or an installer standing in a business needs to know *which*
 /// thing is broken: a hostname that does not resolve, a socket nothing is
 /// listening on, a password Postgres rejected and a certificate it rejected all
 /// need different actions. One generic "connection failed" drives none of them.

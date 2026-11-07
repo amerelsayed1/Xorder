@@ -113,7 +113,7 @@ void main() {
   test('the till may not add or remove a product', () async {
     expect(
       await refusalFor(
-        "INSERT INTO pos_products (restaurant_id, category_id, name_en, "
+        "INSERT INTO pos_products (business_id, category_id, name_en, "
         "price_minor) VALUES (1, 1, 'x', 1)",
       ),
       '42501',
@@ -134,8 +134,8 @@ void main() {
     );
   });
 
-  test('the till may not rename the restaurant or its branches', () async {
-    expect(await refusalFor("UPDATE pos_restaurants SET name = 'x'"), '42501');
+  test('the till may not rename the business or its branches', () async {
+    expect(await refusalFor("UPDATE pos_businesses SET name = 'x'"), '42501');
     expect(await refusalFor("UPDATE pos_branches SET name = 'x'"), '42501');
   });
 
@@ -171,7 +171,7 @@ void main() {
   // grows is a grant list nobody re-reads — so each new table gets the same
   // two questions: can the till do its job, and can it do anything else.
 
-  test('the till reads what the restaurant configured, and sets nothing',
+  test('the till reads what the business configured, and sets nothing',
       () async {
     // A cashier reads the blind-close switch; they do not flip it.
     expect(await refusalFor('SELECT 1 FROM pos_settings'), isNull);
@@ -181,7 +181,7 @@ void main() {
     );
     expect(
       await refusalFor(
-        'INSERT INTO pos_settings (restaurant_id, scope, key, value) '
+        'INSERT INTO pos_settings (business_id, scope, key, value) '
         "VALUES (1, 'branch', 'cash.blind_close', 'false')",
       ),
       '42501',
@@ -197,7 +197,7 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_backups'), isNull);
     expect(
       await refusalFor(
-        'INSERT INTO pos_backups (restaurant_id, taken_by_name, trigger_kind, '
+        'INSERT INTO pos_backups (business_id, taken_by_name, trigger_kind, '
         "  outcome, file_path, failure) VALUES (1, 'Till', 'day_close', "
         "  'failed', '/tmp/x.dump', 'tools_missing')",
       ),
@@ -325,7 +325,7 @@ void main() {
     );
     expect(
       await refusalFor(
-        'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+        'INSERT INTO pos_tender_types (business_id, code, name_en) '
         "VALUES (1, 'x', 'X')",
       ),
       '42501',
@@ -340,7 +340,7 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_tender_account_defaults'), isNull);
     expect(
       await refusalFor(
-        'INSERT INTO pos_financial_accounts (restaurant_id, name, kind) '
+        'INSERT INTO pos_financial_accounts (business_id, name, kind) '
         "VALUES (1, 'x', 'cash')",
       ),
       '42501',
@@ -416,7 +416,7 @@ void main() {
     );
     expect(
       await refusalFor(
-        'INSERT INTO pos_permission_limits (restaurant_id, subject_type, '
+        'INSERT INTO pos_permission_limits (business_id, subject_type, '
         "  subject_id, limit_key, limit_bp) VALUES (1, 'staff', 1, 'x', 10000)",
       ),
       '42501',
@@ -461,31 +461,31 @@ void main() {
     // A new table with no grant works for the superuser in every suite here and
     // fails at a real install — which for this table means a printer that goes
     // off takes the receipt with it.
-    final restaurant = (await db.query(
+    final business = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('print-probe', 'Print') "
-      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      "INSERT INTO pos_businesses (slug, name) VALUES ('print-probe', 'Print') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_businesses.name '
       'RETURNING id',
     )).first[0]! as int;
     final branch = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'PRP', 'Probe') "
-      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'ON CONFLICT (business_id, code) DO UPDATE SET name = pos_branches.name '
       'RETURNING id',
-      parameters: {'r': restaurant},
+      parameters: {'r': business},
     )).first[0]! as int;
 
     final connection = await connect();
     addTearDown(connection.close);
     final queued = await connection.execute(
       Sql.named(
-        'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+        'INSERT INTO pos_print_jobs (business_id, branch_id, terminal_id, '
         "  printer_name, payload) "
         "VALUES (@r, @b, 'till-1', '10.0.0.9:9100', '\\x1b40'::bytea) "
         'RETURNING id',
       ),
-      parameters: {'r': restaurant, 'b': branch},
+      parameters: {'r': business, 'b': branch},
     );
     final id = queued.first[0]! as int;
 
@@ -514,37 +514,37 @@ void main() {
     // privilege" is exactly the kind of claim a superuser run cannot make, and
     // getting it wrong means a takeaway ticket that parks in every test and
     // refuses at the counter.
-    final restaurant = (await db.query(
+    final business = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('park-probe', 'Park') "
-      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      "INSERT INTO pos_businesses (slug, name) VALUES ('park-probe', 'Park') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_businesses.name '
       'RETURNING id',
     )).first[0]! as int;
     final branch = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'PRB', 'Probe') "
-      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'ON CONFLICT (business_id, code) DO UPDATE SET name = pos_branches.name '
       'RETURNING id',
-      parameters: {'r': restaurant},
+      parameters: {'r': business},
     )).first[0]! as int;
 
     final connection = await connect();
     addTearDown(connection.close);
     await connection.execute(
       Sql.named(
-        'INSERT INTO pos_parked_tickets (restaurant_id, branch_id, table_id, '
+        'INSERT INTO pos_parked_tickets (business_id, branch_id, table_id, '
         "  client_transaction_id, payload) "
         "VALUES (@r, @b, NULL, gen_random_uuid(), '{}'::jsonb)",
       ),
-      parameters: {'r': restaurant, 'b': branch},
+      parameters: {'r': business, 'b': branch},
     );
     // Picking it up again is the DELETE the till is deliberately granted.
     await connection.execute(
       Sql.named(
-        'DELETE FROM pos_parked_tickets WHERE restaurant_id = @r',
+        'DELETE FROM pos_parked_tickets WHERE business_id = @r',
       ),
-      parameters: {'r': restaurant},
+      parameters: {'r': business},
     );
   });
 }

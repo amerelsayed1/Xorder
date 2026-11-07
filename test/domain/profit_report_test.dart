@@ -145,7 +145,7 @@ void main() {
       expect(r.hasAnyCost, isFalse);
     });
 
-    test('a tax-inclusive restaurant is flagged, for the page to say', () {
+    test('a tax-inclusive business is flagged, for the page to say', () {
       expect(report(products, inclusive: true).pricesIncludeTax, isTrue);
       expect(report(products).pricesIncludeTax, isFalse);
     });

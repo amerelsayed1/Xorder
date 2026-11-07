@@ -11,7 +11,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 /// second copy diverges the first time somebody adjusts padding in one place.
 
 /// A percentage box. Stored as basis points; shown as a percent because that is
-/// what a restaurant says out loud.
+/// what a business says out loud.
 class RateBox extends StatelessWidget {
   const RateBox({
     required this.controller,

@@ -143,11 +143,11 @@ void main() {
       }
     });
 
-    test('a unit the restaurant added is kept by its code, not read as each',
+    test('a unit the business added is kept by its code, not read as each',
         () {
       // The back office can add units now (migration 39). "1 of something"
       // was the old reading of any code this build did not know, and on a
-      // tray the restaurant added on purpose it is simply wrong.
+      // tray the business added on purpose it is simply wrong.
       expect(QuantityUnit.fromWire('tray').wire, 'tray');
       expect(QuantityUnit.fromWire('tray'), const QuantityUnit('tray'));
       expect(QuantityUnit.fromWire('tray').isBuiltIn, isFalse);

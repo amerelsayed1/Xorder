@@ -18,7 +18,7 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 ///
 /// These stopped being the app's default bindings when the till moved onto the
 /// branch database. They had to: nothing distinguished a release build, so
-/// every installation — including a real restaurant's — opened showing a
+/// every installation — including a real business's — opened showing a
 /// fictional menu, a fictional floor plan and a cashier who does not work
 /// there, while the money path wrote real rows to a real database.
 ///
@@ -30,7 +30,7 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 /// A test that wants a real database wants `test/data/pg_fixture.dart` instead.
 /// English, so the suite reads the copy it was written against.
 ///
-/// The PRODUCT's default is Arabic — the restaurants it ships to are in Egypt —
+/// The PRODUCT's default is Arabic — the businesses it ships to are in Egypt —
 /// and `test/core/localisation_test.dart` is what pins that. Everything else
 /// asserts English strings, and a suite that had to be rewritten in Arabic to
 /// change a default would make the default unchangeable. A test that is about

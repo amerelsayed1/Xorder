@@ -16,7 +16,7 @@ import 'admin_messages.dart';
 /// they belong to, because the decision a manager is making is *"should a
 /// supervisor be able to refund?"* — not *"should a supervisor hold
 /// order.refund?"*. The grouping is the argument: everything under **Back
-/// office** is what a cashier must never have, and a restaurant ticking those
+/// office** is what a cashier must never have, and a business ticking those
 /// boxes for a cashier role should be able to see that is what it is doing.
 class ManagementRolesPane extends ConsumerStatefulWidget {
   const ManagementRolesPane({required this.admin, super.key});
@@ -203,7 +203,7 @@ class _ManagementRolesPaneState extends ConsumerState<ManagementRolesPane> {
   /// A template rather than an empty checklist, because somebody creating an
   /// accountant otherwise starts from nothing and ticks boxes until the screen
   /// stops complaining — which is how a role ends up holding whatever made the
-  /// error go away. What is created is an ordinary role the restaurant then
+  /// error go away. What is created is an ordinary role the business then
   /// edits; nothing about it stays special.
   Future<void> _createFromTemplate() async {
     final picked = await showDialog<String>(

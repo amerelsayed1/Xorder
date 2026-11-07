@@ -7,7 +7,7 @@ import 'pos_database.dart';
 /// adapts it to `SiteLicenceSource`, the one layer allowed to see both.
 class SiteLicenceRow {
   const SiteLicenceRow({
-    required this.restaurantId,
+    required this.businessId,
     required this.payload,
     required this.signature,
     required this.keyId,
@@ -15,13 +15,13 @@ class SiteLicenceRow {
     this.terminalCount = 0,
   });
 
-  final int restaurantId;
+  final int businessId;
   final String payload;
   final String signature;
   final String keyId;
   final String mode;
 
-  /// Registered terminals for [restaurantId], counted when read. Ignored on
+  /// Registered terminals for [businessId], counted when read. Ignored on
   /// publish.
   final int terminalCount;
 }
@@ -40,29 +40,29 @@ class PostgresSiteLicence {
   final DeploymentConfig _config;
 
   static const _select =
-      'SELECT l.restaurant_id, l.payload, l.signature, l.key_id, l.mode, '
+      'SELECT l.business_id, l.payload, l.signature, l.key_id, l.mode, '
       '(SELECT count(*) FROM pos_terminals t '
-      'WHERE t.restaurant_id = l.restaurant_id) '
+      'WHERE t.business_id = l.business_id) '
       'FROM pos_site_licence l';
 
-  /// Two statements rather than one `@restaurant IS NULL OR …`: a null
+  /// Two statements rather than one `@business IS NULL OR …`: a null
   /// parameter in that position has no type PostgreSQL can infer.
-  Future<SiteLicenceRow?> read({int? restaurantId}) async {
-    final rows = restaurantId == null
+  Future<SiteLicenceRow?> read({int? businessId}) async {
+    final rows = businessId == null
         ? await _db.query(
             _config,
             '$_select ORDER BY l.published_at DESC LIMIT 1',
           )
         : await _db.query(
             _config,
-            '$_select WHERE l.restaurant_id = @restaurant',
-            parameters: {'restaurant': restaurantId},
+            '$_select WHERE l.business_id = @business',
+            parameters: {'business': businessId},
           );
     if (rows.isEmpty) return null;
 
     final row = rows.first;
     return SiteLicenceRow(
-      restaurantId: row[0]! as int,
+      businessId: row[0]! as int,
       payload: row[1]! as String,
       signature: row[2]! as String,
       keyId: row[3]! as String,
@@ -75,13 +75,13 @@ class PostgresSiteLicence {
     await _db.query(
       _config,
       'INSERT INTO pos_site_licence '
-      '(restaurant_id, payload, signature, key_id, mode, published_at) '
-      'VALUES (@restaurant, @payload, @signature, @key, @mode, now()) '
-      'ON CONFLICT (restaurant_id) DO UPDATE SET '
+      '(business_id, payload, signature, key_id, mode, published_at) '
+      'VALUES (@business, @payload, @signature, @key, @mode, now()) '
+      'ON CONFLICT (business_id) DO UPDATE SET '
       'payload = EXCLUDED.payload, signature = EXCLUDED.signature, '
       'key_id = EXCLUDED.key_id, mode = EXCLUDED.mode, published_at = now()',
       parameters: {
-        'restaurant': licence.restaurantId,
+        'business': licence.businessId,
         'payload': licence.payload,
         'signature': licence.signature,
         'key': licence.keyId,

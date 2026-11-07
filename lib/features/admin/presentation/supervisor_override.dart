@@ -36,7 +36,7 @@ import '../../../core/security/pin_hash.dart';
 /// override rows can be read as one list.
 ///
 /// The override itself is recorded before this returns. A lent permission that
-/// was used but not logged is worse than one that was refused: the restaurant
+/// was used but not logged is worse than one that was refused: the business
 /// finds out about the discount and has no way to learn who approved it.
 Future<PermissionDecision> requestPermission(
   BuildContext context,
@@ -151,7 +151,7 @@ class ApprovalOutcome {
 
   final PosStaff approver;
 
-  /// Null when the restaurant switched reasons off for this act.
+  /// Null when the business switched reasons off for this act.
   final ReasonSelection? reason;
 }
 

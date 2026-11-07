@@ -36,7 +36,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int nourId;
@@ -62,7 +62,7 @@ void main() {
     final id =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+                  'INSERT INTO pos_orders (client_transaction_id, business_id, '
                   '  branch_id, terminal_id, invoice_number, order_type, '
                   '  currency, exponent, subtotal_minor, discount_minor, '
                   '  service_minor, vat_minor, total_minor, occurred_at, status, '
@@ -73,7 +73,7 @@ void main() {
                   '  @at::timestamptz, @status, @served, @day, @voidedBy, '
                   '  @voidedAt::timestamptz, @reason) RETURNING id',
                   parameters: {
-                    'r': restaurantId,
+                    'r': businessId,
                     'b': branch ?? branchId,
                     'terminal': terminal,
                     'invoice': invoice,
@@ -129,7 +129,7 @@ void main() {
     final id =
         (await tx.execute(
                   Sql.named(
-                    'INSERT INTO pos_refunds (client_refund_id, restaurant_id, '
+                    'INSERT INTO pos_refunds (client_refund_id, business_id, '
                     '  branch_id, terminal_id, order_id, business_day_id, kind, '
                     '  subtotal_minor, service_minor, vat_minor, total_minor, '
                     '  reason_id, refunded_by, approved_by_id, occurred_at) '
@@ -138,7 +138,7 @@ void main() {
                     '  @approver, @at::timestamptz) RETURNING id',
                   ),
                   parameters: {
-                    'r': restaurantId,
+                    'r': businessId,
                     'b': branch ?? branchId,
                     'terminal': terminal,
                     'o': orderId,
@@ -177,12 +177,12 @@ void main() {
   Future<int> closedDay(DateTime date, DateTime opened, DateTime closed) async =>
       (await db.query(
             pg.config,
-            'INSERT INTO pos_business_days (restaurant_id, branch_id, '
+            'INSERT INTO pos_business_days (business_id, branch_id, '
             '  business_date, opened_at, closed_at, closed_by) '
             'VALUES (@r, @b, @date::date, @opened::timestamptz, '
             '  @closed::timestamptz, @by) RETURNING id',
             parameters: {
-              'r': restaurantId,
+              'r': businessId,
               'b': branchId,
               'date':
                   '${date.year}-${date.month.toString().padLeft(2, '0')}-'
@@ -222,12 +222,12 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('returns', 'Returns') RETURNING id",
                 ))
                 .first[0]
@@ -235,9 +235,9 @@ void main() {
     Future<int> branch(String code) async =>
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_branches (restaurant_id, code, name) '
+                  'INSERT INTO pos_branches (business_id, code, name) '
                   'VALUES (@r, @code, @code) RETURNING id',
-                  parameters: {'r': restaurantId, 'code': code},
+                  parameters: {'r': businessId, 'code': code},
                 ))
                 .first[0]
             as int;
@@ -246,9 +246,9 @@ void main() {
 
     Future<void> terminal(String id, String name, int branch) => db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       'VALUES (@id::uuid, @r, @b, @name)',
-      parameters: {'id': id, 'r': restaurantId, 'b': branch, 'name': name},
+      parameters: {'id': id, 'r': businessId, 'b': branch, 'name': name},
     );
     await terminal(counter, 'Counter', branchId);
     await terminal(upstairs, 'Upstairs', branchId);
@@ -257,11 +257,11 @@ void main() {
     Future<int> staff(String name, String username) async =>
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+                  'INSERT INTO pos_users (business_id, branch_id, name, '
                   "  username, pin_salt, pin_hash) VALUES (@r, @b, @n, @u, "
                   "  'salt', 'hash') RETURNING id",
                   parameters: {
-                    'r': restaurantId,
+                    'r': businessId,
                     'b': branchId,
                     'n': name,
                     'u': username,
@@ -275,10 +275,10 @@ void main() {
     reasonId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_reason_codes (restaurant_id, scope, code, '
+                  'INSERT INTO pos_reason_codes (business_id, scope, code, '
                   "  name_en, name_ar) VALUES (@r, 'void', 'wrong_order', "
                   "  'Wrong order', 'طلب خاطئ') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -286,7 +286,7 @@ void main() {
     repository = PostgresOrderHistoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });

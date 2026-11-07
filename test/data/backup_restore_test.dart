@@ -46,7 +46,7 @@ void main() {
   late PostgresBackupRepository backups;
   late PostgresAuditRepository audit;
   late Directory folder;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
   PgToolset? tools;
@@ -102,7 +102,7 @@ void main() {
   }) => BackupService(
     database: db,
     config: config ?? pg.config,
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branchId,
     directory: directory ?? folder.path,
     backups: backups,
@@ -117,7 +117,7 @@ void main() {
   Future<int> openDay({bool closed = false}) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
       '  opened_by, closed_at, closed_by) '
       'VALUES (@r, @b, @d::date, @by, '
       '  CASE WHEN @closed::boolean THEN now() ELSE NULL END, '
@@ -125,7 +125,7 @@ void main() {
       // name on it is not a close anybody can be asked about.
       '  CASE WHEN @closed::boolean THEN @by::bigint ELSE NULL END) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'd': '2026-09-09',
         'by': staffId,
@@ -143,7 +143,7 @@ void main() {
   Future<int> openShift({bool closed = false}) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, '
       '  opened_by, opening_float_minor, closed_at, closed_by, '
       '  counted_cash_minor, expected_cash_minor, variance_minor) '
       'VALUES (@r, @b, @t::uuid, @by, 20000, '
@@ -153,7 +153,7 @@ void main() {
       '  CASE WHEN @closed::boolean THEN 20000 ELSE NULL END, '
       '  CASE WHEN @closed::boolean THEN 0 ELSE NULL END) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': terminal,
         'by': staffId,
@@ -165,13 +165,13 @@ void main() {
 
   Future<void> order(String invoice, {int total = 1000}) => db.query(
     pg.config,
-    'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+    'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
     '  terminal_id, invoice_number, order_type, currency, exponent, '
     '  subtotal_minor, service_minor, vat_minor, total_minor, occurred_at) '
     "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @invoice, 'dine_in', 'EGP', "
     '  2, @total, 0, 0, @total, now())',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branchId,
       't': terminal,
       'invoice': invoice,
@@ -191,15 +191,15 @@ void main() {
     await order(invoice);
     await db.query(
       pg.config,
-      'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
+      'INSERT INTO pos_outbox (order_id, client_transaction_id, business_id, '
       '  branch_id, delivered_at, quarantined_at, quarantine_code) '
-      'SELECT id, client_transaction_id, restaurant_id, branch_id, '
+      'SELECT id, client_transaction_id, business_id, branch_id, '
       '  CASE WHEN @delivered::boolean THEN now() ELSE NULL END, '
       '  CASE WHEN @held::boolean THEN now() ELSE NULL END, '
       "  CASE WHEN @held::boolean THEN 'MENU_ITEM_NOT_FOUND' ELSE NULL END "
-      'FROM pos_orders WHERE restaurant_id = @r AND invoice_number = @invoice',
+      'FROM pos_orders WHERE business_id = @r AND invoice_number = @invoice',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'invoice': invoice,
         'held': held,
         'delivered': delivered,
@@ -212,12 +212,12 @@ void main() {
   /// close the till had not sent.
   Future<void> owedEvent({bool held = false}) => db.query(
     pg.config,
-    'INSERT INTO pos_sync_outbox (restaurant_id, branch_id, event_type, '
+    'INSERT INTO pos_sync_outbox (business_id, branch_id, event_type, '
     '  source_id, client_transaction_id, quarantined_at, quarantine_code) '
     "VALUES (@r, @b, 'cash_movement', 1, gen_random_uuid(), "
     '  CASE WHEN @held::boolean THEN now() ELSE NULL END, '
     "  CASE WHEN @held::boolean THEN 'REJECTED' ELSE NULL END)",
-    parameters: {'r': restaurantId, 'b': branchId, 'held': held},
+    parameters: {'r': businessId, 'b': branchId, 'held': held},
   );
 
   /// The safety copies a restore has taken, in this suite's folder.
@@ -231,18 +231,18 @@ void main() {
         entry,
   ];
 
-  /// This restaurant's invoices, in order.
+  /// This business's invoices, in order.
   ///
   /// Scoped, because a restore puts the WHOLE database back — including the
-  /// rows earlier tests in this suite left behind under their own restaurant
-  /// ids. `pos_orders` has no foreign key to `pos_restaurants`, deliberately,
-  /// so `DELETE FROM pos_restaurants` in setUp does not take them with it.
+  /// rows earlier tests in this suite left behind under their own business
+  /// ids. `pos_orders` has no foreign key to `pos_businesses`, deliberately,
+  /// so `DELETE FROM pos_businesses` in setUp does not take them with it.
   Future<List<String>> invoices() async {
     final rows = await db.query(
       pg.config,
-      'SELECT invoice_number FROM pos_orders WHERE restaurant_id = @r '
+      'SELECT invoice_number FROM pos_orders WHERE business_id = @r '
       'ORDER BY invoice_number',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) row[0]! as String];
   }
@@ -253,55 +253,55 @@ void main() {
     pg = await PgFixture.open('backup_restore');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    // `pos_restaurants` goes; `pos_audit_events` cannot, because the ledger
+    // `pos_businesses` goes; `pos_audit_events` cannot, because the ledger
     // refuses DELETE and TRUNCATE from every connection — which is the whole
-    // point of it. Each run therefore takes a NEW restaurant id, and every
+    // point of it. Each run therefore takes a NEW business id, and every
     // repository here is scoped to it, so the ledger assertions below see only
     // this test's rows.
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('bk', 'Backup Grill') RETURNING id",
             )).first[0]!
             as int;
     branchId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'BK1', 'Main') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]!
             as int;
     staffId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+              'INSERT INTO pos_users (business_id, branch_id, name, '
               "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Amer M.', "
               "  'amer', 'salt', 'hash') RETURNING id",
-              parameters: {'r': restaurantId, 'b': branchId},
+              parameters: {'r': businessId, 'b': branchId},
             )).first[0]!
             as int;
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1') ON CONFLICT (id) DO NOTHING",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
 
     backups = PostgresBackupRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
     );
     audit = PostgresAuditRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
     );
@@ -359,7 +359,7 @@ void main() {
       expect(record.tablesFound, greaterThan(30));
     });
 
-    test('the tables it verifies are the ones a restaurant cannot trade '
+    test('the tables it verifies are the ones a business cannot trade '
         'without', () async {
       final record = (await service.take(
         by: owner,
@@ -474,7 +474,7 @@ void main() {
       final bare = BackupService(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         directory: folder.path,
         backups: backups,
@@ -503,12 +503,12 @@ void main() {
       int tables = 40,
       String? failure,
     }) => raw(
-      'INSERT INTO pos_backups (restaurant_id, taken_by_name, trigger_kind, '
+      'INSERT INTO pos_backups (business_id, taken_by_name, trigger_kind, '
       '  outcome, file_path, size_bytes, checksum, tables_found, failure) '
       "VALUES (@r, 'Amer M.', 'manual', @outcome, @file, @size, @checksum, "
       '  @tables, @failure)',
       {
-        'r': restaurantId,
+        'r': businessId,
         'outcome': outcome,
         'file': file,
         'size': size,
@@ -521,7 +521,7 @@ void main() {
     test('a verified row with nothing behind it is refused', () async {
       // Straight at the database, going round the service entirely. Without
       // this the row would read on screen as the backup that saves the
-      // restaurant, and there would be no file.
+      // business, and there would be no file.
       await expectLater(
         insertRaw(checksum: null, size: 0, tables: 0),
         throwsA(anything),
@@ -570,7 +570,7 @@ void main() {
     test('it is append-only, even from an administrator connection', () async {
       // The human rule this protects: a row reading "last night could not be
       // verified" is uncomfortable, and the shortest way to make it go away is
-      // one UPDATE — after which the restaurant believes it has a copy it does
+      // one UPDATE — after which the business believes it has a copy it does
       // not have.
       await insertRaw(outcome: 'unverified', failure: 'archive_unreadable');
 
@@ -730,7 +730,7 @@ void main() {
     test('a copy that failed verification cannot be restored from', () async {
       // The pane never offers the button on such a row; this is the second
       // line. Restoring from a file `pg_restore` already said it could not read
-      // would leave the restaurant with neither the old database nor a new one.
+      // would leave the business with neither the old database nor a new one.
       final unreadable = BackupRecord(
         takenAt: copy.takenAt,
         takenByName: 'Amer M.',
@@ -789,9 +789,9 @@ void main() {
       await order('INV-AFTER-2');
       await db.query(
         pg.config,
-        "UPDATE pos_restaurants SET name = 'Renamed After The Backup' "
+        "UPDATE pos_businesses SET name = 'Renamed After The Backup' "
         'WHERE id = @r',
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       expect(await invoices(), ['INV-AFTER-1', 'INV-AFTER-2', 'INV-BEFORE']);
 
@@ -806,8 +806,8 @@ void main() {
       expect(await invoices(), ['INV-BEFORE']);
       final name = await db.query(
         pg.config,
-        'SELECT name FROM pos_restaurants WHERE id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT name FROM pos_businesses WHERE id = @r',
+        parameters: {'r': businessId},
       );
       expect(name.first[0], 'Backup Grill');
     });

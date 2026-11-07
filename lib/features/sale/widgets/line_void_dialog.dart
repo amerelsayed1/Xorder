@@ -55,7 +55,7 @@ abstract final class LineVoidFlow {
 
     final decision = Authorization.check(staff, PosCapability.orderItemCancel);
     if (decision is! Allowed) {
-      // Not overridable — see `PosCapability.overridable`. A restaurant that
+      // Not overridable — see `PosCapability.overridable`. A business that
       // has taken this off a role has decided cashiers do not edit tickets,
       // and a supervisor prompt would quietly undo that decision.
       await requestPermission(
@@ -192,7 +192,7 @@ abstract final class LineVoidFlow {
 /// nothing sent is somebody's abandoned keystrokes: clearing it is not a
 /// business event and writing a row for it would fill the ledger with noise. As
 /// soon as one round has been fired the opposite holds — food was made, the
-/// cost is real, and a restaurant that cannot total its waste cannot manage it.
+/// cost is real, and a business that cannot total its waste cannot manage it.
 ///
 /// So the two paths differ in what they *record*, not only in how loudly they
 /// ask.

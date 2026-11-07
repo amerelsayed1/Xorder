@@ -23,7 +23,7 @@ void main() {
     });
 
     test('values are not uppercased', () {
-      // The name is theirs; the value is the restaurant's.
+      // The name is theirs; the value is the business's.
       expect(
         canonical(const EtaObject([('name', EtaText('Koshari'))])),
         '"NAME""Koshari"',

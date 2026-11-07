@@ -19,7 +19,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int categoryId;
@@ -34,11 +34,11 @@ void main() {
     bool stocked = true,
     String? unit,
   }) => id(
-    'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+    'INSERT INTO pos_products (business_id, category_id, name_en, '
     '  price_minor, is_stocked, stock_unit) '
     'VALUES (@r, @c, @n, 0, @s, @u) RETURNING id',
     {
-      'r': restaurantId,
+      'r': businessId,
       'c': onMenu ? categoryId : null,
       'n': name,
       's': stocked,
@@ -49,11 +49,11 @@ void main() {
   Future<void> holds(int productId, int branch, int milli, String unit, int cost) =>
       db.query(
         pg.config,
-        'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+        'INSERT INTO pos_stock_levels (business_id, branch_id, product_id, '
         '  quantity_milli, unit, average_cost_minor) '
         'VALUES (@r, @b, @p, @q, @u, @c)',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branch,
           'p': productId,
           'q': milli,
@@ -67,32 +67,32 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await db.query(pg.config, 'TRUNCATE pos_stock_levels, pos_stock_movements');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = await id(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('levels', 'Levels') "
+    businessId = await id(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('levels', 'Levels') "
       'RETURNING id',
       {},
     );
     branchId = await id(
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'L1', 'Main') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     otherBranchId = await id(
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'L2', 'Second') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     categoryId = await id(
-      "INSERT INTO pos_categories (restaurant_id, name_en) "
+      "INSERT INTO pos_categories (business_id, name_en) "
       "VALUES (@r, 'Drinks') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     levels = PostgresStockLevelsRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });

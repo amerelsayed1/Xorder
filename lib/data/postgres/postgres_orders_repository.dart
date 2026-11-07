@@ -17,13 +17,13 @@ import 'pos_database.dart';
 /// properties of the *machine* and must survive a different cashier signing in.
 class PosWriteContext {
   const PosWriteContext({
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     required this.terminalId,
     required this.branchCode,
   });
 
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String terminalId;
 
@@ -35,7 +35,7 @@ class PosWriteContext {
 ///
 /// Every rule that matters here is enforced by the **database**, not by hope:
 ///
-/// * **Idempotency** is `UNIQUE (restaurant_id, client_transaction_id)`. A till
+/// * **Idempotency** is `UNIQUE (business_id, client_transaction_id)`. A till
 ///   that retries after a timeout gets the original order back, with the same id
 ///   and the same invoice number — never a second sale and never a `409`.
 /// * **Invoice numbering** is a row lock on `pos_invoice_sequences`, taken inside
@@ -84,9 +84,9 @@ class PostgresOrdersRepository implements OrdersRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT id, invoice_number FROM pos_orders '
-          'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+          'WHERE business_id = @business AND client_transaction_id = @txn',
         ),
-        parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+        parameters: {'business': _context.businessId, 'txn': ticket.id},
       );
       if (existing.isNotEmpty) {
         final row = existing.first;
@@ -112,19 +112,19 @@ class PostgresOrdersRepository implements OrdersRepository {
       final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_orders (
-            client_transaction_id, restaurant_id, branch_id, terminal_id,
+            client_transaction_id, business_id, branch_id, terminal_id,
             invoice_number, order_type, table_id, table_label, guest_count,
             currency, exponent, subtotal_minor, discount_minor, service_minor,
             vat_minor, total_minor, occurred_at, shift_id, served_by,
             customer_id
           ) VALUES (
-            @txn, @restaurant, @branch, @terminal,
+            @txn, @business, @branch, @terminal,
             @invoice, @orderType, @tableId, @tableLabel, @guests,
             @currency, @exponent, @subtotal, @discount, @service,
             @vat, @total, @occurredAt, @shift, @servedBy,
             @customer
           )
-          ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          ON CONFLICT (business_id, client_transaction_id) DO NOTHING
           RETURNING id, invoice_number
         '''),
         parameters: {
@@ -133,7 +133,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           // sales and that is the normal case — somebody buys a coffee and
           // nobody asks their name.
           'customer': ticket.customer?.id,
-          'restaurant': _context.restaurantId,
+          'business': _context.businessId,
           'branch': _context.branchId,
           'terminal': _context.terminalId,
           'invoice': invoiceNumber,
@@ -169,9 +169,9 @@ class PostgresOrdersRepository implements OrdersRepository {
         final winner = await tx.execute(
           Sql.named(
             'SELECT id, invoice_number FROM pos_orders '
-            'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+            'WHERE business_id = @business AND client_transaction_id = @txn',
           ),
-          parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+          parameters: {'business': _context.businessId, 'txn': ticket.id},
         );
         final row = winner.first;
         return SubmitOrderResult(
@@ -236,12 +236,12 @@ class PostgresOrdersRepository implements OrdersRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT client_transaction_id::text, version FROM pos_parked_tickets '
-        'WHERE restaurant_id = @restaurant AND '
+        'WHERE business_id = @business AND '
         '${tableId != null ? 'table_id = @table' : 'client_transaction_id = @txn AND table_id IS NULL'} '
         'FOR UPDATE',
       ),
       parameters: {
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         if (tableId != null) 'table': tableId else 'txn': ticket.id,
       },
     );
@@ -251,9 +251,9 @@ class PostgresOrdersRepository implements OrdersRepository {
     await tx.execute(
       Sql.named(
         'DELETE FROM pos_parked_tickets '
-        'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+        'WHERE business_id = @business AND client_transaction_id = @txn',
       ),
-      parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+      parameters: {'business': _context.businessId, 'txn': ticket.id},
     );
     return true;
   }
@@ -287,9 +287,9 @@ class PostgresOrdersRepository implements OrdersRepository {
       final replay = await tx.execute(
         Sql.named(
           'SELECT id, invoice_number FROM pos_orders '
-          'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+          'WHERE business_id = @business AND client_transaction_id = @txn',
         ),
-        parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+        parameters: {'business': _context.businessId, 'txn': ticket.id},
       );
       if (replay.isNotEmpty) {
         return SubmitOrderResult(
@@ -313,26 +313,26 @@ class PostgresOrdersRepository implements OrdersRepository {
       final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_orders (
-            client_transaction_id, restaurant_id, branch_id, terminal_id,
+            client_transaction_id, business_id, branch_id, terminal_id,
             invoice_number, order_type, table_id, table_label, guest_count,
             currency, exponent, subtotal_minor, discount_minor, service_minor,
             vat_minor, total_minor, occurred_at, shift_id,
             status, status_changed_at, voided_at, voided_by, void_reason_id,
             void_note, served_by
           ) VALUES (
-            @txn, @restaurant, @branch, @terminal,
+            @txn, @business, @branch, @terminal,
             @invoice, @orderType, @tableId, @tableLabel, @guests,
             @currency, @exponent, @subtotal, @discount, @service,
             @vat, @total, @occurredAt, @shift,
             'VOIDED', @occurredAt, @occurredAt, @voidedBy, @reason,
             @note, @servedBy
           )
-          ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          ON CONFLICT (business_id, client_transaction_id) DO NOTHING
           RETURNING id, invoice_number
         '''),
         parameters: {
           'txn': ticket.id,
-          'restaurant': _context.restaurantId,
+          'business': _context.businessId,
           'branch': _context.branchId,
           'terminal': _context.terminalId,
           'invoice': invoiceNumber,
@@ -367,9 +367,9 @@ class PostgresOrdersRepository implements OrdersRepository {
         final winner = await tx.execute(
           Sql.named(
             'SELECT id, invoice_number FROM pos_orders '
-            'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+            'WHERE business_id = @business AND client_transaction_id = @txn',
           ),
-          parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+          parameters: {'business': _context.businessId, 'txn': ticket.id},
         );
         return SubmitOrderResult(
           clientTransactionId: ticket.id,
@@ -418,14 +418,14 @@ class PostgresOrdersRepository implements OrdersRepository {
     await tx.execute(
       Sql.named('''
         INSERT INTO pos_outbox (
-          order_id, client_transaction_id, restaurant_id, branch_id
-        ) VALUES (@order, @txn, @restaurant, @branch)
-        ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          order_id, client_transaction_id, business_id, branch_id
+        ) VALUES (@order, @txn, @business, @branch)
+        ON CONFLICT (business_id, client_transaction_id) DO NOTHING
       '''),
       parameters: {
         'order': orderId,
         'txn': ticket.id,
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         'branch': _context.branchId,
       },
     );
@@ -449,16 +449,16 @@ class PostgresOrdersRepository implements OrdersRepository {
       '''
       SELECT (
         (SELECT count(*) FROM pos_outbox
-          WHERE restaurant_id = @restaurant AND branch_id = @branch
+          WHERE business_id = @business AND branch_id = @branch
             AND delivered_at IS NULL AND quarantined_at IS NULL)
         +
         (SELECT count(*) FROM pos_sync_outbox
-          WHERE restaurant_id = @restaurant AND branch_id = @branch
+          WHERE business_id = @business AND branch_id = @branch
             AND delivered_at IS NULL AND quarantined_at IS NULL)
       )::bigint
       ''',
       parameters: {
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         'branch': _context.branchId,
       },
     );
@@ -476,12 +476,12 @@ class PostgresOrdersRepository implements OrdersRepository {
 
     await tx.execute(
       Sql.named('''
-        INSERT INTO pos_invoice_sequences (restaurant_id, branch_id, period, prefix)
-        VALUES (@restaurant, @branch, @period, @prefix)
-        ON CONFLICT (restaurant_id, branch_id, period) DO NOTHING
+        INSERT INTO pos_invoice_sequences (business_id, branch_id, period, prefix)
+        VALUES (@business, @branch, @period, @prefix)
+        ON CONFLICT (business_id, branch_id, period) DO NOTHING
       '''),
       parameters: {
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         'branch': _context.branchId,
         'period': period,
         'prefix': _context.branchCode,
@@ -491,11 +491,11 @@ class PostgresOrdersRepository implements OrdersRepository {
     final locked = await tx.execute(
       Sql.named('''
         SELECT prefix, next_value FROM pos_invoice_sequences
-        WHERE restaurant_id = @restaurant AND branch_id = @branch AND period = @period
+        WHERE business_id = @business AND branch_id = @branch AND period = @period
         FOR UPDATE
       '''),
       parameters: {
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         'branch': _context.branchId,
         'period': period,
       },
@@ -507,10 +507,10 @@ class PostgresOrdersRepository implements OrdersRepository {
     await tx.execute(
       Sql.named('''
         UPDATE pos_invoice_sequences SET next_value = next_value + 1
-        WHERE restaurant_id = @restaurant AND branch_id = @branch AND period = @period
+        WHERE business_id = @business AND branch_id = @branch AND period = @period
       '''),
       parameters: {
-        'restaurant': _context.restaurantId,
+        'business': _context.businessId,
         'branch': _context.branchId,
         'period': period,
       },
@@ -682,7 +682,7 @@ class PostgresOrdersRepository implements OrdersRepository {
         parameters: {
           'order': orderId,
           // Null when the group is this build's fallback rather than a row the
-          // restaurant configured — there is nothing to point at.
+          // business configured — there is nothing to point at.
           'group': (line.taxGroupId ?? 0) == 0 ? null : line.taxGroupId,
           // Snapshotted, like a line's name: a rate renamed or moved next year
           // must not rewrite what a receipt said today.
@@ -828,11 +828,11 @@ class PostgresOrdersRepository implements OrdersRepository {
       final product = await tx.execute(
         Sql.named(
           'SELECT stock_unit FROM pos_products '
-          'WHERE id = @product AND restaurant_id = @restaurant FOR SHARE',
+          'WHERE id = @product AND business_id = @business FOR SHARE',
         ),
         parameters: {
           'product': entry.key,
-          'restaurant': _context.restaurantId,
+          'business': _context.businessId,
         },
       );
       // The item was archived or replaced after the cashier added it.  The
@@ -868,14 +868,14 @@ class PostgresOrdersRepository implements OrdersRepository {
       await tx.execute(
         Sql.named('''
           INSERT INTO pos_stock_movements
-            (restaurant_id, branch_id, product_id, kind, quantity_milli, unit,
+            (business_id, branch_id, product_id, kind, quantity_milli, unit,
              unit_cost_minor, balance_milli, average_cost_minor, order_id,
              occurred_at, created_by)
-          VALUES (@restaurant, @branch, @product, 'sale', @quantity, @unit,
+          VALUES (@business, @branch, @product, 'sale', @quantity, @unit,
                   @cost, @balance, @average, @order, @occurredAt, @by)
         '''),
         parameters: {
-          'restaurant': _context.restaurantId,
+          'business': _context.businessId,
           'branch': _context.branchId,
           'product': entry.key,
           'quantity': -issued.milli,
@@ -891,16 +891,16 @@ class PostgresOrdersRepository implements OrdersRepository {
       await tx.execute(
         Sql.named('''
           INSERT INTO pos_stock_levels
-            (restaurant_id, branch_id, product_id, quantity_milli, unit,
+            (business_id, branch_id, product_id, quantity_milli, unit,
              average_cost_minor, updated_at)
-          VALUES (@restaurant, @branch, @product, @quantity, @unit, @average, now())
+          VALUES (@business, @branch, @product, @quantity, @unit, @average, now())
           ON CONFLICT (branch_id, product_id) DO UPDATE SET
             quantity_milli = excluded.quantity_milli,
             average_cost_minor = excluded.average_cost_minor,
             updated_at = now()
         '''),
         parameters: {
-          'restaurant': _context.restaurantId,
+          'business': _context.businessId,
           'branch': _context.branchId,
           'product': entry.key,
           'quantity': after.onHand.milli,

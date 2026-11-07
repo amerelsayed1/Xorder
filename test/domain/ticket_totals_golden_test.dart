@@ -9,7 +9,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 /// `subtotal − discount + service`. That is the single riskiest calculation
 /// change in the programme: every one of these numbers is a real receipt, and a
 /// discount feature that quietly shifts a rounding step changes what a
-/// restaurant charges without anybody deciding to.
+/// business charges without anybody deciding to.
 ///
 /// So these land **first**, against today's behaviour. When discounts arrive,
 /// every case here must still produce these totals with no discount applied —
@@ -277,7 +277,7 @@ void main() {
     );
 
     golden(
-      'a restaurant that charges service on everything',
+      'a business that charges service on everything',
       build: () => ticket(
         lines: [line(product(10000), 1)],
         type: OrderType.takeaway,
@@ -290,7 +290,7 @@ void main() {
     );
   });
 
-  group('tax rates a restaurant might actually be on', () {
+  group('tax rates a business might actually be on', () {
     golden(
       'no service charge at all',
       build: () => ticket(
@@ -304,7 +304,7 @@ void main() {
     );
 
     golden(
-      'no VAT — an unregistered restaurant',
+      'no VAT — an unregistered business',
       build: () => ticket(
         lines: [line(product(10000), 1)],
         tax: const TaxConfig(vatBp: 0),

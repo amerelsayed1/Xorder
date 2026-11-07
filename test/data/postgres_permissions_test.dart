@@ -14,7 +14,7 @@ import 'pg_fixture.dart';
 /// The interesting case is never the fresh install — it is the branch server
 /// that has been taking money for a month and is now being upgraded. Two things
 /// there can go wrong silently, which is why they are asserted rather than
-/// assumed: capability strings that no longer match anything, and a restaurant
+/// assumed: capability strings that no longer match anything, and a business
 /// left with nobody who may reach the screen that hands out permissions.
 void main() {
   if (PgFixture.host == null) {
@@ -37,12 +37,13 @@ void main() {
     ).migrate(pg.config);
   }
 
-  Future<int> seedLegacyRestaurant() async {
+  Future<int> seedLegacyBusiness() async {
     final rows = await db.query(
       pg.config,
+      // Version 4's names: this runs before migration 64.
       "INSERT INTO pos_restaurants (slug, name) VALUES ('legacy', 'Legacy Kitchen') RETURNING id",
     );
-    final restaurantId = rows.first[0] as int;
+    final businessId = rows.first[0] as int;
 
     // Two people, in the order they were created. The first is the account
     // `--seed` made; the second is one a manager added by hand later.
@@ -58,9 +59,9 @@ void main() {
       await db.query(
         pg.config,
         'INSERT INTO pos_staff (restaurant_id, name, username, pin_salt, pin_hash, capabilities) '
-        'VALUES (@restaurant, @name, @username, @salt, @hash, @capabilities)',
+        'VALUES (@business, @name, @username, @salt, @hash, @capabilities)',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'name': staff.name,
           'username': staff.username,
           'salt': salt,
@@ -69,7 +70,7 @@ void main() {
         },
       );
     }
-    return restaurantId;
+    return businessId;
   }
 
   setUp(() async {
@@ -81,13 +82,13 @@ void main() {
   tearDown(() => pg.close());
 
   test('rewrites the capability names the first build shipped', () async {
-    final restaurantId = await seedLegacyRestaurant();
+    final businessId = await seedLegacyBusiness();
     await PosMigrator(db).migrate(pg.config);
 
     final rows = await db.query(
       pg.config,
-      'SELECT name, capabilities FROM pos_users WHERE restaurant_id = @r ORDER BY id',
-      parameters: {'r': restaurantId},
+      'SELECT name, capabilities FROM pos_users WHERE business_id = @r ORDER BY id',
+      parameters: {'r': businessId},
     );
 
     final amer = (rows.first[1] as List).cast<String>().toSet();
@@ -108,13 +109,13 @@ void main() {
   });
 
   test('seeds the system roles and leaves somebody able to grant permissions', () async {
-    final restaurantId = await seedLegacyRestaurant();
+    final businessId = await seedLegacyBusiness();
     await PosMigrator(db).migrate(pg.config);
 
     final roles = await db.query(
       pg.config,
-      'SELECT code, is_system, capabilities FROM pos_roles WHERE restaurant_id = @r ORDER BY code',
-      parameters: {'r': restaurantId},
+      'SELECT code, is_system, capabilities FROM pos_roles WHERE business_id = @r ORDER BY code',
+      parameters: {'r': businessId},
     );
     expect(roles.map((r) => r[0]), [
       SystemRoles.cashierCode,
@@ -140,8 +141,8 @@ void main() {
     final assigned = await db.query(
       pg.config,
       'SELECT s.name, r.code FROM pos_users s JOIN pos_roles r ON r.id = s.role_id '
-      'WHERE s.restaurant_id = @r ORDER BY s.id',
-      parameters: {'r': restaurantId},
+      'WHERE s.business_id = @r ORDER BY s.id',
+      parameters: {'r': businessId},
     );
     expect(assigned.map((row) => [row[0], row[1]]), [
       ['Amer', SystemRoles.ownerCode],
@@ -150,18 +151,18 @@ void main() {
   });
 
   group('the audit trail', () {
-    late int restaurantId;
+    late int businessId;
 
     setUp(() async {
-      restaurantId = await seedLegacyRestaurant();
+      businessId = await seedLegacyBusiness();
       await PosMigrator(db).migrate(pg.config);
       await db.query(
         pg.config,
-        'INSERT INTO pos_audit_events (restaurant_id, actor_name, action, entity_type, entity_id, '
+        'INSERT INTO pos_audit_events (business_id, actor_name, action, entity_type, entity_id, '
         '                              before_value, after_value) '
         "VALUES (@r, 'Amer', 'product.price_changed', 'product', '42', "
         """       '{"price_minor": 4500}'::jsonb, '{"price_minor": 5000}'::jsonb)""",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
     });
 
@@ -169,8 +170,8 @@ void main() {
       final rows = await db.query(
         pg.config,
         "SELECT actor_name, action, after_value->>'price_minor' FROM pos_audit_events "
-        'WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(rows.single[0], 'Amer');
       expect(rows.single[1], 'product.price_changed');

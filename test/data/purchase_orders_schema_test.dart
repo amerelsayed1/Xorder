@@ -26,7 +26,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresPurchaseOrdersRepository orders;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int supplierId;
 
@@ -50,30 +50,30 @@ void main() {
     pg = await PgFixture.open('purchase_orders');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('po', 'PO') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('po', 'PO') RETURNING id",
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     supplierId = (await db.query(
       pg.config,
-      "INSERT INTO pos_suppliers (restaurant_id, name_en) "
+      "INSERT INTO pos_suppliers (business_id, name_en) "
       "VALUES (@r, 'Cairo Poultry') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     orders = PostgresPurchaseOrdersRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -123,7 +123,7 @@ void main() {
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     ).receive(
       purchaseOrderId: order.id,
@@ -379,7 +379,7 @@ void main() {
       );
       final rows = await db.query(
         pg.config,
-        // By entity: the audit ledger outlives each test's restaurant.
+        // By entity: the audit ledger outlives each test's business.
         'SELECT count(*) FROM pos_audit_events '
         'WHERE action = @a AND entity_id = @e',
         parameters: {
@@ -527,7 +527,7 @@ void main() {
         database: db,
         config: pg.config,
         adminAvailable: false,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
       expect(await locked.all(), isEmpty);
@@ -560,16 +560,16 @@ void main() {
     await save(draft());
     final other = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'B2', 'Maadi') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     final elsewhere = PostgresPurchaseOrdersRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: other,
     );
     // Stock that arrived at Downtown is not stock Maadi can sell.

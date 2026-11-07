@@ -19,7 +19,7 @@ ProviderContainer _withBranch(List<String> types, {OrderTypeRules? rules}) {
   addTearDown(container.dispose);
   container.read(terminalProfileProvider.notifier).apply(
         const TerminalProfile(
-          restaurantId: 7,
+          businessId: 7,
           branchId: 3,
           branchCode: 'MAIN',
           terminalName: 'Till',

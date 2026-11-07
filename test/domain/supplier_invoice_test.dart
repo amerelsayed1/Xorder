@@ -6,7 +6,7 @@ import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 
 /// What is owed, and what settles it (§37).
 ///
-/// The arithmetic here decides whether a restaurant pays a supplier twice, so
+/// The arithmetic here decides whether a business pays a supplier twice, so
 /// every claim in the model gets a test — including the two that are decisions
 /// rather than sums: an on-account payment reduces the balance without clearing
 /// a bill, and an over-payment is a credit on the account rather than a negative
@@ -327,12 +327,12 @@ void main() {
     });
 
     test('on-account money reduces the balance and clears no bill', () {
-      // **The decision worth a test.** A restaurant hands the dairy man 2,000
+      // **The decision worth a test.** A business hands the dairy man 2,000
       // on Friday against a running tab. It reduces what he is owed — that is
       // arithmetic — but it does not make an overdue invoice current, because
       // nobody has said which invoice it was for. Guessing would turn a sum
       // into a fold, and two screens would disagree about whether the
-      // restaurant was late.
+      // business was late.
       final overdueBill = invoice(id: 1, totalMinor: 100000, due: 10);
       final a = account(
         invoices: [overdueBill],

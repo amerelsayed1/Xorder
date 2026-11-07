@@ -31,7 +31,7 @@ class PurchaseOrderDialog extends StatefulWidget {
   final PurchaseOrder? order;
   final List<Supplier> suppliers;
 
-  /// What the restaurant counts, for a line to name. A line that names one is
+  /// What the business counts, for a line to name. A line that names one is
   /// received into its stock; a line that does not — a service, packaging —
   /// moves the order along and touches no ledger.
   final List<StockItem> items;
@@ -476,7 +476,7 @@ class _Pick {
   final String? newName;
 }
 
-/// The item box: type a name, pick what the restaurant counts, or add it.
+/// The item box: type a name, pick what the business counts, or add it.
 ///
 /// Free text stays allowed — a delivery charge or a cleaning service is a
 /// real line that stocks nothing — so a name that matches nothing is just a

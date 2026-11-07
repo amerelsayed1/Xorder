@@ -49,17 +49,17 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
   /// the day was open.
   BusinessDay? _closed;
 
-  /// Take the automatic copy, if the restaurant asked for one.
+  /// Take the automatic copy, if the business asked for one.
   ///
   /// **Day close is the hook rather than a scheduler, and that is a decision.**
   /// A scheduler on a till is a background job on a machine somebody switches
   /// off at night, whose failures nobody sees and whose window lands in the
-  /// middle of service if the restaurant trades late. Day close is the one
+  /// middle of service if the business trades late. Day close is the one
   /// moment that is *already* defined as "the day's data is complete and no
   /// shift is open", it happens exactly once per trading day, and a person is
   /// standing there to be told when it goes wrong. The cost is honest and worth
-  /// naming: a restaurant that never closes its day never gets a copy — and
-  /// that restaurant has a worse problem than backups, which the day-close
+  /// naming: a business that never closes its day never gets a copy — and
+  /// that business has a worse problem than backups, which the day-close
   /// blocker list already puts in front of them.
   ///
   /// Returns whether there is now a copy worth the name.

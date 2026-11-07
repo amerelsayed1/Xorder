@@ -19,7 +19,7 @@ import 'pos_database.dart';
 /// role holds no more than that on these tables. Voiding an order from history
 /// still goes through [OrdersRepository], which is the only thing that writes.
 ///
-/// Scoped to one restaurant and one branch. A till shows the orders taken at the
+/// Scoped to one business and one branch. A till shows the orders taken at the
 /// counter it is standing on — the branch filter is not a convenience, it is
 /// what stops a terminal in one shop listing another shop's takings.
 ///
@@ -31,7 +31,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   const PostgresOrderHistoryRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.currency = 'EGP',
     this.exponent = 2,
@@ -39,7 +39,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String currency;
   final int exponent;
@@ -168,7 +168,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         LEFT JOIN LATERAL (
           SELECT d.business_date
             FROM pos_business_days AS d
-           WHERE d.restaurant_id = $alias.restaurant_id
+           WHERE d.business_id = $alias.business_id
              AND d.branch_id = $alias.branch_id
              AND (d.id = $alias.business_day_id
                   OR ($alias.business_day_id IS NULL
@@ -314,17 +314,17 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
 
   static ({List<String> where, Map<String, Object?> parameters}) filterFor(
     OrderHistoryQuery query, {
-    required int restaurantId,
+    required int businessId,
     required int branchId,
   }) {
     final range = businessDateRange(from: query.from, to: query.to);
     final where = <String>[
-      'o.restaurant_id = @restaurant',
+      'o.business_id = @business',
       'o.branch_id = @branch',
       ...range.where,
     ];
     final parameters = <String, Object?>{
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       ...range.parameters,
     };
@@ -393,7 +393,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
     final filter = filterFor(
       query,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     // The cursor is added here and not in [filterFor]: the filter is what the
@@ -409,7 +409,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // boundary between them can neither repeat the one nor skip the other.
       //
       // The first clause says less than the second and is there for the
-      // index. `pos_orders_history_idx` is (restaurant, branch, occurred_at
+      // index. `pos_orders_history_idx` is (business, branch, occurred_at
       // DESC); a pair ending in `id` is not a range on it, while `occurred_at
       // <=` is, so page forty starts at its cursor instead of walking the
       // thirty-nine before it. That is also why BO-3 needs no migration 48:
@@ -453,7 +453,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   Future<OrderHistorySummary> summarise(OrderHistoryQuery query) async {
     final filter = filterFor(
       query,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     final rows = await _db.query(
@@ -516,10 +516,10 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     final rows = await _db.query(
       config,
       'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
-      'WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch '
+      'WHERE o.business_id = @business AND o.branch_id = @branch '
       '  AND coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) = @invoice',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'invoice': invoiceNumber.trim(),
       },
@@ -537,9 +537,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     final rows = await _db.query(
       config,
       'SELECT id::text, name FROM pos_terminals '
-      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+      'WHERE business_id = @business AND branch_id = @branch '
       'ORDER BY name, id',
-      parameters: {'restaurant': restaurantId, 'branch': branchId},
+      parameters: {'business': businessId, 'branch': branchId},
     );
     return rows
         .map((raw) {
@@ -597,7 +597,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   static ({List<String> where, Map<String, Object?> parameters})
   refundFilterFor(
     RefundHistoryQuery query, {
-    required int restaurantId,
+    required int businessId,
     required int branchId,
   }) {
     final range = businessDateRange(
@@ -606,12 +606,12 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       alias: 'r',
     );
     final where = <String>[
-      'r.restaurant_id = @restaurant',
+      'r.business_id = @business',
       'r.branch_id = @branch',
       ...range.where,
     ];
     final parameters = <String, Object?>{
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       ...range.parameters,
     };
@@ -639,7 +639,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   Future<List<RefundRecord>> refunds(RefundHistoryQuery query) async {
     final filter = refundFilterFor(
       query,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     final where = [...filter.where];
@@ -711,7 +711,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   ) async {
     final filter = refundFilterFor(
       query,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     final rows = await _db.query(
@@ -734,11 +734,11 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     final orderRows = await _db.query(
       config,
       'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
-      'WHERE o.id = @id AND o.restaurant_id = @restaurant '
+      'WHERE o.id = @id AND o.business_id = @business '
       '  AND o.branch_id = @branch',
       parameters: {
         'id': orderId,
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
       },
     );
@@ -787,7 +787,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
 
     // The breakdown by rate, in the order it was written — highest rate first,
     // as `TaxEngine.linesFor` sorts it. The rates are the snapshots taken at
-    // settlement, so a restaurant moved to 15% next year still reprints this
+    // settlement, so a business moved to 15% next year still reprints this
     // sale at the 14% it was charged.
     final taxRows = await _db.query(
       config,
@@ -864,11 +864,11 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     final printRows = await _db.query(
       config,
       'SELECT kind, status, queued_at, printed_at FROM pos_print_jobs '
-      'WHERE order_id = @order AND restaurant_id = @restaurant '
+      'WHERE order_id = @order AND business_id = @business '
       '  AND branch_id = @branch ORDER BY id',
       parameters: {
         'order': order.id,
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
       },
     );
@@ -896,11 +896,11 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       config,
       'SELECT action, actor_name, approved_by_name, occurred_at '
       'FROM pos_audit_events '
-      'WHERE restaurant_id = @restaurant AND entity_type = @entity '
+      'WHERE business_id = @business AND entity_type = @entity '
       '  AND entity_id = @id '
       'ORDER BY occurred_at, id',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'entity': AuditAction.entityOrder,
         'id': '${order.id}',
       },
@@ -939,9 +939,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       'FROM pos_refunds AS r '
       'LEFT JOIN pos_users AS issuer ON issuer.id = r.refunded_by '
       'LEFT JOIN pos_users AS approver ON approver.id = r.approved_by_id '
-      'WHERE r.order_id = @order AND r.restaurant_id = @restaurant '
+      'WHERE r.order_id = @order AND r.business_id = @business '
       'ORDER BY r.occurred_at, r.id',
-      parameters: {'order': order.id, 'restaurant': restaurantId},
+      parameters: {'order': order.id, 'business': businessId},
     );
     for (final raw in refundRows) {
       final row = raw.toList();

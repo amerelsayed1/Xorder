@@ -14,7 +14,7 @@ import 'pg_fixture.dart';
 /// new, and a key added after a role exists reaches it only by a migration
 /// saying so — otherwise every manager on an existing install loses the
 /// order-types switch on the day of the update. Keyed on the OLD capability, not
-/// on the role code, so a restaurant's own roles keep it too.
+/// on the role code, so a business's own roles keep it too.
 void main() {
   if (PgFixture.host == null) {
     test('order types key (skipped — set POS_PG_HOST to run)', () {}, skip: true);
@@ -23,16 +23,16 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   setUp(() async {
     pg = await PgFixture.open('order_types_manage');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('ot', 'OT') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -40,11 +40,12 @@ void main() {
 
   Future<void> role(String code, Set<String> capabilities) => db.query(
     pg.config,
+    // Version 55's names: these run before migration 64.
     'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
     '  capabilities, is_system) '
     'VALUES (@r, @code, @code, @code, @capabilities, false)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'code': code,
       'capabilities': capabilities.toList(),
     },
@@ -53,7 +54,7 @@ void main() {
   Future<List<String>> held(String code) async => ((await db.query(
     pg.config,
     'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @code',
-    parameters: {'r': restaurantId, 'code': code},
+    parameters: {'r': businessId, 'code': code},
   )).first[0]! as List).cast<String>();
 
   /// A database as 55 left it, with roles on it, brought up to 56.
@@ -72,7 +73,7 @@ void main() {
       db,
       migrations: posMigrations.where((m) => m.version < 56).toList(),
     ).migrate(pg.config);
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
       "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
     )).first[0]! as int;
@@ -86,7 +87,7 @@ void main() {
     expect(await before(), [56]);
     expect(await held('manager'), contains(PosCapability.orderTypesManage));
     expect(await held('floor_lead'), contains(PosCapability.orderTypesManage),
-        reason: "a restaurant's own role, not just the seeded ones");
+        reason: "a business's own role, not just the seeded ones");
   });
 
   test('a role that could not manage settings is not given it', () async {

@@ -1,7 +1,7 @@
 /// Finding `pg_dump` and `pg_restore`, and being honest when they are absent.
 ///
 /// **The binary dependency is surfaced rather than assumed.** A backup button
-/// that silently does nothing is worse than no button: the restaurant believes
+/// that silently does nothing is worse than no button: the business believes
 /// it has copies. So the pane asks this class where the tools are, shows the
 /// answer, and when the answer is "nowhere" it prints the places that were
 /// looked in and what to install.
@@ -54,7 +54,7 @@ abstract final class PgTools {
     ..._wellKnown(),
   ].where((entry) => entry.trim().isNotEmpty).toList();
 
-  /// The install locations a restaurant's machine actually has, per OS.
+  /// The install locations a business's machine actually has, per OS.
   ///
   /// Newest first: a machine with two PostgreSQL versions installed should dump
   /// with the newer client, because a newer `pg_dump` reads an older server and
@@ -104,7 +104,7 @@ abstract final class PgTools {
   ///
   /// Both, not either: a machine with `pg_dump` and no `pg_restore` can take
   /// copies it cannot verify and cannot put back, which is the state this whole
-  /// feature exists to keep a restaurant out of. Better to report nothing found
+  /// feature exists to keep a business out of. Better to report nothing found
   /// than to offer half of it.
   ///
   /// Returns null when they are not there. Not a throw — "PostgreSQL's client

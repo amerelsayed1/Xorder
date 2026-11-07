@@ -544,7 +544,7 @@ class FakeSessionRepository implements SessionRepository {
   /// This used to be a person holding `pos.operate` and nothing else, which was
   /// harmless while nothing checked — and became wrong the moment opening a
   /// shift started asking for `shift.open`. A fake whose staff cannot do their
-  /// job models a bug rather than a restaurant.
+  /// job models a bug rather than a business.
   static const cashier = PosRole(
     id: 4,
     code: SystemRoles.cashierCode,
@@ -899,7 +899,7 @@ class FakeProvisioningRepository implements ProvisioningRepository {
         code: 'CREDENTIALS_REJECTED',
         message:
             'That username and password were not accepted for this '
-            'restaurant. Check all three with a manager.',
+            'business. Check all three with a manager.',
       );
     }
     return const TenantConnection(
@@ -963,7 +963,7 @@ class FakeProvisioningRepository implements ProvisioningRepository {
         branchId: 1,
         branchName: 'Maadi',
         branchCode: 'MAADI',
-        restaurantId: 1,
+        businessId: 1,
         syncPolicy: SyncPolicy.automatic,
       ),
     );
@@ -1003,7 +1003,7 @@ class FakeProvisioningRepository implements ProvisioningRepository {
         branchId: 13,
         branchName: 'Maadi',
         syncPolicy: SyncPolicy.automatic,
-        restaurantId: 1,
+        businessId: 1,
         branchCode: 'MAADI',
       ),
     );
@@ -1037,7 +1037,7 @@ class FakeProvisioningRepository implements ProvisioningRepository {
         branchId: branchId,
         branchName: 'Maadi',
         syncPolicy: SyncPolicy.automatic,
-        restaurantId: 1,
+        businessId: 1,
         branchCode: 'MAADI',
       ),
     );
@@ -1518,7 +1518,7 @@ class FakeAuditRepository implements AuditRepository {
 /// in the database as well as in the interface — so this does not offer an
 /// edit either, because a fake that was more permissive than the thing it
 /// stands in for would let a screen pass a test it could not pass in a
-/// restaurant.
+/// business.
 class FakeBackupRepository implements BackupRepository {
   FakeBackupRepository({List<BackupRecord> records = const []})
     : records = [...records];
@@ -1857,7 +1857,7 @@ class FakeRefundsRepository implements RefundsRepository {
   }
 }
 
-/// The units, held in a list: the seven every restaurant starts with.
+/// The units, held in a list: the seven every business starts with.
 ///
 /// A test double only — the real list is `pos_units`, seeded by migration 39.
 class FakeUnitsRepository implements UnitsRepository {

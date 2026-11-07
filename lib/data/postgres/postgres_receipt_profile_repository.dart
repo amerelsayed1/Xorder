@@ -21,7 +21,7 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
     required PosDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database,
        _tillDb = readDatabase;
@@ -32,12 +32,12 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
 
   /// Reads, on the till's own credential — which holds SELECT and nothing
   /// more. A cashier printing a receipt must not need the back office's
-  /// password to learn the restaurant's address.
+  /// password to learn the business's address.
   final PosDatabase _tillDb;
   final DeploymentConfig readConfig;
 
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _columns =
@@ -107,7 +107,7 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
       );
     }
 
-    // Not `canFile`. A restaurant types this in over several sittings, and a
+    // Not `canFile`. A business types this in over several sittings, and a
     // form that refused to save until every ETA field was right would make the
     // half-finished state — which is the normal state — unsaveable.
     final problems = profile.printProblems;
@@ -131,7 +131,7 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
       }
 
       final parameters = <String, Object?>{
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'trade': profile.tradeName.trim(),
         'rin': profile.registrationNumber.trim(),
@@ -156,13 +156,13 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_receipt_profiles
-          (restaurant_id, branch_id, trade_name, registration_number,
+          (business_id, branch_id, trade_name, registration_number,
            activity_code, branch_code, country, governate, region_city,
            street, building_number, postal_code, floor, room, landmark,
            additional_info, phone, header_note, footer_note, revision,
            updated_at, updated_by)
         VALUES
-          (@restaurant, @branch, @trade, @rin, @activity, @code, @country,
+          (@business, @branch, @trade, @rin, @activity, @code, @country,
            @governate, @city, @street, @building, @postal, @floor, @room,
            @landmark, @extra, @phone, @header, @footer, 1, now(), @by)
         ON CONFLICT (branch_id) DO UPDATE SET
@@ -195,13 +195,13 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id,
           'actor': by.name,

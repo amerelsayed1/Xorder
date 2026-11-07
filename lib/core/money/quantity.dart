@@ -1,7 +1,7 @@
 /// How much of something, when "how much" is not a whole number.
 ///
 /// **Sales quantities are integers and purchases are not.** A cashier sells two
-/// grills; a restaurant buys 12.5 kg of chicken and 0.75 litres of oil. The
+/// grills; a business buys 12.5 kg of chicken and 0.75 litres of oil. The
 /// ticket has never needed a fraction and should not grow one — but the moment
 /// purchasing exists, so does the question, and answering it with a `double`
 /// would put binary floating point directly upstream of every cost price, every
@@ -24,10 +24,10 @@ import 'rounding.dart';
 /// What a quantity is counted in.
 ///
 /// **A code, not a closed list.** The seven below are the units every
-/// restaurant starts with (migration 39 seeds them), and the back office can
+/// business starts with (migration 39 seeds them), and the back office can
 /// add its own — a sack, a tray of thirty. A code this build has never seen is
 /// kept as that code rather than read as "each": "1 of something" was the old
-/// fallback, and on a unit the restaurant added on purpose it is simply wrong.
+/// fallback, and on a unit the business added on purpose it is simply wrong.
 ///
 /// Still a label rather than a conversion table. See the library note.
 class QuantityUnit {

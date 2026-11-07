@@ -139,7 +139,7 @@ class PosCloudApi {
   /// already existed was irrelevant. It stopped being irrelevant when tenant
   /// creation started leaving terminals provisioned and waiting (owner
   /// decision, 2026-09-05) — registering a new one alongside them is how a
-  /// two-seat restaurant ends up with four rows and a seat limit nobody
+  /// two-seat business ends up with four rows and a seat limit nobody
   /// understands. The wizard reads this to offer the tills that already exist.
   ///
   /// Same `pos.provision` capability the register call already requires, so it

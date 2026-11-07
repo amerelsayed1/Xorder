@@ -26,7 +26,7 @@ import 'postgres_orders_repository.dart' show PosWriteContext;
 ///   status and the two cannot drift.
 /// * **The tender adds up.** A deferred constraint trigger checks at commit
 ///   that the payments sum to the refund total.
-/// * **Idempotency** is `UNIQUE (restaurant_id, client_refund_id)`.
+/// * **Idempotency** is `UNIQUE (business_id, client_refund_id)`.
 ///
 /// What is left here is putting it in one transaction and reporting what
 /// happened — and, on a cloud till, putting the platform's delivery claim in
@@ -84,10 +84,10 @@ class PostgresRefundsRepository implements RefundsRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT id FROM pos_refunds '
-          'WHERE restaurant_id = @restaurant AND client_refund_id = @client',
+          'WHERE business_id = @business AND client_refund_id = @client',
         ),
         parameters: {
-          'restaurant': context.restaurantId,
+          'business': context.businessId,
           'client': clientRefundId,
         },
       );
@@ -108,22 +108,22 @@ class PostgresRefundsRepository implements RefundsRepository {
       final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_refunds (
-            client_refund_id, restaurant_id, branch_id, terminal_id, order_id,
+            client_refund_id, business_id, branch_id, terminal_id, order_id,
             shift_id, kind, subtotal_minor, discount_minor, service_minor,
             vat_minor, total_minor, reason_id, note, refunded_by,
             approved_by_id, occurred_at
           ) VALUES (
-            @client, @restaurant, @branch, @terminal, @order,
+            @client, @business, @branch, @terminal, @order,
             @shift, @kind, @subtotal, @discount, @service,
             @vat, @total, @reason, @note, @by,
             @approvedBy, @occurredAt
           )
-          ON CONFLICT (restaurant_id, client_refund_id) DO NOTHING
+          ON CONFLICT (business_id, client_refund_id) DO NOTHING
           RETURNING id
         '''),
         parameters: {
           'client': clientRefundId,
-          'restaurant': context.restaurantId,
+          'business': context.businessId,
           'branch': context.branchId,
           'terminal': context.terminalId,
           'order': order.id,
@@ -151,10 +151,10 @@ class PostgresRefundsRepository implements RefundsRepository {
         final winner = await tx.execute(
           Sql.named(
             'SELECT id FROM pos_refunds '
-            'WHERE restaurant_id = @restaurant AND client_refund_id = @client',
+            'WHERE business_id = @business AND client_refund_id = @client',
           ),
           parameters: {
-            'restaurant': context.restaurantId,
+            'business': context.businessId,
             'client': clientRefundId,
           },
         );
@@ -195,7 +195,7 @@ class PostgresRefundsRepository implements RefundsRepository {
             ) VALUES (
               @refund, @type, @label, @amount, @reference,
               coalesce((SELECT counts_as_cash FROM pos_tender_types
-                        WHERE restaurant_id = @restaurant AND id = @type), false),
+                        WHERE business_id = @business AND id = @type), false),
               @occurredAt
             )
           '''),
@@ -205,7 +205,7 @@ class PostgresRefundsRepository implements RefundsRepository {
             'label': tender.label,
             'amount': tender.amount.minor,
             'reference': tender.reference,
-            'restaurant': context.restaurantId,
+            'business': context.businessId,
             'occurredAt': occurredAt,
           },
         );
@@ -223,13 +223,13 @@ class PostgresRefundsRepository implements RefundsRepository {
         await tx.execute(
           Sql.named('''
             INSERT INTO pos_sync_outbox
-              (restaurant_id, branch_id, event_type, source_id,
+              (business_id, branch_id, event_type, source_id,
                client_transaction_id)
-            VALUES (@restaurant, @branch, 'refund', @source, @client)
-            ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+            VALUES (@business, @branch, 'refund', @source, @client)
+            ON CONFLICT (business_id, client_transaction_id) DO NOTHING
           '''),
           parameters: {
-            'restaurant': context.restaurantId,
+            'business': context.businessId,
             'branch': context.branchId,
             'source': refundId,
             'client': clientRefundId,
@@ -258,9 +258,9 @@ class PostgresRefundsRepository implements RefundsRepository {
       'LEFT JOIN pos_reason_codes AS reason ON reason.id = r.reason_id '
       'LEFT JOIN pos_users AS issuer ON issuer.id = r.refunded_by '
       'LEFT JOIN pos_users AS approver ON approver.id = r.approved_by_id '
-      'WHERE r.order_id = @order AND r.restaurant_id = @restaurant '
+      'WHERE r.order_id = @order AND r.business_id = @business '
       'ORDER BY r.occurred_at, r.id',
-      parameters: {'order': orderId, 'restaurant': context.restaurantId},
+      parameters: {'order': orderId, 'business': context.businessId},
     );
     if (rows.isEmpty) return const [];
 

@@ -287,7 +287,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
     //
     // Counted against ACTIVE staff: nobody is ever deleted here — a person who
     // left is still the name on last March's shifts — so counting rows would
-    // let a restaurant's history consume the seats it is paying for.
+    // let a business's history consume the seats it is paying for.
     final cap = ref.read(licenceClaimsProvider).valueOrNull?.maxUsers;
     if (cap != null && people.where((p) => p.isActive).length >= cap) {
       _report(context, ref, UserSeatsExhausted(cap));
@@ -359,7 +359,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
     if (context.mounted) _report(context, ref, refusal);
   }
 
-  /// Whether somebody active already owns the restaurant.
+  /// Whether somebody active already owns the business.
   ///
   /// Active only, as the repository counts: once the owner is disabled Owner
   /// is offered again, which is how ownership is handed over from this pane.
@@ -499,7 +499,7 @@ class _StaffRow {
   final List<PosRole> roles;
   final ValueChanged<_StaffAction> onAction;
 
-  /// Whether somebody active owns the restaurant. Owner is not offered on
+  /// Whether somebody active owns the business. Owner is not offered on
   /// anybody else's row while they do.
   final bool ownerTaken;
 
@@ -825,7 +825,7 @@ String _stamp(DateTime at) {
 /// The header and the rows — or, when the filters leave nobody, a sentence
 /// saying so rather than a blank that reads as a failure to load.
 ///
-/// Not lazily built: a restaurant has tens of staff, and a [Table] is what
+/// Not lazily built: a business has tens of staff, and a [Table] is what
 /// keeps every column the width of its widest cell. See [_StaffRow].
 class _StaffTable extends StatelessWidget {
   const _StaffTable({required this.rows, required this.filtered});

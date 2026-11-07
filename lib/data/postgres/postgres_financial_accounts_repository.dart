@@ -14,12 +14,12 @@ class PostgresFinancialAccountsRepository
   const PostgresFinancialAccountsRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   @override
   Future<List<FinancialAccount>> accounts({
@@ -29,10 +29,10 @@ class PostgresFinancialAccountsRepository
       config,
       'SELECT id, name, kind, branch_id, currency, reference_label, '
       '       is_active, sort_order '
-      'FROM pos_financial_accounts WHERE restaurant_id = @r '
+      'FROM pos_financial_accounts WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     return [
@@ -58,9 +58,9 @@ class PostgresFinancialAccountsRepository
     final rows = await _db.query(
       config,
       'SELECT tender_type_id, branch_id, financial_account_id '
-      'FROM pos_tender_account_defaults WHERE restaurant_id = @r '
+      'FROM pos_tender_account_defaults WHERE business_id = @r '
       'ORDER BY tender_type_id, branch_key',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     return [
@@ -78,8 +78,8 @@ class PostgresFinancialAccountsRepository
     final rows = await _db.query(
       config,
       'SELECT id, name, code FROM pos_branches '
-      'WHERE restaurant_id = @r AND is_active ORDER BY name',
-      parameters: {'r': restaurantId},
+      'WHERE business_id = @r AND is_active ORDER BY name',
+      parameters: {'r': businessId},
     );
 
     return [

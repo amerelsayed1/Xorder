@@ -65,7 +65,7 @@ void main() {
       terminal: const TerminalProfile(
         branchName: 'Maadi',
         terminalName: 'Counter 1',
-        restaurantId: 7,
+        businessId: 7,
       ),
       languageCode: 'en',
     );

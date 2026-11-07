@@ -365,7 +365,7 @@ void main() {
 
     test('an offline terminal cannot advance unregistered', () {
       // This rule used to pass an unregistered offline terminal, and then
-      // `complete()` refused it for having no restaurant id and no branch
+      // `complete()` refused it for having no business id and no branch
       // code — which only registration supplies. The operator reached the last
       // screen before being told the sixth was wrong.
       final container = ProviderContainer(overrides: fakeRepositoryOverrides());
@@ -465,7 +465,7 @@ void main() {
         reason: 'the licence names its tenant; the operator should not have to',
       );
       expect(draft.licensedModes, contains(draft.deployment.mode));
-      // And names the database after the restaurant: the wizard builds it,
+      // And names the database after the business: the wizard builds it,
       // and `mahsoub_db` says whose it is where `xorder_pos` said nothing.
       expect(draft.deployment.databaseName, 'mahsoub_db');
 
@@ -476,7 +476,7 @@ void main() {
     });
 
     test('the draft follows the language bar, so the last word is the operator\'s', () async {
-      // The claim sets the restaurant's own language, and the Settings bar
+      // The claim sets the business's own language, and the Settings bar
       // lets whoever is standing there switch back. The draft used to keep
       // the claim's answer, and `complete()` wrote that to disk — a till
       // switched to English on the last screen booted in Arabic.
@@ -677,7 +677,7 @@ void main() {
       // And the licence is first of all (owner decision, 2026-09-06). The
       // language step that used to hold this place is second on the OFFLINE
       // path and gone from the cloud one, which is what a fresh draft walks:
-      // the restaurant already told the dashboard which language it works in.
+      // the business already told the dashboard which language it works in.
       // The property the old order protected — being able to READ a licence
       // refusal — is held by the language switch the Settings bar carries on
       // every screen, including this one.
@@ -975,7 +975,7 @@ void main() {
           .copyWith(
             step: SetupStep.summary,
             catalogueItems: 19,
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
           );
@@ -995,7 +995,7 @@ void main() {
       final container = await _pump(tester);
       await _toOfflineConnection(tester, container);
 
-      // A mini-PC under the counter with no backup is how a restaurant loses a
+      // A mini-PC under the counter with no backup is how a business loses a
       // year of sales, so the wizard says it out loud.
       expect(find.textContaining('no second copy'), findsOneWidget);
       expect(find.textContaining('one terminal'), findsOneWidget);
@@ -1218,7 +1218,7 @@ void main() {
         controller.state = container
             .read(setupProvider)
             .copyWith(
-              restaurantId: 7,
+              businessId: 7,
               terminalId: 'e6c0f0a2-0000-4000-8000-000000000002',
             );
 
@@ -1251,7 +1251,7 @@ void main() {
       expect(draft.copyWith(step: SetupStep.terminal).canAdvance, isFalse);
       final error = await controller.complete();
       // The guard names the actual gaps a failed registration leaves behind.
-      expect(error, contains('restaurant identity'));
+      expect(error, contains('business identity'));
       expect(container.read(setupCompleteProvider), isFalse);
     });
   });
@@ -1280,7 +1280,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
           );
@@ -1313,7 +1313,7 @@ void main() {
 
   // A catalogue download that returns nothing used to render in the same green
   // box as a successful one, and `canAdvance` accepted it — so a till could
-  // reach a restaurant with an empty menu and a tick beside it. Until the
+  // reach a business with an empty menu and a tick beside it. Until the
   // catalogue endpoints land (POS-BE-012 / POS-BE-023) this is the *normal*
   // outcome on a fresh site, which is what makes it worth a test.
   group('an empty catalogue', () {

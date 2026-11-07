@@ -10,7 +10,7 @@ import 'package:xorder_pos/domain/models/pos_settings.dart';
 /// the one that surprises nobody — blind close off, drawer-open reason on. Here
 /// the surprising outcome is the silent one, so the default fails the other way.
 void main() {
-  group('what a restaurant gets before anybody configures anything', () {
+  group('what a business gets before anybody configures anything', () {
     test('a copy at day close, and the default folder', () {
       expect(BackupPolicy.defaults.onDayClose, isTrue);
       expect(BackupPolicy.defaults.directory, isNull);
@@ -27,13 +27,13 @@ void main() {
         PosSettings.resolve(
           const [
             PosSettingRow(
-              scope: SettingScope.restaurant,
+              scope: SettingScope.business,
               scopeId: '',
               key: SettingKey.backupOnDayClose,
               value: 'false',
             ),
             PosSettingRow(
-              scope: SettingScope.restaurant,
+              scope: SettingScope.business,
               scopeId: '',
               key: SettingKey.backupDirectory,
               value: r'D:\xorder-backups',
@@ -54,7 +54,7 @@ void main() {
         PosSettings.resolve(
           const [
             PosSettingRow(
-              scope: SettingScope.restaurant,
+              scope: SettingScope.business,
               scopeId: '',
               key: SettingKey.backupDirectory,
               value: '   ',

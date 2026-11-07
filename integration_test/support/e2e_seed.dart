@@ -2,7 +2,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 
-/// A whole restaurant, in one function.
+/// A whole business, in one function.
 ///
 /// The end-to-end suite used to lean on `FakeCatalogRepository` for its menu.
 /// It cannot any more, and should not: the till now reads everything from the
@@ -15,13 +15,13 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 /// seated.
 class E2eSeed {
   const E2eSeed._({
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     required this.terminalId,
   });
 
   static const slug = 'e2e-diner';
-  static const restaurantName = 'End To End Diner';
+  static const businessName = 'End To End Diner';
   static const branchName = 'Test Branch';
 
   /// The invoice prefix, so a sale here reads `TEST-2026-000001`. Deliberately
@@ -44,7 +44,7 @@ class E2eSeed {
   static const fries = 'House Fries';
   static const friesMinor = 5500;
 
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String terminalId;
 
@@ -54,32 +54,32 @@ class E2eSeed {
   /// ledger is truncated between tests, since re-inserting a menu before each
   /// one would make a fast suite slow for no benefit.
   static Future<E2eSeed> apply(PosDatabase db, DeploymentConfig config) async {
-    final restaurant = await db.query(
+    final business = await db.query(
       config,
-      'INSERT INTO pos_restaurants (slug, name) VALUES (@slug, @name) '
+      'INSERT INTO pos_businesses (slug, name) VALUES (@slug, @name) '
       'ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-      parameters: {'slug': slug, 'name': restaurantName},
+      parameters: {'slug': slug, 'name': businessName},
     );
-    final restaurantId = restaurant.first[0] as int;
+    final businessId = business.first[0] as int;
 
     final branch = await db.query(
       config,
-      'INSERT INTO pos_branches (restaurant_id, code, name, supported_order_types) '
-      "VALUES (@restaurant, @code, @name, ARRAY['dine_in','takeaway']) "
-      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-      parameters: {'restaurant': restaurantId, 'code': branchCode, 'name': branchName},
+      'INSERT INTO pos_branches (business_id, code, name, supported_order_types) '
+      "VALUES (@business, @code, @name, ARRAY['dine_in','takeaway']) "
+      'ON CONFLICT (business_id, code) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+      parameters: {'business': businessId, 'code': branchCode, 'name': branchName},
     );
     final branchId = branch.first[0] as int;
 
     final salt = PinHash.newSalt();
     await db.query(
       config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
-      "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, ARRAY['pos.operate']) "
-      'ON CONFLICT (restaurant_id, username) '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
+      "VALUES (@business, @branch, @name, @username, @salt, @hash, ARRAY['pos.operate']) "
+      'ON CONFLICT (business_id, username) '
       'DO UPDATE SET pin_salt = EXCLUDED.pin_salt, pin_hash = EXCLUDED.pin_hash',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'name': staffName,
         'username': staffUsername,
@@ -93,12 +93,12 @@ class E2eSeed {
     // production has no such reset, which is the point of the column.
     final terminal = await db.query(
       config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name, pairing_code) '
-      'VALUES (gen_random_uuid(), @restaurant, @branch, @name, @code) '
-      'ON CONFLICT (restaurant_id, pairing_code) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name, pairing_code) '
+      'VALUES (gen_random_uuid(), @business, @branch, @name, @code) '
+      'ON CONFLICT (business_id, pairing_code) '
       'DO UPDATE SET claimed_at = NULL RETURNING id',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'name': terminalName,
         'code': pairingCode,
@@ -107,47 +107,47 @@ class E2eSeed {
 
     await db.query(
       config,
-      'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) '
-      'VALUES (@restaurant, @branch, @label, @seats) '
+      'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats) '
+      'VALUES (@business, @branch, @label, @seats) '
       'ON CONFLICT (branch_id, label) DO UPDATE SET seats = EXCLUDED.seats',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'label': tableLabel,
         'seats': tableSeats,
       },
     );
 
-    await _menu(db, config, restaurantId);
+    await _menu(db, config, businessId);
 
     return E2eSeed._(
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal.first[0].toString(),
     );
   }
 
-  static Future<void> _menu(PosDatabase db, DeploymentConfig config, int restaurantId) async {
+  static Future<void> _menu(PosDatabase db, DeploymentConfig config, int businessId) async {
     final existing = await db.query(
       config,
-      'SELECT count(*) FROM pos_products WHERE restaurant_id = @restaurant',
-      parameters: {'restaurant': restaurantId},
+      'SELECT count(*) FROM pos_products WHERE business_id = @business',
+      parameters: {'business': businessId},
     );
     if ((existing.first[0] as int) > 0) return;
 
     final category = await db.query(
       config,
-      'INSERT INTO pos_categories (restaurant_id, name_en, slug, sort_order) '
-      "VALUES (@restaurant, 'Counter', 'counter', 1) RETURNING id",
-      parameters: {'restaurant': restaurantId},
+      'INSERT INTO pos_categories (business_id, name_en, slug, sort_order) '
+      "VALUES (@business, 'Counter', 'counter', 1) RETURNING id",
+      parameters: {'business': businessId},
     );
     final categoryId = category.first[0] as int;
 
     final group = await db.query(
       config,
-      'INSERT INTO pos_modifier_groups (restaurant_id, name_en, is_required, max_select) '
-      "VALUES (@restaurant, 'Size', true, 1) RETURNING id",
-      parameters: {'restaurant': restaurantId},
+      'INSERT INTO pos_modifier_groups (business_id, name_en, is_required, max_select) '
+      "VALUES (@business, 'Size', true, 1) RETURNING id",
+      parameters: {'business': businessId},
     );
     final groupId = group.first[0] as int;
 
@@ -164,10 +164,10 @@ class E2eSeed {
     ]) {
       final product = await db.query(
         config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, price_minor, sku, sort_order) '
-        'VALUES (@restaurant, @category, @name, @price, @sku, @sort) RETURNING id',
+        'INSERT INTO pos_products (business_id, category_id, name_en, price_minor, sku, sort_order) '
+        'VALUES (@business, @category, @name, @price, @sku, @sort) RETURNING id',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'category': categoryId,
           'name': name,
           'price': minor,

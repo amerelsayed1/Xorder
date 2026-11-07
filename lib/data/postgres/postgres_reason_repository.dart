@@ -12,12 +12,12 @@ class PostgresReasonsRepository implements ReasonsRepository {
   const PostgresReasonsRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   @override
   Future<List<ReasonCode>> forScope(ReasonScope scope) async {
@@ -25,10 +25,10 @@ class PostgresReasonsRepository implements ReasonsRepository {
       config,
       'SELECT id, code, name_en, name_ar, requires_note, sort_order '
       'FROM pos_reason_codes '
-      'WHERE restaurant_id = @r AND scope = @scope AND is_active '
-      // The restaurant's own order, which is what the number keys follow.
+      'WHERE business_id = @r AND scope = @scope AND is_active '
+      // The business's own order, which is what the number keys follow.
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId, 'scope': scope.wire},
+      parameters: {'r': businessId, 'scope': scope.wire},
     );
 
     return [
@@ -49,7 +49,7 @@ class PostgresReasonsRepository implements ReasonsRepository {
 /// Before there is a database: no reasons, and therefore no reason picker.
 ///
 /// Empty rather than invented. A till mid-setup offering "Manager comp" would
-/// be describing a restaurant that has not been configured yet.
+/// be describing a business that has not been configured yet.
 class UnconfiguredReasonsRepository implements ReasonsRepository {
   const UnconfiguredReasonsRepository();
 

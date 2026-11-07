@@ -24,7 +24,7 @@ import 'secret_store.dart';
 ///
 /// **Why a file of ciphertext and not Credential Manager.** `CredWrite` caps a
 /// generic credential at 2,560 bytes, roams it with the profile under policy
-/// nobody at a restaurant controls, and shows every entry in a control-panel
+/// nobody at a business controls, and shows every entry in a control-panel
 /// list a cashier can delete by mistake. A DPAPI blob in Application Support
 /// has none of those properties and is wiped by the same hard reset as every
 /// other file the till keeps.

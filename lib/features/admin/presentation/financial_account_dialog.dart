@@ -17,7 +17,7 @@ String accountKindName(AppStrings s, AccountKind kind) => switch (kind) {
 /// Authoring one financial account (XORD-015, stage 1).
 ///
 /// Offline tills only; the pane never offers it on a cloud till, where the
-/// platform is the author. [branches] are this restaurant's, for tying an
+/// platform is the author. [branches] are this business's, for tying an
 /// account to one of them. Left on "All branches" the account is shared by the
 /// whole business, which is what a company bank account is.
 ///

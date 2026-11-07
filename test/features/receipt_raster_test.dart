@@ -99,7 +99,7 @@ void main() {
       expect(
         arabic.inkedDotsBetween(0, 60),
         greaterThan(200),
-        reason: 'the restaurant name is Arabic and it has to be on the paper',
+        reason: 'the business name is Arabic and it has to be on the paper',
       );
       expect(arabic.inkedDots, greaterThan(1000));
     });

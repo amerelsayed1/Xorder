@@ -13,7 +13,7 @@ import 'pg_fixture.dart';
 
 /// What a cloud till seeds for itself after the bundle lands.
 ///
-/// The bundle authors the restaurant and `BootstrapSeeder` writes it; the
+/// The bundle authors the business and `BootstrapSeeder` writes it; the
 /// reasons behind a void or a pay-out and what each kind of order requires
 /// are the till's own, and the cloud wizard never seeded them — so every
 /// cloud till opened with an empty list behind those dialogs.
@@ -25,19 +25,19 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   setUp(() async {
     pg = await PgFixture.open('cloud_defaults');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    // As the seeder leaves it: a restaurant row the bundle created, and
+    // As the seeder leaves it: a business row the bundle created, and
     // nothing of the till's own beside it.
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cloud-defaults', 'Cloud') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cloud-defaults', 'Cloud') "
       'RETURNING id',
     )).first[0]! as int;
   });
@@ -53,7 +53,7 @@ void main() {
     await container.read(cloudDefaultsSeederProvider)(
       pg.config.copyWith(adminDatabaseUser: PgFixture.user),
       PgFixture.password,
-      restaurantId,
+      businessId,
     );
   }
 
@@ -61,7 +61,7 @@ void main() {
       (await db.query(
         pg.config,
         sql,
-        parameters: {'r': restaurantId, ...extra},
+        parameters: {'r': businessId, ...extra},
       )).first[0]! as int;
 
   test('a cloud restaurant gets its reasons and its order types', () async {
@@ -71,7 +71,7 @@ void main() {
       expect(
         await count(
           'SELECT count(*) FROM pos_reason_codes '
-          'WHERE restaurant_id = @r AND scope = @s',
+          'WHERE business_id = @r AND scope = @s',
           {'s': scope.wire},
         ),
         SystemReasons.seededFor(scope).length,
@@ -79,7 +79,7 @@ void main() {
       );
     }
     expect(
-      await count('SELECT count(*) FROM pos_order_types WHERE restaurant_id = @r'),
+      await count('SELECT count(*) FROM pos_order_types WHERE business_id = @r'),
       OrderTypeConfig.seeded.length,
     );
   });
@@ -91,7 +91,7 @@ void main() {
     // money config's `vatBp`, so a local 14% here would override whatever the
     // dashboard set for every product the bundle delivers.
     expect(
-      await count('SELECT count(*) FROM pos_tax_groups WHERE restaurant_id = @r'),
+      await count('SELECT count(*) FROM pos_tax_groups WHERE business_id = @r'),
       0,
     );
   });
@@ -101,8 +101,8 @@ void main() {
     await db.query(
       pg.config,
       "UPDATE pos_reason_codes SET name_en = 'Comped by Amer' "
-      "WHERE restaurant_id = @r AND scope = 'void' AND sort_order = 1",
-      parameters: {'r': restaurantId},
+      "WHERE business_id = @r AND scope = 'void' AND sort_order = 1",
+      parameters: {'r': businessId},
     );
 
     // "Try again" on the connecting screen, or "Download menu" on the summary.
@@ -111,12 +111,12 @@ void main() {
     expect(
       await count(
         'SELECT count(*) FROM pos_reason_codes '
-        "WHERE restaurant_id = @r AND name_en = 'Comped by Amer'",
+        "WHERE business_id = @r AND name_en = 'Comped by Amer'",
       ),
       1,
     );
     expect(
-      await count('SELECT count(*) FROM pos_order_types WHERE restaurant_id = @r'),
+      await count('SELECT count(*) FROM pos_order_types WHERE business_id = @r'),
       OrderTypeConfig.seeded.length,
       reason: 'DO NOTHING on the code: no duplicates on a re-run',
     );

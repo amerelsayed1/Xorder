@@ -13,7 +13,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
 import 'pg_fixture.dart';
 
-/// One owner per restaurant, and the owner's own access is not editable.
+/// One owner per business, and the owner's own access is not editable.
 ///
 /// Tested twice, as every cross-row rule in this codebase is: through
 /// [PostgresStaffDirectoryRepository], which refuses with a sentence, and by
@@ -24,7 +24,7 @@ import 'pg_fixture.dart';
 /// Counted among ACTIVE staff throughout. That is what keeps ownership
 /// transferable — disable the old owner, then appoint the new one — and it is
 /// the part most worth pinning, because the tempting "one owner row, ever"
-/// would make selling the restaurant a job for a psql prompt.
+/// would make selling the business a job for a psql prompt.
 void main() {
   if (PgFixture.host == null) {
     test('one owner (skipped — set POS_PG_HOST to run)', () {}, skip: true);
@@ -35,7 +35,7 @@ void main() {
   late PosDatabase db;
   late PostgresStaffDirectoryRepository staff;
   late Map<String, PosRole> seeded;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late PosStaff owner;
 
@@ -43,28 +43,28 @@ void main() {
     pg = await PgFixture.open('one_owner');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('oo', 'OO') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('oo', 'OO') RETURNING id",
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     seeded = {};
     for (final entry in SystemRoles.seeded.entries) {
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+        'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
         '  capabilities, is_system) '
         'VALUES (@r, @code, @nameEn, @nameAr, @capabilities, true) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': entry.key,
           'nameEn': entry.value.nameEn,
           'nameAr': entry.value.nameAr,
@@ -83,7 +83,7 @@ void main() {
     staff = PostgresStaffDirectoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
 
@@ -126,8 +126,8 @@ void main() {
       pg.config,
       'SELECT s.name, s.is_active FROM pos_users s '
       'JOIN pos_roles r ON r.id = s.role_id '
-      "WHERE s.restaurant_id = @r AND r.code = 'owner' ORDER BY s.id",
-      parameters: {'r': restaurantId},
+      "WHERE s.business_id = @r AND r.code = 'owner' ORDER BY s.id",
+      parameters: {'r': businessId},
     );
     return {for (final row in rows) row[0]! as String: row[1]! as bool};
   }
@@ -158,11 +158,11 @@ void main() {
     bool active = true,
   }) async => (await db.query(
     pg.config,
-    'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+    'INSERT INTO pos_users (business_id, branch_id, name, username, '
     '  pin_salt, pin_hash, role_id, is_active) '
     "VALUES (@r, @b, @n, @u, 's', 'h', @role, @active) RETURNING id",
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branchId,
       'n': name,
       'u': name.toLowerCase(),
@@ -453,7 +453,7 @@ void main() {
     });
 
     test('a disabled former owner can be given another role', () async {
-      // Otherwise the person who sold the restaurant could never come back as
+      // Otherwise the person who sold the business could never come back as
       // its manager: re-enabling them is refused while the new owner is
       // active, and so — if the fixed-role rule covered them — would be
       // moving them off Owner first. A dead end nobody could get out of.
@@ -531,7 +531,7 @@ void main() {
     });
 
     test('the owner is given no permission exceptions', () async {
-      // The DENY is the one that matters: it is how a restaurant would lock
+      // The DENY is the one that matters: it is how a business would lock
       // itself out of the screen that could take it off again.
       await expectLater(
         sql(
@@ -576,12 +576,12 @@ void main() {
           await db.runTx(pg.config, (tx) async {
             await tx.execute(
               Sql.named(
-                'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+                'INSERT INTO pos_users (business_id, branch_id, name, username, '
                 '  pin_salt, pin_hash, role_id) '
                 "VALUES (@r, @b, @n, @n, 's', 'h', @role)",
               ),
               parameters: {
-                'r': restaurantId,
+                'r': businessId,
                 'b': branchId,
                 'n': name,
                 'role': roleId(SystemRoles.ownerCode),
@@ -609,11 +609,11 @@ void main() {
   });
 
   group('what was already there', () {
-    test('a restaurant with two owners already can still rename and disable them',
+    test('a business with two owners already can still rename and disable them',
         () async {
       // A branch server that ran an earlier build may have two. Migration 42
       // does not rewrite them — which one is the real owner is the
-      // restaurant's question, not a migration's — so edits that do not touch
+      // business's question, not a migration's — so edits that do not touch
       // the role or the active flag must keep working on both rows.
       await sql('ALTER TABLE pos_users DISABLE TRIGGER pos_users_one_owner_insert');
       final second = await insertStaff('Nour', role: SystemRoles.ownerCode);
@@ -643,7 +643,7 @@ void main() {
       // against his own re-insert, every re-run of the wizard would fail.
       final created = await LocalBootstrap(db).seedOwner(
         pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         roleId: roleId(SystemRoles.ownerCode),
         name: 'Someone Else',
@@ -656,14 +656,14 @@ void main() {
 
     test('but seeding a second owner under another username is refused', () async {
       // The one path the installer and `pos_migrate --seed` had to a second
-      // owner: pointed at a restaurant that already has one, with a different
+      // owner: pointed at a business that already has one, with a different
       // username. It used to succeed silently. `seedOwner` now asks first and
       // answers with data both callers put into words — see
       // `installer_owner_test.dart`; the trigger is still what refuses the
       // same INSERT from anybody else, as the group above shows.
       final seeded = await LocalBootstrap(db).seedOwner(
         pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         roleId: roleId(SystemRoles.ownerCode),
         name: 'Nour',

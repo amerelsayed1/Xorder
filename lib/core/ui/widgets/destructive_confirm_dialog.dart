@@ -63,7 +63,7 @@ class DestructiveConfirmDialog extends StatefulWidget {
   /// Returns the reason the person gave, or **null when they kept it**.
   ///
   /// Same contract as [ReasonSheet.show]: null is *no act*, and a non-null
-  /// selection with a null reason is *the act, on a list the restaurant
+  /// selection with a null reason is *the act, on a list the business
   /// switched off*. A boolean plus an out-parameter would let a caller commit
   /// the act and forget the reason.
   static Future<ReasonSelection?> show(

@@ -58,7 +58,7 @@ class AttemptLimiter {
   static const defaultFirstLockout = Duration(seconds: 30);
 
   /// Capped, because this also shuts out the owner, and a door locked for a
-  /// day on a Friday night is a restaurant that cannot close its shift.
+  /// day on a Friday night is a business that cannot close its shift.
   static const defaultLongestLockout = Duration(minutes: 15);
 
   /// The key for a door that asks for no name — Admin Mode's single count, the

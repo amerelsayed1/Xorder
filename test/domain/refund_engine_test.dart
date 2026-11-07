@@ -198,7 +198,7 @@ void main() {
     test('takes the discount back proportionally too', () {
       // 200.00 of food, 20.00 off, no service, 14% VAT on 180.00 = 25.20.
       // Refunding half the food gives back half the discount as well —
-      // otherwise the customer is handed back money the restaurant never took.
+      // otherwise the customer is handed back money the business never took.
       final q = quote(
         RefundEngine.quoteForLines(
           detail: order(

@@ -96,7 +96,7 @@ void main() {
     addTearDown(container.dispose);
 
     // English, asked for rather than assumed: the product's default is Arabic —
-    // its restaurants are in Egypt — and these tests read English copy.
+    // its businesses are in Egypt — and these tests read English copy.
     container.read(localeProvider.notifier).apply('en');
     if (setUp) container.read(setupCompleteProvider.notifier).markComplete();
 

@@ -21,7 +21,7 @@ import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
 import '../support/fakes.dart';
 import 'pg_fixture.dart';
 
-/// The two installers, pointed at a restaurant that already has an owner.
+/// The two installers, pointed at a business that already has an owner.
 ///
 /// `seedOwner` (the wizard) and `pos_migrate --seed` both write the owner
 /// straight into `pos_users`, past `PostgresStaffDirectoryRepository`. Given a
@@ -39,7 +39,7 @@ void main() {
   }
 
   const slug = 'installer-owner';
-  const restaurant = 'Installer Owner';
+  const business = 'Installer Owner';
   // The database `PgFixture.open` hands out — the shared one — since the CLI
   // and the repository have to be looking at the same rows (XORD-029).
   final databaseName = PgFixture.sharedName;
@@ -47,7 +47,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late LocalBootstrap bootstrap;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int ownerRoleId;
 
@@ -56,27 +56,27 @@ void main() {
     db = pg.database;
     bootstrap = LocalBootstrap(db);
     await bootstrap.migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    // The first install, already done: a restaurant whose owner is Amer.
-    restaurantId = await bootstrap.seedRestaurant(
+    // The first install, already done: a business whose owner is Amer.
+    businessId = await bootstrap.seedBusiness(
       pg.config,
       slug: slug,
-      name: restaurant,
+      name: business,
     );
     branchId = await bootstrap.seedBranch(
       pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       name: 'Main',
       code: 'MAIN',
     );
     ownerRoleId = (await bootstrap.seedSystemRoles(
       pg.config,
-      restaurantId,
+      businessId,
     )).ids[SystemRoles.ownerCode]!;
     await bootstrap.seedOwner(
       pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       roleId: ownerRoleId,
       name: 'Amer',
@@ -93,17 +93,17 @@ void main() {
       pg.config,
       'SELECT s.name, s.is_active FROM pos_users s '
       'JOIN pos_roles r ON r.id = s.role_id '
-      "WHERE s.restaurant_id = @r AND r.code = 'owner' ORDER BY s.id",
-      parameters: {'r': restaurantId},
+      "WHERE s.business_id = @r AND r.code = 'owner' ORDER BY s.id",
+      parameters: {'r': businessId},
     );
     return {for (final row in rows) row[0]! as String: row[1]! as bool};
   }
 
   group('seedOwner', () {
-    Future<OwnerSeed> seed(String name, String username, {int? restaurant}) =>
+    Future<OwnerSeed> seed(String name, String username, {int? business}) =>
         bootstrap.seedOwner(
           pg.config,
-          restaurantId: restaurant ?? restaurantId,
+          businessId: business ?? businessId,
           branchId: branchId,
           roleId: ownerRoleId,
           name: name,
@@ -145,8 +145,8 @@ void main() {
       expect(await owners(), {'Amer': false, 'Nour': true});
     });
 
-    test("another restaurant's owner is not this one's", () async {
-      final other = await bootstrap.seedRestaurant(
+    test("another business's owner is not this one's", () async {
+      final other = await bootstrap.seedBusiness(
         pg.config,
         slug: 'installer-owner-2',
         name: 'Elsewhere',
@@ -159,7 +159,7 @@ void main() {
       expect(
         await bootstrap.seedOwner(
           pg.config,
-          restaurantId: other,
+          businessId: other,
           branchId: branchId,
           roleId: otherRole,
           name: 'Nour',
@@ -182,7 +182,7 @@ void main() {
         '--host', PgFixture.host!, '--port', '${PgFixture.port}', //
         '--database', databaseName, '--no-verify-tls', //
         '--user', PgFixture.user, //
-        '--seed', '--restaurant', restaurant, '--slug', slug, '--pin', '9999',
+        '--seed', '--business', business, '--slug', slug, '--pin', '9999',
         '--staff', name, '--staff-username', username,
       ],
       environment: {'POS_PG_PASSWORD': PgFixture.password},
@@ -190,8 +190,8 @@ void main() {
 
     Future<int> terminals() async => (await db.query(
       pg.config,
-      'SELECT count(*) FROM pos_terminals WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT count(*) FROM pos_terminals WHERE business_id = @r',
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     test('refuses a second owner, says who and what to do, exits non-zero',
@@ -256,7 +256,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // A second machine, being set up for the same restaurant by somebody
+      // A second machine, being set up for the same business by somebody
       // who typed their own name into "the first person".
       final controller = container.read(setupProvider.notifier);
       controller.state = container.read(setupProvider).copyWith(
@@ -264,7 +264,7 @@ void main() {
         claims: LicenseClaims(
           licenseId: 'lic',
           tenantSlug: slug,
-          tenantName: restaurant,
+          tenantName: business,
           issuedAt: DateTime.utc(2026, 1, 1),
           expiresAt: DateTime.utc(2027, 1, 1),
         ),

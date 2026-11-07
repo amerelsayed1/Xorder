@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 /// argue about it is a variance nobody owns.
 ///
 /// The identity is what settles it, never the name: two people called Ahmed is
-/// a restaurant, not a corner case.
+/// a business, not a corner case.
 void main() {
   PosShift shift({int? openedById}) => PosShift(
     id: 2,

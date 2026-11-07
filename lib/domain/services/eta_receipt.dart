@@ -28,7 +28,7 @@ abstract final class EtaReceiptType {
 /// Who bought it.
 ///
 /// A walk-in customer is `type: 'P'` (a person) with nothing else — which is
-/// the overwhelmingly common case in a restaurant and the one this defaults
+/// the overwhelmingly common case in a business and the one this defaults
 /// to. A company buying lunch for a meeting gives a registration number and
 /// becomes `'B'`.
 class EtaBuyer {
@@ -75,11 +75,11 @@ class EtaItem {
   final Money commercialDiscount;
   final List<TaxLine> taxes;
 
-  /// The restaurant's own code for the dish. Sent as `internalCode`; ETA does
-  /// not care what it means, and a restaurant that has no SKUs sends none.
+  /// The business's own code for the dish. Sent as `internalCode`; ETA does
+  /// not care what it means, and a business that has no SKUs sends none.
   final String? internalCode;
 
-  /// The GS1 or EGS code. Null on a restaurant that has not registered its
+  /// The GS1 or EGS code. Null on a business that has not registered its
   /// menu with a coding scheme, which is nearly all of them.
   final String? itemCode;
 
@@ -117,7 +117,7 @@ class EtaReceiptInput {
 
   final ReceiptProfile profile;
 
-  /// The restaurant's own invoice number. Not the uuid — this is the one the
+  /// The business's own invoice number. Not the uuid — this is the one the
   /// customer reads off the paper and quotes on the phone.
   final String receiptNumber;
 

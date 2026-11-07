@@ -12,7 +12,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 ///
 /// Every client now comes from here, and a development build logs each call
 /// through [NetworkLog]. A release build gets the bare client: the log prints
-/// request bodies, and a till in a restaurant has no console to print to.
+/// request bodies, and a till in a business has no console to print to.
 Dio posHttpClient(BaseOptions options) {
   final client = Dio(options);
   if (!kReleaseMode) client.interceptors.add(NetworkLog());

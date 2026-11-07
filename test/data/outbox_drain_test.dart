@@ -421,7 +421,7 @@ void main() {
     late PgFixture pg;
     late PosDatabase db;
     late DeploymentConfig cloud;
-    late int restaurantId;
+    late int businessId;
     var invoice = 0;
 
     const branchId = 3;
@@ -434,11 +434,11 @@ void main() {
       db = pg.database;
       await PosMigrator(db).migrate(pg.config);
       await pg.truncate();
-      await db.query(pg.config, 'DELETE FROM pos_restaurants');
+      await db.query(pg.config, 'DELETE FROM pos_businesses');
       cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
-      restaurantId = (await db.query(
+      businessId = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('cloud', 'Cloud') "
+        "INSERT INTO pos_businesses (slug, name) VALUES ('cloud', 'Cloud') "
         'RETURNING id',
       )).first[0]! as int;
     });
@@ -452,7 +452,7 @@ void main() {
       final orderId = (await db.query(
         pg.config,
         '''
-        INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id,
+        INSERT INTO pos_orders (client_transaction_id, business_id, branch_id,
           terminal_id, invoice_number, order_type, currency, exponent,
           subtotal_minor, service_minor, vat_minor, total_minor, occurred_at)
         VALUES (gen_random_uuid(), @r, @b, @t, @invoice, 'takeaway', 'EGP', 2,
@@ -460,7 +460,7 @@ void main() {
         RETURNING id
         ''',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminalId,
           'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
@@ -468,8 +468,8 @@ void main() {
       )).first[0]! as int;
       final row = (await db.query(
         pg.config,
-        'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
-        '  branch_id) SELECT id, client_transaction_id, restaurant_id, branch_id '
+        'INSERT INTO pos_outbox (order_id, client_transaction_id, business_id, '
+        '  branch_id) SELECT id, client_transaction_id, business_id, branch_id '
         'FROM pos_orders WHERE id = @o '
         'RETURNING id, client_transaction_id::text',
         parameters: {'o': orderId},
@@ -582,7 +582,7 @@ void main() {
       final queue = PostgresSyncQueueRepository(
         database: db,
         config: cloud,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
       );

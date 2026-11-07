@@ -35,7 +35,7 @@ void main() {
     branchName: 'Maadi',
     terminalName: 'Counter 1',
     terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
-    restaurantId: 7,
+    businessId: 7,
     branchCode: 'MAA',
   );
 
@@ -73,7 +73,7 @@ void main() {
       expect(restored, isNotNull);
       expect(restored!.terminal.terminalId, terminal.terminalId);
       expect(restored.terminal.branchName, 'Maadi');
-      expect(restored.terminal.restaurantId, 7);
+      expect(restored.terminal.businessId, 7);
       expect(restored.deployment.mode, DeploymentMode.offline);
       expect(restored.deployment.databaseHost, '192.168.1.20');
       expect(restored.languageCode, 'ar');
@@ -339,7 +339,7 @@ void main() {
           .copyWith(
             step: SetupStep.summary,
             catalogueItems: 19,
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -395,7 +395,7 @@ void main() {
             .copyWith(
               step: SetupStep.summary,
               catalogueItems: 19,
-              restaurantId: 7,
+              businessId: 7,
               branchCode: 'MAA',
               terminalId: terminal.terminalId,
             );
@@ -406,7 +406,7 @@ void main() {
 
         // The operator is still here, password in hand, and can be told. The
         // alternative is a till that looks configured and is not, discovered
-        // tomorrow morning by whoever opens the restaurant.
+        // tomorrow morning by whoever opens the business.
         expect(finished, isFalse);
         expect(container.read(setupCompleteProvider), isFalse);
         expect(find.textContaining('Could not save'), findsOneWidget);
@@ -432,7 +432,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -455,7 +455,7 @@ void main() {
     /// machine somebody merely *tried* a key on — an owner seeing what a key
     /// covers, an installer stopped at the database password — and the file
     /// outlived the abandoned wizard. The next person through was judged
-    /// against a licence for a restaurant that terminal had never been set up
+    /// against a licence for a business that terminal had never been set up
     /// for, and told their own licence was the wrong one.
     test('activating a licence installs nothing until setup finishes', () async {
       final licences = FakeLicenceService();
@@ -494,7 +494,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -539,7 +539,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -590,7 +590,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -620,7 +620,7 @@ void main() {
       controller.state = container
           .read(setupProvider)
           .copyWith(
-            restaurantId: 7,
+            businessId: 7,
             branchCode: 'MAA',
             terminalId: terminal.terminalId,
           );
@@ -705,23 +705,23 @@ void main() {
     /// an override cannot be corrected from inside the process — so the wizard
     /// reopened seeded from the terminal that had just been cleared: the old
     /// tenant, and `claimed: true`. That pair is exactly what switches the
-    /// tenant check back on in `activateLicence`, so the next restaurant's
-    /// licence was refused for belonging to the wrong restaurant, naming one no
+    /// tenant check back on in `activateLicence`, so the next business's
+    /// licence was refused for belonging to the wrong business, naming one no
     /// longer on the machine. Restarting the app fixed it, which is a support
     /// call for a button whose whole purpose is not to need one.
-    test('and the wizard it reopens has forgotten that restaurant', () async {
+    test('and the wizard it reopens has forgotten that business', () async {
       const claimed = SavedTerminalConfig(
         deployment: DeploymentConfig(
           mode: DeploymentMode.offline,
           databaseHost: '192.168.1.20',
-          tenantSlug: 'first-restaurant',
+          tenantSlug: 'first-business',
         ),
         terminal: TerminalProfile(
           branchId: 13,
           branchName: 'Maadi',
           terminalName: 'Counter 1',
           terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
-          restaurantId: 7,
+          businessId: 7,
           branchCode: 'MAA',
           provisioned: true,
         ),
@@ -744,10 +744,10 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      // The terminal as it stands: one restaurant's, and claimed.
+      // The terminal as it stands: one business's, and claimed.
       expect(
         container.read(setupProvider).deployment.tenantSlug,
-        'first-restaurant',
+        'first-business',
       );
       expect(container.read(setupProvider).claimed, isTrue);
 
@@ -769,15 +769,15 @@ void main() {
       // completing the wizard writes whatever this says.
       expect(draft.locale, 'ar');
 
-      // And the point of all of it: another restaurant's licence installs.
+      // And the point of all of it: another business's licence installs.
       await container
           .read(setupProvider.notifier)
-          .activateLicence(fileContents: _licenceFor('second-restaurant'));
+          .activateLicence(fileContents: _licenceFor('second-business'));
 
       final activated = container.read(setupProvider);
       expect(activated.error, isNull, reason: activated.error ?? '');
-      expect(activated.claims?.tenantSlug, 'second-restaurant');
-      expect(activated.deployment.tenantSlug, 'second-restaurant');
+      expect(activated.claims?.tenantSlug, 'second-business');
+      expect(activated.deployment.tenantSlug, 'second-business');
     });
   });
   group('a claim made on an earlier run', () {
@@ -1118,7 +1118,7 @@ void main() {
       expect(draft.allowsSharedDatabase, isTrue);
     });
 
-    test('can be replaced by one for a different restaurant', () async {
+    test('can be replaced by one for a different business', () async {
       final container = await boot();
       container.read(setupProvider);
       await Future<void>.delayed(Duration.zero);
@@ -1134,15 +1134,15 @@ void main() {
       // reported the new licence as wrong, when nothing was wrong with it.
       await container
           .read(setupProvider.notifier)
-          .activateLicence(fileContents: _licenceFor('another-restaurant'));
+          .activateLicence(fileContents: _licenceFor('another-business'));
 
       final draft = container.read(setupProvider);
       expect(draft.error, isNull, reason: draft.error ?? '');
-      expect(draft.claims?.tenantSlug, 'another-restaurant');
-      expect(draft.deployment.tenantSlug, 'another-restaurant');
+      expect(draft.claims?.tenantSlug, 'another-business');
+      expect(draft.deployment.tenantSlug, 'another-business');
     });
 
-    test('but a claimed terminal still refuses the wrong restaurant', () async {
+    test('but a claimed terminal still refuses the wrong business', () async {
       final container = await boot();
       container.read(setupProvider);
       await Future<void>.delayed(Duration.zero);

@@ -11,8 +11,8 @@ import 'pos_widgets.dart';
 ///
 /// Void, refund, pay-out, price override, force-close and inventory adjustment
 /// all ask the same question, and asking it six slightly different ways is how
-/// a restaurant ends up unable to report across them. The list itself lives in
-/// `pos_reason_codes` and is the restaurant's own — this only renders it.
+/// a business ends up unable to report across them. The list itself lives in
+/// `pos_reason_codes` and is the business's own — this only renders it.
 ///
 /// Embedded rather than shown as a sheet when it sits inside a bigger dialog:
 /// the manager-approval dialog (patterns 5.1) puts this in its right-hand
@@ -30,7 +30,7 @@ class ReasonPicker extends StatelessWidget {
   });
 
   /// In picker order. Position decides the number key, so this is the order the
-  /// restaurant chose in `sort_order`, never a re-sort by name.
+  /// business chose in `sort_order`, never a re-sort by name.
   final List<ReasonCode> reasons;
 
   final ReasonRequirement requirement;
@@ -75,7 +75,7 @@ class ReasonPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Switched off for this act. Rendering an empty list would tell the person
-    // their restaurant has no reasons configured, which is a different and
+    // their business has no reasons configured, which is a different and
     // untrue thing.
     if (requirement == ReasonRequirement.disabled) {
       return const SizedBox.shrink();
@@ -386,7 +386,7 @@ class _NoteFieldState extends State<_NoteField> {
 /// The standalone sheet: a reason asked as its own question.
 ///
 /// [show] is the whole API. It handles the case that trips callers up — a
-/// restaurant that switched reasons off for this act — by returning an empty
+/// business that switched reasons off for this act — by returning an empty
 /// selection **without rendering anything**, so the caller's code path is the
 /// same either way and no dialog flashes on screen.
 class ReasonSheet extends StatefulWidget {

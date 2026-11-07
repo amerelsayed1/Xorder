@@ -10,7 +10,7 @@ import 'package:xorder_pos/domain/services/ticket_engine.dart';
 ///
 /// The rule with teeth is that what counts as cash travels **with the money**.
 /// Everything else here is naming, and naming matters for one reason: a
-/// restaurant that renames its own payment method should see the name it typed,
+/// business that renames its own payment method should see the name it typed,
 /// not the one the product shipped with.
 void main() {
   const product = Product(
@@ -48,7 +48,7 @@ void main() {
     test('the engine does not decide it', () {
       // What counts as cash is a property of the method the cashier chose. An
       // engine that worked it out from the id would be an engine that has to
-      // know the restaurant's configuration — and would get the answer wrong
+      // know the business's configuration — and would get the answer wrong
       // the moment somebody added a fifth method.
       final settled = TicketEngine.addTender(
         ticket(),
@@ -77,7 +77,7 @@ void main() {
   });
 
   group('the seeded four', () {
-    test('are what a restaurant starts with, once', () {
+    test('are what a business starts with, once', () {
       expect(TenderMethod.seeded.map((t) => t.code), [
         'cash',
         'card',

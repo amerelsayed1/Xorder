@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 
-/// The database the wizard builds is named after the restaurant it serves.
+/// The database the wizard builds is named after the business it serves.
 void main() {
   test('a slug becomes a plain identifier ending in _db', () {
     expect(DeploymentConfig.databaseNameFor('demo'), 'demo_db');
@@ -19,7 +19,7 @@ void main() {
     }
   });
 
-  test('no restaurant yet means the old shared default', () {
+  test('no business yet means the old shared default', () {
     expect(DeploymentConfig.databaseNameFor(null), 'xorder_pos');
     expect(DeploymentConfig.databaseNameFor(''), 'xorder_pos');
     // A slug with nothing an identifier can keep falls back the same way.

@@ -184,59 +184,59 @@ void main() {
       await pg.database.query(pg.config, grant);
     }
 
-    final restaurant =
+    final business =
         await one(
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('kashri', 'Koshary El Tahrir') RETURNING id",
             )
             as int;
     final branch =
         await one(
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'MAIN', 'Tahrir') RETURNING id",
-              {'r': restaurant},
+              {'r': business},
             )
             as int;
     final staff =
         await one(
-              'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+              'INSERT INTO pos_users (business_id, branch_id, name, '
               "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
               "  'nour', 'salt', 'hash') RETURNING id",
-              {'r': restaurant, 'b': branch},
+              {'r': business, 'b': branch},
             )
             as int;
     final category =
         await one(
-              'INSERT INTO pos_categories (restaurant_id, name_en) '
+              'INSERT INTO pos_categories (business_id, name_en) '
               "VALUES (@r, 'Koshary') RETURNING id",
-              {'r': restaurant},
+              {'r': business},
             )
             as int;
     await one(
-      'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+      'INSERT INTO pos_products (business_id, category_id, name_en, '
       "  price_minor) VALUES (@r, @c, 'Large koshary', 6500) RETURNING id",
-      {'r': restaurant, 'c': category},
+      {'r': business, 'c': category},
     );
     await one(
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'POS-01') RETURNING id",
-      {'t': terminal, 'r': restaurant, 'b': branch},
+      {'t': terminal, 'r': business, 'b': branch},
     );
     await one(
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, '
+      'INSERT INTO pos_business_days (business_id, branch_id, '
       "  business_date, opened_by, opened_at) VALUES (@r, @b, '2026-09-11', "
       "  @by, now() - interval '3 hours') RETURNING id",
-      {'r': restaurant, 'b': branch, 'by': staff},
+      {'r': business, 'b': branch, 'by': staff},
     );
     await one(
-      'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, '
       "  opened_by, opened_at) VALUES (@r, @b, @t::uuid, @by, "
       "  now() - interval '2 hours') RETURNING id",
-      {'r': restaurant, 'b': branch, 't': terminal, 'by': staff},
+      {'r': business, 'b': branch, 't': terminal, 'by': staff},
     );
     for (final total in [6500, 13000]) {
       await one(
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         '  occurred_at, status) '
@@ -244,7 +244,7 @@ void main() {
         "  'INV-' || gen_random_uuid()::text, 'takeaway', 'EGP', 2, "
         "  @total, 0, 0, @total, now() - interval '1 hour', 'PAID') "
         'RETURNING id',
-        {'r': restaurant, 'b': branch, 't': terminal, 'total': total},
+        {'r': business, 'b': branch, 't': terminal, 'total': total},
       );
     }
 
@@ -313,8 +313,8 @@ void main() {
     );
     await targetDb.query(
       targetConfig,
-      'INSERT INTO pos_categories (restaurant_id, name_en) '
-      "SELECT id, 'Stray' FROM pos_restaurants",
+      'INSERT INTO pos_categories (business_id, name_en) '
+      "SELECT id, 'Stray' FROM pos_businesses",
     );
 
     await archive().restore(from: backup, into: as(owner, target));

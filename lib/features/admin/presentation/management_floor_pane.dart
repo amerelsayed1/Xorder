@@ -19,7 +19,7 @@ import 'admin_messages.dart';
 ///
 /// Until now the only way to add a table was `bin/pos_migrate.dart
 /// --seed-catalogue`, which lays out eight demo tables, or hand-written SQL.
-/// A restaurant that put two more tables on the terrace had no way to say so.
+/// A business that put two more tables on the terrace had no way to say so.
 ///
 /// Nothing deletes. A table goes out of service, because parked tickets and
 /// past orders name its row.

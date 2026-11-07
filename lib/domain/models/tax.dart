@@ -2,7 +2,7 @@
 ///
 /// **Why this exists.** The ticket used to carry one VAT rate for the whole
 /// bill — `TaxConfig.vatBp` — which cannot express a zero-rated bottle of water
-/// beside a standard-rated meal, and a restaurant selling food *and* packaged
+/// beside a standard-rated meal, and a business selling food *and* packaged
 /// goods has both. It also cannot produce the per-rate breakdown Egypt's ETA
 /// e-receipt requires, which is the harder problem: a receipt that states one
 /// VAT figure and no rates behind it is not filable.
@@ -10,7 +10,7 @@ library;
 
 import '../../core/money/money.dart';
 
-/// A rate, named, as the restaurant's accountant knows it.
+/// A rate, named, as the business's accountant knows it.
 class TaxGroup {
   const TaxGroup({
     required this.id,
@@ -29,7 +29,7 @@ class TaxGroup {
   /// The rate every product falls back to when it names none.
   ///
   /// 14% is Egypt's standard rate. It is a *fallback*, not an assumption: a
-  /// restaurant that configures its groups gets what it configured, and one
+  /// business that configures its groups gets what it configured, and one
   /// that has not gets what it was already being charged before this existed.
   static const standard = TaxGroup(
     id: 0,
@@ -63,7 +63,7 @@ class TaxGroup {
   /// because ETA reissue these codes, so a table mapping 14% to a constant
   /// would be wrong the first time they did.
   ///
-  /// Defaults are Egypt's standard VAT, which is what a restaurant selling
+  /// Defaults are Egypt's standard VAT, which is what a business selling
   /// food charges. See [EtaTaxCode].
   final String etaTaxType;
 
@@ -73,7 +73,7 @@ class TaxGroup {
   ///
   /// The fallback has to look at [rateBp] rather than being a plain default:
   /// a zero-rated group filed under the standard code would be a filing that
-  /// says the restaurant charged 14% and collected nothing, which is the
+  /// says the business charged 14% and collected nothing, which is the
   /// discrepancy an audit exists to find. Set it explicitly for anything
   /// beyond these two — exempt, reduced, and the rest of ETA's list.
   String get etaSubType =>
@@ -119,7 +119,7 @@ class TaxGroup {
 /// every product shared one.
 /// The codes Egypt's tax authority files a tax under.
 ///
-/// Only the two a restaurant actually charges are named. The rest of ETA's
+/// Only the two a business actually charges are named. The rest of ETA's
 /// list — stamp duty, table tax, entertainment — belongs to industries this
 /// product does not serve, and naming codes nobody has checked would be worse
 /// than not naming them.

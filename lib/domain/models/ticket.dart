@@ -121,7 +121,7 @@ class PriceOverride {
   final int? approvedByStaffId;
   final String? approvedByName;
 
-  /// What the restaurant gave up, per unit. Negative when the price went *up*,
+  /// What the business gave up, per unit. Negative when the price went *up*,
   /// which is legitimate and rare.
   Money get reduction => original - price;
 }
@@ -328,7 +328,7 @@ class Tender {
   /// moment it was taken**.
   ///
   /// Snapshotted rather than looked up, for the same reason the label is. A
-  /// restaurant that decides on Thursday its wallet counts as cash must not
+  /// business that decides on Thursday its wallet counts as cash must not
   /// change what Tuesday's cash-up said the drawer should have held — the
   /// manager investigating Tuesday's variance needs the number Tuesday was
   /// judged against.
@@ -346,9 +346,9 @@ class Tender {
 /// numbers nobody can audit. Every receipt printed from device config says so.
 /// Whether menu prices already contain the tax (§37, §85).
 ///
-/// **A restaurant is one or the other, not a mixture.** Egypt prices
+/// **A business is one or the other, not a mixture.** Egypt prices
 /// exclusive; much of the Gulf and the UK price inclusive. Per-tax
-/// inclusivity — which the plan's §37 sketched — would let a restaurant say
+/// inclusivity — which the plan's §37 sketched — would let a business say
 /// "food is inclusive, the levy is not", which is a receipt no customer can
 /// check and an arithmetic nobody can explain at the counter.
 enum TaxMode {
@@ -363,7 +363,7 @@ enum TaxMode {
   final String wire;
 
   /// Unknown values fall back to [exclusive] — the mode every existing
-  /// restaurant is on, so a row this build cannot read changes nobody's bill.
+  /// business is on, so a row this build cannot read changes nobody's bill.
   static TaxMode fromWire(String? value) {
     for (final mode in values) {
       if (mode.wire == value) return mode;
@@ -383,11 +383,11 @@ class TaxConfig {
     this.taxMode = TaxMode.exclusive,
   });
 
-  /// The rates this restaurant charges (§17, ETA).
+  /// The rates this business charges (§17, ETA).
   ///
   /// Empty is the normal case and means "one rate for everything, at
   /// [vatBp]" — which is what every ticket written before this existed was
-  /// charged, and what a restaurant that has configured nothing still gets.
+  /// charged, and what a business that has configured nothing still gets.
   final List<TaxGroup> taxGroups;
 
   /// The rate a product falls back to when it names no group.
@@ -414,7 +414,7 @@ class TaxConfig {
       if (group.id == id) return group;
     }
     // A product pointing at a group this terminal has not synced yet. The
-    // default is the safe answer: under-charging tax is a debt the restaurant
+    // default is the safe answer: under-charging tax is a debt the business
     // owes, over-charging it is money taken from a customer.
     return defaultTaxGroup;
   }
@@ -427,19 +427,19 @@ class TaxConfig {
   final bool serviceDineInOnly;
   final TaxSource source;
 
-  /// What the restaurant adds on top of the food (§38).
+  /// What the business adds on top of the food (§38).
   ///
   /// Empty is the normal case and means "one charge, at [serviceBp], on the
   /// order types [serviceDineInOnly] allows" — which is what every ticket
   /// written before this existed was charged. The same fallback shape
-  /// [defaultTaxGroup] uses, and for the same reason: a restaurant that has
+  /// [defaultTaxGroup] uses, and for the same reason: a business that has
   /// configured nothing keeps being charged what it was.
   final List<ServiceCharge> serviceCharges;
 
   /// Whether the prices on the menu already contain the tax.
   ///
   /// Defaults to [TaxMode.exclusive], which is what every ticket written
-  /// before this existed was priced as — so a restaurant that has not been
+  /// before this existed was priced as — so a business that has not been
   /// asked the question keeps being charged exactly what it was.
   final TaxMode taxMode;
 
@@ -459,14 +459,14 @@ class TaxConfig {
     taxMode: taxMode,
   );
 
-  /// The same object with the restaurant's named rates folded in.
+  /// The same object with the business's named rates folded in.
   ///
   /// **Nothing populated [taxGroups] until this existed.** Products have carried
   /// `tax_group_id` since Wave M and `pos_tax_groups` has been seeded since the
   /// installer wrote it, but the list arrived empty on every till — so
-  /// [defaultTaxGroup] answered every lookup and a product a restaurant had
+  /// [defaultTaxGroup] answered every lookup and a product a business had
   /// marked zero-rated was charged the standard rate anyway. An empty list still
-  /// leaves everything untouched, which is why a restaurant that has configured
+  /// leaves everything untouched, which is why a business that has configured
   /// nothing is charged exactly what it was.
   TaxConfig withTaxGroups(List<TaxGroup> groups) => TaxConfig(
     serviceBp: serviceBp,
@@ -482,7 +482,7 @@ class TaxConfig {
   /// applies to it.
   ///
   /// Falls back to the single configured rate when no charges are set up, so
-  /// this is arithmetically identical to what it replaced on a restaurant that
+  /// this is arithmetically identical to what it replaced on a business that
   /// has not touched the new screen. Every automatic charge that applies is
   /// summed; each rounds once, because two charges are two lines a customer
   /// can check rather than one number split in half.
@@ -517,7 +517,7 @@ class TaxConfig {
   ///
   /// **Every field that moves a total is in here.** It once compared only the
   /// four scalars, so `TicketController`'s `previous == next` guard read a
-  /// restaurant switching to inclusive prices, or its tax groups arriving a
+  /// business switching to inclusive prices, or its tax groups arriving a
   /// beat after its rates, as "nothing changed" — and the live ticket kept
   /// pricing with the old rules. The lists compare element-wise through
   /// [TaxGroup] and [ServiceCharge]'s own equality, so what counts as the same
@@ -693,7 +693,7 @@ class Ticket {
   /// That is the one judgement in this method and it is worth stating: if
   /// service were taken on `subtotal`, a fully comped meal would still charge
   /// 12% service and VAT on top of it, and the customer would be handed a bill
-  /// for food the restaurant gave away. Discounting the food discounts what is
+  /// for food the business gave away. Discounting the food discounts what is
   /// charged on the food.
   ///
   /// Rounding is still applied **once per charge line** — service and VAT —
@@ -718,7 +718,7 @@ class Ticket {
 
     // Split by whether VAT applies: the taxable part joins the tax base below,
     // the rest is added to the total and left out of it. A delivery fee
-    // collected for an aggregator is not the restaurant's revenue to tax.
+    // collected for an aggregator is not the business's revenue to tax.
     final serviceTotal = taxConfig.serviceFor(orderType, base: net);
     final service = serviceTotal.total;
 
@@ -765,7 +765,7 @@ class Ticket {
       }
     }
 
-    // Service is taxed at the default rate. It is the restaurant's charge for
+    // Service is taxed at the default rate. It is the business's charge for
     // service, not a product, so it does not inherit a zero-rated bottle of
     // water's treatment.
     addBase(taxConfig.defaultTaxGroup, serviceTotal.taxable);

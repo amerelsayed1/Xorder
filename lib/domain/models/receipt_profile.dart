@@ -2,7 +2,7 @@
 ///
 /// **This is one thing wearing two hats, on purpose.** The top of a printed
 /// slip and the `seller` block of an Egyptian e-receipt are the same facts —
-/// trade name, tax registration number, branch, address — and a restaurant
+/// trade name, tax registration number, branch, address — and a business
 /// asked to type them twice will eventually type them differently. So they are
 /// entered once, in Management, and both the paper and the filing read them
 /// from here.
@@ -47,7 +47,7 @@ class BranchAddress {
 
   /// The one-line form, for the top of a printed slip.
   ///
-  /// Empty parts are dropped rather than printed as gaps, so a restaurant that
+  /// Empty parts are dropped rather than printed as gaps, so a business that
   /// has filled in half of this still gets a sensible header.
   String get printed => [
     if (buildingNumber.trim().isNotEmpty) buildingNumber.trim(),
@@ -131,11 +131,11 @@ class ReceiptProfile {
   /// ETA's activity code for what this branch sells. Four digits, from their
   /// published list; this validates the shape and not the membership, because
   /// the list changes and a till that refused a newly issued code would be
-  /// wrong in the direction that stops a restaurant trading.
+  /// wrong in the direction that stops a business trading.
   final String activityCode;
 
   /// The branch as ETA knows it, which is **not** [pos_branches.code]: that
-  /// one is the invoice prefix and a restaurant is free to choose it. Keeping
+  /// one is the invoice prefix and a business is free to choose it. Keeping
   /// them apart costs one text box and saves the day somebody renames a
   /// prefix.
   final String branchCode;
@@ -151,13 +151,13 @@ class ReceiptProfile {
   final String? footerNote;
 
   /// Bumped on every save, and checked on the next one. Two managers on two
-  /// tills editing the same profile is not hypothetical in a restaurant with
+  /// tills editing the same profile is not hypothetical in a business with
   /// an office and a counter.
   final int revision;
 
   /// What must be fixed before this can be printed on a slip.
   ///
-  /// Deliberately short: a restaurant that has typed its name can print
+  /// Deliberately short: a business that has typed its name can print
   /// receipts, and should not be blocked from trading by an address field it
   /// has not got to yet.
   List<ProfileProblem> get printProblems => [

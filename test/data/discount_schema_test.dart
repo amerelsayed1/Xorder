@@ -21,7 +21,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
 
@@ -35,12 +35,12 @@ void main() {
     String? daysOfWeek,
   }) => db.query(
     pg.config,
-    'INSERT INTO pos_discounts (restaurant_id, code, name_en, kind, value_bp, '
+    'INSERT INTO pos_discounts (business_id, code, name_en, kind, value_bp, '
     '  value_minor, scope, max_discount_minor, days_of_week) '
     'VALUES (@r, @code, @name, @kind, @bp, @minor, @scope, @cap, '
     "  COALESCE(@days::smallint[], '{}'::smallint[]))",
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'code': code,
       'name': 'Lunch offer',
       'kind': kind,
@@ -55,7 +55,7 @@ void main() {
   Future<int> insertOrder({int subtotal = 10000, int discount = 0}) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, service_minor, vat_minor, total_minor, discount_minor, '
       '  occurred_at) '
@@ -63,7 +63,7 @@ void main() {
       "  'INV-' || floor(random() * 1000000)::text, 'dine_in', 'EGP', 2, "
       '  @sub, 0, 0, @sub, @disc, now()) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'sub': subtotal,
         'disc': discount,
@@ -77,38 +77,38 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('disc', 'Disc') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('disc', 'Disc') RETURNING id",
     );
-    restaurantId = restaurant.first[0] as int;
+    businessId = business.first[0] as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) VALUES (@r, 'DSC', 'Main') "
+      "INSERT INTO pos_branches (business_id, code, name) VALUES (@r, 'DSC', 'Main') "
       'RETURNING id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0] as int;
 
     final staff = await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, @b, 'Nour Adel', 'nour', 'salt', 'hash') RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     );
     staffId = staff.first[0] as int;
   });
 
   tearDown(() => pg.close());
 
-  test('a restaurant starts with no discounts at all', () async {
+  test('a business starts with no discounts at all', () async {
     final rows = await db.query(
       pg.config,
-      'SELECT count(*) FROM pos_discounts WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT count(*) FROM pos_discounts WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
 
     // A discount is a commercial decision. A till that arrived with somebody
@@ -302,7 +302,7 @@ void main() {
       final orderId = await insertOrder(discount: 1000);
       await applyDiscount(orderId: orderId, discountId: discountId);
 
-      // No foreign key, deliberately. A restaurant retiring a promotion must
+      // No foreign key, deliberately. A business retiring a promotion must
       // not take the record of what it cost with it.
       await db.query(
         pg.config,
@@ -374,16 +374,16 @@ void main() {
     test('every existing role is unlimited, not zero', () async {
       await db.query(
         pg.config,
-        "INSERT INTO pos_roles (restaurant_id, code, name_en) "
+        "INSERT INTO pos_roles (business_id, code, name_en) "
         "VALUES (@r, 'cashier', 'Cashier')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       final rows = await db.query(
         pg.config,
         'SELECT max_discount_bp, max_discount_minor FROM pos_roles '
-        'WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
 
       // NULL means unlimited. Reading a missing cap as zero would have left
@@ -396,16 +396,16 @@ void main() {
     test('a limit over 100% is refused', () async {
       await db.query(
         pg.config,
-        "INSERT INTO pos_roles (restaurant_id, code, name_en) "
+        "INSERT INTO pos_roles (business_id, code, name_en) "
         "VALUES (@r, 'manager', 'Manager')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       await expectLater(
         db.query(
           pg.config,
-          'UPDATE pos_roles SET max_discount_bp = 10001 WHERE restaurant_id = @r',
-          parameters: {'r': restaurantId},
+          'UPDATE pos_roles SET max_discount_bp = 10001 WHERE business_id = @r',
+          parameters: {'r': businessId},
         ),
         throwsA(isA<Exception>()),
       );
@@ -414,17 +414,17 @@ void main() {
     test('a zero limit is allowed — it means "may not discount"', () async {
       await db.query(
         pg.config,
-        "INSERT INTO pos_roles (restaurant_id, code, name_en) "
+        "INSERT INTO pos_roles (business_id, code, name_en) "
         "VALUES (@r, 'kitchen', 'Kitchen')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       // Distinct from NULL, and the distinction is the point: nobody set a
       // limit versus somebody set it to nothing.
       await db.query(
         pg.config,
-        'UPDATE pos_roles SET max_discount_bp = 0 WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'UPDATE pos_roles SET max_discount_bp = 0 WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
     });
   });

@@ -1,6 +1,6 @@
 import '../../core/money/quantity.dart';
 
-/// A unit the restaurant counts and buys stock in — kg, litre, box, tray.
+/// A unit the business counts and buys stock in — kg, litre, box, tray.
 ///
 /// **A name for a code, not a conversion.** A kilogram here is never 1000
 /// grams: the till does no unit arithmetic at all (see

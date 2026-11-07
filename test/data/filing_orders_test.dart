@@ -82,7 +82,7 @@ void main() {
     expect(world.problems.single, isA<FilingFailed>());
   });
 
-  test('a restaurant that is not filing is not told off for it', () async {
+  test('a business that is not filing is not told off for it', () async {
     // A blank profile: one outside Egypt, or one still in setup. Reporting a
     // problem for every sale it makes would be an alarm that is always on.
     final world = build(answer: const FilingNotInUse());

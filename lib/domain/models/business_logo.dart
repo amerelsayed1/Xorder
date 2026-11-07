@@ -1,9 +1,9 @@
-/// The business logo (XORD-021): the restaurant's mark, kept on the till.
+/// The business logo (XORD-021): the business's mark, kept on the till.
 ///
 /// **Stored as the image itself, not as a link.** A link is gone the moment the
 /// till is offline, and the whole point of an offline install is that nothing
 /// it shows depends on a server it cannot reach. The bytes live in
-/// `pos_restaurants` in the branch database, so every till on the branch shares
+/// `pos_businesses` in the branch database, so every till on the branch shares
 /// one copy and a restart changes nothing.
 ///
 /// **Inspected, not trusted.** Whatever arrives (a file the owner picked, or a
@@ -113,7 +113,7 @@ class BusinessLogo {
 abstract final class BusinessLogoRules {
   /// What an owner may upload. Two megabytes is generous for a mark that is
   /// drawn at a few hundred pixels, and small enough that every till on the
-  /// branch can read it with the rest of the restaurant row without noticing.
+  /// branch can read it with the rest of the business row without noticing.
   static const maxBytes = 2 * 1024 * 1024;
 
   /// What the platform may hand us. Its own upload cap is 4 MB, so the till

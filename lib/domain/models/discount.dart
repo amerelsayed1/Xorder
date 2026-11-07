@@ -68,14 +68,14 @@ class DiscountTargets {
   ///
   /// Product and category are checked **independently**, and either one
   /// matching is enough: "10% off Grills" and "10% off the Mixed Grill" are
-  /// both things a restaurant says, and a discount naming both means either.
+  /// both things a business says, and a discount naming both means either.
   bool allowsProduct({required int productId, required int categoryId}) {
     if (categoryIds.isEmpty && productIds.isEmpty) return true;
     return productIds.contains(productId) || categoryIds.contains(categoryId);
   }
 }
 
-/// A discount the restaurant offers, as configured.
+/// A discount the business offers, as configured.
 ///
 /// Distinct from [AppliedDiscount], which is what was actually taken off a
 /// sale. This one is editable and may change tomorrow; that one is a snapshot
@@ -181,7 +181,7 @@ class Discount {
   ///
   /// [maxDiscount] is applied here rather than at the call site, because it is
   /// part of what the discount *is* — a caller that forgot it would charge a
-  /// customer less than the restaurant agreed to.
+  /// customer less than the business agreed to.
   ///
   /// Never more than [base]: a discount larger than the thing it comes off is
   /// a negative sale, and the database refuses to hold one.
@@ -250,7 +250,7 @@ class DiscountLimit {
 
 /// A discount as it was taken off a sale.
 ///
-/// **Everything here is a snapshot.** A restaurant that renames "Staff meal" or
+/// **Everything here is a snapshot.** A business that renames "Staff meal" or
 /// moves 10% to 15% must not thereby rewrite what a customer was charged in
 /// March — the same rule `TicketLine`'s stored name and price already follow.
 class AppliedDiscount {

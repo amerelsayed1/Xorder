@@ -104,10 +104,10 @@ void main() {
     }
     // Not the menu: how many items are cached is nothing to act on here.
     expect(find.text('المنيو'), findsNothing);
-    // XOrder's mark sits above the restaurant's name.
+    // XOrder's mark sits above the business's name.
     expect(find.byKey(const Key('start-xorder-logo')), findsOneWidget);
 
-    // Not the restaurant: it is the heading above the grid, and a cell saying
+    // Not the business: it is the heading above the grid, and a cell saying
     // it again was the same name twice.
     expect(find.text('المطعم'), findsNothing);
 

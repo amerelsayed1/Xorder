@@ -13,7 +13,7 @@ import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 import 'tender_type_dialog.dart';
 
-/// How the restaurant takes money (§40).
+/// How the business takes money (§40).
 ///
 /// Authored here on an offline till only. On a cloud till the platform is the
 /// author (POS-BE-013): `BootstrapSeeder` writes these rows from the bundle,

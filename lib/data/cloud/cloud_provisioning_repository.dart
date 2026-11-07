@@ -122,10 +122,10 @@ class CloudProvisioningRepository implements ProvisioningRepository {
     }
 
     // The tenant's display name rides the login response (UserResource
-    // carries its restaurant); read it tolerantly, fall back to the slug.
+    // carries its business); read it tolerantly, fall back to the slug.
     String? tenantName;
-    if (login.data['restaurant'] case final Map restaurant) {
-      final name = restaurant['name'];
+    if (login.data['restaurant'] case final Map business) {
+      final name = business['name'];
       if (name is String && name.isNotEmpty) tenantName = name;
     }
 
@@ -364,7 +364,7 @@ class CloudProvisioningRepository implements ProvisioningRepository {
 
     // Seed the local database from the bundle the claim carried — best effort,
     // see the class comment.
-    final restaurantId = bundle?.restaurant?.id;
+    final businessId = bundle?.business?.id;
     String? branchCode;
     String? branchName;
     final seeded = await _trySeed(bundle);
@@ -399,13 +399,13 @@ class CloudProvisioningRepository implements ProvisioningRepository {
         branchCode: (branchCode?.isNotEmpty ?? false)
             ? branchCode
             : 'BR$branchId',
-        restaurantId: restaurantId,
+        businessId: businessId,
         syncPolicy:
             SyncPolicy.fromWire(terminal['sync_policy'] as String?) ??
             config.syncPolicy,
         // The cloud wizard no longer asks which language this till works in;
-        // the restaurant already told the dashboard.
-        defaultLanguage: bundle?.restaurant?.defaultLanguage,
+        // the business already told the dashboard.
+        defaultLanguage: bundle?.business?.defaultLanguage,
       ),
       // Surfaced so the wizard can tell the operator the menu will arrive on
       // first sync rather than pretending it is already there.

@@ -67,7 +67,7 @@ class SetupController extends Notifier<SetupDraft> {
 
     // The Settings bar's language switch is on every screen of this wizard,
     // and whoever is standing here has the last word — including after a
-    // claim has set the restaurant's own language. The draft used to keep the
+    // claim has set the business's own language. The draft used to keep the
     // claim's answer regardless, and `complete()` wrote THAT to disk and
     // applied it, so a till switched to English on the last screen booted in
     // Arabic. The draft now follows the bar.
@@ -86,7 +86,7 @@ class SetupController extends Notifier<SetupDraft> {
     // The seed, not the boot snapshot: a reset deletes `config.json` mid-process
     // and the wizard must reopen as a fresh install, not as the terminal that
     // was just cleared. Seeding from the dead config is what made a till refuse
-    // the next restaurant's licence for belonging to the wrong tenant.
+    // the next business's licence for belonging to the wrong tenant.
     final saved = ref.watch(terminalSeedProvider).config;
     if (saved == null) {
       final profile = ref.read(terminalProfileProvider);
@@ -131,7 +131,7 @@ class SetupController extends Notifier<SetupDraft> {
       deployment: saved.deployment,
       branchId: saved.terminal.branchId,
       branchLabel: saved.terminal.branchName,
-      restaurantId: saved.terminal.restaurantId,
+      businessId: saved.terminal.businessId,
       branchCode: saved.terminal.branchCode,
       terminalName: saved.terminal.terminalName ?? '',
       // Kept above all: reissuing it would hand the licence server a machine it
@@ -322,7 +322,7 @@ class SetupController extends Notifier<SetupDraft> {
       claimed: true,
       branchId: progress.branchId,
       branchLabel: progress.branchLabel,
-      restaurantId: progress.restaurantId,
+      businessId: progress.businessId,
       branchCode: progress.branchCode,
       terminalName: progress.terminalName,
       terminalId: progress.terminalId,
@@ -364,7 +364,7 @@ class SetupController extends Notifier<SetupDraft> {
               locale: state.locale,
               branchId: state.branchId,
               branchLabel: state.branchLabel,
-              restaurantId: state.restaurantId,
+              businessId: state.businessId,
               branchCode: state.branchCode,
               licence: state.licenceFile?.serialize(),
               installationId: state.installationId,
@@ -412,7 +412,7 @@ class SetupController extends Notifier<SetupDraft> {
         tenantSlug: state.deployment.tenantSlug,
         // Supplied, never asked — see [_adopt]. An offline terminal keeps none.
         baseUrl: mode.needsBaseUrl ? _platformFor(state.deployment) : null,
-        // The restaurant's own name for its database, as [_adopt] gives it.
+        // The business's own name for its database, as [_adopt] gives it.
         databaseName: DeploymentConfig.databaseNameFor(
           state.deployment.tenantSlug,
         ),
@@ -528,7 +528,7 @@ class SetupController extends Notifier<SetupDraft> {
     state = state.copyWith(
       deployment: state.deployment.copyWith(tenantSlug: slugFrom(slug)),
       // A pull that happened under the old slug now describes the wrong
-      // restaurant; forgetting it is what keeps the branch step honest.
+      // business; forgetting it is what keeps the branch step honest.
       clearConnection: true,
     );
   }
@@ -705,7 +705,7 @@ class SetupController extends Notifier<SetupDraft> {
   /// Build this machine's database, from nothing.
   ///
   /// The offline path used to start at a command line: `PosMigrator` ran only
-  /// on the cloud claim path, so an offline restaurant needed somebody at a
+  /// on the cloud claim path, so an offline business needed somebody at a
   /// terminal with `bin/pos_migrate.dart` before the wizard could do anything.
   /// This is that command, on the screen the operator is already looking at.
   ///
@@ -802,7 +802,7 @@ class SetupController extends Notifier<SetupDraft> {
             : s.migrationsApplied(applied.length),
       );
 
-      final restaurantId = await bootstrap.seedRestaurant(
+      final businessId = await bootstrap.seedBusiness(
         admin,
         slug: claims.tenantSlug,
         name: claims.tenantName,
@@ -812,13 +812,13 @@ class SetupController extends Notifier<SetupDraft> {
       );
       final branchId = await bootstrap.seedBranch(
         admin,
-        restaurantId: restaurantId,
+        businessId: businessId,
         name: 'Main',
         code: 'MAIN',
       );
-      done.add(s.restaurantSeeded(claims.tenantName));
+      done.add(s.businessSeeded(claims.tenantName));
 
-      final roles = await bootstrap.seedSystemRoles(admin, restaurantId);
+      final roles = await bootstrap.seedSystemRoles(admin, businessId);
       done.add(
         roles.created == 0
             ? s.rolesAlreadyThere
@@ -826,21 +826,21 @@ class SetupController extends Notifier<SetupDraft> {
       );
 
       // Void, refund, discount and price-override reasons. Seeded here rather
-      // than left to migration 9, which can only reach restaurants that already
+      // than left to migration 9, which can only reach businesses that already
       // existed when it ran — and this one is being created now.
-      await bootstrap.seedReasonCodes(admin, restaurantId);
+      await bootstrap.seedReasonCodes(admin, businessId);
       // The rate this branch charges, named — so products can be classified
       // and an ETA filing has something to put beside its figures.
-      await bootstrap.seedTaxGroup(admin, restaurantId);
-      // The four payment methods (§40). Migration 23 seeds restaurants that
+      await bootstrap.seedTaxGroup(admin, businessId);
+      // The four payment methods (§40). Migration 23 seeds businesses that
       // existed when it ran; this one did not.
-      await bootstrap.seedTenderTypes(admin, restaurantId);
+      await bootstrap.seedTenderTypes(admin, businessId);
       // And what each kind of order requires (§31).
-      await bootstrap.seedOrderTypes(admin, restaurantId);
+      await bootstrap.seedOrderTypes(admin, businessId);
 
       final owner = await bootstrap.seedOwner(
         admin,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         roleId: roles.ids[SystemRoles.ownerCode]!,
         name: state.ownerName.trim(),
@@ -1030,7 +1030,7 @@ class SetupController extends Notifier<SetupDraft> {
     terminalId: state.terminalId,
     installationId: state.installationId,
     provisioned: state.claimed,
-    restaurantId: state.restaurantId,
+    businessId: state.businessId,
     branchCode: state.branchCode,
   );
 
@@ -1070,7 +1070,7 @@ class SetupController extends Notifier<SetupDraft> {
       // operator to redo the one step that was fine.
       final missing = [
         if (state.terminalName.trim().isEmpty) s.missingTerminalName,
-        if (profile.restaurantId == null) s.missingRestaurantIdentity,
+        if (profile.businessId == null) s.missingBusinessIdentity,
         if (profile.branchId == null) s.missingBranch,
         if (profile.branchCode?.isEmpty ?? true) s.missingBranchPrefix,
         if (profile.terminalId?.isEmpty ?? true) s.missingTerminalId,
@@ -1362,7 +1362,7 @@ class SetupController extends Notifier<SetupDraft> {
           // before anything has been signed into. So a licence being installed
           // here must not be judged against a tenant that was itself read off
           // the licence it is replacing: that made a terminal holding one
-          // restaurant's licence unable to accept another's, which is exactly
+          // business's licence unable to accept another's, which is exactly
           // what happens on a machine being moved, or on a developer's, and it
           // reported the refusal as the *new* licence being wrong.
           //
@@ -1488,7 +1488,7 @@ class SetupController extends Notifier<SetupDraft> {
       databaseHost: claims.maxTerminals > 1
           ? current.databaseHost
           : DeploymentConfig.localhost,
-      // Named after the restaurant, unless somebody already named it: the
+      // Named after the business, unless somebody already named it: the
       // wizard builds this database, and `demo_db` says whose it is where
       // `xorder_pos` said nothing (owner decision, 16 Oct 2026). A name the
       // installer wrote replaces it at the connecting step, as before.
@@ -1656,7 +1656,7 @@ class SetupController extends Notifier<SetupDraft> {
     final only = branches.length == 1 ? branches.single : null;
 
     // Adopt by default when the dashboard already made a till for this tenant.
-    // Creating another beside it is how a two-seat restaurant ends up with
+    // Creating another beside it is how a two-seat business ends up with
     // four rows, so the wizard opens on the first one waiting and offers
     // "create a new one" as the deliberate alternative.
     final adoptable = result.terminals.where((t) => t.isAdoptable).toList();
@@ -1709,13 +1709,13 @@ class SetupController extends Notifier<SetupDraft> {
       claimed: true,
       branchId: claim.branchId,
       branchLabel: claim.branchName,
-      restaurantId: claim.restaurantId,
+      businessId: claim.businessId,
       branchCode: claim.branchCode,
       terminalName: claim.terminalName,
       terminalId: claim.terminalId,
-      // The restaurant's own language, from the bundle the claim carried. The
+      // The business's own language, from the bundle the claim carried. The
       // cloud path has no language screen any more: the dashboard was asked
-      // this when the restaurant was created, and asking the installer to
+      // this when the business was created, and asking the installer to
       // answer it again is how a till ends up in English in an Arabic kitchen.
       // Whoever is standing here still has the last word — the Settings bar's
       // switch is on every screen, including this one.
@@ -1727,7 +1727,7 @@ class SetupController extends Notifier<SetupDraft> {
     );
 
     // On screen as well as on the draft: the rest of this wizard, short as it
-    // now is, should already be in the restaurant's language rather than
+    // now is, should already be in the business's language rather than
     // switching at the moment the till opens.
     if (claim.defaultLanguage case final language?) {
       ref.read(localeProvider.notifier).apply(language);
@@ -1865,7 +1865,7 @@ class SetupController extends Notifier<SetupDraft> {
       notice = s.catalogueDownloadFailed(error);
     }
 
-    // The till's own lists, once there is a restaurant row to hang them on —
+    // The till's own lists, once there is a business row to hang them on —
     // which is only after the seed above landed. A failure is a notice for the
     // same reason the seed's is; "Try again" here and "Download menu" on the
     // summary both run it again, and it upserts.
@@ -1890,7 +1890,7 @@ class SetupController extends Notifier<SetupDraft> {
 
     // The printer, detected rather than asked about. ONE is not a choice — it
     // is the printer on this machine — and the paper width, the drawer and the
-    // absence of a scanner are what every restaurant this ships to has. Two or
+    // absence of a scanner are what every business this ships to has. Two or
     // none is a genuine question, and `visibleSteps` puts the hardware screen
     // back for it.
     var printers = const <DiscoveredPrinter>[];
@@ -1955,7 +1955,7 @@ class SetupController extends Notifier<SetupDraft> {
 
   /// Register a hand-configured terminal against the tenant.
   ///
-  /// **Failure does not block setup.** An installer standing in a restaurant
+  /// **Failure does not block setup.** An installer standing in a business
   /// with the server down must still be able to finish; the terminal registers
   /// at first sync instead. Tracking is the goal, but a dropped call during
   /// setup should not strand the person doing it.
@@ -2055,7 +2055,7 @@ class SetupController extends Notifier<SetupDraft> {
       busy: false,
       claimed: claim != null,
       terminalId: claim?.terminalId ?? state.terminalId,
-      restaurantId: claim?.restaurantId,
+      businessId: claim?.businessId,
       branchCode: claim?.branchCode,
       // An adopted terminal's branch and name are the dashboard's, not this
       // machine's — take what came back rather than leaving the guess on
@@ -2177,20 +2177,20 @@ class SetupController extends Notifier<SetupDraft> {
   /// what it writes and, more to the point, what it deliberately does not.
   ///
   /// After [_seedFromPlatform] and only after it: the rows reference the
-  /// restaurant the bundle created. Silent when there is nothing to do —
+  /// business the bundle created. Silent when there is nothing to do —
   /// an offline till seeded these in `bootstrapDatabase`, a child reads its
-  /// main device's, and a restaurant id the claim did not give means the
+  /// main device's, and a business id the claim did not give means the
   /// seed above never ran either.
   Future<void> _seedLocalDefaults() async {
     if (state.deployment.mode != DeploymentMode.cloud) return;
     if (state.deployment.isChild) return;
-    final restaurantId = state.restaurantId;
-    if (restaurantId == null || state.adminDatabasePassword.isEmpty) return;
+    final businessId = state.businessId;
+    if (businessId == null || state.adminDatabasePassword.isEmpty) return;
 
     await ref.read(cloudDefaultsSeederProvider)(
       state.deployment,
       state.adminDatabasePassword,
-      restaurantId,
+      businessId,
     );
   }
 
@@ -2200,7 +2200,7 @@ class SetupController extends Notifier<SetupDraft> {
     // Every step after the connection one reads the branch database: the branch
     // list, the pairing code, the first catalogue pull. They need the endpoint
     // and the credential, which is why those are published here rather than at
-    // the end of the wizard — but they also need the *restaurant*, and that is
+    // the end of the wizard — but they also need the *business*, and that is
     // not typed until the Sign in step two screens later. So this republishes on
     // every transition rather than once: a value typed on one step has to be in
     // force on the next, and going Back to change the address has to take.
@@ -2241,7 +2241,7 @@ class SetupController extends Notifier<SetupDraft> {
 /// A reason the catalogue cannot be pulled, phrased for the operator.
 ///
 /// Its own type so the pane shows the reason verbatim — a silent fallthrough
-/// here is how "not registered" once surfaced as "no restaurant named demo
+/// here is how "not registered" once surfaced as "no business named demo
 /// exists in this database", which sent the operator to check a database that
 /// was never the problem.
 class _CatalogueBlocked implements Exception {

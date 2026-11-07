@@ -5,9 +5,9 @@ import 'package:xorder_pos/domain/models/service_charge.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
-/// What a restaurant adds on top of the food (§38).
+/// What a business adds on top of the food (§38).
 ///
-/// The thing that had to stay true through this change is that a restaurant
+/// The thing that had to stay true through this change is that a business
 /// which has configured nothing is charged exactly what it was before — so the
 /// first group is arithmetic, and it is the reason the 31 Wave A money goldens
 /// still pass untouched.
@@ -45,7 +45,7 @@ void main() {
     isActive: isActive,
   );
 
-  group('a restaurant that has configured nothing', () {
+  group('a business that has configured nothing', () {
     test('is charged exactly what it was', () {
       // The single rate and the dine-in-only rule, untouched.
       const config = TaxConfig(serviceBp: 1200, vatBp: 1400);
@@ -65,7 +65,7 @@ void main() {
 
   group('a configured charge takes over', () {
     test('the old single rate stops applying', () {
-      // Not both. A restaurant that configures charges has said what it wants,
+      // Not both. A business that configures charges has said what it wants,
       // and adding the legacy rate underneath would be charging twice.
       final config = TaxConfig(
         serviceBp: 1200,
@@ -128,7 +128,7 @@ void main() {
 
   group('which orders it applies to', () {
     test('no order types named means every one', () {
-      // A restaurant that has not thought about it gets a charge that applies.
+      // A business that has not thought about it gets a charge that applies.
       // One that silently applied to nothing would be one somebody configured
       // and never saw.
       final config = TaxConfig(vatBp: 0, serviceCharges: [charge()]);
@@ -193,7 +193,7 @@ void main() {
 
     test('a non-taxable charge stays out of it entirely', () {
       // Not taxed at zero — those are different statements on a filing. A
-      // delivery fee collected for an aggregator is not the restaurant's
+      // delivery fee collected for an aggregator is not the business's
       // revenue to tax.
       final config = TaxConfig(
         vatBp: 1400,
@@ -235,7 +235,7 @@ void main() {
     });
 
     test('a fixed charge takes the ticket\'s currency, not a default', () {
-      // A Kuwaiti restaurant's 5.000 KWD fee must not arrive as EGP.
+      // A Kuwaiti business's 5.000 KWD fee must not arrive as EGP.
       const dinar = Money(0, currency: 'KWD', exponent: 3);
       final amount = charge(rateBp: null, fixedMinor: 5000).on(dinar);
       expect(amount.currency, 'KWD');

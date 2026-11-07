@@ -57,7 +57,7 @@ import 'report_breakdown_panes.dart';
 /// **Reached by PIN, not by being on the right screen.** Everything else in the
 /// app assumes whoever is standing there may do it — a till is a shared machine
 /// and asking a cashier to sign in before every sale is how a queue forms. This
-/// section is the exception: it changes what the restaurant sells, who works
+/// section is the exception: it changes what the business sells, who works
 /// there and what they may do, so it asks who is asking and checks before it
 /// opens.
 ///
@@ -116,7 +116,7 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// owner took them away as the bar's lines said twice (15 Sep 2026).
 ///
 /// [ManagementPane.receipt] is deliberately outside the authoring set: every
-/// terminal prints a slip with the restaurant's name and address on it, cloud
+/// terminal prints a slip with the business's name and address on it, cloud
 /// and offline alike, and only the write side needs Management's credential.
 /// Since CB-08 there is no write side at all on a cloud till — the platform
 /// authors the profile and the bundle carries it — and the pane still stays,
@@ -142,7 +142,7 @@ List<ManagementPane> managementPanesFor({
 /// **Money is not here.** Its tax rates are the platform's on a cloud till, but
 /// the payment methods and service charges Wave D put in the same pane are local
 /// on both deployments — so the pane gates its own top half rather than
-/// disappearing, and a cloud restaurant can still say how it takes money.
+/// disappearing, and a cloud business can still say how it takes money.
 ///
 /// **Buying and inventory are here, whatever the person holds** (CB-09, owner
 /// decision 2026-09-12, POS-BE-030). On cloud the platform is the only author
@@ -270,7 +270,7 @@ enum BackOfficeTab {
   /// BO-5's read model drawn by BO-6.
   reports,
 
-  /// What the restaurant sells.
+  /// What the business sells.
   menu,
 
   /// What it keeps, and what it is counted in.
@@ -288,7 +288,7 @@ enum BackOfficeTab {
   /// How this till behaves, what it keeps, and what happened on it.
   system,
 
-  /// The restaurant's configuration, and the people who work there.
+  /// The business's configuration, and the people who work there.
   settings,
 
   /// Who is signed in, and what to do about it (XORD-022-D): their name, who
@@ -333,7 +333,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   // machine, and Settings is where somebody goes to change a tax rate.
   // ETA here too, still hidden while `etaFilingEnabled` is false.
   // Dining areas & tables came here from Menu (XORD-022-B): where the tables
-  // are is the till's own layout, not what the restaurant sells.
+  // are is the till's own layout, not what the business sells.
   ManagementPane.floor ||
   ManagementPane.activity ||
   ManagementPane.backup ||
@@ -375,12 +375,12 @@ String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
 /// bar's Settings menu.
 ///
 /// **Orders & invoices settings holds five panes behind a side nav**: the
-/// restaurant's General profile — the name on every slip — and the rules an
+/// business's General profile — the name on every slip — and the rules an
 /// order and its invoice follow: order types, tax, service charges, payment
 /// methods. One line for them in the bar rather than five, because the map
 /// names one place; the side nav on the page is where the five are told apart.
 ///
-/// **Language and Appearance are this terminal's**, not the restaurant's: what
+/// **Language and Appearance are this terminal's**, not the business's: what
 /// they hold is written to this machine's config file, not the branch
 /// database. They are one card split in two (`ManagementAppearancePane`), and
 /// the till's own Settings menu keeps its two quick toggles over the same

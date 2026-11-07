@@ -27,18 +27,18 @@ import '../shift/presentation/shift_dialogs.dart';
 /// before a shift it shows only Start shift.
 ///
 /// **The list of order types is not decided here.** It is
-/// `branchOrderTypesProvider` — the restaurant's active types in the order it
+/// `branchOrderTypesProvider` — the business's active types in the order it
 /// sorted them, intersected with what the branch may sell — which is already
 /// what the sale screen's mode switch shows. Turn a type off in the back office
 /// and its button goes; turn one on and it arrives, with no restart. The names
-/// are the restaurant's own (`OrderTypeConfig.displayName`), falling back to the
+/// are the business's own (`OrderTypeConfig.displayName`), falling back to the
 /// product's words.
 ///
 /// **A branch that sells one way and has a shift open never sees this
 /// screen.** The router skips it (`afterSignIn`), so a café, a food truck or a
 /// delivery-only kitchen goes where Start sent it before. This screen also
 /// forwards by itself if the list turns out to hold one type with a shift open —
-/// the restaurant's configuration can arrive a beat after Start has decided.
+/// the business's configuration can arrive a beat after Start has decided.
 ///
 /// **Close the day** is shown only while a trading day is open and only when the
 /// signed-in staff member holds `day.close`. Hiding it is courtesy; the dialog

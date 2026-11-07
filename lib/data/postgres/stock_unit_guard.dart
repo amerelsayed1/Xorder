@@ -25,20 +25,20 @@ abstract final class StockUnitGuard {
   /// Only an actual change is checked, exactly as the trigger's `WHEN` is: a
   /// branch that ran an older build may hold stock in a unit that already
   /// disagrees with the item, and refusing every rename of it until then would
-  /// punish the restaurant for a defect it did not write.
+  /// punish the business for a defect it did not write.
   static Future<StockHeldInAnotherUnit?> check(
     TxSession tx, {
-    required int restaurantId,
+    required int businessId,
     required int productId,
     required QuantityUnit unit,
   }) async {
     final current = await tx.execute(
       Sql.named(
         "SELECT name_en, coalesce(nullif(trim(stock_unit), ''), 'ea') "
-        'FROM pos_products WHERE id = @p AND restaurant_id = @r '
+        'FROM pos_products WHERE id = @p AND business_id = @r '
         'FOR NO KEY UPDATE',
       ),
-      parameters: {'p': productId, 'r': restaurantId},
+      parameters: {'p': productId, 'r': businessId},
     );
     // Gone: the caller's UPDATE finds nothing and says so in its own words.
     if (current.isEmpty) return null;
@@ -47,11 +47,11 @@ abstract final class StockUnitGuard {
     final held = await tx.execute(
       Sql.named(
         'SELECT quantity_milli, unit FROM pos_stock_levels '
-        'WHERE product_id = @p AND restaurant_id = @r '
+        'WHERE product_id = @p AND business_id = @r '
         '  AND quantity_milli <> 0 AND unit <> @unit '
         'ORDER BY branch_id LIMIT 1',
       ),
-      parameters: {'p': productId, 'r': restaurantId, 'unit': unit.wire},
+      parameters: {'p': productId, 'r': businessId, 'unit': unit.wire},
     );
     if (held.isEmpty) return null;
 

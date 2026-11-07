@@ -36,7 +36,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late String terminalId;
   late PosStaff sara;
@@ -47,30 +47,30 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     // The ledger goes first. `pos_orders` references `pos_shifts`, and orders
-    // are deliberately not cascade-deleted from a restaurant — a sale is a
+    // are deliberately not cascade-deleted from a business — a sale is a
     // record of money that moved, not a child of the configuration that
     // described it.
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('shift-test', 'Shift Test') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('shift-test', 'Shift Test') RETURNING id",
     );
-    restaurantId = restaurant.first[0] as int;
+    businessId = business.first[0] as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) VALUES (@r, 'SHF', 'Shift') RETURNING id",
-      parameters: {'r': restaurantId},
+      "INSERT INTO pos_branches (business_id, code, name) VALUES (@r, 'SHF', 'Shift') RETURNING id",
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0] as int;
 
     final terminal = await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (gen_random_uuid(), @r, @b, 'Counter 1') RETURNING id::text",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     );
     terminalId = terminal.first[0] as String;
 
@@ -78,10 +78,10 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash) '
         'VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'n': name,
           'u': username,
@@ -112,7 +112,7 @@ void main() {
   PostgresShiftRepository shifts() => PostgresShiftRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
       );
@@ -155,7 +155,7 @@ void main() {
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
         branchCode: 'SHF',
@@ -196,9 +196,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, opened_by) '
+          'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by) '
           'VALUES (@r, @b, @t, @s)',
-          parameters: {'r': restaurantId, 'b': branchId, 't': terminalId, 's': omar.id},
+          parameters: {'r': businessId, 'b': branchId, 't': terminalId, 's': omar.id},
         ),
         throwsA(isA<PosDbException>()),
       );
@@ -209,14 +209,14 @@ void main() {
 
       final second = await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         "VALUES (gen_random_uuid(), @r, @b, 'Counter 2') RETURNING id::text",
-        parameters: {'r': restaurantId, 'b': branchId},
+        parameters: {'r': businessId, 'b': branchId},
       );
       final other = PostgresShiftRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: second.first[0] as String,
       );
@@ -444,9 +444,9 @@ void main() {
     Future<String> terminal(String name, {int? branch}) async {
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (gen_random_uuid(), @r, @b, @n) RETURNING id::text',
-        parameters: {'r': restaurantId, 'b': branch ?? branchId, 'n': name},
+        parameters: {'r': businessId, 'b': branch ?? branchId, 'n': name},
       );
       return row.first[0] as String;
     }
@@ -455,7 +455,7 @@ void main() {
         PostgresShiftRepository(
           database: db,
           config: pg.config,
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branch ?? branchId,
           terminalId: terminalId,
         );
@@ -487,22 +487,22 @@ void main() {
       await shifts().open(by: sara, openingFloat: Money(20000));
       await on(second).open(by: omar, openingFloat: Money.zero);
 
-      // A drawer at another branch of the same restaurant, opened LATER than
+      // A drawer at another branch of the same business, opened LATER than
       // anything here — so a query that forgot the branch would both count
       // it and move Sara's last shift onto it.
       final elsewhere = (await db.query(
         pg.config,
-        "INSERT INTO pos_branches (restaurant_id, code, name) "
+        "INSERT INTO pos_branches (business_id, code, name) "
         "VALUES (@r, 'OTH', 'Other') RETURNING id",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       )).first[0] as int;
       await db.query(
         pg.config,
-        'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, '
+        'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, '
         '  opened_by, opened_at) '
         "VALUES (@r, @b, @t, @s, now() + interval '1 hour')",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': elsewhere,
           't': await terminal('Other 1', branch: elsewhere),
           's': sara.id,
@@ -589,7 +589,7 @@ void main() {
         database: db,
         config: pg.config,
         context: PosWriteContext(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           terminalId: terminalId,
           branchCode: 'SHF',
@@ -625,7 +625,7 @@ void main() {
         database: db,
         config: pg.config,
         context: PosWriteContext(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           terminalId: terminalId,
           branchCode: 'SHF',
@@ -643,7 +643,7 @@ void main() {
       final audit = PostgresAuditRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
       );
@@ -661,8 +661,8 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT shift_id FROM pos_audit_events '
-        "WHERE restaurant_id = @r AND entity_id = '1042'",
-        parameters: {'r': restaurantId},
+        "WHERE business_id = @r AND entity_id = '1042'",
+        parameters: {'r': businessId},
       );
       expect(rows.single[0], second.id);
     });

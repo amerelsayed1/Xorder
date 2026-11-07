@@ -30,7 +30,7 @@ class EtaReconcileReport {
 
   /// Why filing stopped, when something a person can fix stopped it: a
   /// half-typed profile, or the queue refusing a write. Null when all is well
-  /// — including on a restaurant that has not set filing up at all.
+  /// — including on a business that has not set filing up at all.
   final EtaFilingSkipped? problem;
 }
 
@@ -112,7 +112,7 @@ class EtaFiler implements EtaFilingPort {
     final profile = await _profile();
     final blocked = _blocked(profile);
     if (blocked != null) {
-      // Blank is a restaurant that is not filing: quiet. Half-typed is one
+      // Blank is a business that is not filing: quiet. Half-typed is one
       // that means to and cannot yet: said out loud, every pass.
       return EtaReconcileReport(
         problem: blocked is ProfileIncomplete ? blocked : null,

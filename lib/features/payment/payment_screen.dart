@@ -31,7 +31,7 @@ import '../admin/presentation/supervisor_override.dart';
 /// The keypad's clear key, by identity rather than by caption.
 const _clearKey = 'CLR';
 
-/// The tender types this till offers — now read from the restaurant, not from
+/// The tender types this till offers — now read from the business, not from
 /// this file.
 ///
 /// It was a constant here, then a constant in [TenderMethod], and since §40 it

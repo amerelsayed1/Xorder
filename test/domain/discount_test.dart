@@ -210,7 +210,7 @@ void main() {
 
     test('naming both a product and a category means either', () {
       // "10% off Grills" and "10% off the Mixed Grill" are both things a
-      // restaurant says, and one naming both means either.
+      // business says, and one naming both means either.
       const targets = DiscountTargets(categoryIds: {7}, productIds: {42});
       expect(targets.allowsProduct(productId: 42, categoryId: 9), isTrue);
       expect(targets.allowsProduct(productId: 1, categoryId: 7), isTrue);

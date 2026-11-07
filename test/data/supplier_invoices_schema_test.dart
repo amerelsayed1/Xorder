@@ -36,7 +36,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresSupplierInvoicesRepository ledger;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int supplierId;
   late int otherSupplierId;
@@ -99,64 +99,64 @@ void main() {
     pg = await PgFixture.open('supplier_invoices');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_restaurants (slug, name) VALUES ('si', 'SI') RETURNING id",
+              "INSERT INTO pos_businesses (slug, name) VALUES ('si', 'SI') RETURNING id",
             )).first[0]!
             as int;
     branchId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_branches (restaurant_id, code, name) '
+              'INSERT INTO pos_branches (business_id, code, name) '
               "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]!
             as int;
     supplierId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_suppliers (restaurant_id, name_en, payment_term_days) '
+              'INSERT INTO pos_suppliers (business_id, name_en, payment_term_days) '
               "VALUES (@r, 'Nile Dairy', 30) RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]!
             as int;
     otherSupplierId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_suppliers (restaurant_id, name_en) '
+              'INSERT INTO pos_suppliers (business_id, name_en) '
               "VALUES (@r, 'Cairo Meats') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]!
             as int;
 
     // **Seeded the way a real install seeds them.** Migration 31's CROSS JOIN
-    // can only see restaurants that already existed, and this fixture creates
-    // one afterwards — the same gap that left a freshly installed restaurant
+    // can only see businesses that already existed, and this fixture creates
+    // one afterwards — the same gap that left a freshly installed business
     // with no payment methods. Going through `LocalBootstrap` is what proves
     // the new scopes are on its list.
-    await LocalBootstrap(db).seedReasonCodes(pg.config, restaurantId);
+    await LocalBootstrap(db).seedReasonCodes(pg.config, businessId);
 
     invoiceVoidReason = (await db.query(
       pg.config,
-      "SELECT id FROM pos_reason_codes WHERE restaurant_id = @r "
+      "SELECT id FROM pos_reason_codes WHERE business_id = @r "
       "AND scope = 'invoice_void' AND code = 'entered_twice'",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     paymentVoidReason = (await db.query(
       pg.config,
-      "SELECT id FROM pos_reason_codes WHERE restaurant_id = @r "
+      "SELECT id FROM pos_reason_codes WHERE business_id = @r "
       "AND scope = 'payment_void' AND code = 'wrong_invoice'",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     ledger = PostgresSupplierInvoicesRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
 
@@ -164,9 +164,9 @@ void main() {
     terminalId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+              'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
               "VALUES (gen_random_uuid(), @r, @b, 'Counter 1') RETURNING id::text",
-              parameters: {'r': restaurantId, 'b': branchId},
+              parameters: {'r': businessId, 'b': branchId},
             )).first[0]!
             as String;
 
@@ -174,10 +174,10 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         '  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'n': name,
           'u': username,
@@ -194,7 +194,7 @@ void main() {
     shifts = PostgresShiftRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminalId,
     );
@@ -332,7 +332,7 @@ void main() {
     });
 
     test('two suppliers may use the same number', () async {
-      // Numbering is the supplier's, not the restaurant's.
+      // Numbering is the supplier's, not the business's.
       await enter(draft(number: '1001'));
       await enter(draft(number: '1001', supplier: otherSupplierId));
       expect((await ledger.all()).length, 2);
@@ -350,7 +350,7 @@ void main() {
 
     test('the invoice date is what was typed, not when it was typed', () async {
       // An invoice dated the 3rd and entered on the 20th is due from the 3rd.
-      // Stamping `now()` would hand the restaurant weeks the supplier has not
+      // Stamping `now()` would hand the business weeks the supplier has not
       // agreed to.
       final saved = await enter(draft(issued: 3, due: 33));
       expect(saved.issuedAt.toUtc(), day(3));
@@ -365,17 +365,17 @@ void main() {
       expect(result.succeeded, isFalse);
     });
 
-    test('a supplier from another restaurant is refused', () async {
+    test('a supplier from another business is refused', () async {
       final elsewhere =
           (await db.query(
                 pg.config,
-                "INSERT INTO pos_restaurants (slug, name) VALUES ('x', 'X') RETURNING id",
+                "INSERT INTO pos_businesses (slug, name) VALUES ('x', 'X') RETURNING id",
               )).first[0]!
               as int;
       final theirs =
           (await db.query(
                 pg.config,
-                "INSERT INTO pos_suppliers (restaurant_id, name_en) "
+                "INSERT INTO pos_suppliers (business_id, name_en) "
                 "VALUES (@r, 'Theirs') RETURNING id",
                 parameters: {'r': elsewhere},
               )).first[0]!
@@ -498,11 +498,11 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
+          'INSERT INTO pos_supplier_payments (business_id, branch_id, '
           '  supplier_id, supplier_name, invoice_id, method, amount_minor) '
           "VALUES (@r, @b, @s, 'Nile Dairy', @i, 'cash', 150000)",
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             's': supplierId,
             'i': bill.id,
@@ -542,11 +542,11 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
+          'INSERT INTO pos_supplier_payments (business_id, branch_id, '
           '  supplier_id, supplier_name, invoice_id, method, amount_minor) '
           "VALUES (@r, @b, @s, 'Nile Dairy', @i, 'cash', 1000)",
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             's': supplierId,
             'i': theirs.id,
@@ -591,7 +591,7 @@ void main() {
 
     test('a payment nobody said came out of the till touches no drawer', () async {
       // The default, and it has to stay the default: recording what the
-      // restaurant paid is not the same as saying money left a till, and a
+      // business paid is not the same as saying money left a till, and a
       // bookkeeper typing up last week's receipt book must not take today's
       // drawer down. Cash as the method changes nothing on its own.
       final paid = await settle(amountMinor: 50000, invoiceId: null);
@@ -636,7 +636,7 @@ void main() {
     });
 
     test('the shift expects that much less in the drawer', () async {
-      // The whole point. A restaurant that pays its vegetable man 500 out of the
+      // The whole point. A business that pays its vegetable man 500 out of the
       // till used to have a drawer 500 short at cash-up with nothing explaining
       // it.
       final before = await expectedCash();
@@ -647,15 +647,15 @@ void main() {
       expect(await expectedCash(), const Money(-30000));
     });
 
-    test('the pay-out is reported under the restaurant\'s own supplier reason', () async {
+    test('the pay-out is reported under the business\'s own supplier reason', () async {
       // `ReasonScope.payOut` already had the right answer on it since migration
       // 14. Inventing a code would have meant a Z report with a pay-out nobody's
       // reason list could account for.
       final supplierReason = (await db.query(
         pg.config,
-        "SELECT id FROM pos_reason_codes WHERE restaurant_id = @r "
+        "SELECT id FROM pos_reason_codes WHERE business_id = @r "
         "AND scope = 'pay_out' AND code = 'supplier'",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       )).first[0]! as int;
 
       await payFromTheTill(amountMinor: 50000);
@@ -688,7 +688,7 @@ void main() {
     });
 
     test('paying out of a drawer needs the drawer key as well as the purchase one', () async {
-      // Two authorities. A bookkeeper who may say what the restaurant owes is
+      // Two authorities. A bookkeeper who may say what the business owes is
       // not automatically somebody who may reach into a till.
       final result = await payFromTheTill(amountMinor: 50000, by: bookkeeper);
       expect(result.refusal, isA<NotPermitted>());
@@ -732,20 +732,20 @@ void main() {
     test('another branch\'s shift is not this branch\'s drawer', () async {
       final elsewhere = (await db.query(
         pg.config,
-        'INSERT INTO pos_branches (restaurant_id, code, name) '
+        'INSERT INTO pos_branches (business_id, code, name) '
         "VALUES (@r, 'TWO', 'Two') RETURNING id",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       )).first[0]! as int;
       final theirTerminal = (await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         "VALUES (gen_random_uuid(), @r, @b, 'Counter 2') RETURNING id::text",
-        parameters: {'r': restaurantId, 'b': elsewhere},
+        parameters: {'r': businessId, 'b': elsewhere},
       )).first[0]! as String;
       final theirShift = await PostgresShiftRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: elsewhere,
         terminalId: theirTerminal,
       ).open(by: manager, openingFloat: const Money(10000));
@@ -773,7 +773,7 @@ void main() {
     });
 
     test('with no pay-out reason on file, nothing is written at all', () async {
-      // The restaurant edited its list down to nothing this could be reported
+      // The business edited its list down to nothing this could be reported
       // under. Refused rather than recorded with a null reason: a pay-out that
       // appears on a Z report under no heading is a number a manager cannot
       // account for, which is where this started.
@@ -785,8 +785,8 @@ void main() {
       await db.query(
         pg.config,
         "UPDATE pos_reason_codes SET is_active = false "
-        "WHERE restaurant_id = @r AND scope = 'pay_out' AND code = 'supplier'",
-        parameters: {'r': restaurantId},
+        "WHERE business_id = @r AND scope = 'pay_out' AND code = 'supplier'",
+        parameters: {'r': businessId},
       );
 
       final result = await payFromTheTill(amountMinor: 50000);
@@ -800,11 +800,11 @@ void main() {
       // next one — a hand-written UPDATE included.
       final payIn = (await db.query(
         pg.config,
-        'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+        'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
         '  shift_id, kind, amount_minor, user_id) '
         "VALUES (@r, @b, @t::uuid, @s, 'pay_in', 50000, @staff) RETURNING id",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminalId,
           's': openShift.id,
@@ -814,12 +814,12 @@ void main() {
 
       Future<void> pointAt(int movementId, int amountMinor) => db.query(
         pg.config,
-        'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
+        'INSERT INTO pos_supplier_payments (business_id, branch_id, '
         '  supplier_id, supplier_name, method, amount_minor, paid_at, '
         '  cash_movement_id) '
         "VALUES (@r, @b, @s, 'Nile Dairy', 'cash', @amount, now(), @m)",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           's': supplierId,
           'amount': amountMinor,
@@ -832,11 +832,11 @@ void main() {
 
       final payOut = (await db.query(
         pg.config,
-        'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+        'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
         '  shift_id, kind, amount_minor, user_id) '
         "VALUES (@r, @b, @t::uuid, @s, 'pay_out', 50000, @staff) RETURNING id",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminalId,
           's': openShift.id,
@@ -974,7 +974,7 @@ void main() {
       );
     });
 
-    test('a void carries one of the restaurant\'s own reason codes', () async {
+    test('a void carries one of the business\'s own reason codes', () async {
       // Not free text. "How many did we cancel for *entered twice* last month"
       // is the question that finds the process producing them, and a sentence
       // somebody typed cannot be counted.
@@ -990,24 +990,24 @@ void main() {
       expect(result.value!.voidNote, 'also on 900A');
     });
 
-    test('a reason from another restaurant is refused by the database', () async {
+    test('a reason from another business is refused by the database', () async {
       // The FK is what makes the count trustworthy: a reason id from somebody
       // else's vocabulary would be counted under their label.
       final elsewhere = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('z', 'Z') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('z', 'Z') RETURNING id",
       )).first[0]! as int;
       await LocalBootstrap(db).seedReasonCodes(pg.config, elsewhere);
       final theirReason = (await db.query(
         pg.config,
-        "SELECT id FROM pos_reason_codes WHERE restaurant_id = @r "
+        "SELECT id FROM pos_reason_codes WHERE business_id = @r "
         "AND scope = 'invoice_void' LIMIT 1",
         parameters: {'r': elsewhere},
       )).first[0]! as int;
 
       final bill = await enter(draft());
       // The reference itself is satisfied — both rows are in the same table —
-      // so this is the one cross-restaurant case the schema cannot catch, and
+      // so this is the one cross-business case the schema cannot catch, and
       // it is recorded here as a known limit rather than pretended away.
       final result = await ledger.voidInvoice(
         bill.id,
@@ -1199,7 +1199,7 @@ void main() {
         database: db,
         config: pg.config,
         adminAvailable: false,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
 
@@ -1212,18 +1212,18 @@ void main() {
       );
     });
 
-    test('another restaurant keeps its own ledger', () async {
+    test('another business keeps its own ledger', () async {
       await enter(draft());
       final elsewhere =
           (await db.query(
                 pg.config,
-                "INSERT INTO pos_restaurants (slug, name) VALUES ('y', 'Y') RETURNING id",
+                "INSERT INTO pos_businesses (slug, name) VALUES ('y', 'Y') RETURNING id",
               )).first[0]!
               as int;
       final theirBranch =
           (await db.query(
                 pg.config,
-                'INSERT INTO pos_branches (restaurant_id, code, name) '
+                'INSERT INTO pos_branches (business_id, code, name) '
                 "VALUES (@r, 'M', 'M') RETURNING id",
                 parameters: {'r': elsewhere},
               )).first[0]!
@@ -1233,7 +1233,7 @@ void main() {
         database: db,
         config: pg.config,
         adminAvailable: true,
-        restaurantId: elsewhere,
+        businessId: elsewhere,
         branchId: theirBranch,
       );
       expect(await theirs.all(), isEmpty);

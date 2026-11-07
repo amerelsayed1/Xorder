@@ -25,7 +25,7 @@ import 'receipt_printing.dart';
 /// **The slip is marked.** A reprint that looked identical to the original is a
 /// second document for one sale, and two identical receipts is how a refund
 /// gets claimed twice. `REPRINT — NOT AN ORIGINAL` goes across the top, before
-/// the restaurant's name, so somebody handed the paper knows what it is before
+/// the business's name, so somebody handed the paper knows what it is before
 /// they read what is on it.
 ///
 /// **And it is recorded.** `AuditAction.receiptReprinted` has existed as a

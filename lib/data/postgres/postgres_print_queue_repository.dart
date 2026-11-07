@@ -37,12 +37,12 @@ class PostgresPrintQueueRepository implements PrintQueueRepository {
   }) async {
     final rows = await _db.query(
       config,
-      'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_print_jobs (business_id, branch_id, terminal_id, '
       '  order_id, invoice_number, printer_name, kind, payload) '
-      'VALUES (@restaurant, @branch, @terminal, @order, @invoice, @printer, '
+      'VALUES (@business, @branch, @terminal, @order, @invoice, @printer, '
       '  @kind, @payload) RETURNING id',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
         'terminal': context.terminalId,
         'order': orderId,

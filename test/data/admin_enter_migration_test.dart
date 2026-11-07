@@ -13,7 +13,7 @@ import 'pg_fixture.dart';
 ///
 /// A branch server from before Admin Mode has an owner role without
 /// `admin.enter`, and nothing else would ever add it — the seed only runs for
-/// restaurants created afterwards. Without this the owner of every existing
+/// businesses created afterwards. Without this the owner of every existing
 /// install would be refused at their own back office.
 void main() {
   if (PgFixture.host == null) {
@@ -23,16 +23,16 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   setUp(() async {
     pg = await PgFixture.open('admin_enter');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('ae', 'AE') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('ae', 'AE') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -40,11 +40,11 @@ void main() {
 
   Future<void> role(String code, Set<String> capabilities) => db.query(
     pg.config,
-    'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+    'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
     '  capabilities, is_system) '
     'VALUES (@r, @code, @code, @code, @capabilities, true)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'code': code,
       'capabilities': capabilities.toList(),
     },
@@ -53,8 +53,8 @@ void main() {
   Future<Set<String>> held(String code) async => {
     ...((await db.query(
       pg.config,
-      'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @code',
-      parameters: {'r': restaurantId, 'code': code},
+      'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @code',
+      parameters: {'r': businessId, 'code': code},
     )).first[0]! as List).cast<String>(),
   };
 
@@ -94,8 +94,8 @@ void main() {
     await PosMigrator(db).migrate(pg.config);
     final owner = (await db.query(
       pg.config,
-      'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @code',
-      parameters: {'r': restaurantId, 'code': SystemRoles.ownerCode},
+      'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @code',
+      parameters: {'r': businessId, 'code': SystemRoles.ownerCode},
     )).first[0]! as List;
     expect(owner.where((c) => c == PosCapability.adminEnter), hasLength(1));
   });

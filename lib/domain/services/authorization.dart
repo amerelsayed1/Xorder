@@ -7,7 +7,7 @@ import '../models/shift.dart';
 /// Three outcomes rather than a boolean, because *no* and *not without a
 /// supervisor* lead to completely different screens: one is a greyed-out button
 /// with an explanation, the other is a PIN prompt with somebody's manager
-/// walking over. Collapsing them would either hide a workflow the restaurant
+/// walking over. Collapsing them would either hide a workflow the business
 /// needs or offer an override for things nobody can override.
 sealed class PermissionDecision {
   const PermissionDecision();
@@ -260,7 +260,7 @@ abstract final class Authorization {
   /// permission anyway, it stays unspent.
   ///
   /// [approvalRequired] is for the acts that need a **second person** whoever
-  /// is doing them: a refund above the restaurant's threshold, somebody else's
+  /// is doing them: a refund above the business's threshold, somebody else's
   /// drawer. Holding the permission is then not enough, and the approver may
   /// not be the person asking — otherwise "a second person approved it" is a
   /// supervisor typing their own PIN twice.
@@ -333,7 +333,7 @@ abstract final class Authorization {
   /// Why a role cannot be saved as written, or null if it can.
   ///
   /// Two rules, both of them requirements rather than taste: the owner role
-  /// keeps everything, so a restaurant can always reach the screen that grants
+  /// keeps everything, so a business can always reach the screen that grants
   /// permissions; and a cashier role holds nothing from
   /// [PosCapability.backOffice], so the credential sitting on a machine in a
   /// public room cannot reprice the menu.

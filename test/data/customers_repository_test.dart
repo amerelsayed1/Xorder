@@ -13,7 +13,7 @@ import 'pg_fixture.dart';
 /// Migration 51 — who the food is for (POS-BE-014).
 ///
 /// The invariant the database is asked to keep is the one that matters: one
-/// person per number per restaurant. A till that writes a duplicate locally
+/// person per number per business. A till that writes a duplicate locally
 /// uploads a split the platform then has to merge, and a split directory is
 /// invisible until somebody asks how often a regular orders.
 /// Somebody who may add customers, and somebody who may sell but not add.
@@ -48,7 +48,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late PostgresCustomersRepository customers;
   late int branchId;
 
@@ -59,24 +59,24 @@ void main() {
     await db.query(pg.config, 'DELETE FROM pos_sync_outbox');
     await db.query(pg.config, 'DELETE FROM pos_customers');
     await db.query(pg.config, 'DELETE FROM pos_branches');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cust', 'Cust') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cust', 'Cust') "
       'RETURNING id',
     )).first[0] as int;
 
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'C1', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0] as int;
 
     customers = PostgresCustomersRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
   });
 
@@ -142,7 +142,7 @@ void main() {
       final cloud = PostgresCustomersRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         syncsToPlatform: true,
       );
@@ -172,16 +172,16 @@ void main() {
       // platform has to resolve for nothing.
       await db.query(
         pg.config,
-        'INSERT INTO pos_customers (restaurant_id, client_transaction_id, '
+        'INSERT INTO pos_customers (business_id, client_transaction_id, '
         "  platform_id, name, phone) "
         "VALUES (@r, gen_random_uuid(), 77, 'Seeded', '01099999999')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       final cloud = PostgresCustomersRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         syncsToPlatform: true,
       );
@@ -196,10 +196,10 @@ void main() {
     });
   });
 
-  test('another restaurant on the same branch server is invisible', () async {
+  test('another business on the same branch server is invisible', () async {
     final other = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') "
       'RETURNING id',
     )).first[0] as int;
 
@@ -207,11 +207,11 @@ void main() {
     await PostgresCustomersRepository(
       database: db,
       config: pg.config,
-      restaurantId: other,
+      businessId: other,
     ).upsert(by: _owner, name: 'Theirs', phone: '01016943505');
 
-    // The same number in two restaurants is two people — the unique index is
-    // per restaurant, and a branch server can hold more than one.
+    // The same number in two businesses is two people — the unique index is
+    // per business, and a branch server can hold more than one.
     expect((await customers.search('')).single.name, 'Ours');
   });
 

@@ -5,7 +5,7 @@ import 'package:xorder_pos/domain/services/menu_import.dart';
 
 /// Reading a menu out of a spreadsheet.
 ///
-/// A restaurant arrives with four hundred items in Excel. What matters is not
+/// A business arrives with four hundred items in Excel. What matters is not
 /// the happy path — it is what happens on row 47 when the price says
 /// "forty-five", because that is the row that decides whether the operator
 /// trusts the feature or types the menu in by hand anyway.
@@ -214,7 +214,7 @@ void main() {
     });
 
     test('nothing is ever deleted', () {
-      // A product missing from the file is one the restaurant did not mention,
+      // A product missing from the file is one the business did not mention,
       // not one it wants gone. An import that could empty a menu is one nobody
       // should run on a Friday.
       final plan = read(

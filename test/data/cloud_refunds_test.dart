@@ -26,7 +26,7 @@ import 'pg_fixture.dart';
 ///
 /// **The defect behind this file.** Until 2026-09-22 the drain answered
 /// `'refund' => null` for every queued refund, and the writer never queued one
-/// — so a cloud restaurant's platform totals counted every sale and no money
+/// — so a cloud business's platform totals counted every sale and no money
 /// handed back. The reason was real: a refund names lines, and the till had
 /// only its own `pos_order_lines.id` while the platform wanted
 /// `order_items.id`. §010 closed it by accepting the till's own name for a
@@ -41,7 +41,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late DeploymentConfig cloud;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
   late int approverId;
@@ -56,7 +56,7 @@ void main() {
 
   /// Somebody who may give money back on their own. A fixture with no role at
   /// all would be refused by the repository, and one with a hand-picked grant
-  /// would test a shape no restaurant has.
+  /// would test a shape no business has.
   const refunder = PosRole(
     id: 1,
     code: SystemRoles.supervisorCode,
@@ -75,31 +75,31 @@ void main() {
       'TRUNCATE pos_refunds, pos_orders, pos_outbox, pos_sync_outbox, '
       'pos_invoice_sequences, pos_shifts RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
     invoice = 0;
 
-    restaurantId =
+    businessId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('cloudref', 'Cloud Refunds') RETURNING id",
             )).first[0]
             as int;
     branchId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'MAADI', 'Maadi') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]
             as int;
 
     Future<int> staff(String name, String username) async => (await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, 'salt', 'hash') RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId, 'n': name, 'u': username},
+      parameters: {'r': businessId, 'b': branchId, 'n': name, 'u': username},
     )).first[0] as int;
 
     staffId = await staff('Nour Adel', 'nour');
@@ -108,10 +108,10 @@ void main() {
     reasonId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_reason_codes (restaurant_id, scope, code, '
+              'INSERT INTO pos_reason_codes (business_id, scope, code, '
               "  name_en) VALUES (@r, 'refund', 'quality', 'Quality problem') "
               'RETURNING id',
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]
             as int;
 
@@ -125,10 +125,10 @@ void main() {
     platformCash =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_tender_types (restaurant_id, platform_id, code, '
+              'INSERT INTO pos_tender_types (business_id, platform_id, code, '
               "  name_en, kind, counts_as_cash) "
               "VALUES (@r, 2, 'platform-2', 'Cash', 'cash', true) RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]
             as int;
   });
@@ -141,14 +141,14 @@ void main() {
     invoice++;
     return (await db.query(
           pg.config,
-          'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+          'INSERT INTO pos_orders (client_transaction_id, business_id, '
           '  branch_id, terminal_id, invoice_number, order_type, currency, '
           '  exponent, subtotal_minor, discount_minor, service_minor, '
           '  vat_minor, total_minor, occurred_at, status) '
           "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @invoice, 'dine_in', "
           "  'EGP', 2, @total, 0, 0, 0, @total, now(), @status) RETURNING id",
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             't': terminal,
             'invoice': 'T1-${invoice.toString().padLeft(6, '0')}',
@@ -195,8 +195,8 @@ void main() {
     return (await db.query(
           pg.config,
           'INSERT INTO pos_outbox (order_id, client_transaction_id, '
-          '  restaurant_id, branch_id) '
-          'SELECT id, client_transaction_id, restaurant_id, branch_id '
+          '  business_id, branch_id) '
+          'SELECT id, client_transaction_id, business_id, branch_id '
           'FROM pos_orders WHERE id = @o RETURNING id',
           parameters: {'o': orderId},
         )).first[0]
@@ -210,7 +210,7 @@ void main() {
     database: database ?? db,
     config: config ?? cloud,
     context: PosWriteContext(
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
       branchCode: 'MAADI',
@@ -427,7 +427,7 @@ void main() {
         final rows = await tx.execute(
           _insertRefundSql,
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             't': terminal,
             'o': orderId,
@@ -443,7 +443,7 @@ void main() {
           parameters: {'refund': id, 'line': lineId, 'type': platformCash},
         );
         await tx.execute(_insertRefundClaimSql, parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'source': id,
           'client': '77777777-7777-4777-8777-000000000009',
@@ -728,18 +728,18 @@ void main() {
         () async {
       await db.query(
         pg.config,
-        "INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) "
+        "INSERT INTO pos_terminals (id, business_id, branch_id, name) "
         "VALUES (@t::uuid, @r, @b, 'Counter 1')",
-        parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+        parameters: {'t': terminal, 'r': businessId, 'b': branchId},
       );
       final repository = repositoryOn();
 
       Future<int> openShift() async => (await db.query(
         pg.config,
-        'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, opened_by) '
+        'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by) '
         'VALUES (@r, @b, @t::uuid, @by) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminal,
           'by': staffId,
@@ -872,7 +872,7 @@ void main() {
 /// A refund written straight in, for the one test that needs an approver on the
 /// row without going through the approval flow.
 final _insertRefundSql = Sql.named(
-  'INSERT INTO pos_refunds (client_refund_id, restaurant_id, branch_id, '
+  'INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
   '  terminal_id, order_id, kind, subtotal_minor, service_minor, vat_minor, '
   '  total_minor, refunded_by, approved_by_id) '
   "VALUES (@client::uuid, @r, @b, @t::uuid, @o, 'partial', @total, 0, 0, "
@@ -889,7 +889,7 @@ final _insertRefundPartsSql = Sql.named(
 );
 
 final _insertRefundClaimSql = Sql.named(
-  'INSERT INTO pos_sync_outbox (restaurant_id, branch_id, event_type, '
+  'INSERT INTO pos_sync_outbox (business_id, branch_id, event_type, '
   "  source_id, client_transaction_id) "
   "VALUES (@r, @b, 'refund', @source, @client::uuid)",
 );

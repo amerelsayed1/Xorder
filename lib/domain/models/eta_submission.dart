@@ -42,7 +42,7 @@ enum EtaStatus {
     orElse: () => throw ArgumentError.value(value, 'status', 'unknown'),
   );
 
-  /// Still the restaurant's problem.
+  /// Still the business's problem.
   bool get isOutstanding => this != accepted && this != cancelled;
 
   /// Nothing more will happen without a person.

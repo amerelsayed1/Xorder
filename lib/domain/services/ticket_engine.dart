@@ -512,12 +512,12 @@ abstract final class TicketEngine {
   /// Leaving dine-in detaches the table — a bill never follows a mode switch.
   /// This is a rule from the design sheet and it exists because the alternative
   /// silently moves a seated party's money onto a takeaway ticket.
-  /// [seated] is whether the new type has tables, from the restaurant's own
+  /// [seated] is whether the new type has tables, from the business's own
   /// configuration (§31).
   ///
   /// Passed in rather than compared against `OrderType.dineIn` here: the engine
   /// is pure and cannot read a table, and "is this dine-in" was never the
-  /// question — "does this kind of order have a table" was. A restaurant that
+  /// question — "does this kind of order have a table" was. A business that
   /// seats a catering order could not previously say so.
   ///
   /// Defaults to false, which is the safe direction. A ticket that wrongly
@@ -1030,7 +1030,7 @@ abstract final class TicketEngine {
     );
   }
 
-  /// A discount a person typed rather than one the restaurant configured.
+  /// A discount a person typed rather than one the business configured.
   ///
   /// SRS §16 `DISCOUNT.CUSTOM_VALUE`. It carries no `discountId` — there is no
   /// configuration behind it — and everything about it therefore has to be

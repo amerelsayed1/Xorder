@@ -26,10 +26,10 @@ import 'postgres_orders_repository.dart' show PosWriteContext;
 /// one writer and left null by the other.
 abstract final class CashMovementWrite {
   static const sql =
-      'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
       '  shift_id, business_day_id, kind, amount_minor, reason_id, note, '
       '  user_id, approved_by_id, client_transaction_id) '
-      'VALUES (@restaurant, @branch, @terminal, @shift, @day, @kind, @amount, '
+      'VALUES (@business, @branch, @terminal, @shift, @day, @kind, @amount, '
       '  @reason, @note, @staff, @approvedBy, @client) '
       'RETURNING id, occurred_at';
 
@@ -51,7 +51,7 @@ abstract final class CashMovementWrite {
   }
 
   static Map<String, Object?> parameters({
-    required int restaurantId,
+    required int businessId,
     required int branchId,
     required String terminalId,
     required int shiftId,
@@ -64,7 +64,7 @@ abstract final class CashMovementWrite {
     int? approvedById,
     String? clientTransactionId,
   }) => {
-    'restaurant': restaurantId,
+    'business': businessId,
     'branch': branchId,
     'terminal': terminalId,
     'shift': shiftId,
@@ -172,7 +172,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
       final inserted = await tx.execute(
         Sql.named(CashMovementWrite.sql),
         parameters: CashMovementWrite.parameters(
-          restaurantId: context.restaurantId,
+          businessId: context.businessId,
           branchId: context.branchId,
           terminalId: context.terminalId,
           shiftId: shiftId,
@@ -190,12 +190,12 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
         await tx.execute(
           Sql.named('''
             INSERT INTO pos_sync_outbox
-              (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
-            VALUES (@restaurant, @branch, 'cash_movement', @source, @client)
-            ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+              (business_id, branch_id, event_type, source_id, client_transaction_id)
+            VALUES (@business, @branch, 'cash_movement', @source, @client)
+            ON CONFLICT (business_id, client_transaction_id) DO NOTHING
           '''),
           parameters: {
-            'restaurant': context.restaurantId,
+            'business': context.businessId,
             'branch': context.branchId,
             'source': inserted.first[0] as int,
             'client': clientId,
@@ -255,7 +255,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     );
     final terminal = filter.terminalId;
     final where = [
-      'm.restaurant_id = @restaurant',
+      'm.business_id = @business',
       'm.branch_id = @branch',
       'm.kind = ANY(@kinds)',
       ...range.where,
@@ -269,7 +269,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
       'WHERE ${where.join(' AND ')} '
       'ORDER BY m.occurred_at DESC, m.id DESC',
       parameters: {
-        'restaurant': context.restaurantId,
+        'business': context.businessId,
         'branch': context.branchId,
         'kinds': [for (final kind in kinds) kind.wire],
         ...range.parameters,

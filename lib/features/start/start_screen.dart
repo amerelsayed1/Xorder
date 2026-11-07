@@ -147,12 +147,12 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // XOrder's mark, with the restaurant's own logo under it when it has
-        // one (XORD-021), above the restaurant's name.
+        // XOrder's mark, with the business's own logo under it when it has
+        // one (XORD-021), above the business's name.
         const Center(child: StartLogo()),
         const SizedBox(height: PosSpace.s28),
         // The name stays under the logo: it is what the receipt and every other
-        // screen call the restaurant, and a logo may be a bare symbol.
+        // screen call the business, and a logo may be a bare symbol.
         Text(
           session.tenantName.toUpperCase(),
           textAlign: TextAlign.center,
@@ -350,7 +350,7 @@ class _StartScreenState extends ConsumerState<StartScreen> {
 
   /// Branch and till: one row of cells on 1px shellLine gaps.
   ///
-  /// Not the restaurant — it is the heading directly above, and a cell saying
+  /// Not the business — it is the heading directly above, and a cell saying
   /// it again under the heading was the same name twice. Not the menu either:
   /// how many items are cached is nothing whoever opens the shift acts on.
   Widget _identityGrid(
@@ -415,11 +415,11 @@ class _StartScreenState extends ConsumerState<StartScreen> {
 }
 
 /// The pictures at the top of the start screen: the XOrder mark, always, and
-/// under it the restaurant's own logo when it has one (XORD-021).
+/// under it the business's own logo when it has one (XORD-021).
 ///
-/// **The restaurant's logo never replaces the XOrder mark** (owner, 26 Oct
+/// **The business's logo never replaces the XOrder mark** (owner, 26 Oct
 /// 2026). It first did, which made every till look like a different product.
-/// The mark is the product's and stays; the logo is the restaurant's, smaller,
+/// The mark is the product's and stays; the logo is the business's, smaller,
 /// beneath it.
 ///
 /// **It cannot fail the screen.** The logo is read from the till's own database
@@ -436,7 +436,7 @@ class StartLogo extends ConsumerWidget {
     key: const Key('start-xorder-logo'),
     width: 180,
     fit: BoxFit.contain,
-    // The restaurant's name is right below; a missing asset is better absent
+    // The business's name is right below; a missing asset is better absent
     // than a broken-image glyph.
     errorBuilder: (context, error, stack) => const SizedBox.shrink(),
   );

@@ -31,7 +31,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late PostgresBusinessDayRepository days;
   late PosStaff nour;
@@ -48,30 +48,30 @@ void main() {
       'TRUNCATE pos_business_days, pos_orders, pos_shifts, '
       '  pos_parked_tickets RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('bdo', 'Day Opening') RETURNING id",
             )).first[0]
             as int;
     branchId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'BD1', 'Main') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]
             as int;
     final staffId =
         (await db.query(
               pg.config,
-              'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+              'INSERT INTO pos_users (business_id, branch_id, name, '
               "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
               "  'nour', 'salt', 'hash') RETURNING id",
-              parameters: {'r': restaurantId, 'b': branchId},
+              parameters: {'r': businessId, 'b': branchId},
             )).first[0]
             as int;
     nour = PosStaff(
@@ -86,16 +86,16 @@ void main() {
     );
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1') ON CONFLICT (id) DO NOTHING",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
 
     days = PostgresBusinessDayRepository(
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminal,
         branchCode: 'BD1',
@@ -107,11 +107,11 @@ void main() {
 
   Future<Object?> shiftDay() async => (await db.query(
     pg.config,
-    'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, opened_by, '
+    'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by, '
     '  opening_float_minor) VALUES (@r, @b, @t::uuid, @by, 0) '
     'RETURNING business_day_id',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branchId,
       't': terminal,
       'by': nour.id,

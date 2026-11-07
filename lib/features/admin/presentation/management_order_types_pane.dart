@@ -19,11 +19,11 @@ import 'order_type_dialog.dart';
 /// **The pane that deleted a comparison.** `type == OrderType.dineIn` used to
 /// appear in the router, the cart panel and the ticket engine, and in all three
 /// what it meant was *"does this kind of order have a table"*. Migration 25 made
-/// that a row; this is where a restaurant finally sets it.
+/// that a row; this is where a business finally sets it.
 ///
 /// Four rows and no "new" button. The codes are an enum and every place that
 /// renders an order type reads its name off that enum, so a fifth would have
-/// nowhere to appear — see `OrderTypeConfig`. What a restaurant wants here is its
+/// nowhere to appear — see `OrderTypeConfig`. What a business wants here is its
 /// own words for the four, and to turn off the ones it does not sell.
 class ManagementOrderTypesPane extends ConsumerStatefulWidget {
   const ManagementOrderTypesPane({required this.admin, super.key});
@@ -62,7 +62,7 @@ class _ManagementOrderTypesPaneState
   /// Turn one on or off without opening it.
   ///
   /// It was always possible — the editor has the switch — and that is one tap
-  /// too deep for the thing a restaurant changes most: Ramadan starts and
+  /// too deep for the thing a business changes most: Ramadan starts and
   /// delivery goes on, the dining room closes for a refit and seating goes off.
   /// A pane you have to open a row inside to answer "what do we sell today"
   /// reads as a pane that cannot answer it.

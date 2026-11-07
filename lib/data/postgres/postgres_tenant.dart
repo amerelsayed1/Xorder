@@ -1,10 +1,10 @@
 import '../../core/config/deployment.dart';
 import 'pos_database.dart';
 
-/// The restaurant a till is working for.
+/// The business a till is working for.
 ///
 /// Every read repository needs this before it can ask anything, because every
-/// table under migration 2 is scoped to a restaurant. It is resolved from the
+/// table under migration 2 is scoped to a business. It is resolved from the
 /// tenant slug the operator typed at setup — `mahsoub` in `mahsoub.xorder.io` —
 /// which is also the only tenant identifier available *during* setup, before a
 /// terminal has been claimed and a numeric id is known.
@@ -22,7 +22,7 @@ class PosTenant {
   final String? taxNumber;
 }
 
-/// Thrown when the configured tenant slug matches no restaurant.
+/// Thrown when the configured tenant slug matches no business.
 ///
 /// A distinct type because it is an ordinary operator mistake — a typo in the
 /// wizard, or a database that was never seeded — and the UI should say which,
@@ -36,9 +36,9 @@ class PosTenantMissing implements Exception {
   String toString() {
     final name = slug;
     return name == null || name.isEmpty
-        ? 'No restaurant is configured for this terminal. Set the restaurant '
+        ? 'No business is configured for this terminal. Set the business '
               'short name in Settings.'
-        : 'No restaurant named "$name" exists in this database. Check the short '
+        : 'No business named "$name" exists in this database. Check the short '
               'name, or seed it with bin/pos_migrate.dart --seed.';
   }
 }
@@ -64,7 +64,7 @@ class PosTenantResolver {
 
     final rows = await _db.query(
       _config,
-      'SELECT id, name, name_ar, tax_number FROM pos_restaurants '
+      'SELECT id, name, name_ar, tax_number FROM pos_businesses '
       'WHERE slug = @slug AND is_active',
       parameters: {'slug': slug},
     );

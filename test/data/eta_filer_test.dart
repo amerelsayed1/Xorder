@@ -48,7 +48,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
   late int cashTender;
@@ -72,7 +72,7 @@ void main() {
 
     final order =
         await ex(
-              'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+              'INSERT INTO pos_orders (client_transaction_id, business_id, '
               '  branch_id, terminal_id, invoice_number, order_type, currency, '
               '  exponent, subtotal_minor, discount_minor, service_minor, '
               '  vat_minor, total_minor, occurred_at, status) '
@@ -80,7 +80,7 @@ void main() {
               "  'takeaway', 'EGP', 2, 10000, 0, 0, 1400, 11400, @at, @status) "
               'RETURNING id',
               {
-                'r': restaurantId,
+                'r': businessId,
                 'b': branchId,
                 't': terminal,
                 'inv': invoice,
@@ -139,7 +139,7 @@ void main() {
     final refund =
         (await tx.execute(
               Sql.named(
-                'INSERT INTO pos_refunds (client_refund_id, restaurant_id, '
+                'INSERT INTO pos_refunds (client_refund_id, business_id, '
                 '  branch_id, terminal_id, order_id, kind, subtotal_minor, '
                 '  discount_minor, service_minor, vat_minor, total_minor, '
                 '  refunded_by, occurred_at) '
@@ -148,7 +148,7 @@ void main() {
                 'RETURNING id',
               ),
               parameters: {
-                'r': restaurantId,
+                'r': businessId,
                 'b': branchId,
                 't': mine,
                 'o': orderId,
@@ -209,50 +209,50 @@ void main() {
       '  pos_refund_lines, pos_refunds, pos_order_payments, pos_order_taxes, '
       '  pos_order_lines, pos_orders RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         await one(
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('eta-filer', 'ETA Filer') RETURNING id",
             )
             as int;
     branchId =
         await one(
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
     staffId =
         await one(
-              'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+              'INSERT INTO pos_users (business_id, branch_id, name, '
               "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
               "  'nour', 'salt', 'hash') RETURNING id",
-              {'r': restaurantId, 'b': branchId},
+              {'r': businessId, 'b': branchId},
             )
             as int;
     cashTender =
         await one(
-              'INSERT INTO pos_tender_types (restaurant_id, code, name_en, '
+              'INSERT INTO pos_tender_types (business_id, code, name_en, '
               "  kind, counts_as_cash) VALUES (@r, 'cash', 'Cash', 'cash', "
               '  true) RETURNING id',
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
     for (final (id, name) in const [(mine, 'Counter 1'), (theirs, 'Counter 2')]) {
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (@t::uuid, @r, @b, @n)',
-        parameters: {'t': id, 'r': restaurantId, 'b': branchId, 'n': name},
+        parameters: {'t': id, 'r': businessId, 'b': branchId, 'n': name},
       );
     }
 
     queue = PostgresEtaQueueRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     profile = blank;
@@ -269,7 +269,7 @@ void main() {
   tearDown(() => pg.close());
 
   group('the reconciler', () {
-    test('a restaurant that is not filing: nothing queued, nothing said',
+    test('a business that is not filing: nothing queued, nothing said',
         () async {
       await sale();
 

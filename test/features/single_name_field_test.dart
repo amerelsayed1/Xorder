@@ -19,7 +19,7 @@ import 'package:xorder_pos/features/admin/presentation/menu_editor_widgets.dart'
 import '../support/fakes.dart';
 
 /// XORD-035 — one name box on every form, in the language of the till or of
-/// the restaurant's own choice: labelled in that language, running in its
+/// the business's own choice: labelled in that language, running in its
 /// direction, with nothing to translate.
 ///
 /// The pane is opened with the content-language setting NOT overridden where
@@ -45,7 +45,7 @@ void main() {
   late _Repo repo;
 
   /// Opens the Categories pane on a till whose screen is [screen] ('ar'/'en').
-  /// [stored] is what the restaurant row holds; null = nothing answered yet,
+  /// [stored] is what the business row holds; null = nothing answered yet,
   /// the situation of a fresh install (no database, so the provider's own
   /// fallback applies).
   Future<void> pump(
@@ -143,7 +143,7 @@ void main() {
     });
   });
 
-  group('the restaurant has chosen a language', () {
+  group('the business has chosen a language', () {
     testWidgets('chosen Arabic on an English screen: the box and its label are Arabic', (tester) async {
       await pump(tester, screen: 'en', stored: ContentLanguages.arabic);
       await openNew(tester, 'en');

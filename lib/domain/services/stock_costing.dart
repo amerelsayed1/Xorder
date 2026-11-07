@@ -2,7 +2,7 @@
 ///
 /// **Moving average, chosen deliberately over last-cost and FIFO** (owner,
 /// 9 September 2026). It survives a part delivery at a new price without lot
-/// tracking, it needs no layer bookkeeping, and it is what most restaurant
+/// tracking, it needs no layer bookkeeping, and it is what most business
 /// systems in this market use — so a bookkeeper reading the numbers recognises
 /// them. Last-cost would make a single expensive delivery reprice the whole
 /// larder; FIFO would need every unit to remember which crate it came from.
@@ -109,7 +109,7 @@ abstract final class StockCosting {
   /// what remains. A method that recalculated here would be a method that made
   /// last month's margin depend on this month's sales.
   ///
-  /// The quantity is allowed to go negative. A restaurant that sells something
+  /// The quantity is allowed to go negative. A business that sells something
   /// the system does not know arrived is telling the truth about the sale and
   /// the wrong thing about the stock, and refusing the sale to protect the
   /// number would be the wrong way round.
@@ -159,7 +159,7 @@ enum OpeningCostProblem {
 /// **Only ever the first cost.** An item reaches "uncosted" by being set up as
 /// counted and never received. Receiving gives it a cost, and until then every
 /// sale of it is recorded at zero and its stock cannot be valued. This is the
-/// other way in: a restaurant that starts using the system with stock already
+/// other way in: a business that starts using the system with stock already
 /// on the shelf says what that stock cost. Quantity is untouched — that is a
 /// count, and this is a price.
 abstract final class OpeningCost {

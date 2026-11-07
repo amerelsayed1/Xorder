@@ -42,7 +42,7 @@ void main() {
   late ProviderContainer container;
   var backs = 0;
 
-  /// What the restaurant configured, as a test can change it mid-flight.
+  /// What the business configured, as a test can change it mid-flight.
   final configured = StateProvider<OrderTypeRules>(
     (ref) => OrderTypeRules.fallback,
   );
@@ -131,7 +131,7 @@ void main() {
       (element.widget.key! as ValueKey<String>).value.substring(10),
   ];
 
-  testWidgets('one button per enabled type, in order, with the restaurant\'s '
+  testWidgets('one button per enabled type, in order, with the business\'s '
       'English names and a number each', (tester) async {
     await pump(tester);
 

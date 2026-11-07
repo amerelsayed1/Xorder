@@ -13,7 +13,7 @@ import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 import 'stock_unit_guard.dart';
 
-/// What the restaurant buys and counts: the stocked rows of `pos_products`.
+/// What the business buys and counts: the stocked rows of `pos_products`.
 ///
 /// Read on the till's credential, written on the administrator's. A new item
 /// is written with no category (migration 40), which is what keeps it off the
@@ -25,7 +25,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
     required PosDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database,
        _tillDb = readDatabase;
@@ -35,7 +35,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
   final PosDatabase _tillDb;
   final DeploymentConfig readConfig;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _columns =
@@ -47,10 +47,10 @@ class PostgresStockItemsRepository implements StockItemsRepository {
     final rows = await _tillDb.query(
       readConfig,
       'SELECT $_columns FROM pos_products '
-      'WHERE restaurant_id = @r AND is_stocked '
+      'WHERE business_id = @r AND is_stocked '
       '${includeInactive ? '' : 'AND is_available '}'
       'ORDER BY lower(name_en), id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) _read(row)];
   }
@@ -97,7 +97,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
         if (item.id != 0) {
           final held = await StockUnitGuard.check(
             tx,
-            restaurantId: restaurantId,
+            businessId: businessId,
             productId: item.id,
             unit: item.unit,
           );
@@ -108,7 +108,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
         if (item.id == 0) {
           rows = await tx.execute(
             Sql.named(
-              'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+              'INSERT INTO pos_products (business_id, category_id, name_en, '
               '  name_ar, price_minor, sku, is_available, is_stocked, '
               '  stock_unit) '
               // No category, no price: it is not for sale.
@@ -117,7 +117,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
               'RETURNING $_columns',
             ),
             parameters: {
-              'r': restaurantId,
+              'r': businessId,
               'nameEn': item.nameEn.trim(),
               'nameAr': orNull(item.nameAr),
               'sku': orNull(item.sku),
@@ -131,13 +131,13 @@ class PostgresStockItemsRepository implements StockItemsRepository {
               'UPDATE pos_products SET name_en = @nameEn, name_ar = @nameAr, '
               '  sku = @sku, is_available = @active, stock_unit = @unit, '
               '  revision = revision + 1, updated_at = now() '
-              'WHERE id = @id AND restaurant_id = @r AND is_stocked '
+              'WHERE id = @id AND business_id = @r AND is_stocked '
               '  AND category_id IS NULL '
               'RETURNING $_columns',
             ),
             parameters: {
               'id': item.id,
-              'r': restaurantId,
+              'r': businessId,
               'nameEn': item.nameEn.trim(),
               'nameAr': orNull(item.nameAr),
               'sku': orNull(item.sku),
@@ -153,11 +153,11 @@ class PostgresStockItemsRepository implements StockItemsRepository {
             Sql.named(
               'UPDATE pos_products SET stock_unit = @unit, '
               '  revision = revision + 1, updated_at = now() '
-              'WHERE id = @id AND restaurant_id = @r AND is_stocked '
+              'WHERE id = @id AND business_id = @r AND is_stocked '
               '  AND category_id IS NOT NULL '
               'RETURNING $_columns',
             ),
-            parameters: {'id': item.id, 'r': restaurantId, 'unit': item.unit.wire},
+            parameters: {'id': item.id, 'r': businessId, 'unit': item.unit.wire},
           );
         }
 
@@ -169,13 +169,13 @@ class PostgresStockItemsRepository implements StockItemsRepository {
         await tx.execute(
           Sql.named('''
           INSERT INTO pos_audit_events
-            (restaurant_id, branch_id, actor_user_id, actor_name, action,
+            (business_id, branch_id, actor_user_id, actor_name, action,
              entity_type, entity_id, after_value)
-          VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+          VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                   @after::jsonb)
           '''),
           parameters: {
-            'restaurant': restaurantId,
+            'business': businessId,
             'branch': branchId,
             'by': by.id == 0 ? null : by.id,
             'actor': by.name,

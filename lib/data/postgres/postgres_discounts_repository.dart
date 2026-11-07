@@ -6,7 +6,7 @@ import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 
-/// Reads what the restaurant offers from `pos_discounts`.
+/// Reads what the business offers from `pos_discounts`.
 ///
 /// Read-only, deliberately: the till's database role is granted `SELECT` here
 /// and nothing else. A cashier applies a discount; authoring one is a
@@ -15,14 +15,14 @@ class PostgresDiscountsRepository implements DiscountsRepository {
   const PostgresDiscountsRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.currency = 'EGP',
     this.exponent = 2,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   /// Matches the ticket's, because a discount priced in another currency from
   /// the bill it comes off would not add up.
@@ -40,8 +40,8 @@ class PostgresDiscountsRepository implements DiscountsRepository {
       '       min_order_minor, max_discount_minor, starts_at, ends_at, '
       '       days_of_week, time_from, time_to, requires_customer, '
       '       requires_manager, is_restricted, is_active, revision '
-      'FROM pos_discounts WHERE restaurant_id = @r ORDER BY name_en',
-      parameters: {'r': restaurantId},
+      'FROM pos_discounts WHERE business_id = @r ORDER BY name_en',
+      parameters: {'r': businessId},
     );
 
     final discounts = <Discount>[];
@@ -146,7 +146,7 @@ class PostgresDiscountsRepository implements DiscountsRepository {
   /// `max_discount_bp` since before Wave C; `pos_permission_limits` is the
   /// general form, resolved onto the person at sign-in and covering their own
   /// ceiling as well as every role's. Reading only the new one would silently
-  /// lift every ceiling a restaurant has already set, and reading only the old
+  /// lift every ceiling a business has already set, and reading only the old
   /// one would make the new table decorative — so both are read and neither can
   /// loosen the other.
   @override
@@ -165,8 +165,8 @@ class PostgresDiscountsRepository implements DiscountsRepository {
     final rows = await _db.query(
       config,
       'SELECT max_discount_bp, max_discount_minor FROM pos_roles '
-      'WHERE id = @role AND restaurant_id = @r',
-      parameters: {'role': roleId, 'r': restaurantId},
+      'WHERE id = @role AND business_id = @r',
+      parameters: {'role': roleId, 'r': businessId},
     );
     if (rows.isEmpty) return _asDiscountLimit(resolved);
 
@@ -194,7 +194,7 @@ class PostgresDiscountsRepository implements DiscountsRepository {
 ///
 /// Nothing, and no ceiling. Returning an invented discount list here is the
 /// failure `lib/data/unconfigured/` exists to prevent — a terminal mid-setup
-/// showing promotions no restaurant configured.
+/// showing promotions no business configured.
 class UnconfiguredDiscountsRepository implements DiscountsRepository {
   const UnconfiguredDiscountsRepository();
 

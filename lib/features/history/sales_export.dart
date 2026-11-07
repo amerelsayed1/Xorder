@@ -53,7 +53,7 @@ Future<List<OrderRecord>> ordersToExport(
 
 /// Every method a sale was paid in, in the reader's language and the order
 /// they were taken — "Cash + Card" for a split bill. Through `tenderName`, so
-/// a method the restaurant renamed reads as they named it, as its receipt
+/// a method the business renamed reads as they named it, as its receipt
 /// does. The list's column and the file's are this one function.
 String paidWith(OrderRecord order, AppStrings strings) => order.tenders.isEmpty
     ? '—'

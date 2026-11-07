@@ -11,7 +11,7 @@ import 'package:xorder_pos/features/admin/application/report_export.dart';
 /// The file is the page's figures, so what is pinned here is the same promise
 /// the page makes: an item with no cost is a **blank**, not a zero (a zero
 /// would feed a formula and be quoted as "free"), a loss keeps its sign, the
-/// margin travels with its coverage, and a restaurant that prices tax in is
+/// margin travels with its coverage, and a business that prices tax in is
 /// told so inside the file as well as on the screen.
 void main() {
   const s = EnStrings();
@@ -192,7 +192,7 @@ void main() {
     expect(plain[1], '${s.reportColumnAmount} (EGP)');
   });
 
-  test('a restaurant that prices tax in is told how, inside the file', () {
+  test('a business that prices tax in is told how, inside the file', () {
     final sheet = read(report(inclusive: true))[s.profitTitle]!;
 
     expect(sheet.any((r) => r.isNotEmpty && r.first == s.profitTaxNote), isTrue);

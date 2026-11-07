@@ -7,7 +7,7 @@ import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 import 'postgres_tenant.dart';
 
-/// The restaurant's actual menu, read from the branch server.
+/// The business's actual menu, read from the branch server.
 ///
 /// Four queries rather than one join: a product joined to its modifier groups
 /// joined to their modifiers multiplies rows by both fan-outs, and reassembling
@@ -27,7 +27,7 @@ class PostgresCatalogRepository implements CatalogRepository {
        _now = clock ?? DateTime.now;
 
   /// Which shop is reading. Null before the terminal is provisioned, and on a
-  /// single-branch restaurant it changes nothing — there are no override rows.
+  /// single-branch business it changes nothing — there are no override rows.
   final int? branchId;
 
   final PosDatabase _db;
@@ -46,9 +46,9 @@ class PostgresCatalogRepository implements CatalogRepository {
     final categories = await _db.query(
       _config,
       'SELECT id, name_en, name_ar, slug, sort_order FROM pos_categories '
-      'WHERE restaurant_id = @restaurant AND is_active '
+      'WHERE business_id = @business AND is_active '
       'ORDER BY sort_order, id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     final products = await _db.query(
@@ -56,7 +56,7 @@ class PostgresCatalogRepository implements CatalogRepository {
       // Branch overrides applied here, at the read, rather than carried into
       // the ticket. A price is a property of the menu this shop is selling
       // from, so the catalogue is the honest place to resolve it — and a
-      // restaurant with one price everywhere writes no override rows and pays
+      // business with one price everywhere writes no override rows and pays
       // nothing for the join.
       //
       // Only branch-wide rows (`order_type IS NULL`). Per-channel pricing needs
@@ -81,29 +81,29 @@ class PostgresCatalogRepository implements CatalogRepository {
       'LEFT JOIN pos_product_prices o '
       '  ON o.product_id = p.id AND o.branch_id = @branch '
       '  AND o.order_type IS NULL '
-      'WHERE p.restaurant_id = @restaurant '
+      'WHERE p.business_id = @business '
       'ORDER BY p.sort_order, p.id',
-      parameters: {'restaurant': tenant.id, 'branch': branchId},
+      parameters: {'business': tenant.id, 'branch': branchId},
     );
 
-    // Scoped through the product so a group belonging to another restaurant
+    // Scoped through the product so a group belonging to another business
     // cannot be attached by a stray join.
     final attachments = await _db.query(
       _config,
       'SELECT pmg.product_id, pmg.group_id FROM pos_product_modifier_groups pmg '
       'JOIN pos_products p ON p.id = pmg.product_id '
-      'WHERE p.restaurant_id = @restaurant '
+      'WHERE p.business_id = @business '
       'ORDER BY pmg.sort_order, pmg.group_id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     final groups = await _db.query(
       _config,
       'SELECT id, name_en, name_ar, is_required, max_select, is_variant, '
       '       min_select, free_options, display_name_en, display_name_ar '
-      'FROM pos_modifier_groups WHERE restaurant_id = @restaurant '
+      'FROM pos_modifier_groups WHERE business_id = @business '
       'ORDER BY sort_order, id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     // Library groups that reach items with no link: every item, or every item
@@ -118,11 +118,11 @@ class PostgresCatalogRepository implements CatalogRepository {
       "                FILTER (WHERE c.category_id IS NOT NULL), '{}') "
       'FROM pos_modifier_groups g '
       'LEFT JOIN pos_modifier_group_categories c ON c.group_id = g.id '
-      'WHERE g.restaurant_id = @restaurant AND g.is_global '
+      'WHERE g.business_id = @business AND g.is_global '
       "  AND g.apply_scope <> 'items' "
       'GROUP BY g.id '
       'ORDER BY g.name_en, g.name_ar, g.id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     final modifiers = await _db.query(
@@ -131,9 +131,9 @@ class PostgresCatalogRepository implements CatalogRepository {
       '       g.is_variant, m.discounted_price_minor, m.is_default '
       'FROM pos_modifiers m '
       'JOIN pos_modifier_groups g ON g.id = m.group_id '
-      'WHERE g.restaurant_id = @restaurant '
+      'WHERE g.business_id = @business '
       'ORDER BY m.sort_order, m.id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     final byGroup = <int, List<Modifier>>{};
@@ -219,9 +219,9 @@ class PostgresCatalogRepository implements CatalogRepository {
       _config,
       'SELECT id, category_id, name_en, name_ar, price_minor, tax_group_id, '
       '       sku, is_available '
-      'FROM pos_combos WHERE restaurant_id = @restaurant '
+      'FROM pos_combos WHERE business_id = @business '
       'ORDER BY sort_order, id',
-      parameters: {'restaurant': tenant.id},
+      parameters: {'business': tenant.id},
     );
 
     final comboGroupRows = comboRows.isEmpty
@@ -232,9 +232,9 @@ class PostgresCatalogRepository implements CatalogRepository {
             '       g.max_select '
             'FROM pos_combo_groups g '
             'JOIN pos_combos c ON c.id = g.combo_id '
-            'WHERE c.restaurant_id = @restaurant '
+            'WHERE c.business_id = @business '
             'ORDER BY g.sort_order, g.id',
-            parameters: {'restaurant': tenant.id},
+            parameters: {'business': tenant.id},
           );
 
     final comboOptionRows = comboRows.isEmpty
@@ -245,9 +245,9 @@ class PostgresCatalogRepository implements CatalogRepository {
             'FROM pos_combo_options o '
             'JOIN pos_combo_groups g ON g.id = o.combo_group_id '
             'JOIN pos_combos c ON c.id = g.combo_id '
-            'WHERE c.restaurant_id = @restaurant '
+            'WHERE c.business_id = @business '
             'ORDER BY o.sort_order, o.id',
-            parameters: {'restaurant': tenant.id},
+            parameters: {'business': tenant.id},
           );
 
     // Indexed once. A combo option names a product id, and looking each one
@@ -422,6 +422,6 @@ class PostgresCatalogRepository implements CatalogRepository {
 
   /// Currency and exponent come from the terminal's own configuration, as they
   /// do everywhere else in the till. When the server owns tax and currency
-  /// (POS-BE-013) this reads them from the restaurant row instead.
+  /// (POS-BE-013) this reads them from the business row instead.
   Money _money(int minor) => Money(minor);
 }

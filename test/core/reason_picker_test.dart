@@ -10,7 +10,7 @@ import 'package:xorder_pos/domain/models/reason_code.dart';
 
 /// The reason picker is shared by void, refund, pay-out, price override,
 /// force-close and inventory adjustment. Everything asserted here is a rule the
-/// restaurant relies on being the same in all six.
+/// business relies on being the same in all six.
 void main() {
   /// The seeded list, as it comes back from `pos_reason_codes`.
   List<ReasonCode> reasons({ReasonScope scope = ReasonScope.voidAct}) => [
@@ -184,7 +184,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
       await tester.pump();
 
-      // Second in the restaurant's own sort order, not second alphabetically.
+      // Second in the business's own sort order, not second alphabetically.
       expect(picked?.code, 'wrong_item');
     });
 
@@ -257,7 +257,7 @@ void main() {
         ),
       );
 
-      // Not an empty list: an empty list would tell the person their restaurant
+      // Not an empty list: an empty list would tell the person their business
       // has no reasons configured, which is a different and untrue thing.
       expect(find.text('Customer complaint'), findsNothing);
       expect(find.byType(TextField), findsNothing);
@@ -419,10 +419,10 @@ void main() {
       expect(find.text('Void this item'), findsNothing);
     });
 
-    testWidgets('reads the restaurant\'s own Arabic, in RTL', (tester) async {
+    testWidgets('reads the business\'s own Arabic, in RTL', (tester) async {
       await open(tester, locale: 'ar');
 
-      // The reasons are the restaurant's rows, not translated strings — and
+      // The reasons are the business's rows, not translated strings — and
       // the chrome around them follows the locale too.
       expect(find.text('صنف خطأ في التحضير'), findsOneWidget);
       expect(find.text('السبب مطلوب'), findsOneWidget);

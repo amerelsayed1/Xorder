@@ -17,7 +17,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
     required PosDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database,
        _tillDb = readDatabase;
@@ -30,7 +30,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
   final DeploymentConfig readConfig;
 
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _columns =
@@ -41,10 +41,10 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
   Future<List<ServiceCharge>> all({bool includeInactive = false}) async {
     final rows = await _tillDb.query(
       readConfig,
-      'SELECT $_columns FROM pos_service_charges WHERE restaurant_id = @r '
+      'SELECT $_columns FROM pos_service_charges WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) _read(row)];
   }
@@ -58,7 +58,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
     orderTypes: {
       for (final value in (row[5] as List? ?? const []))
         // An order type this build does not understand is dropped rather than
-        // throwing. A restaurant that adds one on a newer binary must not stop
+        // throwing. A business that adds one on a newer binary must not stop
         // an older till from selling.
         ?OrderType.fromWire('$value'),
     },
@@ -101,7 +101,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
 
     return _db.runTx(config, (tx) async {
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'nameEn': charge.nameEn.trim(),
         'nameAr': charge.nameAr?.trim(),
         'rate': charge.rateBp,
@@ -118,7 +118,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
       final rows = charge.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_service_charges (restaurant_id, name_en, '
+                'INSERT INTO pos_service_charges (business_id, name_en, '
                 '  name_ar, rate_bp, fixed_minor, order_types, is_taxable, '
                 '  is_automatic, is_optional, is_active, sort_order, '
                 '  updated_by) '
@@ -136,7 +136,7 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
                 '  is_automatic = @automatic, is_optional = @optional, '
                 '  is_active = @active, sort_order = @sort, '
                 '  updated_at = now(), updated_by = @by '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $_columns',
+                'WHERE id = @id AND business_id = @r RETURNING $_columns',
               ),
               parameters: {...parameters, 'id': charge.id},
             );
@@ -151,13 +151,13 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,

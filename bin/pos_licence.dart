@@ -105,7 +105,7 @@ Future<void> _issue(Map<String, String> options) async {
 
   // Dated from the issuing machine's clock. The verifier refuses a licence that
   // starts in the future and says to check the terminal's date, so a wrong
-  // clock here produces a confusing failure at a restaurant rather than a
+  // clock here produces a confusing failure at a business rather than a
   // security problem.
   final now = DateTime.now().toUtc();
 
@@ -274,7 +274,7 @@ lib/features/licensing/data/license_keys.dart and ships in the binary; the
 private half issues licences and must never be committed.
 
 issue options:
-  --tenant <slug>      Restaurant short name. Must match the terminal's. Required
+  --tenant <slug>      Business short name. Must match the terminal's. Required
   --name <name>        Shown when a licence is refused for the wrong tenant. Required
   --days <n>           Term length. Default 365
   --issued <date>      ISO-8601 start. Default now. Future dates mint notYetValid

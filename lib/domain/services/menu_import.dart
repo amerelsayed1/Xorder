@@ -1,6 +1,6 @@
 /// Reading a menu out of a spreadsheet.
 ///
-/// A restaurant arrives with its menu in Excel. Typing four hundred items into
+/// A business arrives with its menu in Excel. Typing four hundred items into
 /// a form is how an install takes three days and ends with typos in the prices,
 /// so this reads the file they already have.
 ///
@@ -128,7 +128,7 @@ abstract final class MenuImport {
     'available',
   ];
 
-  /// A header row for the template a restaurant is handed.
+  /// A header row for the template a business is handed.
   static const templateHeader = <String>[
     'Category',
     'Name (EN)',
@@ -179,7 +179,7 @@ abstract final class MenuImport {
   /// re-importing a corrected file updates rather than duplicating.
   ///
   /// Nothing is ever deleted. A product missing from the file is a product the
-  /// restaurant did not mention, not one it wants gone — and an import that
+  /// business did not mention, not one it wants gone — and an import that
   /// could empty a menu is one nobody should run on a Friday.
   static MenuImportPlan read(
     List<List<String>> rows, {
@@ -323,7 +323,7 @@ abstract final class MenuImport {
       }
 
       // SKU first, then name. The fallback matters more than it looks: the
-      // first file a restaurant sends is usually its existing menu with SKUs
+      // first file a business sends is usually its existing menu with SKUs
       // newly added, and matching on SKU alone would file all four hundred
       // rows as new and duplicate the entire menu.
       var match = sku == null ? null : bySku[sku.toLowerCase()];

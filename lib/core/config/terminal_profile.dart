@@ -17,13 +17,13 @@ class TerminalProfile {
     this.terminalId,
     this.installationId,
     this.provisioned = false,
-    this.restaurantId,
+    this.businessId,
     this.branchCode,
   });
 
   /// Stamped on every row this till writes. Comes from provisioning, never from
   /// anything the cashier can type.
-  final int? restaurantId;
+  final int? businessId;
 
   /// Invoice prefix (POS-BE-005).
   final String? branchCode;
@@ -56,13 +56,13 @@ class TerminalProfile {
   /// setup and route to a start screen backed by unconfigured repositories.
   bool get isSet =>
       (terminalName?.isNotEmpty ?? false) &&
-      restaurantId != null &&
+      businessId != null &&
       branchId != null &&
       (branchCode?.isNotEmpty ?? false) &&
       (terminalId?.isNotEmpty ?? false);
 
   Map<String, Object?> toJson() => {
-    'restaurant_id': restaurantId,
+    'business_id': businessId,
     'branch_code': branchCode,
     'branch_id': branchId,
     'branch_name': branchName,
@@ -75,7 +75,9 @@ class TerminalProfile {
   /// Tolerant by design: a till must boot holding a profile written by a build
   /// that knew one field more or less than this one does.
   static TerminalProfile fromJson(Map<String, Object?> json) => TerminalProfile(
-    restaurantId: (json['restaurant_id'] as num?)?.toInt(),
+    // `restaurant_id` is what a profile saved before the rename to "business"
+    // (2026-11-07) holds; read so an installed till stays provisioned.
+    businessId: ((json['business_id'] ?? json['restaurant_id']) as num?)?.toInt(),
     branchCode: json['branch_code'] as String?,
     branchId: (json['branch_id'] as num?)?.toInt(),
     branchName: json['branch_name'] as String?,

@@ -14,7 +14,7 @@ import 'pos_tls.dart';
 /// What [LocalBootstrap.seedOwner] did, or why it did not.
 ///
 /// Data, not an exception — the same reasoning as `AdminRefusal`. Pointing an
-/// installer at a restaurant that already has an owner is an ordinary thing to
+/// installer at a business that already has an owner is an ordinary thing to
 /// do — a second till, a reinstall — and both callers have to put the answer
 /// into words, the wizard in two languages. Left to migration 42's trigger, the
 /// CLI died on a driver error and the wizard showed that error, in English.
@@ -32,7 +32,7 @@ class OwnerAlreadyHere extends OwnerSeed {
   const OwnerAlreadyHere();
 }
 
-/// Somebody else is this restaurant's active owner, so nobody was created.
+/// Somebody else is this business's active owner, so nobody was created.
 ///
 /// Carries their username as well as their name, because the first way
 /// forward is to seed under that username — which is signing in as them. The
@@ -66,7 +66,7 @@ class TillRoleRefused implements Exception {
 /// Preparing an empty PostgreSQL for a till, in one place.
 ///
 /// This used to live only in `bin/pos_migrate.dart`, which meant an offline
-/// install began at a command line — on a machine in a restaurant, run by
+/// install began at a command line — on a machine in a business, run by
 /// whoever unboxed it. The setup wizard now offers the same thing, and both
 /// call *this*, because two implementations of "what grants does a till need"
 /// is two answers to a question that must only ever have one.
@@ -348,7 +348,7 @@ class LocalBootstrap {
     return applied;
   }
 
-  /// The restaurant row, matched on slug so a re-run adopts rather than
+  /// The business row, matched on slug so a re-run adopts rather than
   /// duplicates.
   ///
   /// [contentLanguages] is the language the menu is written in (XORD-035): the
@@ -356,7 +356,7 @@ class LocalBootstrap {
   /// from the first form. Null leaves the column's own default. It is written
   /// only when the row is created - a re-run that adopts a row never overwrites
   /// what a manager chose since.
-  Future<int> seedRestaurant(
+  Future<int> seedBusiness(
     DeploymentConfig admin, {
     required String slug,
     required String name,
@@ -364,7 +364,7 @@ class LocalBootstrap {
   }) async {
     final rows = await database.query(
       admin,
-      'INSERT INTO pos_restaurants (slug, name, content_languages) '
+      'INSERT INTO pos_businesses (slug, name, content_languages) '
       "VALUES (@slug, @name, COALESCE(@languages::text, 'both')) "
       // Touch the conflicting column and nothing else: this is how the row's
       // id comes back without any of its content being overwritten.
@@ -382,17 +382,17 @@ class LocalBootstrap {
   /// One branch. Its code is the invoice prefix — `MAIN-2026-000042`.
   Future<int> seedBranch(
     DeploymentConfig admin, {
-    required int restaurantId,
+    required int businessId,
     required String name,
     required String code,
   }) async {
     final rows = await database.query(
       admin,
-      'INSERT INTO pos_branches (restaurant_id, code, name, supported_order_types) '
-      "VALUES (@restaurant, @code, @name, ARRAY['dine_in','takeaway','delivery']) "
-      'ON CONFLICT (restaurant_id, code) DO UPDATE SET code = EXCLUDED.code '
+      'INSERT INTO pos_branches (business_id, code, name, supported_order_types) '
+      "VALUES (@business, @code, @name, ARRAY['dine_in','takeaway','delivery']) "
+      'ON CONFLICT (business_id, code) DO UPDATE SET code = EXCLUDED.code '
       'RETURNING id',
-      parameters: {'restaurant': restaurantId, 'code': code, 'name': name},
+      parameters: {'business': businessId, 'code': code, 'name': name},
     );
 
     return rows.first[0]! as int;
@@ -400,13 +400,13 @@ class LocalBootstrap {
 
   /// The four system roles, from [SystemRoles.seeded].
   ///
-  /// Re-running never resets a restaurant's edited permissions: the upsert
+  /// Re-running never resets a business's edited permissions: the upsert
   /// touches `code` and leaves `capabilities` alone.
   ///
   /// @return role code → id, and how many were newly created.
   Future<({Map<String, int> ids, int created})> seedSystemRoles(
     DeploymentConfig admin,
-    int restaurantId,
+    int businessId,
   ) async {
     final ids = <String, int>{};
     var created = 0;
@@ -414,12 +414,12 @@ class LocalBootstrap {
     for (final entry in SystemRoles.seeded.entries) {
       final rows = await database.query(
         admin,
-        'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, capabilities, is_system) '
-        'VALUES (@restaurant, @code, @nameEn, @nameAr, @capabilities, true) '
-        'ON CONFLICT (restaurant_id, code) DO UPDATE SET code = EXCLUDED.code '
+        'INSERT INTO pos_roles (business_id, code, name_en, name_ar, capabilities, is_system) '
+        'VALUES (@business, @code, @nameEn, @nameAr, @capabilities, true) '
+        'ON CONFLICT (business_id, code) DO UPDATE SET code = EXCLUDED.code '
         'RETURNING id, (xmax = 0) AS inserted',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'code': entry.key,
           'nameEn': entry.value.nameEn,
           'nameAr': entry.value.nameAr,
@@ -435,17 +435,17 @@ class LocalBootstrap {
 
   /// The reason lists, from [SystemReasons.seeded].
   ///
-  /// Migration 9 seeds every restaurant that existed when it ran. This is for
+  /// Migration 9 seeds every business that existed when it ran. This is for
   /// the ones created afterwards — by `--seed`, or by the wizard building a
-  /// database on a machine in a restaurant — because a `CROSS JOIN` over
-  /// `pos_restaurants` inside a migration can only ever see the past.
+  /// database on a machine in a business — because a `CROSS JOIN` over
+  /// `pos_businesses` inside a migration can only ever see the past.
   ///
   /// Re-running never resets an edited list: the upsert touches `code` and
-  /// leaves the names, the sort order and `is_active` alone. A restaurant that
+  /// leaves the names, the sort order and `is_active` alone. A business that
   /// renamed "Manager comp" or retired "Training" keeps its decision.
   ///
   /// @return how many rows were newly created.
-  Future<int> seedReasonCodes(DeploymentConfig admin, int restaurantId) async {
+  Future<int> seedReasonCodes(DeploymentConfig admin, int businessId) async {
     var created = 0;
 
     for (final scope in SystemReasons.seededScopes) {
@@ -456,13 +456,13 @@ class LocalBootstrap {
         final reason = reasons[i];
         final rows = await database.query(
           admin,
-          'INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, '
+          'INSERT INTO pos_reason_codes (business_id, scope, code, name_en, '
           '  name_ar, requires_note, sort_order) '
-          'VALUES (@restaurant, @scope, @code, @nameEn, @nameAr, @note, @sort) '
-          'ON CONFLICT (restaurant_id, scope, code) DO UPDATE SET code = EXCLUDED.code '
+          'VALUES (@business, @scope, @code, @nameEn, @nameAr, @note, @sort) '
+          'ON CONFLICT (business_id, scope, code) DO UPDATE SET code = EXCLUDED.code '
           'RETURNING (xmax = 0) AS inserted',
           parameters: {
-            'restaurant': restaurantId,
+            'business': businessId,
             'scope': scope.wire,
             'code': reason.code,
             'nameEn': reason.nameEn,
@@ -478,41 +478,41 @@ class LocalBootstrap {
     return created;
   }
 
-  /// The rate this restaurant charges, named.
+  /// The rate this business charges, named.
   ///
-  /// Migration 16 backfills every restaurant that existed when it ran; this is
-  /// the other half — a restaurant created afterwards needs one too, or its
+  /// Migration 16 backfills every business that existed when it ran; this is
+  /// the other half — a business created afterwards needs one too, or its
   /// products can never be classified and an ETA filing has an unnamed rate on
   /// it.
   ///
-  /// Returns true when it created one. Idempotent: a restaurant that already
+  /// Returns true when it created one. Idempotent: a business that already
   /// has a default keeps whatever it configured, because a re-run of setup must
   /// not reset an accountant's decision.
-  /// The four payment methods a new restaurant starts with (§40).
+  /// The four payment methods a new business starts with (§40).
   ///
-  /// **Migration 23 cannot do this for a restaurant that does not exist yet.**
-  /// It seeds every restaurant present when it runs, and a fresh install runs
-  /// the migrations first and creates the restaurant second — so without this
-  /// the new restaurant has none, the till falls back to the compiled-in four,
+  /// **Migration 23 cannot do this for a business that does not exist yet.**
+  /// It seeds every business present when it runs, and a fresh install runs
+  /// the migrations first and creates the business second — so without this
+  /// the new business has none, the till falls back to the compiled-in four,
   /// and Management shows an empty list beside a payment screen offering four
   /// methods. Found by installing one.
   ///
   /// Idempotent on the code, so re-running setup does not undo a rename.
   Future<int> seedTenderTypes(
     DeploymentConfig admin,
-    int restaurantId,
+    int businessId,
   ) async {
     var created = 0;
     for (final method in TenderMethod.seeded) {
       final rows = await database.query(
         admin,
-        'INSERT INTO pos_tender_types (restaurant_id, code, name_en, name_ar, '
+        'INSERT INTO pos_tender_types (business_id, code, name_en, name_ar, '
         '  kind, counts_as_cash, opens_drawer, requires_reference, sort_order) '
         'VALUES (@r, @code, @nameEn, @nameAr, @kind, @cash, @drawer, '
         '        @reference, @sort) '
-        'ON CONFLICT (restaurant_id, code) DO NOTHING RETURNING id',
+        'ON CONFLICT (business_id, code) DO NOTHING RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': method.code,
           'nameEn': method.nameEn,
           'nameAr': method.nameAr,
@@ -528,19 +528,19 @@ class LocalBootstrap {
     return created;
   }
 
-  /// What each kind of order requires (§31), for a restaurant created after
+  /// What each kind of order requires (§31), for a business created after
   /// migration 25 ran. Same split, same reason, as [seedTenderTypes].
-  Future<int> seedOrderTypes(DeploymentConfig admin, int restaurantId) async {
+  Future<int> seedOrderTypes(DeploymentConfig admin, int businessId) async {
     var created = 0;
     for (final config in OrderTypeConfig.seeded) {
       final rows = await database.query(
         admin,
-        'INSERT INTO pos_order_types (restaurant_id, code, name_en, name_ar, '
+        'INSERT INTO pos_order_types (business_id, code, name_en, name_ar, '
         '  requires_table, requires_customer, requires_address, sort_order) '
         'VALUES (@r, @code, @nameEn, @nameAr, @tbl, @cust, @addr, @sort) '
-        'ON CONFLICT (restaurant_id, code) DO NOTHING RETURNING id',
+        'ON CONFLICT (business_id, code) DO NOTHING RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': config.type.wire,
           'nameEn': config.nameEn,
           'nameAr': config.nameAr,
@@ -557,16 +557,16 @@ class LocalBootstrap {
 
   Future<bool> seedTaxGroup(
     DeploymentConfig admin,
-    int restaurantId, {
+    int businessId, {
     int rateBp = 1400,
   }) async {
     final rows = await database.query(
       admin,
-      'INSERT INTO pos_tax_groups (restaurant_id, name_en, name_ar, rate_bp, '
-      "  is_default) VALUES (@restaurant, 'VAT', @nameAr, @rate, true) "
+      'INSERT INTO pos_tax_groups (business_id, name_en, name_ar, rate_bp, '
+      "  is_default) VALUES (@business, 'VAT', @nameAr, @rate, true) "
       'ON CONFLICT DO NOTHING RETURNING id',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'nameAr': 'ضريبة القيمة المضافة',
         // Whatever this branch is actually charging. Defaulting to Egypt's
         // headline rate for a branch configured otherwise would change what
@@ -590,14 +590,14 @@ class LocalBootstrap {
   /// P0001, which every RAISE in the schema shares. The question is asked the
   /// way the trigger asks it — the owner role's row locked `FOR NO KEY UPDATE`,
   /// in the same transaction as the INSERT — so two installers pointed at one
-  /// restaurant queue rather than each counting nobody. The trigger still
+  /// business queue rather than each counting nobody. The trigger still
   /// holds the rule; this is what lets an installer say it.
   ///
   /// A row with the *same* username is not another owner: that is the re-run,
   /// excluded here for the reason the trigger excludes it.
   Future<OwnerSeed> seedOwner(
     DeploymentConfig admin, {
-    required int restaurantId,
+    required int businessId,
     required int branchId,
     required int roleId,
     required String name,
@@ -618,12 +618,12 @@ class LocalBootstrap {
         Sql.named(
           'SELECT s.name, s.username FROM pos_users s '
           'JOIN pos_roles r ON r.id = s.role_id '
-          'WHERE s.restaurant_id = @restaurant AND r.code = @owner '
+          'WHERE s.business_id = @business AND r.code = @owner '
           '  AND s.is_active AND s.username <> @username '
           'ORDER BY s.id LIMIT 1',
         ),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'owner': SystemRoles.ownerCode,
           'username': username,
         },
@@ -637,15 +637,15 @@ class LocalBootstrap {
 
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+          'INSERT INTO pos_users (business_id, branch_id, name, username, '
           'pin_salt, pin_hash, role_id, capabilities) '
           // No direct grants: the ROLE carries the permissions, so changing
           // what an owner may do is one edit in one place.
-          "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, @role, '{}') "
-          'ON CONFLICT (restaurant_id, username) DO NOTHING RETURNING id',
+          "VALUES (@business, @branch, @name, @username, @salt, @hash, @role, '{}') "
+          'ON CONFLICT (business_id, username) DO NOTHING RETURNING id',
         ),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'name': name,
           'username': username,
@@ -717,7 +717,7 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT ON pos_stock_movements TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_stock_movements_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_stock_levels TO "$role"',
-    // The discounts the restaurant offers. Read-only for the till, for the
+    // The discounts the business offers. Read-only for the till, for the
     // same reason the menu is: a cashier applies a discount, they do not
     // invent one. Authoring belongs to [administrativeGrants].
     'GRANT SELECT ON pos_discounts, pos_discount_targets TO "$role"',
@@ -737,7 +737,7 @@ class LocalBootstrap {
         'pos_refund_payments TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_refunds_id_seq, '
         'pos_refund_lines_id_seq, pos_refund_payments_id_seq TO "$role"',
-    // What the restaurant has configured. Read-only for the till: a cashier
+    // What the business has configured. Read-only for the till: a cashier
     // reads the blind-close switch, they do not flip it. Authoring belongs to
     // [administrativeGrants].
     'GRANT SELECT ON pos_settings TO "$role"',
@@ -796,9 +796,9 @@ class LocalBootstrap {
     // did, once it was asked about the tables added since Wave A.
     'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
         'pos_combo_groups, pos_combo_options TO "$role"',
-    // The payment methods this restaurant takes (§40), and what it adds on top
+    // The payment methods this business takes (§40), and what it adds on top
     // of the food (§38). Read-only, like the menu and for the same reason: a
-    // cashier takes a method and charges what the restaurant set, they do not
+    // cashier takes a method and charges what the business set, they do not
     // invent either.
     'GRANT SELECT ON pos_tender_types, pos_service_charges, '
         'pos_order_types TO "$role"',
@@ -813,7 +813,7 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT ON pos_order_taxes TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_order_taxes_id_seq TO "$role"',
     // Who the food is for (POS-BE-014). The till WRITES this one, unlike the
-    // rest of the restaurant's data: a cashier taking a phone order creates a
+    // rest of the business's data: a cashier taking a phone order creates a
     // customer at the counter, with no connection and no back office to do it
     // in. UPDATE as well, because the platform's id lands on the row when the
     // drain delivers it, and because a regular who corrects their address
@@ -824,10 +824,10 @@ class LocalBootstrap {
     // made these, so they are a record rather than a working figure.
     'GRANT SELECT, INSERT ON pos_order_line_items TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_order_line_items_id_seq TO "$role"',
-    // The restaurant's own data. Read-only for the till: a till displays
-    // the menu, it does not edit it. Changing what the restaurant sells is
+    // The business's own data. Read-only for the till: a till displays
+    // the menu, it does not edit it. Changing what the business sells is
     // a back-office act — see [administrativeGrants].
-    'GRANT SELECT ON pos_restaurants, pos_branches, pos_users, pos_categories, '
+    'GRANT SELECT ON pos_businesses, pos_branches, pos_users, pos_categories, '
         'pos_products, pos_modifier_groups, pos_modifiers, '
         'pos_product_modifier_groups, pos_modifier_group_categories, '
         'pos_dining_tables TO "$role"',
@@ -889,7 +889,7 @@ class LocalBootstrap {
     // rewrites the local *cache*, and the cache is not authoritative — every
     // order is re-priced server-side (POS-BE-006), so repricing the display
     // buys an attacker nothing at settlement. On an OFFLINE till there is no
-    // second opinion: this database IS the restaurant. Granted there, the same
+    // second opinion: this database IS the business. Granted there, the same
     // statements let a credential recovered from the till reprice the menu for
     // real, and — through `pos_users` — point somebody's row at the owner role
     // or overwrite a PIN hash, reaching Management without ever knowing the
@@ -897,11 +897,11 @@ class LocalBootstrap {
     // loses nothing: `BootstrapSeeder` never runs without a platform, and
     // Management authors the menu and the staff over the ADMIN credential.
     if (cloudSeeding) ...[
-      'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_users TO "$role"',
+      'GRANT INSERT, UPDATE ON pos_businesses, pos_branches, pos_users TO "$role"',
       'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
           'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
           'pos_modifier_group_categories, pos_dining_tables TO "$role"',
-      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
+      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_businesses_id_seq, '
           'pos_branches_id_seq, pos_users_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
@@ -967,12 +967,12 @@ class LocalBootstrap {
       // grant list that only ever adds would leave those installs — the ones
       // already taking money — permissive forever. REVOKE of something never
       // held is a no-op, so a fresh install pays nothing for this.
-      'REVOKE INSERT, UPDATE, DELETE ON pos_restaurants, pos_branches, '
+      'REVOKE INSERT, UPDATE, DELETE ON pos_businesses, pos_branches, '
           'pos_users, pos_categories, pos_products, pos_modifier_groups, '
           'pos_modifiers, pos_product_modifier_groups, '
           'pos_modifier_group_categories, pos_dining_tables '
           'FROM "$role"',
-      'REVOKE UPDATE ON SEQUENCE pos_restaurants_id_seq, '
+      'REVOKE UPDATE ON SEQUENCE pos_businesses_id_seq, '
           'pos_branches_id_seq, pos_users_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq FROM "$role"',
@@ -1039,7 +1039,7 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_user_roles, '
         'pos_user_permission_overrides, pos_permission_limits TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_permission_limits_id_seq TO "$role"',
-    // A restaurant's own vocabulary for why things happen. Editable in
+    // A business's own vocabulary for why things happen. Editable in
     // Settings, which is why this is here and not in the till's set — a
     // cashier who could add a void reason could add one that reads well.
     'GRANT SELECT, INSERT, UPDATE ON pos_reason_codes TO "$role"',
@@ -1092,14 +1092,14 @@ class LocalBootstrap {
     // having its identity removed from under the receipts already issued.
     'GRANT SELECT, INSERT, UPDATE ON pos_receipt_profiles TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_receipt_profiles_id_seq TO "$role"',
-    // Authoring what the restaurant offers, and what a role may take off by
+    // Authoring what the business offers, and what a role may take off by
     // hand. A DELETE on the targets, unlike almost everywhere else: they are
     // not a record of anything that happened, only the current shape of a
     // discount, and un-targeting a category has to be possible.
     'GRANT SELECT, INSERT, UPDATE ON pos_discounts TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_discounts_id_seq TO "$role"',
     'GRANT SELECT, INSERT, DELETE ON pos_discount_targets TO "$role"',
-    // Authoring what the restaurant has configured. The till reads these; the
+    // Authoring what the business has configured. The till reads these; the
     // back office writes them — blind close, the business-day start time and
     // the refund policy are all decisions somebody makes once.
     'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_settings TO "$role"',
@@ -1156,7 +1156,7 @@ class LocalBootstrap {
         'TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_financial_accounts_id_seq, '
         'pos_tender_account_defaults_id_seq TO "$role"',
-    // Who the restaurant buys from. No DELETE: a supplier is retired, because
+    // Who the business buys from. No DELETE: a supplier is retired, because
     // their invoices name them.
     'GRANT SELECT, INSERT, UPDATE ON pos_suppliers TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_suppliers_id_seq TO "$role"',
@@ -1177,7 +1177,7 @@ class LocalBootstrap {
     // UPDATE.
     'GRANT SELECT, INSERT ON pos_stock_movements TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_stock_movements_id_seq TO "$role"',
-    // No sequence: the position is keyed by (restaurant, branch, product), so
+    // No sequence: the position is keyed by (business, branch, product), so
     // there is nothing to nextval.
     'GRANT SELECT, INSERT, UPDATE ON pos_stock_levels TO "$role"',
     // What is owed and what has been paid. UPDATE is column-scoped on both: an

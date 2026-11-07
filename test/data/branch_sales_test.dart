@@ -39,7 +39,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int staffId;
@@ -65,7 +65,7 @@ void main() {
   }) async {
     invoice++;
     final id = await scalar(
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, business_day_id, voided_at, voided_by) '
@@ -75,7 +75,7 @@ void main() {
       "  CASE WHEN @status::text = 'VOIDED' THEN @staff::bigint END) "
       'RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': terminal,
         'inv': 'BS-$invoice',
@@ -115,14 +115,14 @@ void main() {
   }) => db.runTx(pg.config, (tx) async {
     final rows = await tx.execute(
       Sql.named(
-        'INSERT INTO pos_refunds (client_refund_id, restaurant_id, branch_id, '
+        'INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
         '  terminal_id, order_id, business_day_id, kind, subtotal_minor, '
         '  service_minor, vat_minor, total_minor, refunded_by, occurred_at) '
         'VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, @day::bigint, '
         "  'partial', @total, 0, 0, @total, @by, @at::timestamptz) RETURNING id",
       ),
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': issuedBy,
         'o': orderId,
@@ -150,31 +150,31 @@ void main() {
       'TRUNCATE pos_outbox, pos_refunds, pos_orders, pos_business_days, '
       'pos_invoice_sequences RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     invoice = 0;
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('bs', 'Branch sales') "
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('bs', 'Branch sales') "
       'RETURNING id',
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MANS', 'Mansoura') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     otherBranchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'TANT', 'Tanta') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     staffId = await scalar(
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', 'nour', 'salt', "
       "  'hash') RETURNING id",
-      {'r': restaurantId, 'b': branchId},
+      {'r': businessId, 'b': branchId},
     );
 
-    // Migration 23 seeds tender types for restaurants that existed when it
+    // Migration 23 seeds tender types for businesses that existed when it
     // ran; this one did not.
     tender = {};
     for (final (code, kind, cash) in [
@@ -184,9 +184,9 @@ void main() {
       ('account', 'account', false),
     ]) {
       tender[code] = await scalar(
-        'INSERT INTO pos_tender_types (restaurant_id, code, name_en, kind, '
+        'INSERT INTO pos_tender_types (business_id, code, name_en, kind, '
         '  counts_as_cash) VALUES (@r, @code, @code, @kind, @cash) RETURNING id',
-        {'r': restaurantId, 'code': code, 'kind': kind, 'cash': cash},
+        {'r': businessId, 'code': code, 'kind': kind, 'cash': cash},
       );
     }
 
@@ -198,20 +198,20 @@ void main() {
     ]) {
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (@id::uuid, @r, @b, @name)',
-        parameters: {'id': id, 'r': restaurantId, 'b': branch, 'name': name},
+        parameters: {'id': id, 'r': businessId, 'b': branch, 'name': name},
       );
     }
 
     Future<int> openDay(int branch, String date, DateTime opened,
         {DateTime? closed}) => scalar(
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
       '  opened_at, closed_at, closed_by) '
       'VALUES (@r, @b, @d::date, @o::timestamptz, @c::timestamptz, @by::bigint) '
       'RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch,
         'd': date,
         'o': opened,
@@ -314,7 +314,7 @@ void main() {
     repository = PostgresBranchSalesRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -430,9 +430,9 @@ void main() {
   test("this till's undelivered sales are counted per terminal and day", () async {
     Future<void> enqueue(String key, {bool delivered = false}) => db.query(
       pg.config,
-      'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
+      'INSERT INTO pos_outbox (order_id, client_transaction_id, business_id, '
       '  branch_id, delivered_at) '
-      'SELECT id, client_transaction_id, restaurant_id, branch_id, '
+      'SELECT id, client_transaction_id, business_id, branch_id, '
       '  CASE WHEN @delivered THEN now() END FROM pos_orders WHERE id = @id',
       parameters: {'id': orders[key], 'delivered': delivered},
     );

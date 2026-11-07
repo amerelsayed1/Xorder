@@ -8,8 +8,8 @@ import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 /// E-receipts, switched off.
 ///
-/// Not needed by the restaurants this is sold to yet (13 September 2026). What
-/// is pinned is that "off" means off everywhere a restaurant would feel it:
+/// Not needed by the businesses this is sold to yet (13 September 2026). What
+/// is pinned is that "off" means off everywhere a business would feel it:
 /// nothing queued, so nothing warns, and no pane about an obligation it does
 /// not have.
 void main() {

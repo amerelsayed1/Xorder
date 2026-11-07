@@ -24,13 +24,13 @@ class PostgresParkedTickets {
   const PostgresParkedTickets({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   /// The shop this till stands in.
   ///
@@ -65,16 +65,16 @@ class PostgresParkedTickets {
       // 25 backfilled from it — is shown to every till rather than to none,
       // because a parked ticket nobody can reach is money nobody can collect.
       'SELECT table_id, payload, version FROM pos_parked_tickets '
-      'WHERE pos_parked_tickets.restaurant_id = @restaurant '
+      'WHERE pos_parked_tickets.business_id = @business '
       '  AND (branch_id = @branch OR branch_id IS NULL) '
       // A sale can commit before a transient delete of its parked row.  Do
       // not ever hydrate that stale work as an unpaid ticket on the next
       // boot; the committed order is the authoritative fact.
       '  AND NOT EXISTS (SELECT 1 FROM pos_orders o '
-      '                  WHERE o.restaurant_id = pos_parked_tickets.restaurant_id '
+      '                  WHERE o.business_id = pos_parked_tickets.business_id '
       '                    AND o.client_transaction_id = pos_parked_tickets.client_transaction_id) '
       'ORDER BY parked_at',
-      parameters: {'restaurant': restaurantId, 'branch': branchId},
+      parameters: {'business': businessId, 'branch': branchId},
     );
 
     final onTables = <int, Ticket>{};
@@ -118,7 +118,7 @@ class PostgresParkedTickets {
   Future<int> save(Ticket ticket, {int? expectedVersion}) async {
     final tableId = ticket.tableId;
     final parameters = {
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'table': ?tableId,
       'txn': ticket.id,
@@ -131,10 +131,10 @@ class PostgresParkedTickets {
         expectedVersion == null
             ? '''
               INSERT INTO pos_parked_tickets
-                (restaurant_id, branch_id, table_id, client_transaction_id,
+                (business_id, branch_id, table_id, client_transaction_id,
                  payload, parked_at)
-              VALUES (@restaurant, @branch, NULL, @txn, @payload, now())
-              ON CONFLICT (restaurant_id, client_transaction_id)
+              VALUES (@business, @branch, NULL, @txn, @payload, now())
+              ON CONFLICT (business_id, client_transaction_id)
                 WHERE table_id IS NULL
               DO NOTHING
               RETURNING version
@@ -144,7 +144,7 @@ class PostgresParkedTickets {
                  SET payload = @payload,
                      parked_at = now(),
                      version = version + 1
-               WHERE restaurant_id = @restaurant
+               WHERE business_id = @business
                  AND client_transaction_id = @txn
                  AND table_id IS NULL
                  AND version = @expected
@@ -169,10 +169,10 @@ class PostgresParkedTickets {
       expectedVersion == null
           ? '''
             INSERT INTO pos_parked_tickets
-              (restaurant_id, branch_id, table_id, client_transaction_id,
+              (business_id, branch_id, table_id, client_transaction_id,
                payload, parked_at)
-            VALUES (@restaurant, @branch, @table, @txn, @payload, now())
-            ON CONFLICT (restaurant_id, table_id) DO NOTHING
+            VALUES (@business, @branch, @table, @txn, @payload, now())
+            ON CONFLICT (business_id, table_id) DO NOTHING
             RETURNING version
             '''
           : '''
@@ -182,7 +182,7 @@ class PostgresParkedTickets {
                    payload = @payload,
                    parked_at = now(),
                    version = version + 1
-             WHERE restaurant_id = @restaurant
+             WHERE business_id = @business
                AND table_id = @table
                AND version = @expected
             RETURNING version
@@ -215,13 +215,13 @@ class PostgresParkedTickets {
     await _db.query(
       config,
         'DELETE FROM pos_parked_tickets '
-        'WHERE restaurant_id = @restaurant '
+        'WHERE business_id = @business '
         '  AND ((client_transaction_id = @txn '
         '        AND (@expected::int IS NULL OR version = @expected::int)) '
         '       OR (@table::bigint IS NOT NULL AND table_id = @table '
         '           AND version = @expected::int))',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'txn': transactionId,
           'table': tableId,
           'expected': expectedVersion,

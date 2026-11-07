@@ -24,9 +24,9 @@ import 'support/till_driver.dart';
 ///
 /// This one starts where an installer does: a first-run wizard, a real password
 /// typed into a real field, and a real PostgreSQL on the other side — holding a
-/// real restaurant, seeded by [E2eSeed]. Nothing here is fake. The menu the till
+/// real business, seeded by [E2eSeed]. Nothing here is fake. The menu the till
 /// shows, the branch it claims and the cashier in the top bar are all rows this
-/// suite inserted, which is exactly how a restaurant's own till works.
+/// suite inserted, which is exactly how a business's own till works.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -65,7 +65,7 @@ void main() {
     // the test must not pretend otherwise.
     licence = await E2eLicence.issue(
       tenantSlug: E2eSeed.slug,
-      tenantName: E2eSeed.restaurantName,
+      tenantName: E2eSeed.businessName,
     );
 
     pg = await PgFixture.open('e2e');
@@ -204,7 +204,7 @@ void main() {
       final orders = await pg.database.query(pg.config, '''
       SELECT invoice_number, order_type, table_label, guest_count,
              subtotal_minor, service_minor, vat_minor, total_minor, currency,
-             restaurant_id, branch_id
+             business_id, branch_id
       FROM pos_orders
     ''');
       expect(orders, hasLength(1), reason: 'one sale, one row');
@@ -520,7 +520,7 @@ void main() {
     await second.tapButton('Continue');
 
     // Sign in with the code the FIRST machine already redeemed.
-    await second.enterField('Restaurant', E2ePlatform.slug);
+    await second.enterField('Business', E2ePlatform.slug);
     await second.tapButton('Setup code');
     await second.enterField('Setup code', lastPairingCode!);
     await second.tapButton('Claim this terminal');

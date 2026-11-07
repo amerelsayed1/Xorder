@@ -26,7 +26,7 @@ import 'package:xorder_pos/features/admin/presentation/tender_type_dialog.dart';
 import 'package:xorder_pos/features/admin/presentation/unit_dialog.dart';
 
 /// XORD-005 — every dialog that carries a name in two languages asks only for
-/// the languages the restaurant writes in, and a save never erases what a
+/// the languages the business writes in, and a save never erases what a
 /// hidden language already holds.
 void main() {
   const en = EnStrings();

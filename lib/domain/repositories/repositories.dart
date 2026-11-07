@@ -136,7 +136,7 @@ class EtaEnqueued {
   final EtaObject document;
 }
 
-/// The payment methods this restaurant takes (§40).
+/// The payment methods this business takes (§40).
 ///
 /// A repository rather than a constant since Wave D. Two lists of tender types
 /// is how a till ends up refunding to a method it cannot take payment on, so
@@ -207,7 +207,7 @@ abstract interface class CustomerDirectoryRepository {
 }
 
 abstract interface class TenderTypesRepository {
-  /// Active methods, in the order the restaurant put them in.
+  /// Active methods, in the order the business put them in.
   ///
   /// [includeInactive] is for the editor, which has to show a retired method to
   /// let somebody bring it back — and for a receipt reprint, where the method a
@@ -221,21 +221,21 @@ abstract interface class TenderTypesRepository {
 ///
 /// Nothing reads these to move money yet; stage 1 only shows them.
 abstract interface class FinancialAccountsRepository {
-  /// Accounts in the order the restaurant put them in. [includeInactive] is for
+  /// Accounts in the order the business put them in. [includeInactive] is for
   /// the back office, which has to show a switched-off one to bring it back.
   Future<List<FinancialAccount>> accounts({bool includeInactive = false});
 
-  /// Every (payment method, branch) default this restaurant has set.
+  /// Every (payment method, branch) default this business has set.
   Future<List<TenderAccountDefault>> defaults();
 
-  /// The restaurant's active branches, for tying an account to one and for the
+  /// The business's active branches, for tying an account to one and for the
   /// per-branch default. Read here rather than through the shared branch
   /// provider so the accounts pane depends on one repository and nothing else.
   Future<List<PosBranch>> branches();
 }
 
 /// What stock is counted and bought in — kg, litre, a tray of thirty — as the
-/// restaurant names them (migration 39).
+/// business names them (migration 39).
 abstract interface class UnitsRepository {
   Future<List<PosUnit>> all({bool includeInactive = false});
 
@@ -244,7 +244,7 @@ abstract interface class UnitsRepository {
   Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by});
 }
 
-/// What the restaurant buys and counts: the stocked products, on the menu or
+/// What the business buys and counts: the stocked products, on the menu or
 /// not (migration 40).
 abstract interface class StockItemsRepository {
   /// Everything counted in stock, by name.
@@ -262,7 +262,7 @@ abstract interface class StockLevelsRepository {
   Future<List<StockLevel>> all();
 }
 
-/// What the restaurant adds on top of the food (§38).
+/// What the business adds on top of the food (§38).
 ///
 /// Read on every sale — the ticket has to be priced — and written only from
 /// Management, which is why the reads and the writes go to different
@@ -284,10 +284,10 @@ abstract interface class OrderTypesRepository {
   Future<List<OrderTypeConfig>> all({bool includeInactive = false});
 }
 
-/// Who the restaurant buys from.
+/// Who the business buys from.
 ///
 /// Back office only, on the administrator credential: a till does not buy
-/// anything, and giving the counter SELECT on who the restaurant owes money to
+/// anything, and giving the counter SELECT on who the business owes money to
 /// would hand out its commercial position for no operational benefit.
 abstract interface class SuppliersRepository {
   Future<List<Supplier>> all({bool includeInactive = false});
@@ -298,7 +298,7 @@ abstract interface class SuppliersRepository {
   Future<AdminResult<Supplier>> save(Supplier supplier, {required PosStaff by});
 }
 
-/// What the restaurant has asked its suppliers for.
+/// What the business has asked its suppliers for.
 abstract interface class PurchaseOrdersRepository {
   /// Everything still owed — sent, or part-delivered.
   Future<List<PurchaseOrder>> open();
@@ -363,7 +363,7 @@ abstract interface class ReceivingRepository {
   });
 }
 
-/// What the restaurant owes its suppliers, and what it has paid them (§37).
+/// What the business owes its suppliers, and what it has paid them (§37).
 ///
 /// Back office only, like the rest of purchasing. **The reads return invoices
 /// with `paid` already filled in**, because every question worth asking of this
@@ -379,7 +379,7 @@ abstract interface class SupplierInvoicesRepository {
   /// marked, and which drawer pay-outs are a supplier payment's own — see
   /// [SupplierSpending]. Read in one snapshot.
   ///
-  /// The ledger is the restaurant's, as [unpaid] and the Purchasing pane list
+  /// The ledger is the business's, as [unpaid] and the Purchasing pane list
   /// it. Dates are local calendar dates of `issued_at` and `paid_at`: neither
   /// row belongs to a business day, and both carry the date off the paper.
   Future<SupplierSpending> spending(ReportFilter filter);
@@ -405,7 +405,7 @@ abstract interface class SupplierInvoicesRepository {
   /// Cancels it, keeping the row. Refused while payments are allocated to it:
   /// the money would be pointing at a bill that no longer exists.
   ///
-  /// [reasonId] is one of the restaurant's `ReasonScope.invoiceVoid` codes, so
+  /// [reasonId] is one of the business's `ReasonScope.invoiceVoid` codes, so
   /// that "how many were cancelled for *entered twice*" is answerable.
   Future<AdminResult<SupplierInvoice>> voidInvoice(
     int id, {
@@ -544,7 +544,7 @@ abstract interface class OrdersRepository {
   /// somebody clears is not a business event — nothing was made, nothing was
   /// wasted, and writing a row for it would fill the ledger with abandoned
   /// keystrokes. Once food has been fired, the opposite is true: the cost is
-  /// real and a restaurant that cannot total it cannot manage it.
+  /// real and a business that cannot total it cannot manage it.
   ///
   /// The order is written with its **real totals** and `status = 'VOIDED'`, not
   /// zeroed. What was thrown away is the number a waste report exists to show,
@@ -703,7 +703,7 @@ abstract interface class RefundsRepository {
   ///
   /// Refused with `PermissionRefused` unless [by] holds `order.refund` or
   /// [approval] is a supervisor's for this order — and, when the quote is above
-  /// the restaurant's threshold, unless [approval] is somebody else's whoever
+  /// the business's threshold, unless [approval] is somebody else's whoever
   /// [by] is. The approval is spent on this refund.
   Future<RefundResult> issue({
     required OrderRecord order,
@@ -724,9 +724,9 @@ abstract interface class RefundsRepository {
   Future<List<Refund>> forOrder(int orderId);
 }
 
-/// What the restaurant has configured.
+/// What the business has configured.
 ///
-/// Read as a whole and resolved once — restaurant, then branch, then terminal,
+/// Read as a whole and resolved once — business, then branch, then terminal,
 /// most specific winning. A per-key read would be a query per question, and the
 /// questions are asked on every screen.
 abstract interface class SettingsRepository {
@@ -734,7 +734,7 @@ abstract interface class SettingsRepository {
 
   /// Write one value at one scope.
   ///
-  /// Upserts on (restaurant, scope, scope id, key), which is the database's own
+  /// Upserts on (business, scope, scope id, key), which is the database's own
   /// uniqueness constraint — so saving the same key twice is a change, not a
   /// second row.
   Future<void> save({
@@ -856,7 +856,7 @@ extension on String {
   String get characters => isEmpty ? '' : substring(0, 1).toUpperCase();
 }
 
-/// The discounts a restaurant offers, and the ceiling a person may give away.
+/// The discounts a business offers, and the ceiling a person may give away.
 ///
 /// Read-only at the till. Authoring belongs to Settings (Wave D) — a cashier
 /// applies a discount, they do not invent one.
@@ -875,9 +875,9 @@ abstract interface class DiscountsRepository {
   Future<DiscountLimit> limitFor(PosStaff? staff);
 }
 
-/// The reason lists a restaurant picks from.
+/// The reason lists a business picks from.
 abstract interface class ReasonsRepository {
-  /// Active reasons for one act, in the restaurant's own order — which is the
+  /// Active reasons for one act, in the business's own order — which is the
   /// order the picker's number keys follow.
   Future<List<ReasonCode>> forScope(ReasonScope scope);
 }
@@ -946,7 +946,7 @@ abstract interface class ShiftRepository {
   /// opened here — see [ShiftActivity].
   ///
   /// Branch-wide where [current] is per terminal: the back office is asking
-  /// how many drawers are out in the restaurant, not whether this one is.
+  /// how many drawers are out in the business, not whether this one is.
   Future<ShiftActivity> activity();
 
   /// Every drawer open at this **branch**, each summarised by [summarise]'s
@@ -982,7 +982,7 @@ abstract interface class ShiftRepository {
   });
 }
 
-/// What a terminal learns about itself when it takes its place in a restaurant.
+/// What a terminal learns about itself when it takes its place in a business.
 ///
 /// The dashboard creates the terminal first and the till claims it
 /// (POS-BE-023). That inversion is what makes an offline terminal trackable at
@@ -995,7 +995,7 @@ class TerminalClaim {
     required this.branchId,
     required this.branchName,
     required this.syncPolicy,
-    this.restaurantId,
+    this.businessId,
     this.branchCode,
     this.defaultLanguage,
   });
@@ -1013,12 +1013,12 @@ class TerminalClaim {
 
   /// The tenant this terminal belongs to. Every row the till writes is stamped
   /// with it, and it is never read from user input.
-  final int? restaurantId;
+  final int? businessId;
 
   /// Invoice prefix (POS-BE-005). `MAADI` in `MAADI-2026-001042`.
   final String? branchCode;
 
-  /// The restaurant's language, out of the bootstrap bundle the claim carried
+  /// The business's language, out of the bootstrap bundle the claim carried
   /// (owner decision, 2026-09-15: the cloud wizard asks nothing the cloud
   /// already knows). `en` or `ar`; null when the platform said neither.
   ///
@@ -1067,7 +1067,7 @@ class ClaimResult {
 /// one thing an operator in Cairo definitely cannot act on.
 enum ClaimNotice {
   /// POS-BE-016: the platform registered this till past the plan's terminal
-  /// count on purpose — refusing mid-service is how a POS bricks a restaurant —
+  /// count on purpose — refusing mid-service is how a POS bricks a business —
   /// and says so in `warnings[]`. Swallowing it means the overage surfaces
   /// weeks later in an invoice conversation instead of now, to the person
   /// standing at the till.
@@ -1270,7 +1270,7 @@ class QueuedPrintJob {
   final List<int> bytes;
 
   /// How many times this has been tried. Shown to nobody yet; it is the number
-  /// a support engineer asks for first when a restaurant says the printer keeps
+  /// a support engineer asks for first when a business says the printer keeps
   /// stopping.
   final int attempts;
 

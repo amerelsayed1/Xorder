@@ -19,20 +19,20 @@ import 'pos_database.dart';
 /// leaves a stock figure that disagrees with its own history — so all of it is
 /// one transaction, and the position is read `FOR UPDATE` because two people
 /// booking in two deliveries of the same product at once is a Tuesday in a
-/// restaurant with a back door.
+/// business with a back door.
 class PostgresReceivingRepository implements ReceivingRepository {
   const PostgresReceivingRepository({
     required PosDatabase database,
     required this.config,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   @override
@@ -65,9 +65,9 @@ class PostgresReceivingRepository implements ReceivingRepository {
       final order = await tx.execute(
         Sql.named(
           'SELECT status FROM pos_purchase_orders '
-          'WHERE id = @id AND restaurant_id = @r AND branch_id = @b FOR UPDATE',
+          'WHERE id = @id AND business_id = @r AND branch_id = @b FOR UPDATE',
         ),
-        parameters: {'id': purchaseOrderId, 'r': restaurantId, 'b': branchId},
+        parameters: {'id': purchaseOrderId, 'r': businessId, 'b': branchId},
       );
       if (order.isEmpty) {
         return const AdminResult<void>.refused(EditedElsewhere(0));
@@ -194,14 +194,14 @@ class PostgresReceivingRepository implements ReceivingRepository {
         await tx.execute(
           Sql.named('''
           INSERT INTO pos_stock_movements
-            (restaurant_id, branch_id, product_id, kind, quantity_milli, unit,
+            (business_id, branch_id, product_id, kind, quantity_milli, unit,
              unit_cost_minor, balance_milli, average_cost_minor,
              purchase_order_id, note, occurred_at, created_by)
           VALUES (@r, @b, @p, 'receipt', @qty, @unit, @cost, @balance,
                   @average, @order, @note, @at, @by)
           '''),
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             'p': productId,
             'qty': arrived.milli,
@@ -219,7 +219,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
         await tx.execute(
           Sql.named('''
           INSERT INTO pos_stock_levels
-            (restaurant_id, branch_id, product_id, quantity_milli, unit,
+            (business_id, branch_id, product_id, quantity_milli, unit,
              average_cost_minor, updated_at)
           VALUES (@r, @b, @p, @qty, @unit, @average, now())
           ON CONFLICT (branch_id, product_id) DO UPDATE SET
@@ -231,7 +231,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
             updated_at = now()
           '''),
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             'p': productId,
             'qty': after.onHand.milli,
@@ -275,13 +275,13 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,
@@ -321,9 +321,9 @@ class PostgresReceivingRepository implements ReceivingRepository {
       final product = await tx.execute(
         Sql.named(
           'SELECT stock_unit, is_stocked FROM pos_products '
-          'WHERE id = @p AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @p AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'p': productId, 'r': restaurantId},
+        parameters: {'p': productId, 'r': businessId},
       );
       if (product.isEmpty) return refuse(OpeningCostProblem.itemUnknown);
 
@@ -359,14 +359,14 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_stock_movements
-          (restaurant_id, branch_id, product_id, kind, quantity_milli, unit,
+          (business_id, branch_id, product_id, kind, quantity_milli, unit,
            unit_cost_minor, balance_milli, average_cost_minor, note,
            occurred_at, created_by)
         VALUES (@r, @b, @p, 'opening', 0, @unit, @cost, @balance, @cost, @note,
                 now(), @by)
         '''),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'p': productId,
           'unit': unit.wire,
@@ -380,7 +380,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_stock_levels
-          (restaurant_id, branch_id, product_id, quantity_milli, unit,
+          (business_id, branch_id, product_id, quantity_milli, unit,
            average_cost_minor, updated_at)
         VALUES (@r, @b, @p, @qty, @unit, @cost, now())
         ON CONFLICT (branch_id, product_id) DO UPDATE SET
@@ -388,7 +388,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
           updated_at = now()
         '''),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'p': productId,
           'qty': before.onHand.milli,
@@ -400,13 +400,13 @@ class PostgresReceivingRepository implements ReceivingRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, before_value, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @before::jsonb, @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,

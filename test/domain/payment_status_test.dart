@@ -48,7 +48,7 @@ void main() {
 
     test('is measured against what was taken, not the total', () {
       // 100.00 owed, 40.00 taken, 40.00 given back: nothing of the customer's
-      // is left with the restaurant. Measured against the total this would
+      // is left with the business. Measured against the total this would
       // read PARTIALLY_REFUNDED — true of the bill, false of the money.
       expect(of(10000, [4000], [4000]), PaymentStatus.refunded);
     });

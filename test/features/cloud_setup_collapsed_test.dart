@@ -124,15 +124,15 @@ class _RecordingDatabaseBuilder {
 /// Reason codes and order types, recorded instead of written.
 class _RecordingDefaultsSeeder {
   int calls = 0;
-  int? restaurantId;
+  int? businessId;
 
   Future<void> call(
     DeploymentConfig config,
     String adminPassword,
-    int restaurantId,
+    int businessId,
   ) async {
     calls++;
-    this.restaurantId = restaurantId;
+    this.businessId = businessId;
   }
 }
 
@@ -268,7 +268,7 @@ void main() {
       locale: 'en',
       branchId: 13,
       branchLabel: 'Maadi',
-      restaurantId: 1,
+      businessId: 1,
       branchCode: 'MAADI',
       licence: _licence({DeploymentMode.cloud}).serialize(),
     );
@@ -340,7 +340,7 @@ void main() {
       expect(progress.saved, isNotNull);
       expect(progress.saved!.terminalName, 'Counter 1');
       // This harness has no platform to fetch a bundle from, so there is no
-      // restaurant row to hang reasons on — and nothing tried. The seed's
+      // business row to hang reasons on — and nothing tried. The seed's
       // failure is a notice, and the defaults wait for the retry that clears
       // it rather than failing a second time on the same missing row.
       expect(defaults.calls, 0);
@@ -468,7 +468,7 @@ void main() {
       expect(saved.terminal.branchId, 13);
       expect(saved.terminal.branchName, 'Maadi');
       expect(saved.terminal.branchCode, 'MAADI');
-      expect(saved.terminal.restaurantId, 1);
+      expect(saved.terminal.businessId, 1);
       expect(saved.terminal.provisioned, isTrue);
       expect(saved.setupComplete, isTrue);
 
@@ -484,7 +484,7 @@ void main() {
       expect(saved.deployment.adminDatabaseUser, 'pos_admin');
       expect(saved.deployment.syncPolicy, SyncPolicy.automatic);
 
-      // The printer, detected. 80mm because that is the roll every restaurant
+      // The printer, detected. 80mm because that is the roll every business
       // this ships to runs, and a receipt built for 576 dots on a 58mm head
       // loses its right-hand column rather than scaling.
       expect(saved.printer.name, 'EPSON TM-T20III #1');
@@ -543,7 +543,7 @@ void main() {
       await walk(tester, container, modes: {DeploymentMode.cloud});
 
       // Somebody has to be able to put paper through the thing before the
-      // restaurant opens, and with the hardware screen gone this is the last
+      // business opens, and with the hardware screen gone this is the last
       // place they can.
       await tester.tap(find.text('Test print'));
       await tester.pumpAndSettle();
@@ -595,7 +595,7 @@ void main() {
       expect(container.read(setupProvider).step, SetupStep.connecting);
       expect(container.read(setupProvider).needsDatabase, isTrue);
       expect(find.text('NO INSTALLED DATABASE FOUND'), findsOneWidget);
-      // Prefilled: the restaurant's own name for its database, and the
+      // Prefilled: the business's own name for its database, and the
       // till account every wizard-built install shares.
       expect(
         container.read(setupProvider).deployment.databaseName,
@@ -636,7 +636,7 @@ void main() {
       // either, and the build is the only thing that can create it — with
       // this, the password every sale after tonight connects with.
       expect(builder.tillPassword, 'typed-by-hand');
-      // Built under the restaurant's own name — no installer named it first.
+      // Built under the business's own name — no installer named it first.
       expect(builder.config!.databaseName, 'islanded_db');
       expect(builder.config!.databaseUser, 'pos_till');
       expect(builder.config!.adminDatabaseUser, 'pos_admin');

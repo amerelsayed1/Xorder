@@ -33,7 +33,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int staffId;
@@ -45,7 +45,7 @@ void main() {
 
   /// Somebody who may give money back on their own: a supervisor. The
   /// repository asks, so a fixture holding nothing would now be refused — and
-  /// a fixture holding a hand-picked grant would test a shape no restaurant
+  /// a fixture holding a hand-picked grant would test a shape no business
   /// has.
   const refunder = PosRole(
     id: 1,
@@ -82,14 +82,14 @@ void main() {
   }) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status) '
       "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @invoice, 'dine_in', 'EGP', "
       '  2, @sub, 0, @svc, @vat, @total, @at::timestamptz, @status) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': terminal,
         'invoice': invoice,
@@ -146,7 +146,7 @@ void main() {
     return db.runTx(pg.config, (tx) async {
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_refunds (client_refund_id, restaurant_id, branch_id, '
+          'INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
           '  terminal_id, order_id, kind, subtotal_minor, service_minor, '
           '  vat_minor, total_minor, refunded_by) '
           'VALUES (COALESCE(@client::uuid, gen_random_uuid()), @r, @b, @t::uuid, '
@@ -154,7 +154,7 @@ void main() {
         ),
         parameters: {
           'client': clientId,
-          'r': restaurantId,
+          'r': businessId,
           'b': branch ?? branchId,
           't': terminal,
           'o': orderId,
@@ -205,12 +205,12 @@ void main() {
       'TRUNCATE pos_refunds, pos_orders, pos_invoice_sequences '
       'RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('ref', 'Refunds') RETURNING id",
                 ))
                 .first[0]
@@ -218,28 +218,28 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'RF1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     otherBranchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'RF2', 'Second') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
 
     Future<int> staff(String name, String username) async => (await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, 'salt', 'hash') RETURNING id",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'n': name,
         'u': username,
@@ -252,10 +252,10 @@ void main() {
     reasonId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_reason_codes (restaurant_id, scope, code, '
+                  'INSERT INTO pos_reason_codes (business_id, scope, code, '
                   "  name_en) VALUES (@r, 'refund', 'quality', 'Quality problem') "
                   'RETURNING id',
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
@@ -264,7 +264,7 @@ void main() {
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminal,
         branchCode: 'RF1',
@@ -503,14 +503,14 @@ void main() {
         db.runTx(pg.config, (tx) async {
           final rows = await tx.execute(
             Sql.named(
-              'INSERT INTO pos_refunds (client_refund_id, restaurant_id, '
+              'INSERT INTO pos_refunds (client_refund_id, business_id, '
               '  branch_id, terminal_id, order_id, kind, subtotal_minor, '
               '  service_minor, vat_minor, total_minor, refunded_by) '
               "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, 'partial', "
               '  5000, 0, 0, 5000, @by) RETURNING id',
             ),
             parameters: {
-              'r': restaurantId,
+              'r': businessId,
               'b': branchId,
               't': terminal,
               'o': orderId,
@@ -534,14 +534,14 @@ void main() {
       await db.runTx(pg.config, (tx) async {
         final rows = await tx.execute(
           Sql.named(
-            'INSERT INTO pos_refunds (client_refund_id, restaurant_id, '
+            'INSERT INTO pos_refunds (client_refund_id, business_id, '
             '  branch_id, terminal_id, order_id, kind, subtotal_minor, '
             '  service_minor, vat_minor, total_minor, refunded_by) '
             "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, 'partial', "
             '  5000, 0, 0, 5000, @by) RETURNING id',
           ),
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             't': terminal,
             'o': orderId,
@@ -564,14 +564,14 @@ void main() {
   });
 
   group('the seeded refund reasons', () {
-    test('every restaurant gets the §18 list', () async {
+    test('every business gets the §18 list', () async {
       final rows = await db.query(
         pg.config,
         "SELECT code FROM pos_reason_codes WHERE scope = 'refund' "
-        'AND restaurant_id = @r ORDER BY sort_order',
-        parameters: {'r': restaurantId},
+        'AND business_id = @r ORDER BY sort_order',
+        parameters: {'r': businessId},
       );
-      // This restaurant was created after the migration ran, so it has only the
+      // This business was created after the migration ran, so it has only the
       // one this suite inserted — which is the honest answer, and the reason
       // the seed is written as "only where there are none".
       expect(rows, isNotEmpty);

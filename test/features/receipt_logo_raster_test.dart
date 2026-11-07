@@ -12,7 +12,7 @@ import 'package:xorder_pos/features/receipt/receipt_document.dart';
 import 'package:xorder_pos/features/receipt/receipt_raster.dart';
 import 'package:xorder_pos/features/receipt/slip_style.dart';
 
-/// XORD-024: the restaurant's logo on the printed slip.
+/// XORD-024: the business's logo on the printed slip.
 ///
 /// The logos here are PNGs drawn in the test, so what is asserted is what the
 /// printer's bitmap does with a real image: how big it comes out, where it

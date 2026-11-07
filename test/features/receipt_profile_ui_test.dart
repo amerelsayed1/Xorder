@@ -180,7 +180,7 @@ void main() {
       );
 
       // No banner, no activity or branch code, and no complaint about an
-      // address a restaurant that files nothing does not have to give.
+      // address a business that files nothing does not have to give.
       expect(find.textContaining('Incomplete.'), findsNothing);
       expect(find.textContaining('Not set up yet'), findsNothing);
       expect(find.text('An activity code is four digits.'), findsNothing);
@@ -437,7 +437,7 @@ void main() {
       expect(find.text('16, Champollion, Downtown, Cairo'), findsOneWidget);
     });
 
-    testWidgets("the restaurant's own footer prints", (tester) async {
+    testWidgets("the business's own footer prints", (tester) async {
       await pumpSlip(tester, complete);
       expect(find.text('Open until 2am'), findsOneWidget);
     });

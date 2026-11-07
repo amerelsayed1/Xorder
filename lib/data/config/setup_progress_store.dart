@@ -42,7 +42,7 @@ class SetupProgress {
     this.locale,
     this.branchId,
     this.branchLabel,
-    this.restaurantId,
+    this.businessId,
     this.branchCode,
     this.licence,
     this.installationId,
@@ -54,12 +54,12 @@ class SetupProgress {
   final String terminalId;
   final String terminalName;
 
-  /// The restaurant's language, from the claim. Null leaves the wizard in the
+  /// The business's language, from the claim. Null leaves the wizard in the
   /// language it opened in.
   final String? locale;
   final int? branchId;
   final String? branchLabel;
-  final int? restaurantId;
+  final int? businessId;
   final String? branchCode;
 
   /// The licence file as serialised, or null when the wizard was carrying none
@@ -88,7 +88,7 @@ class SetupProgress {
     'locale': locale,
     'branch_id': branchId,
     'branch_label': branchLabel,
-    'restaurant_id': restaurantId,
+    'business_id': businessId,
     'branch_code': branchCode,
     'licence': licence,
     'installation_id': installationId,
@@ -112,7 +112,8 @@ class SetupProgress {
       locale: json['locale'] as String?,
       branchId: json['branch_id'] as int?,
       branchLabel: json['branch_label'] as String?,
-      restaurantId: json['restaurant_id'] as int?,
+      // Progress saved before the rename to "business" (2026-11-07).
+      businessId: (json['business_id'] ?? json['restaurant_id']) as int?,
       branchCode: json['branch_code'] as String?,
       licence: json['licence'] as String?,
       installationId: json['installation_id'] as String?,

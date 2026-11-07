@@ -26,12 +26,12 @@ import 'package:xorder_pos/features/admin/presentation/shift_history_bits.dart';
 /// a `_ => capability` fall-through — deliberately, so a capability from a newer
 /// build is shown rather than hidden — and the effect on a capability from *this*
 /// build is that the Roles pane renders the raw string `purchase.manage` to a
-/// restaurant owner. The comment above that switch says the quiet part out loud:
+/// business owner. The comment above that switch says the quiet part out loud:
 /// "the capability name is not shown on its own anywhere", and then nothing
 /// checked.
 ///
 /// Both languages, because a role screen is ticked by whoever runs the
-/// restaurant and half of them are working in Arabic.
+/// business and half of them are working in Arabic.
 void main() {
   const languages = <String, AppStrings>{'en': EnStrings(), 'ar': ArStrings()};
 
@@ -82,7 +82,7 @@ void main() {
       test('every audit action this build writes has a sentence', () {
         // **The Activity pane rendered `entry.action` raw.** Every row read
         // `supplier_invoice.saved`, in both languages, on the screen a
-        // restaurant looks at to find out who changed something — and unlike
+        // business looks at to find out who changed something — and unlike
         // the unlabelled capability there was no switch with a missing case,
         // there was no switch.
         final unlabelled = [
@@ -137,7 +137,7 @@ void main() {
       test('every held sync record says what it is and why, in words', () {
         // Enum-keyed, so a missing case cannot compile; what is left to catch
         // is an empty translation, or a code pasted in where a sentence
-        // belongs — `MENU_ITEM_NOT_FOUND` read out to a restaurant owner.
+        // belongs — `MENU_ITEM_NOT_FOUND` read out to a business owner.
         for (final kind in HeldSyncKind.values) {
           expect(
             AdminText.heldSyncKind(strings, kind).trim(),

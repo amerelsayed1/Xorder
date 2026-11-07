@@ -75,14 +75,14 @@ class Product {
   /// This line has no menu item behind it. See [Product.openPrice].
   final bool isOpenPrice;
 
-  /// Which rate this attracts. Null means the restaurant's default.
+  /// Which rate this attracts. Null means the business's default.
   ///
   /// Nullable rather than defaulted, because "nobody has said" and "somebody
   /// chose the standard rate" are different facts: the first follows the
-  /// restaurant if it changes its default, and the second does not.
+  /// business if it changes its default, and the second does not.
   final int? taxGroupId;
 
-  /// Counted when it is bought and sold — the bottled water a restaurant
+  /// Counted when it is bought and sold — the bottled water a business
   /// also sells. Most of a menu is not: nobody counts assembled dishes.
   final bool isStocked;
 
@@ -208,12 +208,12 @@ enum CatalogProblem {
 
   categoryNameMissing,
 
-  /// Another item already carries this SKU. SKUs are unique per restaurant
+  /// Another item already carries this SKU. SKUs are unique per business
   /// (`pos_products_sku_unique`); said as a refusal so the editor can show it
   /// rather than the database's exception reaching the dialog.
   skuTaken,
 
-  /// The category is not one of this restaurant's, or it is archived and the
+  /// The category is not one of this business's, or it is archived and the
   /// item would be created in it or moved into it. The foreign key only proves
   /// the row exists, not whose it is; an item in an archived category is off
   /// every cashier's screen while the owner believes it is on sale (XORD-014).
@@ -249,7 +249,7 @@ class ModifierGroup {
   final String? nameAr;
 
   /// The heading on the sheet, when it should read differently from the
-  /// library name. A restaurant with three size groups calls them "Burger
+  /// library name. A business with three size groups calls them "Burger
   /// sizes", "Pizza sizes" and "Drink sizes" to tell them apart, and a cashier
   /// should see "Size" on all three. Null means use the name.
   final String? displayNameEn;
@@ -388,7 +388,7 @@ class Catalog {
   final List<Product> products;
   final List<ModifierGroup> modifierGroups;
 
-  /// Meals at one price. Empty on a restaurant that sells none, which is most
+  /// Meals at one price. Empty on a business that sells none, which is most
   /// of them until somebody builds one.
   final List<Combo> combos;
 

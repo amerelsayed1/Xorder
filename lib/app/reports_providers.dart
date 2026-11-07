@@ -25,7 +25,7 @@ final reportsRepositoryProvider = Provider<ReportsRepository?>((ref) {
   return PostgresReportsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     // The branch this till trades at, and no other (plan 17 §2).
     branchId: context.branchId,
   );
@@ -144,7 +144,7 @@ final profitReportProvider =
 
 /// The customer directory with what each has bought here — null with no
 /// database, for the reason [reportsRepositoryProvider] is: an empty list would
-/// read as a restaurant nobody has ever served.
+/// read as a business nobody has ever served.
 final customerDirectoryRepositoryProvider =
     Provider<CustomerDirectoryRepository?>((ref) {
       final config = ref.watch(deploymentProvider);
@@ -153,7 +153,7 @@ final customerDirectoryRepositoryProvider =
       return PostgresCustomerDirectoryRepository(
         database: ref.watch(posDatabaseProvider),
         config: config,
-        restaurantId: context.restaurantId,
+        businessId: context.businessId,
         // This branch's sales and no other's (plan 17 §2).
         branchId: context.branchId,
       );

@@ -302,7 +302,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // A non-null selection carrying a null reason: the act happened, on a
-      // list the restaurant switched off. Distinguishable from keeping.
+      // list the business switched off. Distinguishable from keeping.
       final selection = result();
       expect(selection, isNotNull);
       expect(selection!.reason, isNull);

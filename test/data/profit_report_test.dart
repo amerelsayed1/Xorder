@@ -38,7 +38,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int nour;
@@ -53,11 +53,11 @@ void main() {
       (await db.query(pg.config, sql, parameters: parameters)).first[0] as int;
 
   Future<int> product(String name, {required bool stocked}) => scalar(
-    'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+    'INSERT INTO pos_products (business_id, category_id, name_en, '
     '  price_minor, is_stocked) '
-    'VALUES (@r, (SELECT id FROM pos_categories WHERE restaurant_id = @r), '
+    'VALUES (@r, (SELECT id FROM pos_categories WHERE business_id = @r), '
     '  @n, 1000, @s) RETURNING id',
-    {'r': restaurantId, 'n': name, 's': stocked},
+    {'r': businessId, 'n': name, 's': stocked},
   );
 
   /// One order, its lines `(menu item, name, quantity, unit price, refunded)`.
@@ -71,7 +71,7 @@ void main() {
     invoice++;
     final total = lines.fold<int>(0, (sum, l) => sum + l.$3 * l.$4);
     final id = await scalar(
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, voided_at, voided_by) '
@@ -81,7 +81,7 @@ void main() {
       "  CASE WHEN @status::text = 'VOIDED' THEN @by::bigint END) "
       'RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': onTerminal ?? terminal,
         'inv': 'PR-$invoice',
@@ -125,12 +125,12 @@ void main() {
     int? branch,
   }) => db.query(
     pg.config,
-    'INSERT INTO pos_stock_movements (restaurant_id, branch_id, product_id, '
+    'INSERT INTO pos_stock_movements (business_id, branch_id, product_id, '
     '  kind, quantity_milli, unit_cost_minor, balance_milli, '
     '  average_cost_minor, order_id) '
     'VALUES (@r, @b, @p, @kind, @q, @cost, 0, @cost, @o)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branch ?? branchId,
       'p': product,
       'kind': kind,
@@ -153,28 +153,28 @@ void main() {
       'pos_invoice_sequences RESTART IDENTITY CASCADE',
     );
     await db.query(pg.config, 'DELETE FROM pos_combos');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     invoice = 0;
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('pf', 'Profit') "
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('pf', 'Profit') "
       'RETURNING id',
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MANS', 'Mansoura') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     otherBranchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'TANT', 'Tanta') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     nour = await scalar(
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', 'nour', 'salt', 'hash') "
       'RETURNING id',
-      {'r': restaurantId, 'b': branchId},
+      {'r': businessId, 'b': branchId},
     );
     for (final (id, name, branch) in [
       (terminal, 'POS-01', branchId),
@@ -182,16 +182,16 @@ void main() {
     ]) {
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (@id::uuid, @r, @b, @name)',
-        parameters: {'id': id, 'r': restaurantId, 'b': branch, 'name': name},
+        parameters: {'id': id, 'r': businessId, 'b': branch, 'name': name},
       );
     }
     await db.query(
       pg.config,
-      'INSERT INTO pos_categories (restaurant_id, name_en, slug) '
+      'INSERT INTO pos_categories (business_id, name_en, slug) '
       "VALUES (@r, 'Menu', 'menu')",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     cola = await product('Cola', stocked: true);
     chips = await product('Chips', stocked: true);
@@ -201,7 +201,7 @@ void main() {
     reports = PostgresReportsRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -466,14 +466,14 @@ void main() {
         );
 
     // Where the till prices from — the payload the Taxes pane saves — not
-    // `pos_restaurants.tax_mode`, which nothing writes.
+    // `pos_businesses.tax_mode`, which nothing writes.
     Future<void> inclusive() => db.query(
       pg.config,
-      'INSERT INTO pos_money_config (restaurant_id, payload) '
+      'INSERT INTO pos_money_config (business_id, payload) '
       "VALUES (@r, '{\"tax_mode\": \"inclusive\"}'::jsonb) "
-      'ON CONFLICT (restaurant_id) DO UPDATE '
+      'ON CONFLICT (business_id) DO UPDATE '
       "SET payload = pos_money_config.payload || '{\"tax_mode\": \"inclusive\"}'::jsonb",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     /// T1: three Colas at 11.40 gross, all at 14% → 30.00 net + 4.20 tax.
@@ -560,7 +560,7 @@ void main() {
       expect(cola.profit!.minor, 2565);
     });
 
-    test('the same orders on a tax-exclusive restaurant are untouched', () async {
+    test('the same orders on a tax-exclusive business are untouched', () async {
       // Default mode: the lines are already net, and nothing is scaled.
       await ledger();
       final r = await reports.profit(range);
@@ -572,7 +572,7 @@ void main() {
   });
 
   group('whether the price contains tax', () {
-    test('an exclusive restaurant is not flagged', () async {
+    test('an exclusive business is not flagged', () async {
       await seed();
 
       expect((await reports.profit(range)).pricesIncludeTax, isFalse);
@@ -582,11 +582,11 @@ void main() {
       await seed();
       await db.query(
         pg.config,
-        'INSERT INTO pos_money_config (restaurant_id, payload) '
+        'INSERT INTO pos_money_config (business_id, payload) '
         "VALUES (@r, '{\"tax_mode\": \"inclusive\"}'::jsonb) "
-        'ON CONFLICT (restaurant_id) DO UPDATE '
+        'ON CONFLICT (business_id) DO UPDATE '
         "SET payload = pos_money_config.payload || '{\"tax_mode\": \"inclusive\"}'::jsonb",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       expect((await reports.profit(range)).pricesIncludeTax, isTrue);

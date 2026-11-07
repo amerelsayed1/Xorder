@@ -30,7 +30,7 @@ int? _asInt(Object? value) => switch (value) {
 /// The name a catalogue row goes by: English when it has one, otherwise the
 /// Arabic one standing in for it.
 ///
-/// The platform lets a restaurant name a category or an item in one language
+/// The platform lets a business name a category or an item in one language
 /// only — the dashboard and the diner's menu both resolve by locale and fall
 /// back — and Good Cafe's whole menu is Arabic-only. The till used to require
 /// `name_en` and drop every row without one, which dropped every category,
@@ -61,8 +61,8 @@ List<String> _asStringList(Object? value) => [
       if (item is String) item,
 ];
 
-class BootstrapRestaurant {
-  const BootstrapRestaurant({
+class BootstrapBusiness {
+  const BootstrapBusiness({
     required this.id,
     required this.name,
     required this.slug,
@@ -79,13 +79,13 @@ class BootstrapRestaurant {
   final String? nameAr;
   final String slug;
 
-  /// The language this restaurant works in, as the dashboard has it — `en` or
+  /// The language this business works in, as the dashboard has it — `en` or
   /// `ar` and nothing else.
   ///
   /// Null when the platform sent a language this build cannot render. That is
   /// deliberately not a fallback to English: a till that silently opened in a
   /// third language's name would be unreadable to the people using it, and the
-  /// wizard's own default (Arabic, the restaurants this ships to) is a better
+  /// wizard's own default (Arabic, the businesses this ships to) is a better
   /// answer than a word the platform happened to send.
   final String? defaultLanguage;
 
@@ -101,13 +101,13 @@ class BootstrapRestaurant {
   final int exponent;
   final String? taxRegistrationNumber;
 
-  static BootstrapRestaurant? fromJson(Map<String, Object?>? json) {
+  static BootstrapBusiness? fromJson(Map<String, Object?>? json) {
     if (json == null) return null;
     final id = _asInt(json['id']);
     final name = _asString(json['name']);
     final slug = _asString(json['slug']);
     if (id == null || name == null || slug == null) return null;
-    return BootstrapRestaurant(
+    return BootstrapBusiness(
       id: id,
       name: name,
       nameAr: _asString(json['name_ar']),
@@ -131,7 +131,7 @@ class BootstrapRestaurant {
 /// The bundle's `branding` block (XORD-021). Only the logo is read: the display
 /// name and accent colour the block also carries are not used by this build.
 ///
-/// **A null [logoUrl] means "the restaurant has no logo", but only when the
+/// **A null [logoUrl] means "the business has no logo", but only when the
 /// block was sent at all.** A platform that predates the key sends no block, and
 /// [BootstrapBundle.branding] is then null, which leaves whatever logo the till
 /// holds exactly as it is. The two must not be confused: one removes a logo,
@@ -140,7 +140,7 @@ class BootstrapBranding {
   const BootstrapBranding({this.logoUrl});
 
   /// Where the platform serves the logo, as it baked the address (an absolute
-  /// URL), or null when the restaurant has none.
+  /// URL), or null when the business has none.
   final String? logoUrl;
 
   static BootstrapBranding? fromJson(Map<String, Object?>? json) {
@@ -456,7 +456,7 @@ ReceiptProfile? _receiptProfile(Map<String, Object?> json) {
     // The platform's counter, taken verbatim rather than counted here. It is
     // the same number the dashboard's stale-save guard checks, and 0 carries
     // real news — "nobody has authored this branch yet, you are looking at a
-    // projection of the restaurant". A locally incremented copy would make the
+    // projection of the business". A locally incremented copy would make the
     // two sides disagree about which save was first.
     revision: _asInt(json['revision']) ?? 0,
   );
@@ -689,7 +689,7 @@ class BootstrapBundle {
     required this.configVersion,
     this.syncedAt,
     this.serverTime,
-    this.restaurant,
+    this.business,
     this.terminal,
     this.branches = const [],
     this.categories = const [],
@@ -709,7 +709,7 @@ class BootstrapBundle {
   final int configVersion;
   final DateTime? syncedAt;
   final DateTime? serverTime;
-  final BootstrapRestaurant? restaurant;
+  final BootstrapBusiness? business;
   final BootstrapTerminal? terminal;
   final List<BootstrapBranch> branches;
   final List<BootstrapCategory> categories;
@@ -750,7 +750,7 @@ class BootstrapBundle {
   /// `{payload, signature, key_id}` when the tenant holds one (POS-BE-015).
   final Map<String, Object?>? licence;
 
-  /// The restaurant's branding, or null when this platform sends none (XORD-021).
+  /// The business's branding, or null when this platform sends none (XORD-021).
   final BootstrapBranding? branding;
 
   /// The payment methods in [money], parsed.
@@ -786,9 +786,9 @@ class BootstrapBundle {
   ];
 
   /// Can this bundle seed a database at all? The identity block is the floor:
-  /// without knowing *which restaurant this is*, seeding anything would write
+  /// without knowing *which business this is*, seeding anything would write
   /// rows no query could ever scope.
-  bool get seedable => restaurant != null && terminal != null;
+  bool get seedable => business != null && terminal != null;
 
   static BootstrapBundle? tryParse(Object? body) {
     if (body is! Map) return null;
@@ -810,7 +810,7 @@ class BootstrapBundle {
       configVersion: _asInt(json['config_version']) ?? 0,
       syncedAt: _asTime(json['synced_at']),
       serverTime: _asTime(json['server_time']),
-      restaurant: BootstrapRestaurant.fromJson(block('restaurant')),
+      business: BootstrapBusiness.fromJson(block('restaurant')),
       terminal: BootstrapTerminal.fromJson(block('terminal')),
       branches: [
         for (final branch in _asMapList(json['branches']))

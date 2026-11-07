@@ -170,7 +170,7 @@ void main() {
           .controller
           ?.text,
       '12.5',
-      reason: 'basis points shown as the percent a restaurant says out loud',
+      reason: 'basis points shown as the percent a business says out loud',
     );
   });
 

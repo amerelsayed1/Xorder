@@ -60,7 +60,7 @@ void main() {
     );
   });
 
-  test('is none when the restaurant has no logo', () async {
+  test('is none when the business has no logo', () async {
     expect(
       await read(printer: const PrinterConfig(), stored: () async => null),
       isNull,

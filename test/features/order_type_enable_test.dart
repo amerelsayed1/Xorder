@@ -14,7 +14,7 @@ import 'package:xorder_pos/features/admin/presentation/management_order_types_pa
 /// Turning a kind of order off, from the pane that lists them.
 ///
 /// It was always possible — the row's editor has the switch — and that is one
-/// tap too deep for the thing a restaurant changes most: Ramadan starts and
+/// tap too deep for the thing a business changes most: Ramadan starts and
 /// delivery goes on, the dining room closes for a refit and seating goes off.
 /// A pane you have to open a row inside to answer "what do we sell today" reads
 /// as a pane that cannot answer it.

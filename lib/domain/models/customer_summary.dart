@@ -36,7 +36,7 @@ class CustomerSummary {
   /// platform's bundle — which is shown as "never", not as a date.
   final DateTime? lastOrderAt;
 
-  /// [spent] less [refunded]: what they actually left with the restaurant.
+  /// [spent] less [refunded]: what they actually left with the business.
   Money get net => spent - refunded;
 
   bool get hasOrdered => orders > 0;

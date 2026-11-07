@@ -3,7 +3,7 @@
 // This is the missing half of `lib/data/postgres/migrations.dart`. The migrator
 // has always been there; nothing outside the tests ever ran it, which left a
 // real branch box with no way to get a schema short of someone pasting DDL into
-// psql at a restaurant on opening night.
+// psql at a business on opening night.
 //
 // It is a **separate command with an admin credential**, deliberately, rather
 // than something the till does at boot. The till connects as `pos_till`, which
@@ -87,7 +87,7 @@ Future<void> main(List<String> arguments) async {
 
       if (options.seed) await _seed(database, options);
       // After --seed, so a single invocation can do both and the catalogue
-      // finds the restaurant the same run just created.
+      // finds the business the same run just created.
       if (options.seedCatalogue) await _seedCatalogue(database, options);
 
       final till = options.grantTo;
@@ -218,48 +218,48 @@ Future<void> _reportStatus(PosDatabase database, Options options) async {
   }
 }
 
-/// Create the restaurant, one branch, one terminal and one member of staff.
+/// Create the business, one branch, one terminal and one member of staff.
 ///
 /// **It seeds no menu.** A starter menu would be somebody else's food — which
 /// is the entire problem this work exists to fix — so what goes in here is only
 /// what the till cannot boot without, under names the operator supplied. The
 /// categories and products are then inserted by hand; the README has the SQL.
 ///
-/// Safe to re-run: it matches on the restaurant slug, the branch code and the
+/// Safe to re-run: it matches on the business slug, the branch code and the
 /// staff username, and leaves anything already there alone.
 Future<void> _seed(PosDatabase database, Options options) async {
-  final restaurant = options.restaurantName;
+  final business = options.businessName;
   final slug = options.slug;
-  if (restaurant == null || slug == null || options.pin == null) {
+  if (business == null || slug == null || options.pin == null) {
     stderr.writeln(
-      '--seed needs --restaurant, --slug and --pin. The till has to know what '
-      'the restaurant is called, how to look it up, and how to unlock.',
+      '--seed needs --business, --slug and --pin. The till has to know what '
+      'the business is called, how to look it up, and how to unlock.',
     );
     exit(64);
   }
 
-  final restaurantRows = await database.query(
+  final businessRows = await database.query(
     options.config,
-    'INSERT INTO pos_restaurants (slug, name) VALUES (@slug, @name) '
+    'INSERT INTO pos_businesses (slug, name) VALUES (@slug, @name) '
     'ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug '
     'RETURNING id, (xmax = 0) AS inserted',
-    parameters: {'slug': slug, 'name': restaurant},
+    parameters: {'slug': slug, 'name': business},
   );
-  final restaurantId = restaurantRows.first[0] as int;
+  final businessId = businessRows.first[0] as int;
   stdout.writeln(
-    restaurantRows.first[1] == true
-        ? 'created restaurant $restaurant ($slug).'
-        : 'restaurant $slug already exists — reusing it.',
+    businessRows.first[1] == true
+        ? 'created business $business ($slug).'
+        : 'business $slug already exists — reusing it.',
   );
 
   final branchRows = await database.query(
     options.config,
-    'INSERT INTO pos_branches (restaurant_id, code, name, supported_order_types) '
-    "VALUES (@restaurant, @code, @name, ARRAY['dine_in','takeaway','delivery']) "
-    'ON CONFLICT (restaurant_id, code) DO UPDATE SET code = EXCLUDED.code '
+    'INSERT INTO pos_branches (business_id, code, name, supported_order_types) '
+    "VALUES (@business, @code, @name, ARRAY['dine_in','takeaway','delivery']) "
+    'ON CONFLICT (business_id, code) DO UPDATE SET code = EXCLUDED.code '
     'RETURNING id, (xmax = 0) AS inserted',
     parameters: {
-      'restaurant': restaurantId,
+      'business': businessId,
       'code': options.branchCode,
       'name': options.branchName,
     },
@@ -272,11 +272,11 @@ Future<void> _seed(PosDatabase database, Options options) async {
         : 'branch ${options.branchCode} already exists — reusing it.',
   );
 
-  final roles = await _seedRoles(database, options, restaurantId);
+  final roles = await _seedRoles(database, options, businessId);
 
   // On the owner role, with no direct grants of their own.
   //
-  // This account is the restaurant's only credential until somebody uses it to
+  // This account is the business's only credential until somebody uses it to
   // create more, so it has to be able to reach the Management screen and hand
   // out permissions — and it is the *role* that carries them, because the whole
   // point of the model is that a person's permissions are legible as a job
@@ -284,12 +284,12 @@ Future<void> _seed(PosDatabase database, Options options) async {
   //
   // Through `seedOwner`, not an INSERT of its own. This used to be a second
   // copy of that statement — and so a second writer of owners for migration 42
-  // to refuse without warning: pointed at a restaurant that already had one,
+  // to refuse without warning: pointed at a business that already had one,
   // the command died on a driver error. One implementation is one answer, the
   // wizard's, and all this has to do is put it into words.
   final seeded = await LocalBootstrap(database).seedOwner(
     options.config,
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branchId,
     roleId: roles[SystemRoles.ownerCode]!,
     name: options.staffName,
@@ -309,7 +309,7 @@ Future<void> _seed(PosDatabase database, Options options) async {
       stderr
         ..writeln(
           'Not creating ${options.staffName} (${options.staffUsername}) as the '
-          'owner: $name is already the owner of $slug, and a restaurant has one.',
+          'owner: $name is already the owner of $slug, and a business has one.',
         )
         ..writeln(
           '  To set this till up as $name, re-run with --staff-username '
@@ -331,9 +331,9 @@ Future<void> _seed(PosDatabase database, Options options) async {
   final existing = await database.query(
     options.config,
     'SELECT id, pairing_code, claimed_at FROM pos_terminals '
-    'WHERE restaurant_id = @restaurant AND branch_id = @branch AND name = @name',
+    'WHERE business_id = @business AND branch_id = @branch AND name = @name',
     parameters: {
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'name': options.terminalName,
     },
@@ -351,10 +351,10 @@ Future<void> _seed(PosDatabase database, Options options) async {
   final code = _pairingCode(options.branchCode);
   await database.query(
     options.config,
-    'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name, pairing_code) '
-    'VALUES (gen_random_uuid(), @restaurant, @branch, @name, @code)',
+    'INSERT INTO pos_terminals (id, business_id, branch_id, name, pairing_code) '
+    'VALUES (gen_random_uuid(), @business, @branch, @name, @code)',
     parameters: {
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'name': options.terminalName,
       'code': code,
@@ -385,9 +385,9 @@ String _pairingCode(String branchCode) {
 /// Put a small demo menu on a freshly migrated database.
 ///
 /// **Deliberately its own flag, not part of `--seed`.** `--seed` creates the
-/// records a real site genuinely needs — the restaurant, its branch, a role set
+/// records a real site genuinely needs — the business, its branch, a role set
 /// and one person who can unlock the till. A menu is not one of those: a real
-/// restaurant's menu is authored in the dashboard and pulled down, and a
+/// business's menu is authored in the dashboard and pulled down, and a
 /// production install that quietly acquired fictional products would put made-up
 /// prices in front of a customer.
 ///
@@ -396,46 +396,46 @@ String _pairingCode(String branchCode) {
 /// install reaches the wizard's catalogue step, is told it cached nothing, and
 /// cannot sell. Demonstrating the till needs something on the screen.
 ///
-/// Idempotent by the same guard the end-to-end suite uses: a restaurant that
+/// Idempotent by the same guard the end-to-end suite uses: a business that
 /// already has products is left exactly as it is. Re-running is safe and is not
 /// a way to top up a menu.
 Future<void> _seedCatalogue(PosDatabase database, Options options) async {
   final slug = options.slug;
   if (slug == null) {
     stderr.writeln(
-      '--seed-catalogue needs --slug, so it knows which restaurant to put the '
+      '--seed-catalogue needs --slug, so it knows which business to put the '
       'menu on. It will not guess.',
     );
     exit(64);
   }
 
-  final restaurantRows = await database.query(
+  final businessRows = await database.query(
     options.config,
-    'SELECT id, name FROM pos_restaurants WHERE slug = @slug',
+    'SELECT id, name FROM pos_businesses WHERE slug = @slug',
     parameters: {'slug': slug},
   );
-  if (restaurantRows.isEmpty) {
+  if (businessRows.isEmpty) {
     stderr.writeln(
-      'No restaurant with the short name "$slug". Run --seed first, or check '
+      'No business with the short name "$slug". Run --seed first, or check '
       'the spelling.',
     );
     exit(1);
   }
-  final restaurantId = restaurantRows.first[0] as int;
-  final restaurantName = restaurantRows.first[1] as String;
+  final businessId = businessRows.first[0] as int;
+  final businessName = businessRows.first[1] as String;
 
   final existing = await database.query(
     options.config,
-    'SELECT count(*) FROM pos_products WHERE restaurant_id = @restaurant',
-    parameters: {'restaurant': restaurantId},
+    'SELECT count(*) FROM pos_products WHERE business_id = @business',
+    parameters: {'business': businessId},
   );
   // Guards the *menu* only. Tables are guarded by their own unique key below,
-  // so a restaurant that got its products but not its floor — which is exactly
+  // so a business that got its products but not its floor — which is exactly
   // what a half-finished run leaves behind — can still be completed.
   final hasMenu = (existing.first[0] as int) > 0;
   if (hasMenu) {
     stdout.writeln(
-      '$restaurantName already has a menu — leaving it alone. Delete its '
+      '$businessName already has a menu — leaving it alone. Delete its '
       'products first if you meant to replace it.',
     );
   }
@@ -451,10 +451,10 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
     ]) {
       final row = await database.query(
         options.config,
-        'INSERT INTO pos_categories (restaurant_id, name_en, name_ar, slug, sort_order) '
-        'VALUES (@restaurant, @en, @ar, @slug, @sort) RETURNING id',
+        'INSERT INTO pos_categories (business_id, name_en, name_ar, slug, sort_order) '
+        'VALUES (@business, @en, @ar, @slug, @sort) RETURNING id',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'en': nameEn,
           'ar': nameAr,
           'slug': categorySlug,
@@ -468,9 +468,9 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
     // ticket engine has to get right and a menu with only one proves half of it.
     final sizeRows = await database.query(
       options.config,
-      'INSERT INTO pos_modifier_groups (restaurant_id, name_en, name_ar, is_required, max_select, is_variant) '
-      "VALUES (@restaurant, 'Size', 'الحجم', true, 1, true) RETURNING id",
-      parameters: {'restaurant': restaurantId},
+      'INSERT INTO pos_modifier_groups (business_id, name_en, name_ar, is_required, max_select, is_variant) '
+      "VALUES (@business, 'Size', 'الحجم', true, 1, true) RETURNING id",
+      parameters: {'business': businessId},
     );
     final sizeId = sizeRows.first[0] as int;
     await database.query(
@@ -482,9 +482,9 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
 
     final extrasRows = await database.query(
       options.config,
-      'INSERT INTO pos_modifier_groups (restaurant_id, name_en, name_ar, is_required, max_select, is_variant) '
-      "VALUES (@restaurant, 'Extras', 'إضافات', false, 3, false) RETURNING id",
-      parameters: {'restaurant': restaurantId},
+      'INSERT INTO pos_modifier_groups (business_id, name_en, name_ar, is_required, max_select, is_variant) '
+      "VALUES (@business, 'Extras', 'إضافات', false, 3, false) RETURNING id",
+      parameters: {'business': businessId},
     );
     final extrasId = extrasRows.first[0] as int;
     await database.query(
@@ -521,12 +521,12 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
         in menu) {
       final product = await database.query(
         options.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, name_ar, price_minor, sku, sort_order) '
-        'VALUES (@restaurant, @category, @en, @ar, @price, @sku, @sort) '
-        'ON CONFLICT (restaurant_id, sku) DO NOTHING '
+        'INSERT INTO pos_products (business_id, category_id, name_en, name_ar, price_minor, sku, sort_order) '
+        'VALUES (@business, @category, @en, @ar, @price, @sku, @sort) '
+        'ON CONFLICT (business_id, sku) DO NOTHING '
         'RETURNING id',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'category': categories[categorySlug],
           'en': nameEn,
           'ar': nameAr,
@@ -554,7 +554,7 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
     }
 
     stdout.writeln(
-      'created a ${menu.length}-item demo menu for $restaurantName.',
+      'created a ${menu.length}-item demo menu for $businessName.',
     );
   }
 
@@ -562,8 +562,8 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
   // demonstrated at all.
   final branches = await database.query(
     options.config,
-    'SELECT id, name FROM pos_branches WHERE restaurant_id = @restaurant ORDER BY id',
-    parameters: {'restaurant': restaurantId},
+    'SELECT id, name FROM pos_branches WHERE business_id = @business ORDER BY id',
+    parameters: {'business': businessId},
   );
   for (final branch in branches) {
     final branchId = branch[0] as int;
@@ -571,11 +571,11 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
     for (var seat = 1; seat <= 8; seat++) {
       final row = await database.query(
         options.config,
-        'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats, area_name, sort_order) '
-        "VALUES (@restaurant, @branch, @label, @seats, 'Main', @sort) "
+        'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats, area_name, sort_order) '
+        "VALUES (@business, @branch, @label, @seats, 'Main', @sort) "
         'ON CONFLICT (branch_id, label) DO NOTHING RETURNING id',
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'label': 'T$seat',
           'seats': seat <= 4 ? 2 : 4,
@@ -603,40 +603,40 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
 ///
 /// Still no DELETE and no DDL anywhere: a recovered till credential can add to
 /// history and read it back, but never rewrite it.
-/// The four roles a new restaurant starts with.
+/// The four roles a new business starts with.
 ///
 /// `SystemRoles` is the living definition; migration 5 carries a frozen copy for
-/// restaurants that already existed when roles landed. Re-running `--seed` never
-/// resets them — a restaurant that has edited what a supervisor may do keeps its
+/// businesses that already existed when roles landed. Re-running `--seed` never
+/// resets them — a business that has edited what a supervisor may do keeps its
 /// edit, because the alternative is an upgrade that quietly reinstates a
 /// permission somebody deliberately removed.
 Future<Map<String, int>> _seedRoles(
   PosDatabase database,
   Options options,
-  int restaurantId,
+  int businessId,
 ) async {
   final bootstrap = LocalBootstrap(database);
-  final seeded = await bootstrap.seedSystemRoles(options.config, restaurantId);
+  final seeded = await bootstrap.seedSystemRoles(options.config, businessId);
 
   stdout.writeln(
     seeded.created == 0
-        ? 'roles already exist — left as the restaurant has them.'
+        ? 'roles already exist — left as the business has them.'
         : 'created ${seeded.created} of ${SystemRoles.seeded.length} system roles.',
   );
 
   // The reason lists, for the same reason and on the same terms: migration 9
-  // seeded the restaurants that already existed, and a restaurant this command
+  // seeded the businesses that already existed, and a business this command
   // is creating right now was not one of them.
-  final reasons = await bootstrap.seedReasonCodes(options.config, restaurantId);
-  await bootstrap.seedTaxGroup(options.config, restaurantId);
-  // The four payment methods (§40). Migration 23 seeds restaurants that
+  final reasons = await bootstrap.seedReasonCodes(options.config, businessId);
+  await bootstrap.seedTaxGroup(options.config, businessId);
+  // The four payment methods (§40). Migration 23 seeds businesses that
   // existed when it ran; this one did not.
-  await bootstrap.seedTenderTypes(options.config, restaurantId);
+  await bootstrap.seedTenderTypes(options.config, businessId);
   // And what each kind of order requires (§31).
-  await bootstrap.seedOrderTypes(options.config, restaurantId);
+  await bootstrap.seedOrderTypes(options.config, businessId);
   stdout.writeln(
     reasons == 0
-        ? 'reason codes already exist — left as the restaurant has them.'
+        ? 'reason codes already exist — left as the business has them.'
         : 'created $reasons reason codes across '
               '${SystemReasons.seededScopes.length} lists.',
   );
@@ -756,7 +756,7 @@ class Options {
   /// Who owns a database `--create-database` creates.
   String? get owner => _values['owner']?.trim();
 
-  String? get restaurantName => _values['restaurant']?.trim();
+  String? get businessName => _values['business']?.trim();
   String? get slug => _values['slug']?.trim().toLowerCase();
   String? get pin => _values['pin']?.trim();
   String get branchName => _values['branch']?.trim() ?? 'Main';
@@ -812,7 +812,7 @@ class Options {
       if (!const {
         'host', 'port', 'database', 'user', 'password', 'grant-to', //
         'grant-admin-to', 'owner', //
-        'restaurant', 'slug', 'branch', 'branch-code', 'terminal', //
+        'business', 'slug', 'branch', 'branch-code', 'terminal', //
         'staff', 'staff-username', 'pin',
       }.contains(name)) {
         throw FormatException('Unknown option "$argument".');
@@ -874,7 +874,7 @@ class Options {
     if (slug != null &&
         !RegExp(r'^[a-z0-9][a-z0-9-]*$').hasMatch(slug.toLowerCase())) {
       throw FormatException(
-        'Restaurant short name "$slug" should be lowercase letters, digits and '
+        'Business short name "$slug" should be lowercase letters, digits and '
         'hyphens — it is the mahsoub in mahsoub.xorder.io.',
       );
     }
@@ -954,13 +954,13 @@ Prepare a branch server's database for the tills that write to it.
   --status             Say which migrations are applied, and change nothing
   --help
 
-Seeding — creates the restaurant, one branch, one terminal and one member of
+Seeding — creates the business, one branch, one terminal and one member of
 staff, then prints the setup code the till claims. It seeds NO menu: the
 categories and products are yours to insert, and a starter menu would just be
 somebody else's food.
 
   --seed               Create the records below
-  --restaurant <name>  Shown on the receipt and the start screen. Required
+  --business <name>  Shown on the receipt and the start screen. Required
   --slug <name>        Short name, as in mahsoub.xorder.io. Required
   --pin <digits>       PIN for the member of staff created. Required, 4-12
   --branch <name>      Default "Main"
@@ -970,24 +970,24 @@ somebody else's food.
   --staff <name>       Default "Manager"
   --staff-username <u> Default "manager"
 
-  --seed-catalogue     Put a small demo menu on the restaurant named by
+  --seed-catalogue     Put a small demo menu on the business named by
                        --slug: ten products, two modifier groups and eight
                        tables per branch. Separate from --seed because a
                        real menu is authored in the dashboard and pulled
                        down — this exists so a bring-up till has something
                        to sell before those endpoints are built. Refuses to
-                       touch a restaurant that already has products.
+                       touch a business that already has products.
 
 Examples:
 
   # First install of a branch box, all in one go.
   POS_PG_PASSWORD=… dart run bin/pos_migrate.dart --host 192.168.1.20 \\
     --user postgres --create-database --grant-to pos_till \\
-    --seed --restaurant "Amer's Kitchen" --slug amer --pin 1234
+    --seed --business "Amer's Kitchen" --slug amer --pin 1234
 
   # A second till at the same branch: a new terminal and a new setup code.
   POS_PG_PASSWORD=… dart run bin/pos_migrate.dart --host 192.168.1.20 \\
-    --user postgres --seed --restaurant "Amer's Kitchen" --slug amer \\
+    --user postgres --seed --business "Amer's Kitchen" --slug amer \\
     --pin 1234 --terminal "Counter 2"
 
   # After an update, on a box that already has a database.

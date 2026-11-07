@@ -103,13 +103,13 @@ enum SyncPolicy {
   };
 }
 
-/// Whether this terminal is the restaurant's main device or a child of one
+/// Whether this terminal is the business's main device or a child of one
 /// (`docs/pos/10-setup-architecture.md` §9).
 ///
 /// **A tablet is always a child** (owner decision, 2026-09-12). It was being
 /// walked through the desktop wizard — licence key, database build, first
 /// owner — none of which a tablet should own: it is carried round the floor,
-/// it holds no database, and a licence activated on it pinned the restaurant's
+/// it holds no database, and a licence activated on it pinned the business's
 /// licence to the one device most likely to walk out of the building.
 ///
 /// A child therefore answers none of those questions. It points at the main
@@ -259,7 +259,7 @@ class DeploymentConfig {
 
   /// When this terminal drains its queue. Every mode is offline-first — there is
   /// no online-required variant, because a desktop till always has a disk and
-  /// refusing to sell without a connection buys the restaurant nothing.
+  /// refusing to sell without a connection buys the business nothing.
   ///
   /// Ignored in [DeploymentMode.offline], where nothing drains.
   final SyncPolicy syncPolicy;
@@ -290,14 +290,14 @@ class DeploymentConfig {
   /// The name a database gets when nobody has named it — and nobody should
   /// have to. The Windows installer names the one it builds; everywhere else
   /// the wizard builds one, and before 16 Oct 2026 called every one of them
-  /// `xorder_pos`, so a laptop that had set up two restaurants had two tills
+  /// `xorder_pos`, so a laptop that had set up two businesses had two tills
   /// fighting over one database.
   static const defaultDatabaseName = 'xorder_pos';
 
-  /// `demo` → `demo_db`, `good-cafe` → `good_cafe_db`: the restaurant's own
+  /// `demo` → `demo_db`, `good-cafe` → `good_cafe_db`: the business's own
   /// short name, made a plain identifier, so the database reads as whose it
   /// is in any PostgreSQL tool. [defaultDatabaseName] when there is no
-  /// restaurant to name it after yet.
+  /// business to name it after yet.
   static String databaseNameFor(String? tenantSlug) {
     final slug = (tenantSlug ?? '')
         .toLowerCase()

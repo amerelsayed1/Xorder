@@ -15,7 +15,7 @@ import 'admin_pane_bits.dart';
 import 'tax_group_dialog.dart';
 import '../../../core/text/digits.dart';
 
-/// What the restaurant charges in tax (§17).
+/// What the business charges in tax (§17).
 ///
 /// **Offline only**, for the same reason the Menu pane is: on a cloud till the
 /// platform authors tax (POS-BE-013) and the bootstrap seeder overwrites the
@@ -26,7 +26,7 @@ import '../../../core/text/digits.dart';
 /// This closes a quiet and expensive gap. Nothing outside the cloud seeder ever
 /// wrote `pos_money_config`, so an offline till fell back to a built-in 12%
 /// service / 14% VAT and disclosed `deviceConfig` as the source on every slip —
-/// truthful, and wrong for almost every restaurant that is not the one those
+/// truthful, and wrong for almost every business that is not the one those
 /// numbers were written for.
 ///
 /// Rates are held as **basis points** end to end: 1200 is 12%. Percent is only
@@ -49,7 +49,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
 
   /// **Carried, not rebuilt.** `saveMoneyConfig` replaces the whole payload and
   /// the codec writes `tax_mode` into it, so a `TaxConfig` constructed here
-  /// without this field silently reset an inclusive restaurant to exclusive —
+  /// without this field silently reset an inclusive business to exclusive —
   /// and every ticket afterwards added 14% on top of prices that already
   /// contained it. Nothing on any screen sets the mode yet, which is exactly why
   /// saving an unrelated rate must not change it.
@@ -309,7 +309,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
                       ? [
                           // The state worth naming: with no groups every product
                           // is charged the single rate above, whatever a
-                          // restaurant has written on its menu about water.
+                          // business has written on its menu about water.
                           Text(
                             strings.taxGroupsFallback,
                             style: PosText.ui(

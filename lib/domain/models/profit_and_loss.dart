@@ -9,7 +9,7 @@
 ///
 /// ```
 ///   Sales, after discounts and refunds          (all of it, tax in)
-/// − Tax collected, net of refunds               (not the restaurant's)
+/// − Tax collected, net of refunds               (not the business's)
 /// = Revenue
 /// − Cost of goods sold                          (items with a cost only)
 /// = Gross profit
@@ -168,7 +168,7 @@ class ProfitAndLoss {
   final String currency;
   final int exponent;
 
-  /// What the restaurant earned from selling: sales without the tax.
+  /// What the business earned from selling: sales without the tax.
   Money get revenue => sales - tax;
 
   /// Revenue less the cost of the goods that have a cost. **An upper bound

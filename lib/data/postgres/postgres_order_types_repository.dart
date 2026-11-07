@@ -9,12 +9,12 @@ class PostgresOrderTypesRepository implements OrderTypesRepository {
   const PostgresOrderTypesRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   @override
   Future<List<OrderTypeConfig>> all({bool includeInactive = false}) async {
@@ -22,10 +22,10 @@ class PostgresOrderTypesRepository implements OrderTypesRepository {
       config,
       'SELECT code, name_en, name_ar, requires_table, requires_customer, '
       '       requires_address, is_active, sort_order '
-      'FROM pos_order_types WHERE restaurant_id = @r '
+      'FROM pos_order_types WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     return [

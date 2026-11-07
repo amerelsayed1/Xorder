@@ -89,14 +89,14 @@ class RoleNotAllowed extends AdminRefusal {
 /// Enforceable here in a way the terminal count is not: a till cannot see its
 /// sibling machines, but every staff row is in the one database it is already
 /// reading. Counted against ACTIVE staff, so somebody who left does not go on
-/// occupying a seat the restaurant is paying for.
+/// occupying a seat the business is paying for.
 class UserSeatsExhausted extends AdminRefusal {
   const UserSeatsExhausted(this.maxUsers);
 
   final int maxUsers;
 }
 
-/// Usernames are unique per restaurant — that is what makes a PIN resolvable to
+/// Usernames are unique per business — that is what makes a PIN resolvable to
 /// a person.
 class UsernameTaken extends AdminRefusal {
   const UsernameTaken(this.username);
@@ -105,23 +105,23 @@ class UsernameTaken extends AdminRefusal {
 }
 
 /// Disabling this person, or moving them off the owner role, would leave the
-/// restaurant with nobody who can grant permissions.
+/// business with nobody who can grant permissions.
 ///
 /// Refused rather than warned about: the screen that would put it back is the
 /// screen this would make unreachable, and the fix at that point is a psql
-/// prompt at a restaurant on a Sunday.
+/// prompt at a business on a Sunday.
 class WouldLockEveryoneOut extends AdminRefusal {
   const WouldLockEveryoneOut(this.capability);
 
   final String capability;
 }
 
-/// A restaurant has one owner, and it already has one.
+/// A business has one owner, and it already has one.
 ///
 /// Counted among ACTIVE staff, which is what keeps ownership transferable:
 /// disable the current owner, then appoint the new one. Counting every row
 /// would have made the first owner the owner forever — nobody is ever deleted
-/// here — and the only way to sell the restaurant would be a psql prompt.
+/// here — and the only way to sell the business would be a psql prompt.
 ///
 /// Named, like [RoleStillHeld], because "there is already an owner" sends a
 /// manager looking for them and the name is the row they are looking for.
@@ -136,7 +136,7 @@ class OwnerAlreadyExists extends AdminRefusal {
 /// The owner's own role and permissions are not editable.
 ///
 /// Extra roles and ALLOW overrides on somebody who already holds everything
-/// mean nothing, and a DENY override on them is how a restaurant locks itself
+/// mean nothing, and a DENY override on them is how a business locks itself
 /// out of the screen that would take it off. Moving the active owner to
 /// another role is refused for the second reason: it is ownership given away
 /// in a dropdown. Handing over is two deliberate acts — disable, appoint —
@@ -148,7 +148,7 @@ class OwnerIsFixed extends AdminRefusal {
 /// Owner is somebody's job, never an extra role on top of another one.
 ///
 /// Refused even when there is no owner at the moment. An extra role is a way
-/// of *adding* permissions, and owning the restaurant is not an addition —
+/// of *adding* permissions, and owning the business is not an addition —
 /// a manager-who-is-also-owner would count as the owner for the one-owner
 /// rule while the staff list said "Manager". Choosing Owner as their role says
 /// what it means.
@@ -158,7 +158,7 @@ class OwnerIsNotAnExtraRole extends AdminRefusal {
 
 /// Only the owner sets the owner's PIN.
 ///
-/// Whoever holds that PIN holds the restaurant: it opens Admin Mode, and every
+/// Whoever holds that PIN holds the business: it opens Admin Mode, and every
 /// permission the owner has comes with it. A manager able to reset it could
 /// set one, sign in as the owner, and act under their name — so `staff.manage`
 /// reaches everybody's PIN but this one. Applies to anybody on the owner role,
@@ -176,7 +176,7 @@ class OwnerPinIsTheirs extends AdminRefusal {
 ///
 /// Clearing a password puts the account back on its PIN for one Admin Mode
 /// entry, and whoever types that PIN first chooses the new password. For the
-/// owner that is the restaurant: a manager who knew the owner's PIN (it is
+/// owner that is the business: a manager who knew the owner's PIN (it is
 /// four digits, typed at the counter all day) could clear, sign in, and own
 /// the back office under the owner's name. And the owner has no need — they
 /// are signed in with the password they would be clearing. A forgotten one
@@ -210,7 +210,7 @@ class EditedElsewhere extends AdminRefusal {
 /// A refusal rather than a thrown error, because the Management screen is
 /// reachable from a till that is mid-setup and the honest answer there is a
 /// panel explaining what is missing — not a crash, and certainly not an empty
-/// staff list that looks like a restaurant with nobody in it.
+/// staff list that looks like a business with nobody in it.
 /// No administrator database password has been supplied this session.
 ///
 /// Distinct from [NotPermitted], and the distinction is the whole point: the
@@ -705,7 +705,7 @@ abstract interface class SyncQueueRepository {
 /// the platform's rows, so anything authored locally on a CLOUD till is
 /// destroyed by its next bundle. The platform is the single author there, and
 /// the coordination docs say so in as many words — including "do not build a
-/// merge path for data with one author". An offline restaurant has no platform
+/// merge path for data with one author". An offline business has no platform
 /// to be that author, which is the only reason this exists.
 ///
 /// Nothing here deletes. Categories and products are archived, because
@@ -781,7 +781,7 @@ abstract interface class CatalogAdminRepository {
   /// a product cannot be written without one.
   ///
   /// Nothing is ever deleted. A product missing from the file is one the
-  /// restaurant did not mention, not one it wants gone.
+  /// business did not mention, not one it wants gone.
   ///
   /// Gated on `catalog.manage`, like every other menu write, and audited: a
   /// bulk import that changed four hundred prices with no record of who ran it
@@ -791,13 +791,13 @@ abstract interface class CatalogAdminRepository {
     required PosStaff by,
   });
 
-  /// What the restaurant charges on top of the food.
+  /// What the business charges on top of the food.
   ///
   /// Offline only, and for the same reason as the menu: on a cloud till the
   /// platform authors tax (POS-BE-013) and the bootstrap seeder overwrites
   /// this row. An offline till that never writes it silently prices from a
   /// hardcoded 12% / 14% and discloses `deviceConfig` on every receipt — which
-  /// is honest, and wrong for almost every restaurant.
+  /// is honest, and wrong for almost every business.
   ///
   /// Gated on `settings.manage`, not `catalog.manage`: what a plate costs and
   /// what the government takes are different jobs.
@@ -907,7 +907,7 @@ abstract interface class CatalogAdminRepository {
   // item is never given two sets of sizes. Both are explained where they are
   // held, in `PostgresCatalogAdminRepository`.
 
-  /// The restaurant's library — every shared group, with its options, its
+  /// The business's library — every shared group, with its options, its
   /// scope and how many items it reaches. By name, as the platform lists it.
   Future<List<LibraryGroup>> optionLibrary();
 
@@ -923,7 +923,7 @@ abstract interface class CatalogAdminRepository {
   /// The platform's rules, normalised first (see
   /// [OptionGroupDraft.normalized]) and then checked
   /// ([OptionGroupRules.refusal]); the repository adds what only the database
-  /// knows — that the categories are this restaurant's, that the options are
+  /// knows — that the categories are this business's, that the options are
   /// this group's, that nobody saved it since it was read, and that no item
   /// ends up with two sets of sizes. Changing the scope away from chosen items
   /// removes its item links, and away from categories its category links.
@@ -966,7 +966,7 @@ abstract interface class CatalogAdminRepository {
   ///
   /// **One transaction, and the whole tree.** Groups and options are matched
   /// by id: updated in place, added, or removed — never recreated, so a group
-  /// keeps its id across a save. A product that is not this restaurant's is
+  /// keeps its id across a save. A product that is not this business's is
   /// refused rather than written.
   ///
   /// There is no delete: retire it with `isAvailable`. An order line names the
@@ -981,7 +981,7 @@ abstract interface class CatalogAdminRepository {
   });
 }
 
-/// The roles a restaurant defines, and what each may do.
+/// The roles a business defines, and what each may do.
 /// Changing the business logo (XORD-021). Offline installs author it here; a
 /// cloud till receives it from the platform and never writes it through this.
 ///
@@ -1152,7 +1152,7 @@ abstract interface class AuditRepository {
 /// The list of copies taken of this database.
 ///
 /// **Append-only, like the audit ledger, and for the same reason.** A backup
-/// that failed verification is a record that the restaurant did not have a
+/// that failed verification is a record that the business did not have a
 /// backup that night, and a row somebody can quietly correct is not a record.
 /// The database holds that too — see migration 37 — so this interface having no
 /// update and no delete is the second line rather than the only one.
@@ -1205,7 +1205,7 @@ abstract interface class FinancialAccountsAdminRepository {
 
   /// Set the account [tenderTypeId] pays into at [branchId] (null = the whole
   /// business), or clear it with a null [accountId]. A branch row is for this
-  /// restaurant's branches only, and the account must be active and either
+  /// business's branches only, and the account must be active and either
   /// shared or that branch's own.
   Future<AdminResult<TenderAccountDefault?>> setDefault({
     required int tenderTypeId,

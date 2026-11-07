@@ -18,7 +18,7 @@ import 'pg_fixture.dart';
 /// `pos_receipt_profiles`, so a cloud till's `receiptProfileProvider` found no
 /// row, fell back to `ReceiptProfile(branchId: 0)` — which is correct
 /// behaviour for a branch nobody has set up — and printed the compiled-in
-/// blank on every slip it handed a customer, with the restaurant's real trade
+/// blank on every slip it handed a customer, with the business's real trade
 /// name and tax registration number sitting on the dashboard the whole time.
 /// A3 makes the platform the author and puts `receipt_profiles[]` in the
 /// bundle; `BootstrapSeeder` now upserts it.
@@ -40,10 +40,10 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late DeploymentConfig cloud;
-  late int restaurantId;
+  late int businessId;
 
   // Two branches, because one profile per branch is the whole point: a
-  // restaurant group filing one address for four branches is filing three
+  // business group filing one address for four branches is filing three
   // wrong ones.
   const maadi = 3;
   const zamalek = 9;
@@ -54,12 +54,12 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cloud', 'Cloud') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cloud', 'Cloud') "
       'RETURNING id',
     )).first[0]! as int;
   });
@@ -72,8 +72,8 @@ void main() {
     List<int> branches = const [maadi, zamalek],
   }) => BootstrapBundle(
     configVersion: version,
-    restaurant: BootstrapRestaurant(
-      id: restaurantId,
+    business: BootstrapBusiness(
+      id: businessId,
       name: 'Cloud',
       slug: 'cloud',
       currency: 'EGP',
@@ -122,7 +122,7 @@ void main() {
       'SELECT trade_name, registration_number, activity_code, branch_code, '
       '       country, governate, region_city, street, building_number, '
       '       postal_code, floor, room, landmark, additional_info, phone, '
-      '       header_note, footer_note, revision, restaurant_id, updated_by '
+      '       header_note, footer_note, revision, business_id, updated_by '
       'FROM pos_receipt_profiles WHERE branch_id = @b',
       parameters: {'b': branchId},
     );
@@ -145,7 +145,7 @@ void main() {
     readDatabase: db,
     readConfig: cloud,
     adminAvailable: true,
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branchId,
   ).load();
 
@@ -174,7 +174,7 @@ void main() {
 
     // And again in SQL, where each column the seeder writes is its own claim.
     final stored = await row(maadi);
-    expect(stored['restaurant_id'], restaurantId);
+    expect(stored['restaurant_id'], businessId);
     expect(stored['branch_code'], '0042');
     expect(stored['region_city'], 'Maadi');
     // NOT NULL DEFAULT '' on every text column; the wire's nulls are flattened
@@ -193,7 +193,7 @@ void main() {
   test("the platform's revision is taken verbatim, not counted here", () async {
     // The counter is the dashboard's stale-save guard. A local `revision + 1`
     // would put the two permanently out of step, and 0 carries real news: this
-    // branch is a projection of the restaurant, nobody has authored it.
+    // branch is a projection of the business, nobody has authored it.
     await seed(
       bundle(
         1,
@@ -219,7 +219,7 @@ void main() {
         1,
         profiles: [
           authored(maadi),
-          // A branch nobody has typed, projected from the restaurant.
+          // A branch nobody has typed, projected from the business.
           const ReceiptProfile(
             branchId: zamalek,
             tradeName: 'Cloud',
@@ -258,8 +258,8 @@ void main() {
     expect(
       (await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_branches WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT count(*) FROM pos_branches WHERE business_id = @r',
+        parameters: {'r': businessId},
       )).first[0],
       1,
       reason: 'the identity block landed rather than rolling back',
@@ -298,10 +298,10 @@ void main() {
     // their id on it would name them as the author of the platform's text.
     final staffId = (await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, name, username, pin_salt, '
+      'INSERT INTO pos_users (business_id, name, username, pin_salt, '
       "  pin_hash, capabilities) VALUES (@r, 'Mona', 'mona', '', '', '{}') "
       'RETURNING id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     await seed(bundle(1, profiles: [authored(maadi)]));
     await db.query(

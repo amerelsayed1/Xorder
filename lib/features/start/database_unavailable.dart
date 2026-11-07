@@ -13,7 +13,7 @@ import '../../data/postgres/pos_database.dart'
 ///
 /// It used to print the exception — `PosDbException(missingDatabase):
 /// Severity.fatal 3D000: database "…" does not exist` — in the middle of a black
-/// screen with nothing to press. A restaurant meets this after a disk fault, a
+/// screen with nothing to press. A business meets this after a disk fault, a
 /// reset database server or a restored machine, and cannot be expected to read
 /// it. So: one sentence on what is wrong, one on who can fix it, a button to try
 /// again, and the technical text kept small underneath for whoever they call.
@@ -44,7 +44,7 @@ class DatabaseUnavailable extends ConsumerWidget {
       PosDbFailure.missingDatabase => strings.dbUnavailableMissing(database),
       PosDbFailure.dns || PosDbFailure.tcp => strings.dbUnavailableUnreachable,
       // Not "can't reach": it reached *something*, and that something could
-      // not prove it was the restaurant's server. Calling it a network fault
+      // not prove it was the business's server. Calling it a network fault
       // invites the one fix that must never be made from the counter —
       // turning encryption off — so the sentence says what happened and who
       // to call, and the till does not try again in the clear.

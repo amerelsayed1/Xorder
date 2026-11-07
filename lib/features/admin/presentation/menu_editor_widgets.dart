@@ -382,7 +382,7 @@ class EditableGroup {
   ///
   /// [languages] is which names the editor showed (XORD-005): a language it did
   /// not show keeps its stored value, and the English column of an Arabic-only
-  /// restaurant mirrors the Arabic name (see `resolveNames`).
+  /// business mirrors the Arabic name (see `resolveNames`).
   ({OptionGroupDraft? draft, String? error}) toDraft(
     AppStrings s, {
     ContentLanguages languages = ContentLanguages.both,

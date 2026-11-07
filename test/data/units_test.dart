@@ -13,11 +13,11 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
 import 'pg_fixture.dart';
 
-/// The units stock is counted and bought in, as the restaurant names them.
+/// The units stock is counted and bought in, as the business names them.
 ///
 /// Migration 39 turned a closed list in code into a table the back office
-/// owns. What has to hold: every restaurant starts with the seven, a unit the
-/// restaurant adds is kept by its code and read back as itself, and the code —
+/// owns. What has to hold: every business starts with the seven, a unit the
+/// business adds is kept by its code and read back as itself, and the code —
 /// which purchase lines and stock rows store — never changes under them.
 void main() {
   if (PgFixture.host == null) {
@@ -48,7 +48,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late PostgresUnitsRepository units;
 
   Future<Object?> one(String sql, [Map<String, Object?> p = const {}]) async =>
@@ -58,19 +58,19 @@ void main() {
     pg = await PgFixture.open('units');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         await one(
-              "INSERT INTO pos_restaurants (slug, name) VALUES ('units', "
+              "INSERT INTO pos_businesses (slug, name) VALUES ('units', "
               "'Units') RETURNING id",
             )
             as int;
     final branchId =
         await one(
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'U1', 'Main') RETURNING id",
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
     units = PostgresUnitsRepository(
@@ -79,16 +79,16 @@ void main() {
       readDatabase: db,
       readConfig: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
 
   tearDown(() => pg.close());
 
-  test('a new restaurant starts with the seven', () async {
+  test('a new business starts with the seven', () async {
     // Seeded by the database, not by each of the three places that create a
-    // restaurant remembering to.
+    // business remembering to.
     final all = await units.all();
     expect([for (final u in all) u.code], [
       'ea',
@@ -106,23 +106,21 @@ void main() {
     expect(all.firstWhere((u) => u.code == 'box').allowsFraction, isFalse);
   });
 
-  test('a restaurant from before the migration has them too', () async {
-    // The migration seeds every restaurant already there, and running it
+  test('a business from before the migration has them too', () async {
+    // The migration seeds every business already there, and running it
     // again adds nothing twice.
     await db.query(
       pg.config,
-      'DELETE FROM pos_units WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'DELETE FROM pos_units WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
-    await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 39');
-    await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 39');
-    await PosMigrator(db).migrate(pg.config);
+    await pg.replay(39);
+    await pg.replay(39);
 
     expect(await units.all(), hasLength(7));
   });
 
-  test('a unit the restaurant adds is kept, and read back as itself', () async {
+  test('a unit the business adds is kept, and read back as itself', () async {
     final result = await units.save(
       const PosUnit(
         id: 0,
@@ -188,9 +186,9 @@ void main() {
     await expectLater(
       db.query(
         pg.config,
-        "INSERT INTO pos_units (restaurant_id, code, name_en) "
+        "INSERT INTO pos_units (business_id, code, name_en) "
         "VALUES (@r, 'Kg!', 'x')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       ),
       throwsA(isA<PosDbException>()),
     );
@@ -212,8 +210,8 @@ void main() {
     final row = (await db.query(
       pg.config,
       "SELECT action, entity_type, after_value->>'code' FROM pos_audit_events "
-      "WHERE restaurant_id = @r AND entity_type = 'unit'",
-      parameters: {'r': restaurantId},
+      "WHERE business_id = @r AND entity_type = 'unit'",
+      parameters: {'r': businessId},
     )).single;
     expect(row, [AuditAction.unitSaved, AuditAction.entityUnit, 'sack']);
   });

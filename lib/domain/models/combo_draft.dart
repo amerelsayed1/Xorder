@@ -164,13 +164,13 @@ enum ComboProblem {
   // The four below are only knowable against the database, so only the
   // repository says them.
 
-  /// The category is not this restaurant's.
+  /// The category is not this business's.
   categoryUnknown,
 
-  /// The tax group is not this restaurant's.
+  /// The tax group is not this business's.
   taxGroupUnknown,
 
-  /// An option names a product that is not this restaurant's.
+  /// An option names a product that is not this business's.
   productUnknown,
 
   /// Another combo already carries this SKU.

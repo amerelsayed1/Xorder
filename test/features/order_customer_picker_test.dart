@@ -18,7 +18,7 @@ import '../support/in_memory_customers.dart';
 /// Two permissions, kept apart on purpose. **Choosing** somebody already on file
 /// needs `pos.operate` — it is part of ringing the order up. **Adding** somebody
 /// new needs `customers.create`, because that writes a name and a phone number
-/// into the directory every till of the restaurant shares.
+/// into the directory every till of the business shares.
 const _mona = PosCustomer(id: 1, name: 'Mona Fathy', phone: '01012345678');
 
 PosStaff _staff(String name, Set<String> capabilities) => PosStaff(

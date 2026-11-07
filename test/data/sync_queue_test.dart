@@ -34,7 +34,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late DeploymentConfig cloud;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   var invoice = 0;
 
@@ -70,19 +70,19 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('sq', 'SQ') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('sq', 'SQ') "
       'RETURNING id',
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAADI', 'Maadi') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
   });
 
@@ -95,7 +95,7 @@ void main() {
   }) => PostgresSyncQueueRepository(
     database: database ?? db,
     config: config ?? cloud,
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branch ?? branchId,
     terminalId: terminalId,
   );
@@ -104,7 +104,7 @@ void main() {
     database: db,
     config: cloud,
     context: PosWriteContext(
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminalId,
       branchCode: 'MAADI',
@@ -117,7 +117,7 @@ void main() {
     final orderId = (await db.query(
       pg.config,
       '''
-      INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id,
+      INSERT INTO pos_orders (client_transaction_id, business_id, branch_id,
         terminal_id, invoice_number, order_type, currency, exponent,
         subtotal_minor, service_minor, vat_minor, total_minor, occurred_at)
       VALUES (gen_random_uuid(), @r, @b, @t, @invoice, 'takeaway', 'EGP', 2,
@@ -125,7 +125,7 @@ void main() {
       RETURNING id
       ''',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': terminalId,
         'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
@@ -133,8 +133,8 @@ void main() {
     )).first[0]! as int;
     return (await db.query(
       pg.config,
-      'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
-      '  branch_id) SELECT id, client_transaction_id, restaurant_id, branch_id '
+      'INSERT INTO pos_outbox (order_id, client_transaction_id, business_id, '
+      '  branch_id) SELECT id, client_transaction_id, business_id, branch_id '
       'FROM pos_orders WHERE id = @o RETURNING id',
       parameters: {'o': orderId},
     )).first[0]! as int;
@@ -158,14 +158,14 @@ void main() {
   Future<int> heldRefund({int? branch}) async => (await db.query(
     pg.config,
     '''
-    INSERT INTO pos_sync_outbox (restaurant_id, branch_id, event_type,
+    INSERT INTO pos_sync_outbox (business_id, branch_id, event_type,
       source_id, client_transaction_id, quarantined_at, quarantine_code,
       last_error)
     VALUES (@r, @b, 'refund', 31, gen_random_uuid(), now(),
       'REFUND_HAS_NO_LINES', 'This refund was given as an amount.')
     RETURNING id
     ''',
-    parameters: {'r': restaurantId, 'b': branch ?? branchId},
+    parameters: {'r': businessId, 'b': branch ?? branchId},
   )).first[0]! as int;
 
   Future<List<Object?>> outboxRow(int id) async => (await db.query(
@@ -181,8 +181,8 @@ void main() {
       pg.config,
       'SELECT action, entity_type, entity_id, actor_name, before_value, '
       '       terminal_id::text '
-      'FROM pos_audit_events WHERE restaurant_id = @r ORDER BY id',
-      parameters: {'r': restaurantId},
+      'FROM pos_audit_events WHERE business_id = @r ORDER BY id',
+      parameters: {'r': businessId},
     ))
       row.toList(),
   ];
@@ -329,14 +329,14 @@ void main() {
   test("another branch's held record cannot be released from this one",
       () async {
     // The list was scoped to the branch and the release was not: the lock
-    // and the update asked only for the id and the restaurant, so a manager
+    // and the update asked only for the id and the business, so a manager
     // at Maadi could clear — and sign the ledger for — a sale held at
     // Zamalek, by naming its id.
     final zamalek = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'ZAMALEK', 'Zamalek') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     final theirSale = await queueSale(branch: zamalek);
     await holdSale(theirSale);

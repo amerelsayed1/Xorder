@@ -18,7 +18,7 @@ enum SetupMethod { pairingCode, manual }
 /// The steps of first-run setup, in order.
 ///
 /// Deliberately one linear path with no branching screens: the person working
-/// through this is often the restaurant owner rather than a technician, and a
+/// through this is often the business owner rather than a technician, and a
 /// wizard that forks is a wizard that strands people.
 ///
 /// [SetupMethod] does **not** fork it. A pairing code pre-fills the branch and
@@ -146,7 +146,7 @@ class SetupDraft {
     this.adoptTerminalId,
     this.branchId,
     this.branchLabel,
-    this.restaurantId,
+    this.businessId,
     this.branchCode,
     this.terminalName = '',
     this.terminalId,
@@ -179,7 +179,7 @@ class SetupDraft {
   /// Activating no longer writes it: the licence step is the FIRST of ten, and
   /// a file written there outlives every abandoned wizard — an owner trying a
   /// key to see what it covers, an installer stopped at the database password.
-  /// The machine was left holding a licence for a restaurant it had never been
+  /// The machine was left holding a licence for a business it had never been
   /// set up for. `complete()` is what puts this on disk.
   ///
   /// Null also when the licence was RESTORED rather than activated: that one is
@@ -258,7 +258,7 @@ class SetupDraft {
   ///
   /// **Always [SetupMethod.manual] on anything but a cloud main device**,
   /// whatever was stored. A pairing code is minted by a dashboard, and an
-  /// offline restaurant has none; a child tablet has one available in principle
+  /// offline business has none; a child tablet has one available in principle
   /// — its main device may well be cloud — but codes are issued per terminal to
   /// the person installing the till, and a tablet signs in as a manager who
   /// already exists instead.
@@ -282,7 +282,7 @@ class SetupDraft {
   final bool connected;
 
   /// The tenant's display name, from the pull. Shown so the operator can see
-  /// they signed into the right restaurant before anything is written.
+  /// they signed into the right business before anything is written.
   final String? tenantName;
 
   /// Branches retrieved by the pull. Null until connected; the branch step
@@ -307,7 +307,7 @@ class SetupDraft {
   /// choosable option — already chosen, because adopting the licence moves the
   /// draft onto a covered mode the moment it is read — sitting beside one
   /// greyed NOT LICENSED. That is not a question. It is a screen the installer
-  /// presses Continue on to be told what the restaurant was already sold, on a
+  /// presses Continue on to be told what the business was already sold, on a
   /// wizard that is ten screens long before it adds any.
   ///
   /// Null claims mean no licence has been read yet, which is the licence step
@@ -386,7 +386,7 @@ class SetupDraft {
     SetupStep.summary,
   ];
 
-  /// The long path, unchanged. An offline restaurant has no platform to be told
+  /// The long path, unchanged. An offline business has no platform to be told
   /// anything by, so every one of these is a question somebody has to answer.
   List<SetupStep> get offlineSteps => [
     SetupStep.licence,
@@ -409,7 +409,7 @@ class SetupDraft {
   /// through, so nobody is stranded on the wrong branch of it. What is left out
   /// is everything the main device already owns — the licence and the mode (it
   /// shares its own), the database and the first administrator (it built them),
-  /// and the money settings (the restaurant's, not the tablet's).
+  /// and the money settings (the business's, not the tablet's).
   static const childSteps = [
     SetupStep.deployment,
     SetupStep.account,
@@ -438,7 +438,7 @@ class SetupDraft {
   final String databasePassword;
 
   // ── First install on this machine ──────────────────────────────────────────
-  // An offline restaurant has no dashboard and, before this, no way to get a
+  // An offline business has no dashboard and, before this, no way to get a
   // schema either — the app's migrator only ever ran on the cloud claim path,
   // so every install began at a command line. These four fields are what the
   // wizard needs to build a database itself.
@@ -503,7 +503,7 @@ class SetupDraft {
 
   /// Supplied by provisioning, never typed. Both are needed before the till can
   /// write a row: one stamps the tenant, the other is the invoice prefix.
-  final int? restaurantId;
+  final int? businessId;
   final String? branchCode;
 
   final String terminalName;
@@ -606,7 +606,7 @@ class SetupDraft {
     // Registration is load-bearing in BOTH modes, and pretending otherwise was
     // a live contradiction: this rule used to let an offline terminal walk
     // past unregistered, and then `complete()` refused it for having no
-    // restaurant id and no branch code — which only registration supplies. The
+    // business id and no branch code — which only registration supplies. The
     // operator reached the last screen before being told the sixth was wrong.
     //
     // Cloud registration issues the device token every later platform pull
@@ -659,7 +659,7 @@ class SetupDraft {
     bool clearAdoption = false,
     int? branchId,
     String? branchLabel,
-    int? restaurantId,
+    int? businessId,
     String? branchCode,
     String? terminalName,
     String? terminalId,
@@ -725,7 +725,7 @@ class SetupDraft {
         : (adoptTerminalId ?? this.adoptTerminalId),
     branchId: clearClaim ? null : (branchId ?? this.branchId),
     branchLabel: clearClaim ? null : (branchLabel ?? this.branchLabel),
-    restaurantId: clearClaim ? null : (restaurantId ?? this.restaurantId),
+    businessId: clearClaim ? null : (businessId ?? this.businessId),
     branchCode: clearClaim ? null : (branchCode ?? this.branchCode),
     terminalName: clearClaim ? '' : (terminalName ?? this.terminalName),
     terminalId: clearClaim ? null : (terminalId ?? this.terminalId),

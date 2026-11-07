@@ -18,7 +18,7 @@ import 'slip_style.dart';
 /// ones disagree wildly about which that is — `EscPos.text` says so and maps
 /// anything above 0xFF to `?` rather than printing confident mojibake. Arabic
 /// on a receipt is not optional in Egypt, so the choice is between a code page
-/// that is right on the printer we tested and wrong on the one the restaurant
+/// that is right on the printer we tested and wrong on the one the business
 /// bought, and sending the whole slip as a bitmap. A bitmap prints the same on
 /// every printer that speaks ESC/POS at all, carries the ETA QR without a
 /// second mechanism, and cannot silently substitute a glyph.
@@ -356,7 +356,7 @@ class _Layout {
     }
   }
 
-  /// The restaurant's logo, centred, as black and white dots (XORD-024).
+  /// The business's logo, centred, as black and white dots (XORD-024).
   ///
   /// **It cannot fail the slip.** A logo that will not decode, has no size, or
   /// anything else that throws here is skipped and the slip prints as it would

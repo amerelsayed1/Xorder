@@ -26,7 +26,7 @@ void main() {
   late PosDatabase db;
   late PostgresOrderTypesRepository types;
   late PostgresCatalogAdminRepository admin;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
 
   const manager = PosStaff(
@@ -60,41 +60,41 @@ void main() {
     pg = await PgFixture.open('order_types');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@s, 'Types') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@s, 'Types') "
       'RETURNING id',
       parameters: {'s': slug},
     )).first[0]! as int;
 
     // Created after the migration ran, exactly as a real install does.
-    await LocalBootstrap(db).seedOrderTypes(pg.config, restaurantId);
+    await LocalBootstrap(db).seedOrderTypes(pg.config, businessId);
 
     branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     types = PostgresOrderTypesRepository(
       database: db,
       config: pg.config.copyWith(tenantSlug: slug),
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
     admin = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config.copyWith(tenantSlug: slug),
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
 
   tearDown(() => pg.close());
 
-  test('a restaurant created after the migration is still seeded', () async {
+  test('a business created after the migration is still seeded', () async {
     // The bug migration 23 had, not repeated.
     final all = await types.all();
     expect(all.map((c) => c.type.wire), [
@@ -132,7 +132,7 @@ void main() {
     );
     final created = await LocalBootstrap(db).seedOrderTypes(
       pg.config,
-      restaurantId,
+      businessId,
     );
 
     expect(created, 0);
@@ -142,7 +142,7 @@ void main() {
     );
   });
 
-  test('a restaurant can move seating off dine-in', () async {
+  test('a business can move seating off dine-in', () async {
     // The whole point of §31: the rule stops being the type's name.
     await db.query(
       pg.config,
@@ -179,29 +179,29 @@ void main() {
     // because a newer binary added one.
     await db.query(
       pg.config,
-      'INSERT INTO pos_order_types (restaurant_id, code, name_en) '
+      'INSERT INTO pos_order_types (business_id, code, name_en) '
       "VALUES (@r, 'catering', 'Catering')",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     expect(await types.all(), hasLength(4));
   });
 
-  test('one restaurant cannot hold the same code twice', () async {
+  test('one business cannot hold the same code twice', () async {
     await expectLater(
       db.query(
         pg.config,
-        'INSERT INTO pos_order_types (restaurant_id, code, name_en) '
+        'INSERT INTO pos_order_types (business_id, code, name_en) '
         "VALUES (@r, 'dine_in', 'Again')",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       ),
       throwsA(isA<Object>()),
     );
   });
 
-  test('two restaurants may each have dine-in', () async {
+  test('two businesses may each have dine-in', () async {
     final other = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') "
       'RETURNING id',
     )).first[0]! as int;
 
@@ -282,7 +282,7 @@ void main() {
     });
 
     test('the last one cannot be turned off', () async {
-      // A restaurant with no active order type has a till that cannot start a
+      // A business with no active order type has a till that cannot start a
       // ticket, and the fix afterwards is a database edit by somebody who will
       // not know that is what they are doing.
       for (final wire in ['takeaway', 'delivery', 'drive_thru']) {
@@ -318,7 +318,7 @@ void main() {
       expect(result.succeeded, isFalse);
     });
 
-    test('a cashier cannot change what the restaurant sells', () async {
+    test('a cashier cannot change what the business sells', () async {
       final result = await admin.saveOrderType(of('dine_in'), by: cashier);
       expect(result.refusal, isA<NotPermitted>());
       expect((await current('dine_in')).nameEn, 'Dine in');
@@ -377,7 +377,7 @@ void main() {
       final cloud = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config.copyWith(tenantSlug: slug),
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         offline: false,
       );
@@ -396,7 +396,7 @@ void main() {
       );
 
       // The newest row, not every row: `pos_audit_events` outlives the
-      // restaurant delete this fixture does between tests, so the earlier
+      // business delete this fixture does between tests, so the earlier
       // tests' rows are still here — which is the ledger behaving correctly.
       final rows = await db.query(
         pg.config,

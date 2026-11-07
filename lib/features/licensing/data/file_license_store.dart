@@ -49,7 +49,7 @@ class FileLicenseStore implements LicenseStore {
   /// A rename is atomic on both platforms the till runs on, so a power cut
   /// during activation leaves either the old licence or the new one — never
   /// half of one. Losing power mid-activation is exactly the sort of thing that
-  /// happens in a restaurant.
+  /// happens in a business.
   @override
   Future<void> write(LicenseFile file) async {
     final target = await _file();

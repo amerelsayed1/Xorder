@@ -20,20 +20,20 @@ import 'pos_database.dart';
 /// front of it rarely has, and protect nothing the grant does not already
 /// allow. What does gate it is `terminal.manage`, asked below.
 ///
-/// Scoped to this restaurant and branch, as `pendingSyncCount` is, so the held
+/// Scoped to this business and branch, as `pendingSyncCount` is, so the held
 /// count and the unsent count are two halves of the same queue.
 class PostgresSyncQueueRepository implements SyncQueueRepository {
   const PostgresSyncQueueRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.terminalId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String? terminalId;
 
@@ -51,13 +51,13 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
              NULL::bigint AS source_id, ob.quarantined_at, ob.attempts
         FROM pos_outbox ob
         JOIN pos_orders o ON o.id = ob.order_id
-       WHERE ob.restaurant_id = @restaurant AND ob.branch_id = @branch
+       WHERE ob.business_id = @business AND ob.branch_id = @branch
          AND ob.delivered_at IS NULL AND ob.quarantined_at IS NOT NULL
       UNION ALL
       SELECT false, q.id, q.event_type, q.quarantine_code, q.last_error,
              NULL::text, q.source_id, q.quarantined_at, q.attempts
         FROM pos_sync_outbox q
-       WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+       WHERE q.business_id = @business AND q.branch_id = @branch
          AND q.delivered_at IS NULL AND q.quarantined_at IS NOT NULL
     ) held
     ORDER BY quarantined_at DESC, id DESC
@@ -74,7 +74,7 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
     final rows = await _db.query(
       config,
       '$_heldSql LIMIT $listLimit',
-      parameters: {'restaurant': restaurantId, 'branch': branchId},
+      parameters: {'business': businessId, 'branch': branchId},
     );
     return [for (final row in rows) _read(row)];
   }
@@ -88,15 +88,15 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
       '''
       SELECT (
         (SELECT count(*) FROM pos_outbox
-          WHERE restaurant_id = @restaurant AND branch_id = @branch
+          WHERE business_id = @business AND branch_id = @branch
             AND delivered_at IS NULL AND quarantined_at IS NOT NULL)
         +
         (SELECT count(*) FROM pos_sync_outbox
-          WHERE restaurant_id = @restaurant AND branch_id = @branch
+          WHERE business_id = @business AND branch_id = @branch
             AND delivered_at IS NULL AND quarantined_at IS NOT NULL)
       )::bigint
       ''',
-      parameters: {'restaurant': restaurantId, 'branch': branchId},
+      parameters: {'business': businessId, 'branch': branchId},
     );
     return rows.first[0] as int;
   }
@@ -123,21 +123,21 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
       // the audit row must carry what the row actually said when it was
       // released — not what one of them saw a minute ago.
       //
-      // Scoped to this branch exactly as the list is. Restaurant alone let a
+      // Scoped to this branch exactly as the list is. Business alone let a
       // manager at one branch release — and audit as theirs — a row held at
       // another, by id, which every branch numbers from the same sequence.
       final held = await tx.execute(
         Sql.named('''
           SELECT quarantine_code, last_error, attempts
             FROM $table
-           WHERE id = @id AND restaurant_id = @restaurant
+           WHERE id = @id AND business_id = @business
              AND branch_id = @branch
              AND delivered_at IS NULL AND quarantined_at IS NOT NULL
            FOR UPDATE
         '''),
         parameters: {
           'id': item.id,
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
         },
       );
@@ -153,26 +153,26 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
           UPDATE $table
              SET quarantined_at = NULL, quarantine_code = NULL,
                  last_error = NULL
-           WHERE id = @id AND restaurant_id = @restaurant
+           WHERE id = @id AND business_id = @business
              AND branch_id = @branch
         '''),
         parameters: {
           'id': item.id,
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
         },
       );
 
       await tx.execute(
         Sql.named(
-          'INSERT INTO pos_audit_events (restaurant_id, branch_id, '
+          'INSERT INTO pos_audit_events (business_id, branch_id, '
           '  terminal_id, actor_user_id, actor_name, action, entity_type, '
           '  entity_id, before_value) '
-          'VALUES (@restaurant, @branch, @terminal, @actor, @actorName, '
+          'VALUES (@business, @branch, @terminal, @actor, @actorName, '
           '        @action, @entityType, @entityId, @before::jsonb)',
         ),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'terminal': terminalId,
           'actor': by.id == 0 ? null : by.id,

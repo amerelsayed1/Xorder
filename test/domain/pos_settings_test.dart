@@ -3,11 +3,11 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
 
-/// What the restaurant has configured, and what happens when it has not.
+/// What the business has configured, and what happens when it has not.
 ///
-/// The resolution rule is the load-bearing part: restaurant, then branch, then
+/// The resolution rule is the load-bearing part: business, then branch, then
 /// terminal, most specific winning. Getting it backwards would let a
-/// restaurant-wide default silently override the answer somebody set for the
+/// business-wide default silently override the answer somebody set for the
 /// one till that needed it.
 void main() {
   PosSettingRow row(
@@ -28,16 +28,16 @@ void main() {
   );
 
   group('resolution', () {
-    test('a restaurant value applies when nothing narrower exists', () {
+    test('a business value applies when nothing narrower exists', () {
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '06:00'),
+        row(SettingScope.business, SettingKey.dayStartTime, '06:00'),
       ]);
       expect(settings.text(SettingKey.dayStartTime), '06:00');
     });
 
-    test('a branch value beats the restaurant', () {
+    test('a branch value beats the business', () {
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '06:00'),
+        row(SettingScope.business, SettingKey.dayStartTime, '06:00'),
         row(SettingScope.branch, SettingKey.dayStartTime, '04:00', scopeId: '7'),
       ]);
       expect(settings.text(SettingKey.dayStartTime), '04:00');
@@ -45,7 +45,7 @@ void main() {
 
     test('a terminal value beats them both', () {
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '06:00'),
+        row(SettingScope.business, SettingKey.dayStartTime, '06:00'),
         row(SettingScope.branch, SettingKey.dayStartTime, '04:00', scopeId: '7'),
         row(
           SettingScope.terminal,
@@ -67,14 +67,14 @@ void main() {
           '05:00',
           scopeId: 'term-1',
         ),
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '06:00'),
+        row(SettingScope.business, SettingKey.dayStartTime, '06:00'),
       ]);
       expect(settings.text(SettingKey.dayStartTime), '05:00');
     });
 
     test('another branch\'s value is ignored', () {
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '06:00'),
+        row(SettingScope.business, SettingKey.dayStartTime, '06:00'),
         row(SettingScope.branch, SettingKey.dayStartTime, '02:00', scopeId: '9'),
       ]);
       expect(settings.text(SettingKey.dayStartTime), '06:00');
@@ -99,7 +99,7 @@ void main() {
       }
       // These strings are migration 14's CHECK constraint.
       expect(SettingScope.values.map((s) => s.wire).toSet(), {
-        'restaurant',
+        'business',
         'branch',
         'terminal',
       });
@@ -110,7 +110,7 @@ void main() {
     test('a blank value reads as unset', () {
       // A row somebody emptied means "no answer", not "the empty answer".
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.dayStartTime, '   '),
+        row(SettingScope.business, SettingKey.dayStartTime, '   '),
       ]);
       expect(settings.text(SettingKey.dayStartTime), isNull);
     });
@@ -118,7 +118,7 @@ void main() {
     test('booleans accept what a person would type', () {
       for (final yes in ['true', 'TRUE', '1', 'yes']) {
         final settings = resolve([
-          row(SettingScope.restaurant, SettingKey.cashBlindClose, yes),
+          row(SettingScope.business, SettingKey.cashBlindClose, yes),
         ]);
         expect(
           settings.boolean(SettingKey.cashBlindClose, orElse: false),
@@ -128,7 +128,7 @@ void main() {
       }
       for (final no in ['false', '0', 'no']) {
         final settings = resolve([
-          row(SettingScope.restaurant, SettingKey.cashBlindClose, no),
+          row(SettingScope.business, SettingKey.cashBlindClose, no),
         ]);
         expect(
           settings.boolean(SettingKey.cashBlindClose, orElse: true),
@@ -142,7 +142,7 @@ void main() {
       // A misconfigured blind-close flag that silently read as true would hide
       // a figure nobody meant to hide.
       final settings = resolve([
-        row(SettingScope.restaurant, SettingKey.cashBlindClose, 'maybe'),
+        row(SettingScope.business, SettingKey.cashBlindClose, 'maybe'),
       ]);
       expect(settings.boolean(SettingKey.cashBlindClose, orElse: false), isFalse);
       expect(settings.boolean(SettingKey.cashBlindClose, orElse: true), isTrue);
@@ -151,7 +151,7 @@ void main() {
     test('money is minor units, and nonsense is no ceiling', () {
       expect(
         resolve([
-          row(SettingScope.restaurant, SettingKey.refundMaxValue, '15000'),
+          row(SettingScope.business, SettingKey.refundMaxValue, '15000'),
         ]).money(SettingKey.refundMaxValue)?.minor,
         15000,
       );
@@ -160,7 +160,7 @@ void main() {
       for (final bad in ['abc', '-100', '15.00']) {
         expect(
           resolve([
-            row(SettingScope.restaurant, SettingKey.refundMaxValue, bad),
+            row(SettingScope.business, SettingKey.refundMaxValue, bad),
           ]).money(SettingKey.refundMaxValue),
           isNull,
           reason: bad,
@@ -171,14 +171,14 @@ void main() {
     test('a time is minutes past midnight, and invalid times are null', () {
       expect(
         resolve([
-          row(SettingScope.restaurant, SettingKey.dayStartTime, '06:30'),
+          row(SettingScope.business, SettingKey.dayStartTime, '06:30'),
         ]).minutesPastMidnight(SettingKey.dayStartTime),
         390,
       );
       for (final bad in ['25:00', '06:70', '6', 'morning']) {
         expect(
           resolve([
-            row(SettingScope.restaurant, SettingKey.dayStartTime, bad),
+            row(SettingScope.business, SettingKey.dayStartTime, bad),
           ]).minutesPastMidnight(SettingKey.dayStartTime),
           isNull,
           reason: bad,
@@ -194,7 +194,7 @@ void main() {
     });
 
     test('an hour before the roll-over still belongs to yesterday', () {
-      // The whole reason the trading day is not the calendar day: a restaurant
+      // The whole reason the trading day is not the calendar day: a business
       // closing at 2 a.m. takes money on Saturday that belongs to Friday.
       const policy = DayPolicy(startMinutes: 6 * 60);
       expect(
@@ -230,7 +230,7 @@ void main() {
     test('reads the configured start time', () {
       final policy = DayPolicy.from(
         resolve([
-          row(SettingScope.restaurant, SettingKey.dayStartTime, '04:00'),
+          row(SettingScope.business, SettingKey.dayStartTime, '04:00'),
         ]),
       );
       expect(policy.startMinutes, 240);
@@ -253,8 +253,8 @@ void main() {
     test('reads what was configured', () {
       final policy = CashPolicy.from(
         resolve([
-          row(SettingScope.restaurant, SettingKey.cashBlindClose, 'true'),
-          row(SettingScope.restaurant, SettingKey.cashPayOutMax, '50000'),
+          row(SettingScope.business, SettingKey.cashBlindClose, 'true'),
+          row(SettingScope.business, SettingKey.cashPayOutMax, '50000'),
         ]),
       );
       expect(policy.blindClose, isTrue);
@@ -289,7 +289,7 @@ void main() {
       // nothing else — so one missing key must not revert the whole object.
       final policy = RefundPolicy.from(
         resolve([
-          row(SettingScope.restaurant, SettingKey.refundMaxValue, '25000'),
+          row(SettingScope.business, SettingKey.refundMaxValue, '25000'),
         ]),
       );
       expect(policy.maxValue?.minor, 25000);
@@ -300,7 +300,7 @@ void main() {
     test('an unreadable window falls back to seven days', () {
       final policy = RefundPolicy.from(
         resolve([
-          row(SettingScope.restaurant, SettingKey.refundWindow, 'fortnight'),
+          row(SettingScope.business, SettingKey.refundWindow, 'fortnight'),
         ]),
       );
       expect(policy.window, RefundWindow.days7);
@@ -309,8 +309,8 @@ void main() {
     test('a configured window is honoured', () {
       final policy = RefundPolicy.from(
         resolve([
-          row(SettingScope.restaurant, SettingKey.refundWindow, 'same_day'),
-          row(SettingScope.restaurant, SettingKey.refundEnabled, 'false'),
+          row(SettingScope.business, SettingKey.refundWindow, 'same_day'),
+          row(SettingScope.business, SettingKey.refundEnabled, 'false'),
         ]),
       );
       expect(policy.window, RefundWindow.sameDay);

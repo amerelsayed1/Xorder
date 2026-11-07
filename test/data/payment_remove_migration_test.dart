@@ -24,16 +24,16 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   setUp(() async {
     pg = await PgFixture.open('payment_remove');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('pr', 'PR') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('pr', 'PR') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -41,11 +41,11 @@ void main() {
 
   Future<void> role(String code, Set<String> capabilities) => db.query(
     pg.config,
-    'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+    'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
     '  capabilities, is_system) '
     'VALUES (@r, @code, @code, @code, @capabilities, true)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'code': code,
       'capabilities': capabilities.toList(),
     },
@@ -53,8 +53,8 @@ void main() {
 
   Future<List<String>> held(String code) async => ((await db.query(
     pg.config,
-    'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @code',
-    parameters: {'r': restaurantId, 'code': code},
+    'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @code',
+    parameters: {'r': businessId, 'code': code},
   )).first[0]! as List).cast<String>();
 
   Set<String> without(Set<String> capabilities) =>
@@ -85,7 +85,7 @@ void main() {
     }
   });
 
-  test('a cashier and a restaurant\'s own roles now ask a supervisor', () async {
+  test('a cashier and a business\'s own roles now ask a supervisor', () async {
     await beforeTheKey();
     expect(
       await held(SystemRoles.cashierCode),

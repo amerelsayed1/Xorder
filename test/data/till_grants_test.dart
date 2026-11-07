@@ -12,7 +12,7 @@ import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 /// display buys an attacker nothing at settlement.
 ///
 /// An offline till has no server-side second opinion. Its database IS the
-/// restaurant. The same grants there mean a till password recovered from the
+/// business. The same grants there mean a till password recovered from the
 /// machine (or off the LAN) can reprice the menu for real, and can point a
 /// staff row at the owner role — reaching Management without ever knowing the
 /// administrator's password. The seeder never runs offline, so the grants were
@@ -65,8 +65,8 @@ void main() {
       expect(writesTo(offline, 'pos_users'), isEmpty);
     });
 
-    test('cannot write the restaurant or its branches', () {
-      expect(writesTo(offline, 'pos_restaurants'), isEmpty);
+    test('cannot write the business or its branches', () {
+      expect(writesTo(offline, 'pos_businesses'), isEmpty);
       expect(writesTo(offline, 'pos_branches'), isEmpty);
     });
 
@@ -96,7 +96,7 @@ void main() {
     test('still reads everything a sale screen needs', () {
       expect(
         offline.any(
-          (s) => s.startsWith('GRANT SELECT ON pos_restaurants, pos_branches'),
+          (s) => s.startsWith('GRANT SELECT ON pos_businesses, pos_branches'),
         ),
         isTrue,
       );

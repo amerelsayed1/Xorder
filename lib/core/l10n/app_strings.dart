@@ -21,11 +21,11 @@ import 'package:flutter/widgets.dart';
 ///   Arabic-Indic digits are *accepted* on input (see
 ///   `core/utils/arabic_digits.dart`) but the till renders one digit shape, so
 ///   two people looking at the same screen see the same characters.
-/// Wraps operator data — a restaurant name, a plan, a branch — in Unicode
+/// Wraps operator data — a business name, a plan, a branch — in Unicode
 /// isolates (FSI…PDI) so the bidi algorithm reorders *inside* it and never
 /// around it.
 ///
-/// Without this, an Arabic restaurant name in an English line drags the
+/// Without this, an Arabic business name in an English line drags the
 /// separators and the count to the wrong side of the sentence: the licence
 /// summary for «العاصمه» on a two-terminal plan renders as
 /// "2 · العاصمه terminals" instead of "العاصمه · 2 terminals". The mirror
@@ -687,13 +687,13 @@ sealed class AppStrings {
   String get schemaAlreadyCurrent;
   String migrationsApplied(int count);
   String schemaUpgradeFailed(String error);
-  String restaurantSeeded(String restaurant);
+  String businessSeeded(String business);
   String get rolesAlreadyThere;
   String rolesCreated(int count);
   String ownerCreated(String name);
   String ownerAlreadyHere(String username);
 
-  /// Somebody else is already this restaurant's owner, so the person typed
+  /// Somebody else is already this business's owner, so the person typed
   /// into the form was not made one. Names them by username as well as name,
   /// because the first way forward is to type that username into this form.
   String ownerAlreadyExists(String name, String username);
@@ -731,7 +731,7 @@ sealed class AppStrings {
   String bootstrapDatabaseMissing(String database, String user);
   String setupIncomplete(String missing);
   String get missingTerminalName;
-  String get missingRestaurantIdentity;
+  String get missingBusinessIdentity;
   String get missingBranch;
   String get missingBranchPrefix;
   String get missingTerminalId;
@@ -873,15 +873,15 @@ sealed class AppStrings {
 
   /// What the licence bought, on one line under the activation panel.
   ///
-  /// The tenant name is operator data in whichever script the restaurant
+  /// The tenant name is operator data in whichever script the business
   /// registered under, so it is isolated inside the sentence — see [_bidi].
   String licenceCoverage(String tenant, String? plan, int terminals);
   String get cashUpNeverGated;
 
   // ── Setup: account ────────────────────────────────────────────────────────
-  String get restaurant;
-  String get restaurantHelp;
-  String get restaurantFromLicenceHelp;
+  String get business;
+  String get businessHelp;
+  String get businessFromLicenceHelp;
   String get methodPairingCode;
   String get methodPairingCodeBlurb;
   String get methodManual;
@@ -1012,7 +1012,7 @@ sealed class AppStrings {
   String get summaryServer;
   String get summaryThisMachine;
   String get summaryUpstream;
-  String get summaryRestaurant;
+  String get summaryBusiness;
   String get summaryBranch;
   String get summaryTerminal;
   String get summaryPrinter;
@@ -1077,7 +1077,7 @@ sealed class AppStrings {
   //
   // What a permission MEANS, in the words a manager ticking the box needs. The
   // capability name is never shown on its own: `price.override` tells a
-  // restaurant owner nothing, and a permission screen nobody understands is a
+  // business owner nothing, and a permission screen nobody understands is a
   // permission screen everybody ticks.
   String get capOperate;
   String get capCatalogView;
@@ -1215,7 +1215,7 @@ sealed class AppStrings {
   String refusalCannotGrantWhatYouLack(String capabilities);
   String refusalManagedByPlatform(String what);
 
-  /// One owner per restaurant. Each says how ownership actually moves —
+  /// One owner per business. Each says how ownership actually moves —
   /// disable, then appoint — because a refusal that only says "no" is tried
   /// again.
   String refusalOwnerAlreadyExists(String ownerName);
@@ -2390,8 +2390,8 @@ sealed class AppStrings {
 
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
-  // `pos_reason_codes` and are named by the restaurant in both languages —
-  // translating them here would mean a restaurant's own wording could not
+  // `pos_reason_codes` and are named by the business in both languages —
+  // translating them here would mean a business's own wording could not
   // survive a language switch.
   String get reasonRequiredBadge;
   String get reasonOptionalBadge;
@@ -3325,7 +3325,7 @@ final class EnStrings extends AppStrings {
   @override
   String get refundItemsRemaining => 'left';
   @override
-  String get refundDisabled => 'Refunds are switched off for this restaurant.';
+  String get refundDisabled => 'Refunds are switched off for this business.';
   @override
   String refundOutsideWindow(String window) =>
       'This sale is outside the refund window ($window).';
@@ -3346,7 +3346,7 @@ final class EnStrings extends AppStrings {
   String get refundTenderNeeded => 'Say how the money goes back.';
   @override
   String get refundReceiptRequiredNote =>
-      'This restaurant asks for the original receipt.';
+      'This business asks for the original receipt.';
   @override
   String get refundWindowSameShift => 'same shift';
   @override
@@ -4069,7 +4069,7 @@ final class EnStrings extends AppStrings {
   String get printerPrintLogo => 'Print logo on receipts';
   @override
   String get printerPrintLogoHint =>
-      'When the restaurant has a logo. About 15mm of paper per receipt.';
+      'When the business has a logo. About 15mm of paper per receipt.';
 
   @override
   String get pickATable => 'Pick a table';
@@ -4353,7 +4353,7 @@ final class EnStrings extends AppStrings {
       'a new one.';
   @override
   String get licenceNotIssued =>
-      'The platform has no licence for this restaurant. You can finish and cash '
+      'The platform has no licence for this business. You can finish and cash '
       'up the open shift, but a new shift cannot be started. Contact your '
       'supplier.';
   @override
@@ -4434,12 +4434,12 @@ final class EnStrings extends AppStrings {
   @override
   String get stepSetupTypeBlurb =>
       'Choose how this terminal runs. A cloud terminal syncs every sale to the '
-      'platform; an offline one keeps its sales in the restaurant. Which of '
+      'platform; an offline one keeps its sales in the business. Which of '
       'the two you may pick is decided by the licence, not by this screen.';
   @override
   String get setupTypeOfflineHelp =>
       'This terminal keeps its own menu, staff and money rules, and no sale '
-      'ever leaves the restaurant. It still reaches the platform to activate '
+      'ever leaves the business. It still reaches the platform to activate '
       'and renew its licence — or you can install a licence file by hand.';
   @override
   String get setupTypeCloudHelp =>
@@ -4458,25 +4458,25 @@ final class EnStrings extends AppStrings {
   String get stepMainDevice => 'Main device';
   @override
   String get stepMainDeviceBlurb =>
-      'This tablet sells through the restaurant\'s main device.';
+      'This tablet sells through the business\'s main device.';
   @override
   String get stepChildAccountBlurb =>
       'A manager\'s username and PIN, from the main device.';
   @override
   String get mainDeviceHelp =>
       'Nothing is activated or built on this tablet. The licence, the '
-      'restaurant, the staff and the menu all come from the main device — '
+      'business, the staff and the menu all come from the main device — '
       'give its address and the till database password it was set up with.';
   @override
   String get mainDeviceAddress => 'Main device address';
   @override
   String get mainDeviceAddressHelp =>
-      'Its address on the restaurant network. Settings on the main device '
+      'Its address on the business network. Settings on the main device '
       'shows it; a reserved address on the router keeps it from changing.';
   @override
   String get mainDeviceIsThisTablet =>
       'That address is this tablet itself. Enter the main device\'s address '
-      'on the restaurant network, such as 192.168.1.20.';
+      'on the business network, such as 192.168.1.20.';
   @override
   String get connectToMainDevice => 'Connect to the main device';
   @override
@@ -4540,7 +4540,7 @@ final class EnStrings extends AppStrings {
   String get stepConnecting => 'Connecting';
   @override
   String get stepConnectingBlurb =>
-      'Setting this till up from the restaurant’s own configuration. Nothing '
+      'Setting this till up from the business’s own configuration. Nothing '
       'to answer.';
   @override
   String get settingUpThisTill => 'Setting this till up…';
@@ -4549,7 +4549,7 @@ final class EnStrings extends AppStrings {
   @override
   String get connectingPaneHelp =>
       'The database, the menu, the floor plan, the tax rules and the people '
-      'all came from the restaurant’s own configuration. Nothing here was '
+      'all came from the business’s own configuration. Nothing here was '
       'typed, so there is nothing here to get wrong.';
   @override
   String printerDetected(String printer) => 'Printer found: $printer.';
@@ -4599,7 +4599,7 @@ final class EnStrings extends AppStrings {
   @override
   String get languagePaneHelp =>
       'This sets the till interface only. The menu is shown to diners in '
-      'whichever languages the restaurant publishes.';
+      'whichever languages the business publishes.';
 
   @override
   String get modeCloud => 'Cloud';
@@ -4610,7 +4610,7 @@ final class EnStrings extends AppStrings {
   String get modeOffline => 'Offline';
   @override
   String get modeOfflineBlurb =>
-      'Sales stay in the restaurant. Only the licence goes out.';
+      'Sales stay in the business. Only the licence goes out.';
   @override
   String get modeNotLicensed => 'Not covered by this licence.';
   @override
@@ -4704,11 +4704,11 @@ final class EnStrings extends AppStrings {
   String get backOfficeIsOnTheCloud => 'THE BACK OFFICE IS ON THE DASHBOARD';
   @override
   String get backOfficeIsOnTheCloudHelp =>
-      'This till belongs to a restaurant that is managed from XOrder Cloud. '
+      'This till belongs to a business that is managed from XOrder Cloud. '
       'The menu, the people, the tables, the tax rules and the receipt are '
       'authored there and sent down to this machine, so there is nothing here '
       'to edit — anything changed on the till would be replaced the next time '
-      'the restaurant\'s settings arrive. Sign in to the dashboard from any '
+      'the business\'s settings arrive. Sign in to the dashboard from any '
       'browser. Taking money, shifts and the drawer stay on this screen and '
       'keep working with no internet.';
   @override
@@ -4774,7 +4774,7 @@ final class EnStrings extends AppStrings {
 
   @override
   String get installLicenceFirst =>
-      'Install the licence first — it names the restaurant this database is '
+      'Install the licence first — it names the business this database is '
       'for.';
   @override
   String get firstPersonIncomplete =>
@@ -4813,8 +4813,8 @@ final class EnStrings extends AppStrings {
       'be brought up to date, so some screens may fail. Take a backup and '
       'call support. The database said: $error';
   @override
-  String restaurantSeeded(String restaurant) =>
-      '$restaurant and its first branch are on this machine.';
+  String businessSeeded(String business) =>
+      '$business and its first branch are on this machine.';
   @override
   String get rolesAlreadyThere => 'The roles were already there.';
   @override
@@ -4826,10 +4826,10 @@ final class EnStrings extends AppStrings {
       '$username was already here — the PIN was left as it was.';
   @override
   String ownerAlreadyExists(String name, String username) =>
-      '$name is already the owner of this restaurant, and a restaurant has '
+      '$name is already the owner of this business, and a business has '
       'one — so nobody new was made the owner. To set this till up as $name, '
       'put their username, $username, in the Username field and create the '
-      'database again; their PIN is left as it is. If the restaurant has a new '
+      'database again; their PIN is left as it is. If the business has a new '
       'owner, disable $name first — in Management, on a till that is already '
       'running — then create it again.';
   @override
@@ -4880,7 +4880,7 @@ final class EnStrings extends AppStrings {
   @override
   String get missingTerminalName => 'a terminal name';
   @override
-  String get missingRestaurantIdentity => 'the restaurant identity';
+  String get missingBusinessIdentity => 'the business identity';
   @override
   String get missingBranch => 'a branch';
   @override
@@ -4933,13 +4933,13 @@ final class EnStrings extends AppStrings {
       'manager, or use a setup code instead.';
   @override
   String get refusalNoBranches =>
-      'This restaurant has no branches yet. Add one in the dashboard first.';
+      'This business has no branches yet. Add one in the dashboard first.';
   @override
   String get refusalBranchUnknown =>
       'That branch is not on this server any more. Pick another.';
   @override
   String refusalTenantUnknown(String tenant) =>
-      'No restaurant named "$tenant" exists on this server. Check the short '
+      'No business named "$tenant" exists on this server. Check the short '
       'name on the previous step.';
   @override
   String refusalWrongPlatform(String platform) =>
@@ -4971,7 +4971,7 @@ final class EnStrings extends AppStrings {
       'terminal.';
   @override
   String get claimOverTerminalCount =>
-      'Registered — but this till puts the restaurant over its plan\'s '
+      'Registered — but this till puts the business over its plan\'s '
       'terminal count. Ask the owner to revoke an unused till or raise the '
       'plan.';
   @override
@@ -5071,7 +5071,7 @@ final class EnStrings extends AppStrings {
   String get fingerprintCopied => 'Fingerprint copied';
   @override
   String get dbUnavailableSecureConnection =>
-      "The till could not confirm it is talking to the restaurant's own "
+      "The till could not confirm it is talking to the business's own "
       'database server, so it did not connect. Call your installer, and do '
       'not change any network settings.';
   @override
@@ -5178,15 +5178,15 @@ final class EnStrings extends AppStrings {
       'says.';
 
   @override
-  String get restaurant => 'Restaurant';
+  String get business => 'Business';
   @override
-  String get restaurantHelp =>
-      'The restaurant’s short name, as in mahsoub.xorder.io. Staff usernames '
-      'are unique within a restaurant, so this has to be set before anyone can '
+  String get businessHelp =>
+      'The business’s short name, as in mahsoub.xorder.io. Staff usernames '
+      'are unique within a business, so this has to be set before anyone can '
       'sign in.';
   @override
-  String get restaurantFromLicenceHelp =>
-      'From your licence. Staff usernames are unique within a restaurant, so '
+  String get businessFromLicenceHelp =>
+      'From your licence. Staff usernames are unique within a business, so '
       'this is what a cashier signs in against.';
   @override
   String get methodPairingCode => 'Setup code';
@@ -5259,7 +5259,7 @@ final class EnStrings extends AppStrings {
   String get registerThisTerminal => 'Register this terminal';
   @override
   String get registerHelp =>
-      'Registering writes this till into the restaurant\'s own database on this '
+      'Registering writes this till into the business\'s own database on this '
       'machine, which is what gives it an identity, an invoice prefix, and a '
       'shift its sales belong to. There is no dashboard and nothing to sync — '
       'this is the record.';
@@ -5273,7 +5273,7 @@ final class EnStrings extends AppStrings {
   @override
   String get aNewTillBlurb =>
       'Not in the dashboard yet. Creating one uses a seat on the '
-      'restaurant\'s plan.';
+      'business\'s plan.';
   @override
   String get terminalNameHint => 'Counter 1';
   @override
@@ -5288,7 +5288,7 @@ final class EnStrings extends AppStrings {
   @override
   String get registerCloudHelp =>
       'Registering issues this till\'s own credential and pulls the '
-      'restaurant\'s configuration down — the menu on the next steps comes '
+      'business\'s configuration down — the menu on the next steps comes '
       'from it, so this step cannot be skipped.';
   @override
   String get terminalId => 'Terminal id';
@@ -5437,12 +5437,12 @@ final class EnStrings extends AppStrings {
   String get menuEmpty => 'No menu on this terminal';
   @override
   String get menuEmptyHelp =>
-      'The download worked, but this restaurant has no products yet, so the '
+      'The download worked, but this business has no products yet, so the '
       'till has nothing to ring up. Setup can be finished — the menu refreshes '
       'in the background — but add the items before anyone tries to sell.';
   @override
   String get menuEmptyHelpOffline =>
-      'This restaurant has no products yet, so the till has nothing to ring '
+      'This business has no products yet, so the till has nothing to ring '
       'up. Nothing will arrive on its own — finish setup, then build the menu '
       'in Management before anyone tries to sell.';
   @override
@@ -5476,7 +5476,7 @@ final class EnStrings extends AppStrings {
   @override
   String get summaryUpstream => 'Upstream';
   @override
-  String get summaryRestaurant => 'Restaurant';
+  String get summaryBusiness => 'Business';
   @override
   String get summaryBranch => 'Branch';
   @override
@@ -5610,7 +5610,7 @@ final class EnStrings extends AppStrings {
   @override
   String get capTerminalManage => 'Register and reset terminals';
   @override
-  String get capSettingsManage => 'Change restaurant settings and tax';
+  String get capSettingsManage => 'Change business settings and tax';
   @override
   String get capDiscountApply => 'Apply a discount';
   @override
@@ -5917,7 +5917,7 @@ final class EnStrings extends AppStrings {
   @override
   String get refusalRoleIsSystemDefined =>
       'This is one of the roles the installer created. It can be renamed and '
-      'its permissions changed, but not deleted — a restaurant with no roles '
+      'its permissions changed, but not deleted — a business with no roles '
       'left has nobody who can create one.';
   @override
   String refusalUserSeatsExhausted(int maxUsers) =>
@@ -5949,7 +5949,7 @@ final class EnStrings extends AppStrings {
   @override
   String get refusalOwnerMustKeepEverything =>
       'The owner role keeps every permission. If it could lose one, a '
-      'restaurant could reach a state where nobody is able to grant it back.';
+      'business could reach a state where nobody is able to grant it back.';
   @override
   String refusalCashiersAreNotAdministrators(String capabilities) =>
       'A cashier role cannot include $capabilities. Use a supervisor or '
@@ -5975,7 +5975,7 @@ final class EnStrings extends AppStrings {
 
   @override
   String refusalOwnerAlreadyExists(String ownerName) =>
-      '$ownerName is already the owner, and a restaurant has one. To hand '
+      '$ownerName is already the owner, and a business has one. To hand '
       'ownership over, disable $ownerName first, then choose Owner for the new '
       'person.';
   @override
@@ -6577,7 +6577,7 @@ final class EnStrings extends AppStrings {
   @override
   String get paneTaxes => 'Tax';
   @override
-  String get paneTaxesHint => 'The rates this restaurant charges, and on what.';
+  String get paneTaxesHint => 'The rates this business charges, and on what.';
   @override
   String get backOffice => 'Back office';
   @override
@@ -6842,7 +6842,7 @@ final class EnStrings extends AppStrings {
   String get financeExpensesPayOutsOnly => 'Drawer pay-outs only.';
   @override
   String get financeSuppliersOnPlatform =>
-      'Supplier payments are kept on the platform for this restaurant, so '
+      'Supplier payments are kept on the platform for this business, so '
       'they are not counted here.';
   @override
   String get financeSuppliersNotPermitted =>
@@ -7274,7 +7274,7 @@ final class EnStrings extends AppStrings {
   String get backupNoneYet => 'No copy of this database has ever been taken.';
   @override
   String get backupNoVerifiedCopy =>
-      'No copy has been verified. This restaurant does not have a backup.';
+      'No copy has been verified. This business does not have a backup.';
   @override
   String backupLastVerified(String when) => 'Last verified copy: $when';
   @override
@@ -7305,7 +7305,7 @@ final class EnStrings extends AppStrings {
       'The file was written and could not be read back.';
   @override
   String get backupFailureArchiveIncomplete =>
-      'The file is missing tables the restaurant could not trade without.';
+      'The file is missing tables the business could not trade without.';
   @override
   String backupTablesFound(int count) =>
       count == 1 ? '1 table' : '$count tables';
@@ -7706,7 +7706,7 @@ final class EnStrings extends AppStrings {
       'An item on it no longer exists on the platform';
   @override
   String get quarantineBranchNotInTenant =>
-      "The platform does not recognise this branch as this restaurant's";
+      "The platform does not recognise this branch as this business's";
   @override
   String get quarantineCustomerNotFound =>
       'The customer on it is not on the platform';
@@ -8508,7 +8508,7 @@ final class EnStrings extends AppStrings {
 /// Arabic.
 ///
 /// Translated for a cashier standing at a till, not for a manual: short
-/// imperatives, the vocabulary restaurants in the region actually use
+/// imperatives, the vocabulary businesses in the region actually use
 /// (وردية, درج, تيك أواي), and no transliterated English where a normal Arabic
 /// word exists. Product and staff names are never translated — they arrive from
 /// the catalogue with their own `name_ar`.
@@ -8923,7 +8923,7 @@ final class ArStrings extends AppStrings {
   @override
   String get refundItemsRemaining => 'متبقٍ';
   @override
-  String get refundDisabled => 'الاسترجاع موقوف في هذا المطعم.';
+  String get refundDisabled => 'الاسترجاع موقوف في هذه المنشأة.';
   @override
   String refundOutsideWindow(String window) =>
       'هذه الفاتورة خارج مدة الاسترجاع ($window).';
@@ -8944,7 +8944,7 @@ final class ArStrings extends AppStrings {
   String get refundTenderNeeded => 'حدّد كيف يُعاد المبلغ.';
   @override
   String get refundReceiptRequiredNote =>
-      'يطلب هذا المطعم الفاتورة الأصلية.';
+      'تطلب هذه المنشأة الفاتورة الأصلية.';
   @override
   String get refundWindowSameShift => 'نفس الوردية';
   @override
@@ -9656,7 +9656,7 @@ final class ArStrings extends AppStrings {
   String get printerPrintLogo => 'طباعة الشعار على الإيصالات';
   @override
   String get printerPrintLogoHint =>
-      'عند وجود شعار للمطعم. حوالي 15 مم من الورق لكل إيصال.';
+      'عند وجود شعار للمنشأة. حوالي 15 مم من الورق لكل إيصال.';
 
   @override
   String get pickATable => 'اختر طاولة';
@@ -9746,7 +9746,7 @@ final class ArStrings extends AppStrings {
   @override
   String get enterKeyCap => 'ENTER';
   @override
-  String get tenantCell => 'المطعم';
+  String get tenantCell => 'المنشأة';
   @override
   String get branchCell => 'الفرع';
   @override
@@ -9946,7 +9946,7 @@ final class ArStrings extends AppStrings {
       'المفتوحة وتقفيلها؛ أعد الاتصال لبدء وردية جديدة.';
   @override
   String get licenceNotIssued =>
-      'لا يوجد ترخيص لهذا المطعم على المنصة. يمكنك إنهاء الوردية المفتوحة '
+      'لا يوجد ترخيص لهذه المنشأة على المنصة. يمكنك إنهاء الوردية المفتوحة '
       'وتقفيلها، لكن لا يمكن بدء وردية جديدة. تواصل مع المورّد.';
   @override
   String licenceNotStarted(String date) =>
@@ -10021,12 +10021,12 @@ final class ArStrings extends AppStrings {
   @override
   String get stepSetupTypeBlurb =>
       'اختر طريقة تشغيل هذا الجهاز. جهاز السحابة يُزامن كل عملية بيع مع '
-      'المنصة، والجهاز غير المتصل يُبقي مبيعاته داخل المطعم. وأيُّهما متاح '
+      'المنصة، والجهاز غير المتصل يُبقي مبيعاته داخل المنشأة. وأيُّهما متاح '
       'يُحدده الترخيص، لا هذه الشاشة.';
   @override
   String get setupTypeOfflineHelp =>
       'يحتفظ هذا الجهاز بمنيوه وموظفيه وقواعد أمواله، ولا تخرج أي مبيعة من '
-      'المطعم. ويبقى يتصل بالمنصة لتفعيل الترخيص وتجديده — أو يمكنك تثبيت '
+      'المنشأة. ويبقى يتصل بالمنصة لتفعيل الترخيص وتجديده — أو يمكنك تثبيت '
       'ملف ترخيص يدوياً.';
   @override
   String get setupTypeCloudHelp =>
@@ -10045,25 +10045,25 @@ final class ArStrings extends AppStrings {
   String get stepMainDevice => 'الجهاز الرئيسي';
   @override
   String get stepMainDeviceBlurb =>
-      'يبيع هذا الجهاز اللوحي من خلال الجهاز الرئيسي للمطعم.';
+      'يبيع هذا الجهاز اللوحي من خلال الجهاز الرئيسي للمنشأة.';
   @override
   String get stepChildAccountBlurb =>
       'اسم مستخدم ورمز PIN لمدير، من الجهاز الرئيسي.';
   @override
   String get mainDeviceHelp =>
-      'لا يُفعَّل ولا يُنشأ شيء على هذا الجهاز اللوحي. الترخيص والمطعم '
+      'لا يُفعَّل ولا يُنشأ شيء على هذا الجهاز اللوحي. الترخيص والمنشأة '
       'والموظفون والمنيو كلها تأتي من الجهاز الرئيسي — أدخل عنوانه وكلمة '
       'مرور قاعدة بيانات نقطة البيع التي أُعدّ بها.';
   @override
   String get mainDeviceAddress => 'عنوان الجهاز الرئيسي';
   @override
   String get mainDeviceAddressHelp =>
-      'عنوانه على شبكة المطعم، وتجده في الإعدادات على الجهاز الرئيسي. حجز '
+      'عنوانه على شبكة المنشأة، وتجده في الإعدادات على الجهاز الرئيسي. حجز '
       'العنوان على الراوتر يمنعه من التغيّر.';
   @override
   String get mainDeviceIsThisTablet =>
       'هذا العنوان هو هذا الجهاز اللوحي نفسه. أدخل عنوان الجهاز الرئيسي على '
-      'شبكة المطعم، مثل 192.168.1.20.';
+      'شبكة المنشأة، مثل 192.168.1.20.';
   @override
   String get connectToMainDevice => 'الاتصال بالجهاز الرئيسي';
   @override
@@ -10085,7 +10085,7 @@ final class ArStrings extends AppStrings {
   String get stepFirstAdministratorBlurb =>
       'لا يستطيع أحد فتح هذا الجهاز بعد. أنشئ الشخص الذي سيفعل.';
   @override
-  String get stepAccountBlurb => 'حدِّد المطعم والشخص الذي يقوم بالإعداد.';
+  String get stepAccountBlurb => 'حدِّد المنشأة والشخص الذي يقوم بالإعداد.';
   @override
   String get stepLicence => 'الترخيص';
   @override
@@ -10124,7 +10124,7 @@ final class ArStrings extends AppStrings {
   String get stepConnecting => 'جارٍ التجهيز';
   @override
   String get stepConnectingBlurb =>
-      'يجري إعداد هذا الكاشير من إعدادات المطعم نفسه. لا شيء للإجابة عنه.';
+      'يجري إعداد هذا الكاشير من إعدادات المنشأة نفسه. لا شيء للإجابة عنه.';
   @override
   String get settingUpThisTill => 'جارٍ إعداد هذا الكاشير…';
   @override
@@ -10132,7 +10132,7 @@ final class ArStrings extends AppStrings {
   @override
   String get connectingPaneHelp =>
       'قاعدة البيانات والمنيو ومخطط الصالة وقواعد الضريبة والموظفون، كلها جاءت '
-      'من إعدادات المطعم نفسه. لم يُكتب هنا شيء باليد، فلا شيء هنا يمكن أن '
+      'من إعدادات المنشأة نفسه. لم يُكتب هنا شيء باليد، فلا شيء هنا يمكن أن '
       'يُكتب خطأ.';
   @override
   String printerDetected(String printer) => 'تم العثور على طابعة: $printer.';
@@ -10181,7 +10181,7 @@ final class ArStrings extends AppStrings {
   @override
   String get languagePaneHelp =>
       'هذا يضبط واجهة الكاشير فقط. المنيو يُعرض للزبائن باللغات التي ينشرها '
-      'المطعم.';
+      'المنشأة.';
 
   @override
   String get modeCloud => 'سحابي';
@@ -10192,7 +10192,7 @@ final class ArStrings extends AppStrings {
   String get modeOffline => 'بدون إنترنت';
   @override
   String get modeOfflineBlurb =>
-      'المبيعات تبقى داخل المطعم. لا يخرج سوى الترخيص.';
+      'المبيعات تبقى داخل المنشأة. لا يخرج سوى الترخيص.';
   @override
   String get modeNotLicensed => 'غير مشمول بهذا الترخيص.';
   @override
@@ -10285,10 +10285,10 @@ final class ArStrings extends AppStrings {
   String get backOfficeIsOnTheCloud => 'الإدارة من لوحة التحكم';
   @override
   String get backOfficeIsOnTheCloudHelp =>
-      'هذا الكاشير تابع لمطعم يُدار من XOrder Cloud. المنيو والموظفون '
+      'هذا الكاشير تابع لمنشأة تُدار من XOrder Cloud. المنيو والموظفون '
       'والطاولات وقواعد الضريبة والفاتورة تُكتب هناك وتُرسل إلى هذا الجهاز، '
       'فلا يوجد هنا ما يُعدَّل — وأي تغيير على الجهاز نفسه سيُستبدل عند وصول '
-      'إعدادات المطعم في المرة القادمة. ادخل إلى لوحة التحكم من أي متصفح. '
+      'إعدادات المنشأة في المرة القادمة. ادخل إلى لوحة التحكم من أي متصفح. '
       'أما البيع والورديات والدرج فتبقى على هذه الشاشة وتعمل بدون إنترنت.';
   @override
   String get dashboardAddress => 'عنوان لوحة التحكم';
@@ -10351,7 +10351,7 @@ final class ArStrings extends AppStrings {
 
   @override
   String get installLicenceFirst =>
-      'ثبّت الترخيص أولاً — فهو الذي يسمّي المطعم صاحب قاعدة البيانات هذه.';
+      'ثبّت الترخيص أولاً — فهو الذي يسمّي المنشأة صاحبة قاعدة البيانات هذه.';
   @override
   String get firstPersonIncomplete =>
       'المالك يحتاج اسماً واسم مستخدم ورقماً سرياً من أربعة أرقام بالضبط. '
@@ -10387,8 +10387,8 @@ final class ArStrings extends AppStrings {
       'قد تتعطل بعض الشاشات. خذ نسخة احتياطية واتصل بالدعم. رسالة قاعدة '
       'البيانات: $error';
   @override
-  String restaurantSeeded(String restaurant) =>
-      '$restaurant وأول فرع له صارا على هذا الجهاز.';
+  String businessSeeded(String business) =>
+      '$business وأول فرع له صارا على هذا الجهاز.';
   @override
   String get rolesAlreadyThere => 'الأدوار كانت موجودة.';
   @override
@@ -10400,10 +10400,10 @@ final class ArStrings extends AppStrings {
       '$username كان موجوداً — وتُرك الكود كما هو.';
   @override
   String ownerAlreadyExists(String name, String username) =>
-      '$name هو مالك هذا المطعم بالفعل، وللمطعم مالك واحد فقط — لذلك لم '
+      '$name هو مالك هذه المنشأة بالفعل، وللمنشأة مالك واحد فقط — لذلك لم '
       'يُعيَّن مالك جديد. لإعداد هذا الجهاز باسم $name، اكتب اسم المستخدم '
       'الخاص به، $username، في خانة اسم المستخدم ثم أنشئ قاعدة البيانات مرة '
-      'أخرى؛ ويبقى الرقم السري كما هو. وإن كان للمطعم مالك جديد، فعطّل $name '
+      'أخرى؛ ويبقى الرقم السري كما هو. وإن كان للمنشأة مالك جديد، فعطّل $name '
       'أولاً — من الإدارة، على جهاز يعمل بالفعل — ثم أنشئها مرة أخرى.';
   @override
   String grantsApplied(String tillRole, String adminRole) =>
@@ -10451,7 +10451,7 @@ final class ArStrings extends AppStrings {
   @override
   String get missingTerminalName => 'اسم الجهاز';
   @override
-  String get missingRestaurantIdentity => 'هوية المطعم';
+  String get missingBusinessIdentity => 'هوية المنشأة';
   @override
   String get missingBranch => 'الفرع';
   @override
@@ -10500,13 +10500,13 @@ final class ArStrings extends AppStrings {
       'إعداد بدلاً منهما.';
   @override
   String get refusalNoBranches =>
-      'لا توجد فروع لهذا المطعم بعد. أضف فرعاً من لوحة التحكم أولاً.';
+      'لا توجد فروع لهذه المنشأة بعد. أضف فرعاً من لوحة التحكم أولاً.';
   @override
   String get refusalBranchUnknown =>
       'هذا الفرع لم يعد على هذا الخادم. اختر فرعاً آخر.';
   @override
   String refusalTenantUnknown(String tenant) =>
-      'لا يوجد مطعم باسم «$tenant» على هذا الخادم. راجع الاسم المختصر في '
+      'لا توجد منشأة باسم «$tenant» على هذا الخادم. راجع الاسم المختصر في '
       'الخطوة السابقة.';
   @override
   String refusalWrongPlatform(String platform) =>
@@ -10537,7 +10537,7 @@ final class ArStrings extends AppStrings {
       'أدخل اسم المستخدم وكلمة المرور لحساب موظف مصرّح له بإضافة جهاز.';
   @override
   String get claimOverTerminalCount =>
-      'تم التسجيل — لكن هذا الكاشير يتجاوز عدد الأجهزة في باقة المطعم. اطلب من '
+      'تم التسجيل — لكن هذا الكاشير يتجاوز عدد الأجهزة في باقة المنشأة. اطلب من '
       'المالك إلغاء جهاز غير مستخدم أو ترقية الباقة.';
   @override
   String get catalogueArrivesAtFirstSync =>
@@ -10629,7 +10629,7 @@ final class ArStrings extends AppStrings {
   String get fingerprintCopied => 'نُسخت البصمة';
   @override
   String get dbUnavailableSecureConnection =>
-      'لم يستطع الكاشير التأكد من أنه يتصل بخادم قاعدة بيانات المطعم نفسه، '
+      'لم يستطع الكاشير التأكد من أنه يتصل بخادم قاعدة بيانات المنشأة نفسه، '
       'فلم يتصل. اتصل بالمُثبّت، ولا تغيّر أي إعدادات للشبكة.';
   @override
   String get insecureLanWarning =>
@@ -10734,14 +10734,14 @@ final class ArStrings extends AppStrings {
       'الترخيص.';
 
   @override
-  String get restaurant => 'المطعم';
+  String get business => 'المنشأة';
   @override
-  String get restaurantHelp =>
-      'الاسم المختصر للمطعم، كما في mahsoub.xorder.io. أسماء مستخدمي الموظفين '
-      'فريدة داخل المطعم الواحد، فيجب ضبط هذا قبل أن يسجّل أحد دخوله.';
+  String get businessHelp =>
+      'الاسم المختصر للمنشأة، كما في mahsoub.xorder.io. أسماء مستخدمي الموظفين '
+      'فريدة داخل المنشأة الواحدة، فيجب ضبط هذا قبل أن يسجّل أحد دخوله.';
   @override
-  String get restaurantFromLicenceHelp =>
-      'من ترخيصك. أسماء المستخدمين لا تتكرر داخل المطعم الواحد، فهذا ما '
+  String get businessFromLicenceHelp =>
+      'من ترخيصك. أسماء المستخدمين لا تتكرر داخل المنشأة الواحدة، فهذا ما '
       'يسجّل به الكاشير دخوله.';
   @override
   String get methodPairingCode => 'كود الإعداد';
@@ -10813,7 +10813,7 @@ final class ArStrings extends AppStrings {
   String get registerThisTerminal => 'تسجيل هذا الجهاز';
   @override
   String get registerHelp =>
-      'التسجيل يكتب هذا الجهاز في قاعدة بيانات المطعم على هذه الآلة، وهو ما '
+      'التسجيل يكتب هذا الجهاز في قاعدة بيانات المنشأة على هذه الآلة، وهو ما '
       'يمنحه هويته وبادئة فواتيره ووردية تنتمي إليها مبيعاته. لا توجد لوحة تحكم '
       'ولا شيء يُزامَن — هذا هو السجل.';
   @override
@@ -10824,7 +10824,7 @@ final class ArStrings extends AppStrings {
   String get aNewTill => 'كاشير جديد';
   @override
   String get aNewTillBlurb =>
-      'غير موجود في لوحة التحكم بعد. إنشاؤه يستهلك مقعداً من باقة المطعم.';
+      'غير موجود في لوحة التحكم بعد. إنشاؤه يستهلك مقعداً من باقة المنشأة.';
   @override
   String get terminalNameHint => 'كاشير ١';
   @override
@@ -10838,7 +10838,7 @@ final class ArStrings extends AppStrings {
       'ذاك اشتُري وقت إنشاء الكاشير.';
   @override
   String get registerCloudHelp =>
-      'التسجيل يصدر بيانات اعتماد هذا الكاشير ويجلب إعدادات المطعم — المنيو '
+      'التسجيل يصدر بيانات اعتماد هذا الكاشير ويجلب إعدادات المنشأة — المنيو '
       'في الخطوات التالية يأتي منها، فلا يمكن تخطي هذه الخطوة.';
   @override
   String get terminalId => 'رقم الجهاز';
@@ -10982,12 +10982,12 @@ final class ArStrings extends AppStrings {
   String get menuEmpty => 'لا يوجد منيو على هذا الجهاز';
   @override
   String get menuEmptyHelp =>
-      'تم التحميل بنجاح، لكن لا توجد أصناف لهذا المطعم بعد، لذلك ليس لدى '
+      'تم التحميل بنجاح، لكن لا توجد أصناف لهذه المنشأة بعد، لذلك ليس لدى '
       'الكاشير ما يبيعه. يمكن إنهاء الإعداد — فالمنيو يُحدَّث في الخلفية — '
       'لكن أضف الأصناف قبل أن يحاول أحد البيع.';
   @override
   String get menuEmptyHelpOffline =>
-      'لا توجد أصناف لهذا المطعم بعد، فلا يوجد ما يبيعه الكاشير. لن يصل شيء من '
+      'لا توجد أصناف لهذه المنشأة بعد، فلا يوجد ما يبيعه الكاشير. لن يصل شيء من '
       'تلقاء نفسه — أكمل الإعداد ثم ابنِ المنيو من شاشة الإدارة قبل أن يحاول '
       'أحد البيع.';
   @override
@@ -11020,7 +11020,7 @@ final class ArStrings extends AppStrings {
   @override
   String get summaryUpstream => 'الخادم الأعلى';
   @override
-  String get summaryRestaurant => 'المطعم';
+  String get summaryBusiness => 'المنشأة';
   @override
   String get summaryBranch => 'الفرع';
   @override
@@ -11151,7 +11151,7 @@ final class ArStrings extends AppStrings {
   @override
   String get capTerminalManage => 'تسجيل الأجهزة وإعادة ضبطها';
   @override
-  String get capSettingsManage => 'تغيير إعدادات المطعم والضريبة';
+  String get capSettingsManage => 'تغيير إعدادات المنشأة والضريبة';
   @override
   String get capDiscountApply => 'عمل خصم';
   @override
@@ -11456,7 +11456,7 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalRoleIsSystemDefined =>
       'هذا أحد الأدوار التي أنشأها المُثبِّت. يمكن تغيير اسمه وصلاحياته، لكن '
-      'لا يمكن حذفه — مطعم بلا أدوار لا يبقى فيه من يستطيع إنشاء دور.';
+      'لا يمكن حذفه — منشأة بلا أدوار لا يبقى فيها من يستطيع إنشاء دور.';
   @override
   String refusalUserSeatsExhausted(int maxUsers) =>
       'يغطي هذا الترخيص ${switch (maxUsers) {
@@ -11488,7 +11488,7 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalOwnerMustKeepEverything =>
       'دور المالك يحتفظ بكل الصلاحيات. لو أمكن أن يفقد واحدة، لأمكن أن يصل '
-      'المطعم إلى حال لا يستطيع فيها أحد إعادتها.';
+      'المنشأة إلى حال لا يستطيع فيها أحد إعادتها.';
   @override
   String refusalCashiersAreNotAdministrators(String capabilities) =>
       'دور الكاشير لا يصح أن يشمل $capabilities. استخدم دور مشرف أو مدير لذلك.';
@@ -11512,7 +11512,7 @@ final class ArStrings extends AppStrings {
 
   @override
   String refusalOwnerAlreadyExists(String ownerName) =>
-      '$ownerName هو المالك بالفعل، وللمطعم مالك واحد فقط. لنقل الملكية، عطّل '
+      '$ownerName هو المالك بالفعل، وللمنشأة مالك واحد فقط. لنقل الملكية، عطّل '
       '$ownerName أولاً، ثم اختر دور المالك للشخص الجديد.';
   @override
   String get refusalOwnerIsFixed =>
@@ -12101,7 +12101,7 @@ final class ArStrings extends AppStrings {
   @override
   String get paneTaxes => 'الضريبة';
   @override
-  String get paneTaxesHint => 'النسب التي يحتسبها المطعم، وعلى ماذا.';
+  String get paneTaxesHint => 'النسب التي تحتسبها المنشأة، وعلى ماذا.';
   @override
   String get backOffice => 'الإدارة';
   @override
@@ -12338,7 +12338,7 @@ final class ArStrings extends AppStrings {
   @override
   String get financeBills => 'الفواتير المستحقة';
   @override
-  String get financeBillsBlurb => 'ما على المطعم للموردين، حسب موعد استحقاقه.';
+  String get financeBillsBlurb => 'ما على المنشأة للموردين، حسب موعد استحقاقه.';
   @override
   String get financeTransactions => 'الحركات';
   @override
@@ -12353,7 +12353,7 @@ final class ArStrings extends AppStrings {
   String get financeExpensesPayOutsOnly => 'النقد الخارج من الأدراج فقط.';
   @override
   String get financeSuppliersOnPlatform =>
-      'مدفوعات الموردين لهذا المطعم تُسجَّل على المنصة، فلا تُحتسب هنا.';
+      'مدفوعات الموردين لهذه المنشأة تُسجَّل على المنصة، فلا تُحتسب هنا.';
   @override
   String get financeSuppliersNotPermitted =>
       'مدفوعات الموردين غير محتسبة: قراءتها تتطلب صلاحية المشتريات.';
@@ -12770,7 +12770,7 @@ final class ArStrings extends AppStrings {
   String get backupNoneYet => 'لم تُؤخذ أي نسخة من قاعدة البيانات حتى الآن.';
   @override
   String get backupNoVerifiedCopy =>
-      'لا توجد نسخة تم التحقق منها. هذا المطعم بلا نسخة احتياطية.';
+      'لا توجد نسخة تم التحقق منها. هذه المنشأة بلا نسخة احتياطية.';
   @override
   String backupLastVerified(String when) => 'آخر نسخة موثّقة: $when';
   @override
@@ -12800,7 +12800,7 @@ final class ArStrings extends AppStrings {
       'كُتب الملف ولم تنجح قراءته مرة أخرى.';
   @override
   String get backupFailureArchiveIncomplete =>
-      'تنقص الملفَ جداولُ لا يستطيع المطعم العمل بدونها.';
+      'تنقص الملفَ جداولُ لا تستطيع المنشأة العمل بدونها.';
   @override
   String backupTablesFound(int count) =>
       count == 1 ? 'جدول واحد' : '$count جدولاً';
@@ -13188,7 +13188,7 @@ final class ArStrings extends AppStrings {
       'أحد الأصناف فيه لم يعد موجودًا على المنصة';
   @override
   String get quarantineBranchNotInTenant =>
-      'لا تعرف المنصة هذا الفرع كفرع تابع لهذا المطعم';
+      'لا تعرف المنصة هذا الفرع كفرع تابع لهذه المنشأة';
   @override
   String get quarantineCustomerNotFound =>
       'العميل المذكور فيه غير موجود على المنصة';

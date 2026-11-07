@@ -5,7 +5,7 @@ import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/core/ui/widgets/failure_card.dart';
 
 /// The rule this widget exists to hold: **an offline till is a healthy till.**
-/// `danger` is for a stopped till or a refused act; everything a restaurant
+/// `danger` is for a stopped till or a refused act; everything a business
 /// trades through every day is `warn`. Colouring a normal offline stretch red
 /// is how cashiers learn to ignore red, and red has to keep meaning stop.
 void main() {

@@ -248,7 +248,7 @@ void main() {
 
   group('the buyer', () {
     test('a walk-in is a person and nothing more', () {
-      // The overwhelmingly common case in a restaurant, and the one where
+      // The overwhelmingly common case in a business, and the one where
       // inventing a placeholder name would be inventing a customer.
       final buyer = at(EtaReceiptBuilder.build(input()), 'buyer');
       expect(buyer, {'type': 'P'});
@@ -332,7 +332,7 @@ void main() {
       expect(line.keys, isNot(contains('commercialDiscountData')));
     });
 
-    test('a restaurant with no SKUs sends no internal code', () {
+    test('a business with no SKUs sends no internal code', () {
       final line =
           (json(EtaReceiptBuilder.build(input()))['itemData']! as List).single
               as Map;

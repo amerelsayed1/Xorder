@@ -277,7 +277,7 @@ String claimNotice(AppStrings s, ClaimNotice notice) => switch (notice) {
 /// What a tender is called, in the reader's language.
 ///
 /// Falls back to the stored text for anything the build does not recognise — a
-/// tender type the restaurant configured itself has no translation here, and
+/// tender type the business configured itself has no translation here, and
 /// showing what they named it is the honest answer.
 ///
 /// Takes the id and the stored label rather than a `Tender`, because the same
@@ -286,10 +286,10 @@ String claimNotice(AppStrings s, ClaimNotice notice) => switch (notice) {
 String tenderName(int? typeId, String stored, AppStrings s) {
   // Matched on the stored *label*, not on the id alone.
   //
-  // Since §40 made payment methods data, a restaurant can rename tender 2 from
+  // Since §40 made payment methods data, a business can rename tender 2 from
   // "Card" to "Visa". Translating by id would then show "Card" on screen while
   // the receipt in the customer's hand said "Visa" — the app overruling the
-  // restaurant about the restaurant's own name for something.
+  // business about the business's own name for something.
   //
   // So the built-in translation applies only while a method still carries the
   // name the product gave it. The moment somebody renames one, what they typed
@@ -309,8 +309,8 @@ String tenderName(int? typeId, String stored, AppStrings s) {
 extension TenderMethodLabel on TenderMethod {
   /// What the cashier reads.
   ///
-  /// The restaurant's own Arabic wins over the app's, because it is the
-  /// restaurant's payment method. The built-in translations remain for the four
+  /// The business's own Arabic wins over the app's, because it is the
+  /// business's payment method. The built-in translations remain for the four
   /// seeded ones on an install where nobody has typed an Arabic name.
   String label(AppStrings s) {
     if (s.languageCode.startsWith('ar') && (nameAr?.isNotEmpty ?? false)) {
@@ -323,7 +323,7 @@ extension TenderMethodLabel on TenderMethod {
 /// A refund's kind, as Returns names it — never the wire word `partial`.
 ///
 /// Over the enum, so a third kind is a compile error here rather than a raw
-/// key on a restaurant's screen; `capability_labels_test.dart` holds both
+/// key on a business's screen; `capability_labels_test.dart` holds both
 /// languages to it.
 String refundKindLabel(AppStrings s, RefundKind kind) => switch (kind) {
   RefundKind.full => s.refundKindFull,

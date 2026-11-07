@@ -28,7 +28,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresCatalogAdminRepository admin;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
 
   const manager = PosStaff(
@@ -56,23 +56,23 @@ void main() {
     pg = await PgFixture.open('tax_groups_admin');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('tg', 'TG') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('tg', 'TG') RETURNING id",
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     admin = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -90,8 +90,8 @@ void main() {
     final rows = await db.query(
       pg.config,
       'SELECT id, name_en, rate_bp, is_default, is_active FROM pos_tax_groups '
-      'WHERE restaurant_id = @r ORDER BY id',
-      parameters: {'r': restaurantId},
+      'WHERE business_id = @r ORDER BY id',
+      parameters: {'r': businessId},
     );
     return [
       for (final row in rows)
@@ -276,7 +276,7 @@ void main() {
       final cloud = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         offline: false,
       );
@@ -287,16 +287,16 @@ void main() {
       expect(result.refusal, isA<NotPermitted>());
     });
 
-    test('another restaurant keeps its own rates', () async {
+    test('another business keeps its own rates', () async {
       await save(const TaxGroup(id: 0, nameEn: 'VAT', rateBp: 1400));
 
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('o', 'O') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('o', 'O') RETURNING id",
       )).first[0]! as int;
       final otherBranch = (await db.query(
         pg.config,
-        'INSERT INTO pos_branches (restaurant_id, code, name) '
+        'INSERT INTO pos_branches (business_id, code, name) '
         "VALUES (@r, 'M', 'M') RETURNING id",
         parameters: {'r': other},
       )).first[0]! as int;
@@ -304,10 +304,10 @@ void main() {
       final theirs = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: other,
+        businessId: other,
         branchId: otherBranch,
       );
-      // The same name, which is allowed: uniqueness is per restaurant.
+      // The same name, which is allowed: uniqueness is per business.
       final result = await theirs.saveTaxGroup(
         const TaxGroup(id: 0, nameEn: 'VAT', rateBp: 500),
         by: manager,

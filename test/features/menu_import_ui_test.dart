@@ -92,7 +92,7 @@ void main() {
     testWidgets('says what the file must contain', (tester) async {
       await pump(tester, const []);
 
-      // The header a restaurant is handed, spelled out rather than described.
+      // The header a business is handed, spelled out rather than described.
       expect(
         find.text('Category, Name (EN), Name (AR), Price, SKU, Barcode, Available'),
         findsOneWidget,

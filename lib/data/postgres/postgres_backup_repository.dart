@@ -16,14 +16,14 @@ class PostgresBackupRepository implements BackupRepository {
   const PostgresBackupRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.terminalId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int? branchId;
   final String? terminalId;
 
@@ -35,11 +35,11 @@ class PostgresBackupRepository implements BackupRepository {
   Future<List<BackupRecord>> recent({int limit = 50}) async {
     final rows = await _db.query(
       config,
-      'SELECT $_columns FROM pos_backups WHERE restaurant_id = @restaurant '
+      'SELECT $_columns FROM pos_backups WHERE business_id = @business '
       // Newest first, and id as the tie-break: a manual backup taken in the
       // same second as the day-close one is not hypothetical on a fast disk.
       'ORDER BY taken_at DESC, id DESC LIMIT @limit',
-      parameters: {'restaurant': restaurantId, 'limit': limit},
+      parameters: {'business': businessId, 'limit': limit},
     );
 
     return [for (final row in rows) _record(row.toList())];
@@ -52,15 +52,15 @@ class PostgresBackupRepository implements BackupRepository {
   }) async {
     final rows = await _db.query(
       config,
-      'INSERT INTO pos_backups (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_backups (business_id, branch_id, terminal_id, '
       '  taken_at, taken_by, taken_by_name, trigger_kind, outcome, file_path, '
       '  size_bytes, checksum, tables_found, failure, detail) '
-      'VALUES (@restaurant, @branch, @terminal, @takenAt, @by, @byName, '
+      'VALUES (@business, @branch, @terminal, @takenAt, @by, @byName, '
       '  @trigger, @outcome, @file, @size, @checksum, @tables, @failure, '
       '  @detail) '
       'RETURNING $_columns',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'terminal': terminalId,
         'takenAt': entry.takenAt.toUtc(),

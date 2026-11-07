@@ -290,7 +290,7 @@ class _Detail extends ConsumerWidget {
 
   /// The reason in the reader's language, falling back to the other one.
   ///
-  /// A restaurant that never filled in the Arabic name should still see the
+  /// A business that never filled in the Arabic name should still see the
   /// English on an Arabic till — a blank where a reason belongs looks like a
   /// void nobody gave a reason for, which is the opposite of the truth.
   static String? _reasonFor(BuildContext context, OrderRecord order) =>

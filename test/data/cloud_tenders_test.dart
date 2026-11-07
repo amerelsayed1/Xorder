@@ -33,7 +33,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late DeploymentConfig cloud;
-  late int restaurantId;
+  late int businessId;
   var invoice = 0;
 
   const branchId = 3;
@@ -44,12 +44,12 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cloud', 'Cloud') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cloud', 'Cloud') "
       'RETURNING id',
     )).first[0]! as int;
   });
@@ -61,8 +61,8 @@ void main() {
     List<Map<String, Object?>>? tenders,
   ]) => BootstrapBundle(
     configVersion: version,
-    restaurant: BootstrapRestaurant(
-      id: restaurantId,
+    business: BootstrapBusiness(
+      id: businessId,
       name: 'Cloud',
       slug: 'cloud',
       currency: 'EGP',
@@ -80,15 +80,15 @@ void main() {
   Future<void> seed(BootstrapBundle b, {PosDatabase? on, DeploymentConfig? as}) =>
       BootstrapSeeder(database: on ?? db, config: as ?? cloud).seed(b);
 
-  /// Every tender row for the restaurant, keyed by what matters here.
+  /// Every tender row for the business, keyed by what matters here.
   Future<List<Map<String, Object?>>> rows() async => [
     for (final row in await db.query(
       pg.config,
       'SELECT id, platform_id, code, name_en, name_ar, kind, counts_as_cash, '
       '       opens_drawer, requires_reference, refund_allowed, is_active, '
       '       sort_order '
-      'FROM pos_tender_types WHERE restaurant_id = @r ORDER BY id',
-      parameters: {'r': restaurantId},
+      'FROM pos_tender_types WHERE business_id = @r ORDER BY id',
+      parameters: {'r': businessId},
     ))
       {
         'id': row[0],
@@ -110,12 +110,12 @@ void main() {
       (await rows()).singleWhere((r) => r['platform_id'] == platformId);
 
   /// The four a till had before any bundle, at the ids the compiled-in list
-  /// uses — exactly what migration 23 writes on an existing restaurant.
+  /// uses — exactly what migration 23 writes on an existing business.
   Future<void> legacyFour() => db.query(
     pg.config,
     '''
     INSERT INTO pos_tender_types
-      (id, restaurant_id, code, name_en, name_ar, kind, counts_as_cash,
+      (id, business_id, code, name_en, name_ar, kind, counts_as_cash,
        opens_drawer, requires_reference, sort_order)
     SELECT v.id, @r, v.code, v.name_en, v.name_ar, v.kind, v.cash, v.drawer,
            v.reference, v.id
@@ -126,7 +126,7 @@ void main() {
         (4, 'account', 'On account',       'على الحساب', 'account', false, false, false)
       ) AS v(id, code, name_en, name_ar, kind, cash, drawer, reference)
     ''',
-    parameters: {'r': restaurantId},
+    parameters: {'r': businessId},
   );
 
   /// The platform's list, numbered 1–4 on purpose: the collision case. Tender
@@ -180,7 +180,7 @@ void main() {
       final offered = await PostgresTenderTypesRepository(
         database: db,
         config: cloud,
-        restaurantId: restaurantId,
+        businessId: businessId,
       ).all();
       expect(offered.map((t) => t.nameEn), [
         'Cash',
@@ -270,7 +270,7 @@ void main() {
 
     test('an empty list on a till the platform never seeded offers its own four',
         () async {
-      // Stated, not endorsed: the platform promises a POS restaurant is never
+      // Stated, not endorsed: the platform promises a POS business is never
       // delivered an empty list. If it were, the till keeps what it has — and
       // the drain holds every payment taken on it.
       await legacyFour();
@@ -279,7 +279,7 @@ void main() {
       final offered = await PostgresTenderTypesRepository(
         database: db,
         config: cloud,
-        restaurantId: restaurantId,
+        businessId: businessId,
       ).all();
       expect(offered.map((t) => t.code), ['cash', 'card', 'wallet', 'account']);
     });
@@ -323,7 +323,7 @@ void main() {
 
     Future<Object?> refusalOf(String sql) async {
       try {
-        await db.query(pg.config, sql, parameters: {'r': restaurantId});
+        await db.query(pg.config, sql, parameters: {'r': businessId});
         return null;
       } on Object catch (error) {
         return error;
@@ -333,7 +333,7 @@ void main() {
     test('a row the platform did not send may not wear its prefix', () async {
       expect(
         await refusalOf(
-          'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+          'INSERT INTO pos_tender_types (business_id, code, name_en) '
           "VALUES (@r, 'platform-9', 'Impostor')",
         ),
         isNotNull,
@@ -343,7 +343,7 @@ void main() {
     test('a platform row carries exactly its own code', () async {
       expect(
         await refusalOf(
-          'INSERT INTO pos_tender_types (restaurant_id, platform_id, code, '
+          'INSERT INTO pos_tender_types (business_id, platform_id, code, '
           "  name_en) VALUES (@r, 9, 'cash', 'Cash')",
         ),
         isNotNull,
@@ -353,7 +353,7 @@ void main() {
     test('a platform row never sits at a compiled-in id', () async {
       expect(
         await refusalOf(
-          'INSERT INTO pos_tender_types (id, restaurant_id, platform_id, code, '
+          'INSERT INTO pos_tender_types (id, business_id, platform_id, code, '
           "  name_en) VALUES (1, @r, 9, 'platform-9', 'Cash')",
         ),
         isNotNull,
@@ -368,7 +368,7 @@ void main() {
     final orderId = (await db.query(
       pg.config,
       '''
-      INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id,
+      INSERT INTO pos_orders (client_transaction_id, business_id, branch_id,
         terminal_id, invoice_number, order_type, currency, exponent,
         subtotal_minor, service_minor, vat_minor, total_minor, occurred_at)
       VALUES (gen_random_uuid(), @r, @b, @t, @invoice, 'takeaway', 'EGP', 2,
@@ -376,7 +376,7 @@ void main() {
       RETURNING id
       ''',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': terminalId,
         'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
@@ -396,8 +396,8 @@ void main() {
     }
     return (await db.query(
       pg.config,
-      'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
-      '  branch_id) SELECT id, client_transaction_id, restaurant_id, branch_id '
+      'INSERT INTO pos_outbox (order_id, client_transaction_id, business_id, '
+      '  branch_id) SELECT id, client_transaction_id, business_id, branch_id '
       'FROM pos_orders WHERE id = @o RETURNING id',
       parameters: {'o': orderId},
     )).first[0]! as int;
@@ -420,11 +420,11 @@ void main() {
     test('holds a payment on a tender the platform never sent', () async {
       // The defect, exactly: a sale taken on the till's own Cash before this
       // build, still in the queue.
-      await LocalBootstrap(db).seedTenderTypes(pg.config, restaurantId);
+      await LocalBootstrap(db).seedTenderTypes(pg.config, businessId);
       final localCash = (await db.query(
         pg.config,
-        "SELECT id FROM pos_tender_types WHERE code = 'cash' AND restaurant_id = @r",
-        parameters: {'r': restaurantId},
+        "SELECT id FROM pos_tender_types WHERE code = 'cash' AND business_id = @r",
+        parameters: {'r': businessId},
       )).first[0]! as int;
       final outboxId = await queueSale([localCash]);
 

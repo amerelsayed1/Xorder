@@ -14,7 +14,7 @@ import 'package:xorder_pos/features/admin/presentation/tender_type_dialog.dart';
 ///
 /// The thing worth pinning is that the dialog asks the two drawer questions
 /// separately. "Counts as cash" decides what the drawer is expected to hold;
-/// "opens the drawer" decides whether the till kicks it. A restaurant that
+/// "opens the drawer" decides whether the till kicks it. A business that
 /// keeps meal vouchers in the till wants the second and not the first, and one
 /// checkbox for both is how a cash-up starts reporting a surplus nobody can
 /// explain.
@@ -141,7 +141,7 @@ void main() {
 
   testWidgets('a code is generated from the name rather than demanded',
       (tester) async {
-    // Nobody setting up a restaurant has an opinion about a machine identifier.
+    // Nobody setting up a business has an opinion about a machine identifier.
     late TenderMethod? result;
     await tester.pumpWidget(
       ProviderScope(

@@ -132,7 +132,7 @@ void main() {
     tester,
   ) async {
     // The honest sentence, and the one most likely to be quietly softened by
-    // somebody who thinks it reads badly. A restaurant that believes a local
+    // somebody who thinks it reads badly. A business that believes a local
     // dump is a backup will not make a second copy, and the disk that dies is
     // the disk the dump is on.
     await open(tester);
@@ -202,7 +202,7 @@ void main() {
       reason: 'a Restore button beside a file nobody could restore from is an '
           'invitation to try it at the worst possible moment',
     );
-    // And the headline says the restaurant has no backup at all, rather than
+    // And the headline says the business has no backup at all, rather than
     // "last backup: today".
     expect(find.text(strings.backupNoVerifiedCopy), findsOneWidget);
     // PostgreSQL's own words survive, untranslated, for whoever has to fix it.

@@ -11,7 +11,7 @@ import '../../../domain/models/combo.dart';
 
 /// Building a meal.
 ///
-/// One group at a time, in the order the restaurant put them in — "choose a
+/// One group at a time, in the order the business put them in — "choose a
 /// sandwich", then a side, then a drink. The running total is the combo's
 /// price plus any upgrades, visible throughout, because the whole reason a
 /// customer is buying a meal is that it costs less than the parts and the

@@ -240,7 +240,7 @@ void main() {
 
     test('an act that needs a second person needs the approval, even from '
         'somebody who holds the permission', () {
-      // A refund above the restaurant's threshold: the supervisor may refund,
+      // A refund above the business's threshold: the supervisor may refund,
       // and still needs somebody else to say yes to this one.
       final supervisor = onRole(SystemRoles.supervisorCode);
       expect(
@@ -358,9 +358,9 @@ void main() {
       );
     });
 
-    test('a role a restaurant invented is its own business', () {
+    test('a role a business invented is its own business', () {
       // Only the two seeded roles the model depends on are constrained. A
-      // restaurant that wants a "Head Barista" who can edit the menu is not
+      // business that wants a "Head Barista" who can edit the menu is not
       // making a mistake the app should refuse.
       expect(
         Authorization.validateRole(

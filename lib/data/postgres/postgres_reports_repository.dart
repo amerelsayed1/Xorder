@@ -27,7 +27,7 @@ import 'postgres_order_history_repository.dart';
 ///
 /// **Filed by the sales list's rule, not the branch view's.** The branch view
 /// counts only rows inside a business day. The list files a row no day covers
-/// by its local calendar date instead — a restaurant that never opens a day
+/// by its local calendar date instead — a business that never opens a day
 /// still sees its takings — and the drill-down is the list, so that rule wins
 /// here. The two agree on every row a day covers, which since migrations
 /// 35–36 is every row written while a day was open.
@@ -37,7 +37,7 @@ class PostgresReportsRepository implements ReportsRepository {
   const PostgresReportsRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.currency = 'EGP',
     this.exponent = 2,
@@ -45,7 +45,7 @@ class PostgresReportsRepository implements ReportsRepository {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String currency;
   final int exponent;
@@ -97,7 +97,7 @@ class PostgresReportsRepository implements ReportsRepository {
   ) {
     final list = PostgresOrderHistoryRepository.filterFor(
       filter.historyQuery(),
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     return (
@@ -131,12 +131,12 @@ class PostgresReportsRepository implements ReportsRepository {
       alias: 'r',
     );
     final where = [
-      'r.restaurant_id = @restaurant',
+      'r.business_id = @business',
       'r.branch_id = @branch',
       ...range.where,
     ];
     final parameters = <String, Object?>{
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       ...range.parameters,
     };
@@ -204,7 +204,7 @@ class PostgresReportsRepository implements ReportsRepository {
           ON r.filed = s.filed AND r.terminal_id = s.terminal_id
       ''';
 
-    final paid = _sales(filter, 'o.id, o.restaurant_id, o.terminal_id');
+    final paid = _sales(filter, 'o.id, o.business_id, o.terminal_id');
     final paymentsSql =
         '''
       WITH sales AS (${paid.sql}),
@@ -218,7 +218,7 @@ class PostgresReportsRepository implements ReportsRepository {
     final terminal = filter.terminalId;
     final terminalsSql =
         'SELECT id::text, name FROM pos_terminals '
-        'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+        'WHERE business_id = @business AND branch_id = @branch '
         '${terminal == null ? '' : 'AND id::text = @terminal '}'
         'ORDER BY name NULLS LAST, id';
 
@@ -246,7 +246,7 @@ class PostgresReportsRepository implements ReportsRepository {
       final registered = await tx.execute(
         Sql.named(terminalsSql),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'terminal': ?terminal,
         },
@@ -507,20 +507,20 @@ class PostgresReportsRepository implements ReportsRepository {
       // The mode first: whether the lines' prices contain tax decides the
       // arithmetic of the revenue, not only the note under it. Today's setting,
       // not a snapshot — orders do not record the mode they were taxed in, so a
-      // restaurant that switched has its earlier orders read by the new one.
+      // business that switched has its earlier orders read by the new one.
       //
       // Read from where the till prices from: `pos_money_config`'s payload,
       // the path `MoneyConfigCodec` writes and the Taxes pane saves to.
-      // `pos_restaurants.tax_mode` is only ever its migration default, so
-      // reading it alone called every inclusive restaurant exclusive.
+      // `pos_businesses.tax_mode` is only ever its migration default, so
+      // reading it alone called every inclusive business exclusive.
       final mode = await tx.execute(
         Sql.named(
           "SELECT COALESCE(m.payload ->> 'tax_mode', r.tax_mode) "
-          '  FROM pos_restaurants r '
-          '  LEFT JOIN pos_money_config m ON m.restaurant_id = r.id '
+          '  FROM pos_businesses r '
+          '  LEFT JOIN pos_money_config m ON m.business_id = r.id '
           ' WHERE r.id = @r',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       final inclusive = mode.isNotEmpty && mode.first[0] == 'inclusive';
       final rows = await tx.execute(
@@ -572,7 +572,7 @@ class PostgresReportsRepository implements ReportsRepository {
         orderTypes: filter.orderTypes,
         terminalId: filter.terminalId,
       ),
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     final voidWhere = [...voidQuery.where, 'o.status = @voidedStatus'];
@@ -791,7 +791,7 @@ class PostgresReportsRepository implements ReportsRepository {
     }
     final paid = _sales(
       filter,
-      'o.id, o.restaurant_id, o.terminal_id, o.invoice_number',
+      'o.id, o.business_id, o.terminal_id, o.invoice_number',
     );
 
     // The tender kind by the branch view's own rule (`paymentTotalsCte`):
@@ -808,7 +808,7 @@ class PostgresReportsRepository implements ReportsRepository {
         FROM pos_order_payments AS p
         JOIN sales AS s ON s.id = p.order_id
         LEFT JOIN pos_tender_types AS tt
-          ON tt.restaurant_id = s.restaurant_id AND tt.id = p.tender_type_id
+          ON tt.business_id = s.business_id AND tt.id = p.tender_type_id
         LEFT JOIN pos_terminals AS term ON term.id = s.terminal_id
        ORDER BY p.occurred_at DESC, p.id DESC
        LIMIT @limit

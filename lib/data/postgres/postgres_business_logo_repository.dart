@@ -25,7 +25,7 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
   PostgresBusinessLogoRepository({
     required this.database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.terminalId,
     this.adminAvailable = true,
@@ -34,7 +34,7 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
 
   final PosDatabase database;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int? branchId;
   final String? terminalId;
   final bool adminAvailable;
@@ -66,14 +66,14 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
     return database.runTx(config, (tx) async {
       final row = await tx.execute(
         Sql.named(
-          'SELECT logo_mime, length(logo_bytes) FROM pos_restaurants '
+          'SELECT logo_mime, length(logo_bytes) FROM pos_businesses '
           'WHERE id = @r FOR UPDATE',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       if (row.isEmpty) {
         return const AdminResult<BusinessLogo>.refused(
-          CatalogInvalid('This restaurant is not set up on this till yet.'),
+          CatalogInvalid('This business is not set up on this till yet.'),
         );
       }
 
@@ -82,13 +82,13 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
       // think there is something to fetch. A Uint8List is sent as `bytea`.
       final saved = await tx.execute(
         Sql.named(
-          'UPDATE pos_restaurants '
+          'UPDATE pos_businesses '
           '   SET logo_bytes = @bytes, logo_mime = @mime, '
           "       logo_source = 'local', logo_remote_url = NULL, "
           '       logo_fetched_url = NULL, logo_updated_at = now() '
           ' WHERE id = @r RETURNING logo_updated_at',
         ),
-        parameters: {'r': restaurantId, 'bytes': bytes, 'mime': image.mime},
+        parameters: {'r': businessId, 'bytes': bytes, 'mime': image.mime},
       );
 
       await _audit(
@@ -125,10 +125,10 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
     return database.runTx(config, (tx) async {
       final row = await tx.execute(
         Sql.named(
-          'SELECT logo_mime, length(logo_bytes) FROM pos_restaurants '
+          'SELECT logo_mime, length(logo_bytes) FROM pos_businesses '
           'WHERE id = @r FOR UPDATE',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       if (row.isEmpty || row.first[0] == null) {
         return const AdminResult.done(false);
@@ -136,13 +136,13 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
 
       await tx.execute(
         Sql.named(
-          'UPDATE pos_restaurants '
+          'UPDATE pos_businesses '
           '   SET logo_bytes = NULL, logo_mime = NULL, logo_source = NULL, '
           '       logo_remote_url = NULL, logo_fetched_url = NULL, '
           '       logo_updated_at = now() '
           ' WHERE id = @r',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       await _audit(
@@ -164,21 +164,21 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
     Map<String, Object?>? after,
   }) => tx.execute(
     Sql.named(
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_audit_events (business_id, branch_id, terminal_id, '
       '  actor_user_id, actor_name, action, entity_type, entity_id, '
       '  before_value, after_value) '
       'VALUES (@r, @branch, @terminal, @actor, @actorName, @action, '
       '        @entityType, @entityId, @before::jsonb, @after::jsonb)',
     ),
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'branch': branchId,
       'terminal': terminalId,
       'actor': by.id,
       'actorName': by.name,
       'action': action,
       'entityType': AuditAction.entityBusinessLogo,
-      'entityId': '$restaurantId',
+      'entityId': '$businessId',
       'before': before == null ? null : jsonEncode(before),
       'after': after == null ? null : jsonEncode(after),
     },

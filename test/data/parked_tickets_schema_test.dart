@@ -56,7 +56,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresParkedTickets store;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int tableId;
 
@@ -69,37 +69,37 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     // Orders first: the payment cases below leave some, and a sale pins its
-    // restaurant (the shared test database also carries other suites' sales).
+    // business (the shared test database also carries other suites' sales).
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('parked', 'Parked') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('parked', 'Parked') "
       'RETURNING id',
     )).first[0]! as int;
 
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     tableId = (await db.query(
       pg.config,
-      'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) '
+      'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats) '
       "VALUES (@r, @b, 'T12', 4) RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     )).first[0]! as int;
 
     nour = PosStaff(
       id: (await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         "  pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', 'nour', 's', 'h') "
         'RETURNING id',
-        parameters: {'r': restaurantId, 'b': branchId},
+        parameters: {'r': businessId, 'b': branchId},
       )).first[0]! as int,
       name: 'Nour Adel',
     );
@@ -107,7 +107,7 @@ void main() {
     store = PostgresParkedTickets(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -187,7 +187,7 @@ void main() {
       other = PostgresParkedTickets(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
     });
@@ -252,15 +252,15 @@ void main() {
       setUp(() async {
         await db.query(
           pg.config,
-          'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+          'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
           "VALUES (@t::uuid, @r, @b, 'Counter 1')",
-          parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+          parameters: {'t': terminal, 'r': businessId, 'b': branchId},
         );
         orders = PostgresOrdersRepository(
           database: db,
           config: pg.config,
           context: PosWriteContext(
-            restaurantId: restaurantId,
+            businessId: businessId,
             branchId: branchId,
             terminalId: terminal,
             branchCode: 'MAIN',
@@ -410,7 +410,7 @@ void main() {
       other = PostgresParkedTickets(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
     });
@@ -464,15 +464,15 @@ void main() {
       setUp(() async {
         await db.query(
           pg.config,
-          'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+          'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
           "VALUES (@t::uuid, @r, @b, 'Counter 1')",
-          parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+          parameters: {'t': terminal, 'r': businessId, 'b': branchId},
         );
         orders = PostgresOrdersRepository(
           database: db,
           config: pg.config,
           context: PosWriteContext(
-            restaurantId: restaurantId,
+            businessId: businessId,
             branchId: branchId,
             terminalId: terminal,
             branchCode: 'MAIN',
@@ -524,9 +524,9 @@ void main() {
     await expectLater(
       db.query(
         pg.config,
-        'INSERT INTO pos_parked_tickets (restaurant_id, client_transaction_id, '
+        'INSERT INTO pos_parked_tickets (business_id, client_transaction_id, '
         "  payload) VALUES (@r, gen_random_uuid(), '{}'::jsonb)",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       ),
       throwsA(anything),
     );
@@ -546,15 +546,15 @@ void main() {
     // was invisible to it — an unpaid sale the day close would have closed over.
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1')",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
     final days = PostgresBusinessDayRepository(
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminal,
         branchCode: 'MAIN',
@@ -574,15 +574,15 @@ void main() {
   });
 
   test('the upgrade keeps the tables that were already parked', () async {
-    // A restaurant with a seated table when the update installs. The migration
+    // A business with a seated table when the update installs. The migration
     // has to loosen the key **and** backfill the branch off the table, or that
     // table's ticket stops being counted by the day close it used to block.
     await db.query(
       pg.config,
-      'INSERT INTO pos_parked_tickets (restaurant_id, table_id, '
+      'INSERT INTO pos_parked_tickets (business_id, table_id, '
       "  client_transaction_id, payload) VALUES (@r, @t, @x::uuid, @p::jsonb)",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         't': tableId,
         'x': '55555555-5555-4555-8555-555555555555',
         'p': '{"client_transaction_id":"55555555-5555-4555-8555-555555555555"}',
@@ -600,13 +600,12 @@ void main() {
       'ALTER TABLE pos_parked_tickets DROP COLUMN IF EXISTS branch_id',
       'ALTER TABLE pos_parked_tickets ALTER COLUMN table_id SET NOT NULL',
       'ALTER TABLE pos_parked_tickets ADD CONSTRAINT pos_parked_tickets_pkey '
-          'PRIMARY KEY (restaurant_id, table_id)',
-      'DELETE FROM schema_migrations WHERE version = 32',
+          'PRIMARY KEY (business_id, table_id)',
     ]) {
       await db.query(pg.config, statement);
     }
 
-    expect(await PosMigrator(db).migrate(pg.config), contains(32));
+    expect(await pg.replay(32), contains(32));
 
     final rows = await db.query(
       pg.config,
@@ -623,19 +622,19 @@ void main() {
   test('another branch\'s held ticket is not this till\'s to hydrate', () async {
     final otherBranch = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'TWO', 'Second') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     await PostgresParkedTickets(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: otherBranch,
     ).save(_ticket('44444444-4444-4444-8444-444444444444'));
 
-    // Restaurant-scoped hydration would have handed this till the other shop's
+    // Business-scoped hydration would have handed this till the other shop's
     // ticket, with no table label to hint that it was not theirs.
     expect((await store.load(_catalog)).held, isEmpty);
   });

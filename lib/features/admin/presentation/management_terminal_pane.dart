@@ -556,7 +556,7 @@ class _LanEncryptionDialog extends StatelessWidget {
 /// nobody touching it.
 ///
 /// Here, beside the reset, because both are facts about this machine rather
-/// than the restaurant — and behind the same `terminal.manage`, so the person
+/// than the business — and behind the same `terminal.manage`, so the person
 /// who may wipe the till is the person who may change how its back office is
 /// reached.
 class _AdminModeSettings extends ConsumerWidget {

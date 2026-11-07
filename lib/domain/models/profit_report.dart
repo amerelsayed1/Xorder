@@ -22,7 +22,7 @@
 /// price they were sold at, before order-level discounts (which belong to no one
 /// line) and with a refunded unit taken off.
 ///
-/// **It is without tax.** On a restaurant whose prices exclude tax the lines are
+/// **It is without tax.** On a business whose prices exclude tax the lines are
 /// already net. Where prices **include** tax ([ProfitReport.pricesIncludeTax])
 /// the tax is taken back out, because a margin measured on money that was
 /// handed to the tax authority is a margin nobody earned. The lines do not
@@ -34,7 +34,7 @@
 /// is left as it is: there is nothing to take out.
 ///
 /// The revenue on this report therefore will not match the Items list above it
-/// on an inclusive restaurant, which is gross; the column says which it is.
+/// on an inclusive business, which is gross; the column says which it is.
 ///
 /// **Cost is what left the shelf, refunded or not.** A refund writes no stock
 /// movement, so the food a refunded plate used is still spent; the revenue came
@@ -113,7 +113,7 @@ class ProfitReport {
   /// Highest profit first, uncosted products after, by revenue.
   final List<ProductProfit> products;
 
-  /// The restaurant prices tax into the menu. Every revenue figure here has
+  /// The business prices tax into the menu. Every revenue figure here has
   /// then had it taken out — exactly for an order at one rate, by estimate for
   /// a mixed one (see the library comment) — and the page says so.
   final bool pricesIncludeTax;

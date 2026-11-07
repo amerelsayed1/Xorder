@@ -42,7 +42,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresCatalogAdminRepository admin;
-  late int restaurantId;
+  late int businessId;
   late int burgers;
   late int drinks;
 
@@ -88,23 +88,23 @@ void main() {
     ],
   );
 
-  Future<int> category(String name, {int? restaurant}) async =>
+  Future<int> category(String name, {int? business}) async =>
       (await db.query(
         pg.config,
-        'INSERT INTO pos_categories (restaurant_id, name_en) '
+        'INSERT INTO pos_categories (business_id, name_en) '
         'VALUES (@r, @name) RETURNING id',
-        parameters: {'r': restaurant ?? restaurantId, 'name': name},
+        parameters: {'r': business ?? businessId, 'name': name},
       )).first[0]! as int;
 
   setUp(() async {
     pg = await PgFixture.open('option_groups_admin');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Options') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Options') "
       'RETURNING id',
       parameters: {'slug': slug},
     )).first[0]! as int;
@@ -112,7 +112,7 @@ void main() {
     admin = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
     burgers = await category('Burgers');
     drinks = await category('Drinks');
@@ -127,11 +127,11 @@ void main() {
     int? discounted,
   }) async => (await db.query(
     pg.config,
-    'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+    'INSERT INTO pos_products (business_id, category_id, name_en, '
     '  price_minor, discounted_price_minor) '
     'VALUES (@r, @c, @name, @price, @discounted) RETURNING id',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'c': categoryId ?? burgers,
       'name': name,
       'price': price,
@@ -196,10 +196,10 @@ void main() {
       String name = 'Raw',
     }) async => (await db.query(
       pg.config,
-      'INSERT INTO pos_modifier_groups (restaurant_id, name_en, is_global, '
+      'INSERT INTO pos_modifier_groups (business_id, name_en, is_global, '
       '  apply_scope) VALUES (@r, @name, @global, @scope) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'name': name,
         'global': global,
         'scope': scope,
@@ -396,7 +396,7 @@ void main() {
       final cloud = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         offline: false,
       );
       expect(
@@ -408,7 +408,7 @@ void main() {
       final noCredential = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         adminAvailable: false,
       );
       expect(
@@ -498,14 +498,14 @@ void main() {
       expect(saved.maxSelect, 1);
     });
 
-    test("a category-wide group reaches only this restaurant's categories",
+    test("a category-wide group reaches only this business's categories",
         () async {
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('elsewhere', 'Else') "
+        "INSERT INTO pos_businesses (slug, name) VALUES ('elsewhere', 'Else') "
         'RETURNING id',
       )).first[0]! as int;
-      final theirs = await category('Theirs', restaurant: other);
+      final theirs = await category('Theirs', business: other);
 
       final result = await admin.saveOptionGroup(
         extras.copyWith(
@@ -782,13 +782,13 @@ void main() {
       expect(await count('SELECT count(*) FROM pos_modifier_groups'), 0);
       expect(await count('SELECT count(*) FROM pos_modifiers'), 0);
 
-      // Scoped to this test's restaurant: the ledger is append-only, so the
+      // Scoped to this test's business: the ledger is append-only, so the
       // rows every earlier test wrote are still there.
       final ledger = await db.query(
         pg.config,
         'SELECT entity_id FROM pos_audit_events '
-        'WHERE action = @a AND restaurant_id = @r',
-        parameters: {'a': AuditAction.optionGroupDeleted, 'r': restaurantId},
+        'WHERE action = @a AND business_id = @r',
+        parameters: {'a': AuditAction.optionGroupDeleted, 'r': businessId},
       );
       expect(ledger.single[0], '${typed.id}');
     });
@@ -1097,7 +1097,7 @@ void main() {
       expect(back.discountedPrice?.minor, 4500);
     });
 
-    test('a restaurant-wide size group prices every item', () async {
+    test('a business-wide size group prices every item', () async {
       final burger = await product('Burger');
       final cola = await product('Cola', categoryId: drinks, price: 1200);
       await library(sizes.copyWith(scope: OptionGroupScope.all));
@@ -1121,15 +1121,15 @@ void main() {
 
   group('the ledger', () {
     /// This test's rows only. The ledger is append-only — deleting the
-    /// restaurant in `setUp` leaves every earlier test's rows where they are —
-    /// and each test's restaurant is a new id.
+    /// business in `setUp` leaves every earlier test's rows where they are —
+    /// and each test's business is a new id.
     Future<List<List<Object?>>> rows(String action) async => [
       for (final row in await db.query(
         pg.config,
         'SELECT entity_type, entity_id, actor_name, before_value, after_value '
-        'FROM pos_audit_events WHERE action = @a AND restaurant_id = @r '
+        'FROM pos_audit_events WHERE action = @a AND business_id = @r '
         'ORDER BY id',
-        parameters: {'a': action, 'r': restaurantId},
+        parameters: {'a': action, 'r': businessId},
       ))
         row.toList(),
     ];

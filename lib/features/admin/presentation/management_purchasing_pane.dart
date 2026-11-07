@@ -23,7 +23,7 @@ import 'supplier_dialog.dart';
 import 'supplier_invoice_dialog.dart';
 import 'supplier_payment_dialog.dart';
 
-/// What the restaurant buys, and who from.
+/// What the business buys, and who from.
 ///
 /// **Its own pane rather than a section of an existing one.** Purchasing is a
 /// different job done by a different person on a different day from anything
@@ -300,10 +300,10 @@ class _ManagementPurchasingPaneState
   }
 
   Future<void> _voidInvoice(SupplierInvoice invoice) async {
-    // **The restaurant's own list, not a free-text box.** Cancelling a purchase
+    // **The business's own list, not a free-text box.** Cancelling a purchase
     // invoice is one more act in the family `ReasonPicker` exists for — void,
     // refund, pay-out, price override — and asking it a seventh slightly
-    // different way is how a restaurant ends up unable to report across them.
+    // different way is how a business ends up unable to report across them.
     final reasons =
         ref.read(reasonCodesProvider(ReasonScope.invoiceVoid)).valueOrNull ??
         const [];
@@ -506,7 +506,7 @@ class _ManagementPurchasingPaneState
               ),
       );
 
-  /// **The unpaid list, not every invoice.** A restaurant three years old has
+  /// **The unpaid list, not every invoice.** A business three years old has
   /// thousands of settled ones; this pane is a worklist — what has to be paid,
   /// and what is late.
   Widget _invoices(AppStrings strings) => ref

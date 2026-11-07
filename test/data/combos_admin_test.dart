@@ -18,7 +18,7 @@ import 'pg_fixture.dart';
 /// The till has sold combos since migration 18, and until this suite's subject
 /// existed nothing in the app could write one. What matters here is what only
 /// a database can answer: that a save writes the whole tree or none of it,
-/// that a group keeps its id across an edit, that another restaurant's
+/// that a group keeps its id across an edit, that another business's
 /// products cannot be built into a meal, and that every save is on the ledger.
 void main() {
   if (PgFixture.host == null) {
@@ -29,7 +29,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresCatalogAdminRepository admin;
-  late int restaurantId;
+  late int businessId;
   late int categoryId;
   late int burger;
   late int chips;
@@ -59,16 +59,16 @@ void main() {
   Future<int> insert(String sql, Map<String, Object?> parameters) async =>
       (await db.query(pg.config, sql, parameters: parameters)).first[0]! as int;
 
-  Future<int> product(int restaurant, int category, String name) => insert(
-    'INSERT INTO pos_products (restaurant_id, category_id, name_en, price_minor) '
+  Future<int> product(int business, int category, String name) => insert(
+    'INSERT INTO pos_products (business_id, category_id, name_en, price_minor) '
     'VALUES (@r, @c, @n, 4500) RETURNING id',
-    {'r': restaurant, 'c': category, 'n': name},
+    {'r': business, 'c': category, 'n': name},
   );
 
-  Future<int> category(int restaurant, String name) => insert(
-    'INSERT INTO pos_categories (restaurant_id, name_en, slug) '
+  Future<int> category(int business, String name) => insert(
+    'INSERT INTO pos_categories (business_id, name_en, slug) '
     'VALUES (@r, @n, @n) RETURNING id',
-    {'r': restaurant, 'n': name},
+    {'r': business, 'n': name},
   );
 
   setUp(() async {
@@ -76,28 +76,28 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     // Combos first: an option RESTRICTs deleting its product (migration 18, on
-    // purpose), so a restaurant that still has one cannot be wiped under it.
+    // purpose), so a business that still has one cannot be wiped under it.
     await db.query(pg.config, 'DELETE FROM pos_combos');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = await insert(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cb', 'CB') RETURNING id",
+    businessId = await insert(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cb', 'CB') RETURNING id",
       {},
     );
     final branchId = await insert(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
-    categoryId = await category(restaurantId, 'Meals');
-    burger = await product(restaurantId, categoryId, 'Burger');
-    chips = await product(restaurantId, categoryId, 'Chips');
-    cola = await product(restaurantId, categoryId, 'Cola');
+    categoryId = await category(businessId, 'Meals');
+    burger = await product(businessId, categoryId, 'Burger');
+    chips = await product(businessId, categoryId, 'Chips');
+    cola = await product(businessId, categoryId, 'Cola');
 
     admin = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -197,11 +197,11 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT action, entity_id, before_value, after_value '
-        // This restaurant's alone: the ledger is append-only, so earlier tests'
+        // This business's alone: the ledger is append-only, so earlier tests'
         // rows are still there.
-        'FROM pos_audit_events WHERE entity_type = @t AND restaurant_id = @r '
+        'FROM pos_audit_events WHERE entity_type = @t AND business_id = @r '
         'ORDER BY id',
-        parameters: {'t': AuditAction.entityCombo, 'r': restaurantId},
+        parameters: {'t': AuditAction.entityCombo, 'r': businessId},
       );
       expect(rows.length, 2);
       expect(rows.every((r) => r[0] == AuditAction.comboSaved), isTrue);
@@ -304,13 +304,13 @@ void main() {
       expect(await count('pos_combos'), 0);
     });
 
-    test('a product from another restaurant is refused', () async {
-      final otherRestaurant = await insert(
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+    test('a product from another business is refused', () async {
+      final otherBusiness = await insert(
+        "INSERT INTO pos_businesses (slug, name) VALUES ('ot', 'OT') RETURNING id",
         {},
       );
-      final otherCategory = await category(otherRestaurant, 'Theirs');
-      final theirs = await product(otherRestaurant, otherCategory, 'Secret');
+      final otherCategory = await category(otherBusiness, 'Theirs');
+      final theirs = await product(otherBusiness, otherCategory, 'Secret');
 
       final problem = await refusedWith(
         meal(
@@ -331,12 +331,12 @@ void main() {
       expect(await count('pos_combo_options'), 0);
     });
 
-    test("another restaurant's category is refused", () async {
-      final otherRestaurant = await insert(
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+    test("another business's category is refused", () async {
+      final otherBusiness = await insert(
+        "INSERT INTO pos_businesses (slug, name) VALUES ('ot', 'OT') RETURNING id",
         {},
       );
-      final theirs = await category(otherRestaurant, 'Theirs');
+      final theirs = await category(otherBusiness, 'Theirs');
 
       final problem = await refusedWith(
         ComboDraft(
@@ -385,7 +385,7 @@ void main() {
       final cloud = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         offline: false,
       );
 

@@ -4,7 +4,7 @@ import 'package:xorder_pos/domain/models/receipt_profile.dart';
 /// Who the receipt says sold the food.
 ///
 /// The interesting property is not the validation, it is that there are **two**
-/// validations. A restaurant with a name can print; a restaurant that can print
+/// validations. A business with a name can print; a business that can print
 /// still cannot necessarily file. Collapsing those into one rule would either
 /// stop a till trading over an address field or let a receipt reach the tax
 /// authority with a nine-digit number that has eight digits in it.

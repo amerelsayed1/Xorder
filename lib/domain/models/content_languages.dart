@@ -1,7 +1,7 @@
-/// Which languages the restaurant writes its content in (XORD-005): the names
+/// Which languages the business writes its content in (XORD-005): the names
 /// and descriptions of categories, products, combos and extras.
 ///
-/// Three choices, stored as `pos_restaurants.content_languages`:
+/// Three choices, stored as `pos_businesses.content_languages`:
 ///
 ///   `ar`    Arabic only   - only the Arabic field is asked for
 ///   `en`    English only  - only the English field is asked for
@@ -34,11 +34,11 @@ enum ContentLanguages {
 
   /// The one language a form should be written in (XORD-035).
   ///
-  /// The POS has no bilingual forms: `both` - a restaurant that never chose,
-  /// a till still loading its settings, a cloud restaurant whose dashboard is
+  /// The POS has no bilingual forms: `both` - a business that never chose,
+  /// a till still loading its settings, a cloud business whose dashboard is
   /// bilingual - is read as the till's own language. Nothing is written back;
   /// the stored value keeps meaning what the platform and older tills mean by
-  /// it. `ar` and `en` are the restaurant's own choice and win.
+  /// it. `ar` and `en` are the business's own choice and win.
   ContentLanguages resolvedFor(String languageCode) =>
       this == both ? fromLocale(languageCode) : this;
 
@@ -101,7 +101,7 @@ String initialArabicName({
 
 /// A machine code (`tray_of_30`) from a name, or [fallback] plus a short
 /// suffix when the name has no Latin letters or digits to make one from - an
-/// Arabic-only restaurant's names. The code stays editable where the operator
+/// Arabic-only business's names. The code stays editable where the operator
 /// knows better; this only keeps a save from being refused for an empty one.
 String codeFromName(String name, {required String fallback, DateTime? now}) {
   final slug = name
@@ -124,7 +124,7 @@ String codeFromName(String name, {required String fallback, DateTime? now}) {
 /// make an Arabic name impossible to clear.
 ///
 /// **`name_en` is NOT NULL in the till's database and every reader assumes it,**
-/// so an Arabic-only restaurant cannot leave it empty. When English is switched
+/// so an Arabic-only business cannot leave it empty. When English is switched
 /// off the English column mirrors the Arabic name instead - on create always,
 /// and on edit only while it was still a mirror (it equalled the old Arabic
 /// name), so a real English translation is never overwritten. If English is

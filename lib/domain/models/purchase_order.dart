@@ -1,4 +1,4 @@
-/// What the restaurant has asked a supplier for, and what has arrived.
+/// What the business has asked a supplier for, and what has arrived.
 ///
 /// **A purchase order is a sale read backwards**, and the same discipline
 /// applies: the totals are snapshotted when it is sent, quantities and costs
@@ -12,7 +12,7 @@ import '../../core/money/quantity.dart';
 /// Where a purchase order has got to.
 ///
 /// Five states, and the two in the middle are the ones that matter: a
-/// restaurant almost never receives exactly what it ordered, and a model that
+/// business almost never receives exactly what it ordered, and a model that
 /// only knew *ordered* and *received* would have to lie about the Tuesday when
 /// eight of ten crates turned up.
 enum PurchaseStatus {
@@ -79,7 +79,7 @@ class PurchaseOrderLine {
   final String description;
 
   /// The menu item this stocks, when it is one. Null for the things a
-  /// restaurant buys that it does not sell — cleaning supplies, packaging,
+  /// business buys that it does not sell — cleaning supplies, packaging,
   /// gas — which is most of a purchase order by line count.
   final int? productId;
 
@@ -169,7 +169,7 @@ class PurchaseOrder {
   /// line description is.
   final String? supplierName;
 
-  /// The restaurant's own number for it — `PO-2026-000042`.
+  /// The business's own number for it — `PO-2026-000042`.
   final String reference;
 
   final PurchaseStatus status;

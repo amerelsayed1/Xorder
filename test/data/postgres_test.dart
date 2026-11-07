@@ -36,7 +36,7 @@ void main() {
 
   group('failure classification', () {
     // A cashier needs to know which thing is broken, because the four causes
-    // need four different actions from whoever is standing in the restaurant.
+    // need four different actions from whoever is standing in the business.
     test('separates the four causes a till can hit', () {
       expect(
         PosDbFailure.classify(Exception('Failed host lookup: pos-host.local')),

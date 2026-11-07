@@ -171,7 +171,7 @@ void main() {
       }
     });
 
-    test("the restaurant's own text is still printed, above the thanks", () {
+    test("the business's own text is still printed, above the thanks", () {
       final document = slip(sale(lines), footerNote: 'Free wifi: cafe-guest');
       final texts = [
         for (final b in document.blocks)

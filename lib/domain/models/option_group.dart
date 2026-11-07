@@ -130,7 +130,7 @@ class OptionGroupDraft {
 
   /// The till's own additions — "two toppings included" — which the platform
   /// has no column for. Kept working rather than dropped, because a
-  /// restaurant already pricing pizzas this way would lose it on first save.
+  /// business already pricing pizzas this way would lose it on first save.
   final int minSelect;
   final int freeOptions;
 

@@ -257,7 +257,7 @@ void main() {
     test('cash on a platform tender is C — the id is not what makes it cash', () {
       // A cloud till pays on the platform's tenders, every one of them above
       // the seeded four (migration 41). Asking "is this id 1" would file the
-      // restaurant's only cash drawer as electronic, every sale, every day.
+      // business's only cash drawer as electronic, every sale, every day.
       final sale = ticket(
         tenders: const [
           Tender(

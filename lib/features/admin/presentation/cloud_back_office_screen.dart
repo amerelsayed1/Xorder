@@ -134,18 +134,18 @@ class CloudBackOfficeScreen extends ConsumerWidget {
   }
 }
 
-/// Where this restaurant's dashboard lives, or null when the till cannot say.
+/// Where this business's dashboard lives, or null when the till cannot say.
 ///
 /// Built from what the till already knows rather than from a new field on the
 /// bundle: the platform address it talks to, and its own tenant slug. A cloud
-/// dashboard is served on the restaurant's own subdomain (`apps/web`'s router
-/// puts it at `/admin`, because on a restaurant subdomain the bare root is the
+/// dashboard is served on the business's own subdomain (`apps/web`'s router
+/// puts it at `/admin`, because on a business subdomain the bare root is the
 /// public menu).
 ///
 /// **Null rather than a guess.** A till with no platform address or no slug
 /// cannot name the dashboard, and an address that is wrong is worse than none:
 /// a manager typing it in gets a certificate warning or somebody else's
-/// restaurant. The screen simply omits the line.
+/// business. The screen simply omits the line.
 String? dashboardAddress(DeploymentConfig config) {
   final base = config.baseUrl?.trim();
   final slug = config.tenantSlug?.trim();
@@ -155,7 +155,7 @@ String? dashboardAddress(DeploymentConfig config) {
   if (uri == null || uri.host.isEmpty) return null;
 
   // A host that already names the tenant is left alone — the operator typed
-  // the restaurant's own address into setup and it is the one that works.
+  // the business's own address into setup and it is the one that works.
   final host = uri.host.startsWith('$slug.') ? uri.host : '$slug.${uri.host}';
   return Uri(
     scheme: uri.scheme.isEmpty ? 'https' : uri.scheme,

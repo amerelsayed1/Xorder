@@ -29,9 +29,9 @@ Map<String, Object?> _payload(Object? raw) => switch (raw) {
 
 /// Authoring the menu on the till.
 ///
-/// This is the feature an offline restaurant cannot trade without, and the one
+/// This is the feature an offline business cannot trade without, and the one
 /// the coordination docs previously ruled out — so what it refuses matters as
-/// much as what it writes. Every test here is a question a restaurant would
+/// much as what it writes. Every test here is a question a business would
 /// actually ask: can I change a price, can I take something off sale without
 /// losing what it sold, and can two managers on two tills overwrite each other.
 void main() {
@@ -44,7 +44,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresCatalogAdminRepository repository;
-  late int restaurantId;
+  late int businessId;
   late int categoryId;
 
   const slug = 'catalog-admin-test';
@@ -69,27 +69,27 @@ void main() {
     pg = await PgFixture.open('catalog_admin');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Catalog Test') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Catalog Test') "
       'RETURNING id',
       parameters: {'slug': slug},
     );
-    restaurantId = restaurant.first[0]! as int;
+    businessId = business.first[0]! as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     repository = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branch.first[0]! as int,
     );
 
@@ -129,9 +129,9 @@ void main() {
   Future<int> taxGroup(String name, int rateBp) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_tax_groups (restaurant_id, name_en, rate_bp) '
+      'INSERT INTO pos_tax_groups (business_id, name_en, rate_bp) '
       'VALUES (@r, @name, @rate) RETURNING id',
-      parameters: {'r': restaurantId, 'name': name, 'rate': rateBp},
+      parameters: {'r': businessId, 'name': name, 'rate': rateBp},
     );
     return rows.first[0]! as int;
   }
@@ -141,7 +141,7 @@ void main() {
       // **`tax_group_id` was written by no statement in the app.** The column
       // has been on this table since Wave M and the catalogue query has read it
       // ever since — `COALESCE(p.tax_group_id, c.tax_group_id)` — so a
-      // restaurant could define a zero-rated group and had no way to put a
+      // business could define a zero-rated group and had no way to put a
       // bottle of water on it. Every item was charged the fallback rate.
       final zero = await taxGroup('Zero-rated', 0);
 
@@ -371,7 +371,7 @@ void main() {
       final cloud = PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         offline: false,
       );
 
@@ -429,23 +429,23 @@ void main() {
       CatalogProblem? problemOf(AdminResult<Product> result) =>
           (result.refusal as CatalogRefused?)?.problem;
 
-      Future<int> otherRestaurantsCategory() async {
+      Future<int> otherBusinessesCategory() async {
         final other = await db.query(
           pg.config,
-          "INSERT INTO pos_restaurants (slug, name) VALUES ('other-tenant', 'Other') "
+          "INSERT INTO pos_businesses (slug, name) VALUES ('other-tenant', 'Other') "
           'RETURNING id',
         );
         final category = await db.query(
           pg.config,
-          "INSERT INTO pos_categories (restaurant_id, name_en) "
+          "INSERT INTO pos_categories (business_id, name_en) "
           "VALUES (@r, 'Foreign') RETURNING id",
           parameters: {'r': other.first[0]! as int},
         );
         return category.first[0]! as int;
       }
 
-      test("another restaurant's category is refused, nothing written", () async {
-        final foreign = await otherRestaurantsCategory();
+      test("another business's category is refused, nothing written", () async {
+        final foreign = await otherBusinessesCategory();
 
         final result = await repository.saveProduct(
           Product(
@@ -612,8 +612,8 @@ void main() {
 
       final rows = await db.query(
         pg.config,
-        'SELECT payload FROM pos_money_config WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT payload FROM pos_money_config WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       final readBack = MoneyConfigCodec.toTaxConfig(_payload(rows.first[0]));
 
@@ -637,8 +637,8 @@ void main() {
 
       final rows = await db.query(
         pg.config,
-        'SELECT payload FROM pos_money_config WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT payload FROM pos_money_config WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       final readBack = MoneyConfigCodec.toTaxConfig(_payload(rows.first[0]));
 
@@ -647,20 +647,20 @@ void main() {
     });
 
     /// A default tax group at [rateBp], as `LocalBootstrap.seedTaxGroup` leaves
-    /// every offline restaurant (setup writes it at 14%).
+    /// every offline business (setup writes it at 14%).
     Future<void> seedDefaultGroup(int rateBp) => db.query(
           pg.config,
-          'INSERT INTO pos_tax_groups (restaurant_id, name_en, rate_bp, '
+          'INSERT INTO pos_tax_groups (business_id, name_en, rate_bp, '
           '  is_default) VALUES (@r, @name, @rate, true)',
-          parameters: {'r': restaurantId, 'name': 'VAT', 'rate': rateBp},
+          parameters: {'r': businessId, 'name': 'VAT', 'rate': rateBp},
         );
 
     Future<List<int>> defaultGroupRates() async {
       final rows = await db.query(
         pg.config,
         'SELECT rate_bp FROM pos_tax_groups '
-        'WHERE restaurant_id = @r AND is_default',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r AND is_default',
+        parameters: {'r': businessId},
       );
       return [for (final row in rows) row[0]! as int];
     }
@@ -669,7 +669,7 @@ void main() {
         () async {
       // The bug: the VAT box saved `vat_bp` into the payload, but a ticket
       // prices from the default tax group whenever one exists — and setup
-      // seeds one at 14% — so a restaurant that typed 0 went on charging 14%.
+      // seeds one at 14% — so a business that typed 0 went on charging 14%.
       await seedDefaultGroup(1400);
 
       final saved = await repository.saveMoneyConfig(
@@ -708,8 +708,8 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT name_en, rate_bp FROM pos_tax_groups '
-        'WHERE restaurant_id = @r ORDER BY name_en',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r ORDER BY name_en',
+        parameters: {'r': businessId},
       );
       expect({for (final r in rows) r[0]! as String: r[1]! as int},
           {'Reduced': 500, 'VAT': 0});
@@ -802,8 +802,8 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT label, seats, area_name FROM pos_dining_tables '
-        'WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(rows.first[0], 'T1');
       expect(rows.first[1], 4);
@@ -874,9 +874,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) '
-          'VALUES (@r, (SELECT id FROM pos_branches WHERE restaurant_id = @r), @l, 0)',
-          parameters: {'r': restaurantId, 'l': 'Zero'},
+          'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats) '
+          'VALUES (@r, (SELECT id FROM pos_branches WHERE business_id = @r), @l, 0)',
+          parameters: {'r': businessId, 'l': 'Zero'},
         ),
         throwsA(anything),
       );
@@ -916,9 +916,9 @@ void main() {
       Future<List<String>> labels() async => [
         for (final row in await db.query(
           pg.config,
-          'SELECT label FROM pos_dining_tables WHERE restaurant_id = @r '
+          'SELECT label FROM pos_dining_tables WHERE business_id = @r '
           'ORDER BY id',
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ))
           row[0]! as String,
       ];
@@ -931,8 +931,8 @@ void main() {
         expect(await labels(), [for (var n = 1; n <= 10; n++) 'Table $n']);
         final rows = await db.query(
           pg.config,
-          'SELECT DISTINCT seats, area_name FROM pos_dining_tables WHERE restaurant_id = @r',
-          parameters: {'r': restaurantId},
+          'SELECT DISTINCT seats, area_name FROM pos_dining_tables WHERE business_id = @r',
+          parameters: {'r': businessId},
         );
         expect(rows.length, 1);
         expect((rows.first[0], rows.first[1]), (4, 'Hall'));
@@ -1013,7 +1013,7 @@ void main() {
         final cloud = PostgresCatalogAdminRepository(
           database: db,
           config: pg.config,
-          restaurantId: restaurantId,
+          businessId: businessId,
           offline: false,
         );
         expect((await cloud.createTables(batch(1, 2), by: owner)).refusal, isA<NotPermitted>());
@@ -1072,7 +1072,7 @@ void main() {
       await repository.importMenu(await plan(rows), by: manager);
 
       // The second plan is built against what the first one wrote, which is
-      // the whole point: a restaurant re-sends the same file all the time.
+      // the whole point: a business re-sends the same file all the time.
       final again = await plan(rows);
       expect(again.canApply, isFalse, reason: 'nothing left to do');
 

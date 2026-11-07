@@ -210,7 +210,7 @@ void main() {
     );
 
     test('the four sources merged newest first, each signed as money moves '
-        'for the restaurant', () {
+        'for the business', () {
       final list = FinanceTransactions.of(
         sales: [sale(7, DateTime(2026, 9, 10, 12), total: 11400)],
         salesCut: false,

@@ -28,7 +28,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresServiceChargesRepository charges;
-  late int restaurantId;
+  late int businessId;
 
   const slug = 'service-charges-test';
 
@@ -52,20 +52,20 @@ void main() {
     pg = await PgFixture.open('service_charges');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@s, 'Charges') "
+      "INSERT INTO pos_businesses (slug, name) VALUES (@s, 'Charges') "
       'RETURNING id',
       parameters: {'s': slug},
     )).first[0]! as int;
 
     final branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     charges = PostgresServiceChargesRepository(
@@ -74,14 +74,14 @@ void main() {
       readDatabase: db,
       readConfig: pg.config.copyWith(tenantSlug: slug),
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
 
   tearDown(() => pg.close());
 
-  test('a restaurant starts with none, which means it keeps its old rate',
+  test('a business starts with none, which means it keeps its old rate',
       () async {
     // Deliberately not seeded from `pos_money_config`. Seeding a row would look
     // harmless and would not be: the two would drift, and somebody editing the
@@ -142,7 +142,7 @@ void main() {
 
   test('an order type this build does not know is dropped, not fatal',
       () async {
-    // A restaurant that adds one on a newer binary must not stop an older till
+    // A business that adds one on a newer binary must not stop an older till
     // from selling.
     await charges.save(
       const ServiceCharge(id: 0, nameEn: 'Service', rateBp: 1000),
@@ -159,9 +159,9 @@ void main() {
   group('what the database refuses', () {
     Future<void> raw(String rateBp, String fixed) => db.query(
       pg.config,
-      'INSERT INTO pos_service_charges (restaurant_id, name_en, rate_bp, '
+      'INSERT INTO pos_service_charges (business_id, name_en, rate_bp, '
       '  fixed_minor) VALUES (@r, @n, $rateBp, $fixed)',
-      parameters: {'r': restaurantId, 'n': 'X'},
+      parameters: {'r': businessId, 'n': 'X'},
     );
 
     test('a charge that is both a rate and an amount', () async {

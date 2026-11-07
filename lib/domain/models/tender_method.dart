@@ -5,7 +5,7 @@
 /// how a till ends up refunding to a method it cannot take payment on.
 ///
 /// **Data since §40 (Wave D).** These used to be four constants compiled into
-/// the binary. They are now rows a restaurant edits, and [seeded] is what the
+/// the binary. They are now rows a business edits, and [seeded] is what the
 /// migration writes rather than what the code believes. The constants remain
 /// only as the fallback for a till with no database yet — see
 /// [UnconfiguredTenderTypesRepository].
@@ -107,7 +107,7 @@ class TenderMethod {
 
   final int id;
 
-  /// Stable, machine-readable, never shown. A restaurant renaming "Card" into
+  /// Stable, machine-readable, never shown. A business renaming "Card" into
   /// Arabic must not change what the seed and the tests refer to.
   final String code;
 
@@ -129,7 +129,7 @@ class TenderMethod {
   final bool countsAsCash;
 
   /// Whether settling on this method should kick the drawer open. Not the same
-  /// question as [countsAsCash]: a restaurant that keeps its vouchers in the
+  /// question as [countsAsCash]: a business that keeps its vouchers in the
   /// till drawer opens it for them and does not count them as cash.
   final bool opensDrawer;
 
@@ -156,10 +156,10 @@ class TenderMethod {
       ? nameAr!
       : nameEn;
 
-  /// The four a restaurant gets before anybody configures anything.
+  /// The four a business gets before anybody configures anything.
   ///
   /// Kept in step with migration 23's seed by a test, not by discipline: two
-  /// definitions of "what a new restaurant starts with" is how a fresh install
+  /// definitions of "what a new business starts with" is how a fresh install
   /// and a migrated one end up different.
   static const seeded = <TenderMethod>[
     TenderMethod(

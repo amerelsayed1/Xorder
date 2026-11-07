@@ -16,7 +16,7 @@ import 'pg_fixture.dart';
 ///
 /// These matter more than most: they are what the till *shows a cashier*, and
 /// the implementations they replaced were incapable of being wrong because they
-/// returned constants. Every question here is one a restaurant would ask —
+/// returned constants. Every question here is one a business would ask —
 /// is this my menu, my floor, my staff, and can somebody else's code claim my
 /// till.
 void main() {
@@ -27,7 +27,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late String terminalId;
@@ -40,40 +40,40 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
 
-    // Every test starts from an empty restaurant. Cascades take the rest, which
+    // Every test starts from an empty business. Cascades take the rest, which
     // is why the foreign keys were written with ON DELETE CASCADE.
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Directory Test') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Directory Test') RETURNING id",
       parameters: {'slug': slug},
     );
-    restaurantId = restaurant.first[0] as int;
+    businessId = business.first[0] as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name, supported_order_types) "
+      "INSERT INTO pos_branches (business_id, code, name, supported_order_types) "
       "VALUES (@r, 'MAIN', 'Main', ARRAY['dine_in','takeaway']) RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0] as int;
 
     final other = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'OTHER', 'Other') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     otherBranchId = other.first[0] as int;
 
     final salt = PinHash.newSalt();
     await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash, capabilities) '
       "VALUES (@r, @b, 'Sara M.', 'sara', @salt, @hash, ARRAY['pos.operate','pos.reprint'])",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'salt': salt,
         'hash': await PinHash.hash(pin, salt),
@@ -82,9 +82,9 @@ void main() {
 
     final terminal = await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name, pairing_code) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name, pairing_code) '
       "VALUES (gen_random_uuid(), @r, @b, 'Counter 1', 'MAIN-AAAA') RETURNING id::text",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     );
     terminalId = terminal.first[0] as String;
   });
@@ -103,7 +103,7 @@ void main() {
   PostgresSessionRepository session({int? branch}) => PostgresSessionRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branch ?? branchId,
         terminalId: terminalId,
       );
@@ -112,15 +112,15 @@ void main() {
     Future<void> seedMenu() async {
       final category = await db.query(
         pg.config,
-        "INSERT INTO pos_categories (restaurant_id, name_en, name_ar, slug, sort_order) "
+        "INSERT INTO pos_categories (business_id, name_en, name_ar, slug, sort_order) "
         "VALUES (@r, 'Grills', 'مشويات', 'grills', 1) RETURNING id",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       final group = await db.query(
         pg.config,
-        "INSERT INTO pos_modifier_groups (restaurant_id, name_en, is_required, max_select) "
+        "INSERT INTO pos_modifier_groups (business_id, name_en, is_required, max_select) "
         "VALUES (@r, 'Doneness', true, 1) RETURNING id",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       await db.query(
         pg.config,
@@ -130,9 +130,9 @@ void main() {
       );
       final product = await db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, name_ar, price_minor, sku, barcode) '
+        'INSERT INTO pos_products (business_id, category_id, name_en, name_ar, price_minor, sku, barcode) '
         "VALUES (@r, @c, 'Kofta', 'كفتة', 24500, 'GRL-002', '6221031492') RETURNING id",
-        parameters: {'r': restaurantId, 'c': category.first[0]},
+        parameters: {'r': businessId, 'c': category.first[0]},
       );
       await db.query(
         pg.config,
@@ -185,20 +185,20 @@ void main() {
       expect(catalog.byBarcode('0000000000'), isNull);
     });
 
-    test('another restaurant\'s menu is not this one\'s', () async {
+    test('another business\'s menu is not this one\'s', () async {
       await seedMenu();
       final other = await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('somebody-else', 'Somebody Else') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('somebody-else', 'Somebody Else') RETURNING id",
       );
       final otherCategory = await db.query(
         pg.config,
-        "INSERT INTO pos_categories (restaurant_id, name_en) VALUES (@r, 'Theirs') RETURNING id",
+        "INSERT INTO pos_categories (business_id, name_en) VALUES (@r, 'Theirs') RETURNING id",
         parameters: {'r': other.first[0]},
       );
       await db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, price_minor) '
+        'INSERT INTO pos_products (business_id, category_id, name_en, price_minor) '
         "VALUES (@r, @c, 'Their Burger', 9900)",
         parameters: {'r': other.first[0], 'c': otherCategory.first[0]},
       );
@@ -211,10 +211,10 @@ void main() {
     test('a tenant slug that matches nothing is an explained refusal', () async {
       final wrong = PostgresCatalogRepository(
         database: db,
-        config: pg.config.copyWith(tenantSlug: 'no-such-restaurant'),
+        config: pg.config.copyWith(tenantSlug: 'no-such-business'),
       );
 
-      // Not an empty menu: an empty menu looks like a restaurant that sells
+      // Not an empty menu: an empty menu looks like a business that sells
       // nothing, and the operator would go looking for the wrong fault.
       await expectLater(
         wrong.load(),
@@ -222,7 +222,7 @@ void main() {
           isA<PosTenantMissing>().having(
             (e) => e.toString(),
             'message',
-            contains('no-such-restaurant'),
+            contains('no-such-business'),
           ),
         ),
       );
@@ -233,22 +233,22 @@ void main() {
     setUp(() async {
       await db.query(
         pg.config,
-        'INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats, sort_order) '
+        'INSERT INTO pos_dining_tables (business_id, branch_id, label, seats, sort_order) '
         'VALUES (@r, @b, @l1, 2, 1), (@r, @b, @l2, 6, 2)',
-        parameters: {'r': restaurantId, 'b': branchId, 'l1': 'T1', 'l2': 'T2'},
+        parameters: {'r': businessId, 'b': branchId, 'l1': 'T1', 'l2': 'T2'},
       );
       await db.query(
         pg.config,
-        "INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats) "
+        "INSERT INTO pos_dining_tables (business_id, branch_id, label, seats) "
         "VALUES (@r, @b, 'X1', 4)",
-        parameters: {'r': restaurantId, 'b': otherBranchId},
+        parameters: {'r': businessId, 'b': otherBranchId},
       );
     });
 
     PostgresFloorRepository floor() => PostgresFloorRepository(
           database: db,
           config: pg.config,
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
         );
 
@@ -306,7 +306,7 @@ void main() {
       // The invoice prefix and the tenant arrive here, never from anything the
       // installer can type.
       expect(result.claim!.branchCode, 'MAIN');
-      expect(result.claim!.restaurantId, restaurantId);
+      expect(result.claim!.businessId, businessId);
       expect(result.claim!.terminalId, terminalId);
     });
 
@@ -331,10 +331,10 @@ void main() {
       expect(again.message, contains('already been used'));
     });
 
-    test('a code cannot be redeemed against the wrong restaurant', () async {
+    test('a code cannot be redeemed against the wrong business', () async {
       await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('somebody-else', 'Somebody Else')",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('somebody-else', 'Somebody Else')",
       );
 
       final result = await provisioning().claimByCode(
@@ -348,7 +348,7 @@ void main() {
       expect((await provisioning().claimByCode(tenantSlug: slug, code: 'MAIN-AAAA')).succeeded, isTrue);
     });
 
-    test('an unknown restaurant is named in the refusal', () async {
+    test('an unknown business is named in the refusal', () async {
       final result = await provisioning().claimByCode(tenantSlug: 'nobody', code: 'MAIN-AAAA');
 
       expect(result.code, 'TENANT_UNKNOWN');
@@ -397,7 +397,7 @@ void main() {
       );
 
       // Identical on purpose: a wizard that distinguished them would enumerate
-      // who works at the restaurant for anyone holding the till.
+      // who works at the business for anyone holding the till.
       expect(wrongPin.succeeded, isFalse);
       expect(unknownUser.succeeded, isFalse);
       expect(wrongPin.message, unknownUser.message);
@@ -411,7 +411,7 @@ void main() {
   });
 
   group('the session', () {
-    test('is the restaurant, the branch and the till this terminal really is', () async {
+    test('is the business, the branch and the till this terminal really is', () async {
       final current = await session().current();
 
       expect(current.tenantName, 'Directory Test');
@@ -444,10 +444,10 @@ void main() {
       final salt = PinHash.newSalt();
       await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash) '
         "VALUES (@r, @b, 'Elsewhere', 'elsewhere', @salt, @hash)",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': otherBranchId,
           'salt': salt,
           'hash': await PinHash.hash('1357', salt),
@@ -458,7 +458,7 @@ void main() {
       expect(await session(branch: otherBranchId).verifyPin('1357'), isTrue);
     });
 
-    /// Two people, one PIN — what a restaurant does on its first afternoon.
+    /// Two people, one PIN — what a business does on its first afternoon.
     ///
     /// Switching user asks for a name as well as a PIN, and the first version
     /// asked "who holds this PIN" and then checked the name against whoever
@@ -469,11 +469,11 @@ void main() {
       final salt = PinHash.newSalt();
       await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         'pin_salt, pin_hash) '
         "VALUES (@r, @b, 'Sayed A.', 'sayed', @salt, @hash)",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'salt': salt,
           // The SAME PIN the fixture's first member of staff already has.

@@ -26,7 +26,7 @@ final postgresBranchSalesProvider = Provider<PostgresBranchSalesRepository?>((
   return PostgresBranchSalesRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
-    restaurantId: context.restaurantId,
+    businessId: context.businessId,
     branchId: context.branchId,
   );
 });

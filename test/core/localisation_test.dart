@@ -47,7 +47,7 @@ void main() {
 
     test('isolates a name written in the other script', () {
       // The licence summary puts operator data and a count in one line. An
-      // Arabic restaurant name inside the English line used to drag the
+      // Arabic business name inside the English line used to drag the
       // separators and the number with it — «العاصمه» on a two-terminal plan
       // rendered as "2 · العاصمه terminals". FSI…PDI around the name keeps the
       // reordering inside it.
@@ -181,7 +181,7 @@ void main() {
         branchName: 'Maadi',
         terminalName: 'Counter 1',
         terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
-        restaurantId: 7,
+        businessId: 7,
         branchCode: 'MAA',
       ),
       languageCode: 'en',
@@ -317,7 +317,7 @@ void main() {
   });
 
   test('a terminal with no configuration yet opens in Arabic', () {
-    // The restaurants this ships to are in Egypt, and an installer who wants
+    // The businesses this ships to are in Egypt, and an installer who wants
     // English is one item away in the Settings bar on every screen — including
     // the first one. Only the FALLBACK moves: a terminal that has been set up
     // reads its own `languageCode` and keeps whatever was chosen there.
@@ -335,7 +335,7 @@ void main() {
                 branchId: 1,
                 terminalName: 'Counter 1',
                 terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
-                restaurantId: 1,
+                businessId: 1,
                 branchCode: 'MAIN',
               ),
               languageCode: 'en',
@@ -883,7 +883,7 @@ Map<String, String> _sample(AppStrings s) => {
   'testConnection': s.testConnection,
   'platformAddress': s.platformAddress,
   'platformCaps': s.platformCaps,
-  'restaurant': s.restaurant,
+  'business': s.business,
   'setupCode': s.setupCode,
   'username': s.username,
   'password': s.password,

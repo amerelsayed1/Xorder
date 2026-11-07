@@ -29,7 +29,7 @@ class PostgresFinancialAccountsAdminRepository
   PostgresFinancialAccountsAdminRepository({
     required this.database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.terminalId,
     this.adminAvailable = true,
@@ -38,7 +38,7 @@ class PostgresFinancialAccountsAdminRepository
 
   final PosDatabase database;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int? branchId;
   final String? terminalId;
   final bool adminAvailable;
@@ -90,14 +90,14 @@ class PostgresFinancialAccountsAdminRepository
     }
 
     return database.runTx(config, (tx) async {
-      // A branch is this restaurant's own, or the account cannot exist.
+      // A branch is this business's own, or the account cannot exist.
       final tiedTo = account.branchId;
       if (tiedTo != null) {
         final branch = await tx.execute(
           Sql.named(
-            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+            'SELECT 1 FROM pos_branches WHERE id = @b AND business_id = @r',
           ),
-          parameters: {'b': tiedTo, 'r': restaurantId},
+          parameters: {'b': tiedTo, 'r': businessId},
         );
         if (branch.isEmpty) return _refused(AccountProblem.branchUnknown);
       }
@@ -106,10 +106,10 @@ class PostgresFinancialAccountsAdminRepository
       final clash = await tx.execute(
         Sql.named(
           'SELECT 1 FROM pos_financial_accounts '
-          'WHERE restaurant_id = @r AND lower(btrim(name)) = lower(@name) '
+          'WHERE business_id = @r AND lower(btrim(name)) = lower(@name) '
           '  AND id <> @id',
         ),
-        parameters: {'r': restaurantId, 'name': name, 'id': account.id},
+        parameters: {'r': businessId, 'name': name, 'id': account.id},
       );
       if (clash.isNotEmpty) return _refused(AccountProblem.nameTaken);
 
@@ -119,9 +119,9 @@ class PostgresFinancialAccountsAdminRepository
         final existing = await tx.execute(
           Sql.named(
             'SELECT $_columns FROM pos_financial_accounts '
-            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @id AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'id': account.id, 'r': restaurantId},
+          parameters: {'id': account.id, 'r': businessId},
         );
         if (existing.isEmpty) {
           return const AdminResult<FinancialAccount>.refused(
@@ -158,7 +158,7 @@ class PostgresFinancialAccountsAdminRepository
       }
 
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'name': name,
         'kind': account.kind.wire,
         'branch': tiedTo,
@@ -172,7 +172,7 @@ class PostgresFinancialAccountsAdminRepository
       final rows = account.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_financial_accounts (restaurant_id, name, kind, '
+                'INSERT INTO pos_financial_accounts (business_id, name, kind, '
                 '  branch_id, reference_label, is_active, sort_order) '
                 'VALUES (@r, @name, @kind, @branch, @reference, @active, @sort) '
                 'RETURNING $_columns',
@@ -184,7 +184,7 @@ class PostgresFinancialAccountsAdminRepository
                 'UPDATE pos_financial_accounts SET name = @name, kind = @kind, '
                 '  branch_id = @branch, reference_label = @reference, '
                 '  is_active = @active, sort_order = @sort '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $_columns',
+                'WHERE id = @id AND business_id = @r RETURNING $_columns',
               ),
               parameters: {...parameters, 'id': account.id},
             );
@@ -227,9 +227,9 @@ class PostgresFinancialAccountsAdminRepository
       final method = await tx.execute(
         Sql.named(
           'SELECT kind FROM pos_tender_types '
-          'WHERE id = @t AND restaurant_id = @r',
+          'WHERE id = @t AND business_id = @r',
         ),
-        parameters: {'t': tenderTypeId, 'r': restaurantId},
+        parameters: {'t': tenderTypeId, 'r': businessId},
       );
       if (method.isEmpty) return _refused(AccountProblem.methodUnknown);
       // A kind this build does not know falls to `other` (any account will do).
@@ -238,9 +238,9 @@ class PostgresFinancialAccountsAdminRepository
       if (branchId != null) {
         final branch = await tx.execute(
           Sql.named(
-            'SELECT 1 FROM pos_branches WHERE id = @b AND restaurant_id = @r',
+            'SELECT 1 FROM pos_branches WHERE id = @b AND business_id = @r',
           ),
-          parameters: {'b': branchId, 'r': restaurantId},
+          parameters: {'b': branchId, 'r': businessId},
         );
         if (branch.isEmpty) return _refused(AccountProblem.branchUnknown);
       }
@@ -280,9 +280,9 @@ class PostgresFinancialAccountsAdminRepository
       final rows = await tx.execute(
         Sql.named(
           'SELECT $_columns FROM pos_financial_accounts '
-          'WHERE id = @a AND restaurant_id = @r',
+          'WHERE id = @a AND business_id = @r',
         ),
-        parameters: {'a': accountId, 'r': restaurantId},
+        parameters: {'a': accountId, 'r': businessId},
       );
       if (rows.isEmpty) return _refused(AccountProblem.accountUnavailable);
 
@@ -295,14 +295,14 @@ class PostgresFinancialAccountsAdminRepository
 
       await tx.execute(
         Sql.named(
-          'INSERT INTO pos_tender_account_defaults (restaurant_id, '
+          'INSERT INTO pos_tender_account_defaults (business_id, '
           '  tender_type_id, branch_id, branch_key, financial_account_id) '
           'VALUES (@r, @t, @b, @k, @a) '
           'ON CONFLICT (tender_type_id, branch_key) DO UPDATE '
           '  SET financial_account_id = EXCLUDED.financial_account_id',
         ),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           't': tenderTypeId,
           'b': branchId,
           'k': branchKey,
@@ -358,14 +358,14 @@ class PostgresFinancialAccountsAdminRepository
     Map<String, Object?>? after,
   }) => tx.execute(
     Sql.named(
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_audit_events (business_id, branch_id, terminal_id, '
       '  actor_user_id, actor_name, action, entity_type, entity_id, '
       '  before_value, after_value) '
       'VALUES (@r, @branch, @terminal, @actor, @actorName, @action, '
       '        @entityType, @entityId, @before::jsonb, @after::jsonb)',
     ),
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'branch': branchId,
       'terminal': terminalId,
       'actor': by.id,

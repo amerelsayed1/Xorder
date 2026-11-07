@@ -7,7 +7,7 @@ import 'package:xorder_pos/features/admin/presentation/cloud_back_office_screen.
 /// The address is built from what the till already knows rather than from a
 /// new field on the bundle, so the rule worth pinning is when it declines to
 /// answer: a wrong address is worse than none, because a manager who types it
-/// in reaches a certificate warning or somebody else's restaurant.
+/// in reaches a certificate warning or somebody else's business.
 void main() {
   DeploymentConfig cloud({String? baseUrl, String? slug}) => DeploymentConfig(
     mode: DeploymentMode.cloud,
@@ -16,7 +16,7 @@ void main() {
   );
 
   group('naming the dashboard', () {
-    test('the restaurant gets its own subdomain, on /admin', () {
+    test('the business gets its own subdomain, on /admin', () {
       expect(
         dashboardAddress(cloud(baseUrl: 'https://xorder.io', slug: 'maadi')),
         'https://maadi.xorder.io/admin',
@@ -24,7 +24,7 @@ void main() {
     });
 
     test('a host that already names the tenant is left alone', () {
-      // The operator typed the restaurant's own address into setup, and it is
+      // The operator typed the business's own address into setup, and it is
       // the one that works — prefixing the slug again would invent
       // maadi.maadi.xorder.io.
       expect(

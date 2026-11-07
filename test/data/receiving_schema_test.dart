@@ -30,7 +30,7 @@ void main() {
   late PosDatabase db;
   late PostgresPurchaseOrdersRepository orders;
   late PostgresReceivingRepository receiving;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int supplierId;
   late int productId;
@@ -55,50 +55,50 @@ void main() {
     pg = await PgFixture.open('receiving');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('rc', 'RC') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('rc', 'RC') RETURNING id",
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     supplierId = (await db.query(
       pg.config,
-      "INSERT INTO pos_suppliers (restaurant_id, name_en) "
+      "INSERT INTO pos_suppliers (business_id, name_en) "
       "VALUES (@r, 'Cairo Poultry') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     final categoryId = (await db.query(
       pg.config,
-      "INSERT INTO pos_categories (restaurant_id, name_en) "
+      "INSERT INTO pos_categories (business_id, name_en) "
       "VALUES (@r, 'Grills') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     productId = (await db.query(
       pg.config,
-      'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+      'INSERT INTO pos_products (business_id, category_id, name_en, '
       "  price_minor, is_stocked, stock_unit) "
       "VALUES (@r, @c, 'Chicken', 9000, true, 'kg') RETURNING id",
-      parameters: {'r': restaurantId, 'c': categoryId},
+      parameters: {'r': businessId, 'c': categoryId},
     )).first[0]! as int;
 
     orders = PostgresPurchaseOrdersRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     receiving = PostgresReceivingRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -293,11 +293,11 @@ void main() {
     // already held in one unit is only ever added to in that unit.
     Future<void> hold(int milli, String unit) => db.query(
       pg.config,
-      'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+      'INSERT INTO pos_stock_levels (business_id, branch_id, product_id, '
       '  quantity_milli, unit, average_cost_minor) '
       'VALUES (@r, @b, @p, @q, @u, 3000)',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'p': productId,
         'q': milli,
@@ -421,12 +421,12 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+          'INSERT INTO pos_stock_levels (business_id, branch_id, product_id, '
           '  quantity_milli, unit, average_cost_minor) '
           "VALUES (@r, @b, @p, 15000, 'kg', 4000) "
           'ON CONFLICT (branch_id, product_id) DO UPDATE SET '
           '  quantity_milli = excluded.quantity_milli, unit = excluded.unit',
-          parameters: {'r': restaurantId, 'b': branchId, 'p': productId},
+          parameters: {'r': businessId, 'b': branchId, 'p': productId},
         ),
         throwsA(isA<PosDbException>()),
       );
@@ -509,16 +509,16 @@ void main() {
 
     final other = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'B2', 'Maadi') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     final elsewhere = PostgresReceivingRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: other,
     );
     expect(await elsewhere.positionFor(productId), isNull);

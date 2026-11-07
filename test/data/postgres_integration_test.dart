@@ -54,18 +54,18 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('orders', 'Orders') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('orders', 'Orders') "
       'RETURNING id',
     );
     final staff = await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (business_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, 'Nour Adel', 'nour', 'salt', 'hash') RETURNING id",
-      parameters: {'r': restaurant.first[0]},
+      parameters: {'r': business.first[0]},
     );
     staffId = staff.first[0] as int;
   });
@@ -76,7 +76,7 @@ void main() {
     database: db,
     config: pg.config,
     context: const PosWriteContext(
-      restaurantId: 1,
+      businessId: 1,
       branchId: 13,
       terminalId: '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10',
       branchCode: 'MAADI',

@@ -234,7 +234,7 @@ class _PinnedOnlySource implements SiteLicenceSource {
   int reads = 0;
 
   @override
-  Future<SiteLicence?> read({int? restaurantId}) async {
+  Future<SiteLicence?> read({int? businessId}) async {
     reads++;
     if (!paired()) {
       throw PosDbException(
@@ -260,7 +260,7 @@ class _PinnedOnlySource implements SiteLicenceSource {
         signatureB64: base64Url.encode(List<int>.filled(64, 0)),
         keyId: 'dev',
       ),
-      restaurantId: 7,
+      businessId: 7,
       mode: DeploymentMode.offline,
       terminalCount: 1,
     );
@@ -268,7 +268,7 @@ class _PinnedOnlySource implements SiteLicenceSource {
 
   @override
   Future<void> publish({
-    required int restaurantId,
+    required int businessId,
     required LicenseFile file,
     required DeploymentMode mode,
   }) async {}

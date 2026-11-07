@@ -19,10 +19,10 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 
 import 'pg_fixture.dart';
 
-/// A restaurant with no internet, from an empty machine to a priced ticket.
+/// A business with no internet, from an empty machine to a priced ticket.
 ///
 /// Every other test in this suite checks one seam. This one is the claim the
-/// whole phase makes: **a restaurant that cannot reach a dashboard can install
+/// whole phase makes: **a business that cannot reach a dashboard can install
 /// a till, build its menu, set its rates, lay out its floor and trade** — and
 /// it starts from a database that does not exist yet, exactly as a real
 /// install does.
@@ -30,7 +30,7 @@ import 'pg_fixture.dart';
 /// The last assertion is the one that matters most. Before this work an
 /// offline till priced from a built-in 12% / 14% and printed `deviceConfig` on
 /// every slip, because nothing but the cloud seeder ever wrote
-/// `pos_money_config`. A ticket here must price from the rates the restaurant
+/// `pos_money_config`. A ticket here must price from the rates the business
 /// actually chose.
 void main() {
   // Read from the process environment, not a dart-define: every other suite
@@ -90,7 +90,7 @@ void main() {
   setUp(drop);
   tearDown(drop);
 
-  test('an islanded restaurant installs, builds a menu and prices a ticket',
+  test('an islanded business installs, builds a menu and prices a ticket',
       () async {
     final credentials = MutablePosDbCredentials()..set(PgFixture.password);
     final database = PosDatabase(credentials: credentials);
@@ -110,22 +110,22 @@ void main() {
     );
     expect(await bootstrap.migrate(admin), isNotEmpty);
 
-    final restaurantId = await bootstrap.seedRestaurant(
+    final businessId = await bootstrap.seedBusiness(
       admin,
       slug: admin.tenantSlug!,
       name: 'The Islanded Cafe',
     );
     final branchId = await bootstrap.seedBranch(
       admin,
-      restaurantId: restaurantId,
+      businessId: businessId,
       name: 'Main',
       code: 'MAIN',
     );
-    final roles = await bootstrap.seedSystemRoles(admin, restaurantId);
+    final roles = await bootstrap.seedSystemRoles(admin, businessId);
     expect(
       await bootstrap.seedOwner(
         admin,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         roleId: roles.ids[SystemRoles.ownerCode]!,
         name: 'Amer M.',
@@ -139,7 +139,7 @@ void main() {
     final authoring = PostgresCatalogAdminRepository(
       database: database,
       config: admin,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
 
@@ -187,16 +187,16 @@ void main() {
     final floor = await PostgresFloorRepository(
       database: database,
       config: admin,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     ).liveFloor();
     expect(floor.single.label, 'T1');
 
-    // ── 6. And a ticket prices from the restaurant's own rates ────────────
+    // ── 6. And a ticket prices from the business's own rates ────────────
     final stored = await database.query(
       admin,
-      'SELECT payload FROM pos_money_config WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT payload FROM pos_money_config WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
     final tax = MoneyConfigCodec.toTaxConfig(
       (stored.first[0]! as Map).cast<String, Object?>(),
@@ -209,7 +209,7 @@ void main() {
     expect(
       tax.source,
       TaxSource.server,
-      reason: 'the rates are the restaurant\'s own, not the app\'s',
+      reason: 'the rates are the business\'s own, not the app\'s',
     );
 
     // The engine is pure, so the ticket can be priced here without a widget

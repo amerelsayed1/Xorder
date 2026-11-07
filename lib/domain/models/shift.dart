@@ -27,7 +27,7 @@ class PosStaff {
   /// Granted to *this person*, on top of whatever [role] carries.
   ///
   /// Kept as well as the role rather than replaced by it because the exception
-  /// is the common case in a small restaurant: one cashier who is also trusted
+  /// is the common case in a small business: one cashier who is also trusted
   /// to reprint. Making that person a whole new role, or promoting them to
   /// supervisor, are both worse answers than one extra grant against their
   /// name — and the audit trail records which of the two it was.
@@ -130,7 +130,7 @@ class PosShift {
 
   /// The staff row that opened it — the drawer's owner.
   ///
-  /// A name cannot answer this: two people called Ahmed is a restaurant, not a
+  /// A name cannot answer this: two people called Ahmed is a business, not a
   /// corner case, and the question "is this your drawer" has to be settled by
   /// identity. Null only for a shift read by an older build, which is why
   /// [openedBy] treats null as "unknown" rather than as "not you".
@@ -297,11 +297,11 @@ class ShiftSummary {
   /// and the cash-up screen is the thing that needs it.
   final CashMovementTotals? movements;
 
-  /// What the restaurant kept: everything charged, less everything given back.
+  /// What the business kept: everything charged, less everything given back.
   Money get net => gross - refunds;
 
   /// Tax and service together — the part of [gross] that was never the
-  /// restaurant's to keep.
+  /// business's to keep.
   Money get taxAndService => vat + service;
 
   Money get cashIn => movements?.paidIn ?? Money.zero;
@@ -318,7 +318,7 @@ class ShiftSummary {
   ///
   /// Selected by tender **type**, not by a substring of its label. The old
   /// `label.contains('cash')` matched "Cashback voucher" and would have stopped
-  /// matching anything at all the day a restaurant renamed its methods into
+  /// matching anything at all the day a business renamed its methods into
   /// Arabic. See [TenderMethod.countsAsCash].
   Money get cashTaken => tenders
       .where((t) => t.countsAsCash)

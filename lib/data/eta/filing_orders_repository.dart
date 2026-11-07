@@ -10,11 +10,11 @@ import '../../domain/services/eta_filing.dart';
 /// **A decorator rather than a step inside the order's transaction.** The
 /// tempting design writes the order and queues its receipt atomically, so one
 /// cannot exist without the other. It is the wrong one, and only shows why
-/// later: a restaurant that starts filing after six weeks of trading, or one
+/// later: a business that starts filing after six weeks of trading, or one
 /// whose receipt profile was still half-typed on Tuesday, has orders that need
 /// queueing and no transaction left to put them in. An order with no row in
 /// `pos_eta_receipts` is a *query*, and the same reconciler then covers a crash
-/// between the two writes, a profile completed late, and a restaurant that
+/// between the two writes, a profile completed late, and a business that
 /// turned this on after the fact. Coupling would have covered the first only.
 ///
 /// **A failure here never fails the sale.** The customer is standing at the
@@ -69,7 +69,7 @@ class FilingOrdersRepository implements OrdersRepository {
     }
   }
 
-  /// Only what a person can act on. A blank profile is a restaurant that is
+  /// Only what a person can act on. A blank profile is a business that is
   /// not filing, and a refund waiting for its sale is the system working.
   static void report(
     EtaFilingSkipped? skipped,

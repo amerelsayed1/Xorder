@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
 import 'pg_fixture.dart';
 
-/// Who the restaurant buys from — the first row of the purchasing chain.
+/// Who the business buys from — the first row of the purchasing chain.
 void main() {
   if (PgFixture.host == null) {
     test('suppliers (skipped — set POS_PG_HOST to run)', () {}, skip: true);
@@ -22,7 +22,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresSuppliersRepository suppliers;
-  late int restaurantId;
+  late int businessId;
 
   // Held through a role, as every real installation holds it. A check that
   // read only the direct grants would refuse this person.
@@ -46,26 +46,26 @@ void main() {
     pg = await PgFixture.open('suppliers');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('buy', 'Buying') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('buy', 'Buying') "
       'RETURNING id',
     )).first[0]! as int;
 
     final branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     suppliers = PostgresSuppliersRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -94,7 +94,7 @@ void main() {
 
   group('recording one', () {
     test('a name is all it takes', () async {
-      // A restaurant recording a delivery at seven in the morning needs to
+      // A business recording a delivery at seven in the morning needs to
       // write down who it came from, not fill in a form.
       final saved = await add();
       expect(saved.nameEn, 'Cairo Poultry');
@@ -196,7 +196,7 @@ void main() {
         database: db,
         config: pg.config,
         adminAvailable: false,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: 1,
       );
 
@@ -224,24 +224,24 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_suppliers (restaurant_id, name_en, code) '
+          'INSERT INTO pos_suppliers (business_id, name_en, code) '
           "VALUES (@r, 'Two', 'ACME')",
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ),
         throwsA(isA<Object>()),
       );
     });
 
-    test('two restaurants may share a code', () async {
+    test('two businesses may share a code', () async {
       await add(name: 'One', code: 'ACME');
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('o', 'O') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('o', 'O') RETURNING id",
       )).first[0]! as int;
 
       await db.query(
         pg.config,
-        'INSERT INTO pos_suppliers (restaurant_id, name_en, code) '
+        'INSERT INTO pos_suppliers (business_id, name_en, code) '
         "VALUES (@r, 'Theirs', 'ACME')",
         parameters: {'r': other},
       );
@@ -291,24 +291,20 @@ void main() {
     // already exists — the trap migrations 13 and 15 were written for.
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_roles (restaurant_id, code, name_en, capabilities) '
+      'INSERT INTO pos_roles (business_id, code, name_en, capabilities) '
       "VALUES (@r, 'owner', 'Owner', ARRAY['pos.operate']::text[]) RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     expect(rows, isNotEmpty);
 
     // Re-running the migration is how an existing install gets it.
-    await db.query(
-      pg.config,
-      'DELETE FROM schema_migrations WHERE version = 27',
-    );
-    await PosMigrator(db).migrate(pg.config);
+    await pg.replay(27);
 
     final owner = await db.query(
       pg.config,
       "SELECT capabilities FROM pos_roles WHERE code = 'owner' "
-      'AND restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'AND business_id = @r',
+      parameters: {'r': businessId},
     );
     expect(
       (owner.first[0]! as List).cast<String>(),

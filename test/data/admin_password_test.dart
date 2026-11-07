@@ -37,35 +37,35 @@ void main() {
   late PostgresStaffDirectoryRepository staff;
   late PostgresSessionRepository sessions;
   late Map<String, PosRole> seeded;
-  late int restaurantId;
+  late int businessId;
   late PosStaff owner;
 
   setUp(() async {
     pg = await PgFixture.open('admin_password');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('ap', 'AP') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('ap', 'AP') RETURNING id",
     )).first[0]! as int;
     final branchId = (await db.query(
       pg.config,
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     seeded = {};
     for (final entry in SystemRoles.seeded.entries) {
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+        'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
         '  capabilities, is_system) '
         'VALUES (@r, @code, @nameEn, @nameAr, @capabilities, true) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': entry.key,
           'nameEn': entry.value.nameEn,
           'nameAr': entry.value.nameAr,
@@ -84,13 +84,13 @@ void main() {
     staff = PostgresStaffDirectoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     sessions = PostgresSessionRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: '00000000-0000-0000-0000-000000000001',
     );
@@ -130,9 +130,9 @@ void main() {
     pg.config,
     'SELECT actor_user_id, actor_name, entity_id, before_value::text, '
     '  after_value::text '
-    'FROM pos_audit_events WHERE restaurant_id = @r AND action = @a '
+    'FROM pos_audit_events WHERE business_id = @r AND action = @a '
     'ORDER BY id',
-    parameters: {'r': restaurantId, 'a': action},
+    parameters: {'r': businessId, 'a': action},
   );
 
   group('through the repositories', () {
@@ -286,7 +286,7 @@ void main() {
       final noAdmin = PostgresStaffDirectoryRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         adminAvailable: false,
       );
       expect(

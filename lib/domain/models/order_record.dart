@@ -320,7 +320,7 @@ class OrderRecord {
 
   bool get hasCustomer => customerName != null;
 
-  /// What is still with the restaurant.
+  /// What is still with the business.
   Money get netTotal => Money(
     total.minor - refundedTotal.minor,
     currency: total.currency,
@@ -469,7 +469,7 @@ class OrderHistoryQuery {
   /// trading day. Null means "as far back as there is".
   ///
   /// A sale belongs to the business day that was open when it was rung up, not
-  /// to the calendar date on its timestamp: a restaurant trading until 2 a.m.
+  /// to the calendar date on its timestamp: a business trading until 2 a.m.
   /// sees one night as one date (plan 17 §0 rule 5). A sale no business day
   /// covers — a branch that never opens one — is filed by its local calendar
   /// date instead, which is what this filter meant before and is still the

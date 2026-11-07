@@ -4,7 +4,7 @@
 /// carries an outcome rather than a boolean is that the interesting state is
 /// the middle one: a file exists, it has a size, and `pg_restore` could not
 /// list it. That row must read as *not a backup* on the screen, because the
-/// restaurant's belief that it has one is the thing that costs them the year.
+/// business's belief that it has one is the thing that costs them the year.
 library;
 
 import '../../core/money/money.dart';
@@ -42,7 +42,7 @@ enum BackupTrigger {
 /// comment.
 enum BackupOutcome {
   /// Written, checksummed, and `pg_restore --list` read it back and found the
-  /// tables a restaurant would need. The only state [BackupRecord.isRestorable]
+  /// tables a business would need. The only state [BackupRecord.isRestorable]
   /// is true in.
   verified('verified'),
 
@@ -74,7 +74,7 @@ enum BackupOutcome {
 ///
 /// **An enum, and the sentence lives in `AppStrings`.** The first draft stored
 /// the message — which would have put an English sentence in the database and
-/// printed it to a restaurant working in Arabic, and would have frozen the
+/// printed it to a business working in Arabic, and would have frozen the
 /// wording of a row written in 2026 into every screen that ever reads it. The
 /// raw output of `pg_dump` still travels beside this, in
 /// [BackupRecord.detail], because PostgreSQL's own diagnostics are what a
@@ -95,7 +95,7 @@ enum BackupFailure {
   /// file of plausible-looking size.
   archiveUnreadable('archive_unreadable'),
 
-  /// Readable, and missing tables a restaurant could not trade without.
+  /// Readable, and missing tables a business could not trade without.
   archiveIncomplete('archive_incomplete');
 
   const BackupFailure(this.wire);
@@ -190,7 +190,7 @@ class BackupPolicy {
   ///
   /// The opposite of the drawer settings, where the safe default is the one
   /// that surprises nobody. Here the surprising outcome is the silent one: a
-  /// restaurant that never opened this pane and never took a copy has no idea
+  /// business that never opened this pane and never took a copy has no idea
   /// it has no copy, and finds out from a dead disk.
   static const defaults = BackupPolicy();
 
@@ -247,7 +247,7 @@ enum RestoreBlockerKind {
 ///
 /// **Counted, not described.** "All data since 14:32" is a sentence somebody
 /// reads past; "217 orders worth 41,880.00 will be discarded" is a number they
-/// stop at. The count comes from reading the rows, so it is the restaurant's
+/// stop at. The count comes from reading the rows, so it is the business's
 /// own evening rather than an estimate.
 class RestoreCheck {
   const RestoreCheck({

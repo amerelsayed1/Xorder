@@ -13,7 +13,7 @@ import '../support/fakes.dart';
 /// Since tenant creation started leaving terminals provisioned and waiting
 /// (owner decision, 2026-09-05), the credentials path's old behaviour —
 /// always `registerManually`, always a brand-new row — is how a two-seat
-/// restaurant ends up with four terminals and a seat limit nobody can explain.
+/// business ends up with four terminals and a seat limit nobody can explain.
 class _Recorder implements ProvisioningRepository {
   _Recorder({this.terminals = const []});
 

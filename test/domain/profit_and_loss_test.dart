@@ -44,7 +44,7 @@ void main() {
     test(
       'revenue is sales without the tax that was collected for the state',
       () {
-        // 1,140.00 taken, 140.00 of it VAT: the restaurant sold 1,000.00.
+        // 1,140.00 taken, 140.00 of it VAT: the business sold 1,000.00.
         expect(statement().revenue.minor, 100000);
       },
     );

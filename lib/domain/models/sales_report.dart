@@ -145,7 +145,7 @@ class ReportFilter {
 
 /// One business date of the trend. Days with nothing are present, at zero: a
 /// trend line with a missing Tuesday draws Monday straight to Wednesday and
-/// hides the day the restaurant was shut.
+/// hides the day the business was shut.
 class ReportDay {
   const ReportDay({
     required this.date,
@@ -175,7 +175,7 @@ class ReportDay {
   /// [SalesReport.averageOrder]'s rule, one day wide: net, rounded half-up
   /// once, here. A getter on the day rather than a division in the chart, so
   /// the line and the tile above it cannot come to round differently. Null
-  /// with no orders: a day the restaurant was shut is a gap in the average,
+  /// with no orders: a day the business was shut is a gap in the average,
   /// where drawing zero would read as a day of free food.
   Money? get averageOrder =>
       orders == 0 ? null : net.copyWith(minor: roundHalfUp(net.minor, orders));

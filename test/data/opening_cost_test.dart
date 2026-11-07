@@ -29,13 +29,13 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresReceivingRepository stock;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int ketchup; // stocked, never received: no level row at all
   late int mayo; //    stocked, 5 on hand, never costed
   late int cola; //    stocked, already costed at 5.00
   late int burger; //  not counted
-  late int theirs; //  another restaurant's
+  late int theirs; //  another business's
 
   const manager = PosStaff(
     id: 0,
@@ -61,22 +61,22 @@ void main() {
   Future<int> scalar(String sql, [Map<String, Object?>? parameters]) async =>
       (await db.query(pg.config, sql, parameters: parameters)).first[0] as int;
 
-  Future<int> product(int restaurant, String name, {required bool stocked}) =>
+  Future<int> product(int business, String name, {required bool stocked}) =>
       scalar(
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        'INSERT INTO pos_products (business_id, category_id, name_en, '
         '  price_minor, is_stocked) '
-        'VALUES (@r, (SELECT id FROM pos_categories WHERE restaurant_id = @r), '
+        'VALUES (@r, (SELECT id FROM pos_categories WHERE business_id = @r), '
         '  @n, 1000, @s) RETURNING id',
-        {'r': restaurant, 'n': name, 's': stocked},
+        {'r': business, 'n': name, 's': stocked},
       );
 
   Future<void> level(int productId, int milli, int cost) => db.query(
     pg.config,
-    'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+    'INSERT INTO pos_stock_levels (business_id, branch_id, product_id, '
     '  quantity_milli, unit, average_cost_minor) '
     "VALUES (@r, @b, @p, @q, 'ea', @c)",
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branchId,
       'p': productId,
       'q': milli,
@@ -89,7 +89,7 @@ void main() {
         database: db,
         config: pg.config,
         adminAvailable: admin,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
 
@@ -116,8 +116,8 @@ void main() {
 
   Future<int> audits() async => scalar(
     'SELECT count(*) FROM pos_audit_events '
-    'WHERE restaurant_id = @r AND action = @a',
-    {'r': restaurantId, 'a': AuditAction.stockCostSet},
+    'WHERE business_id = @r AND action = @a',
+    {'r': businessId, 'a': AuditAction.stockCostSet},
   );
 
   Future<OpeningCostProblem?> refusedWith(
@@ -139,35 +139,35 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await db.query(pg.config, 'DELETE FROM pos_combos');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('oc', 'OC') RETURNING id",
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('oc', 'OC') RETURNING id",
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     await db.query(
       pg.config,
-      'INSERT INTO pos_categories (restaurant_id, name_en, slug) '
+      'INSERT INTO pos_categories (business_id, name_en, slug) '
       "VALUES (@r, 'Menu', 'menu')",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
-    ketchup = await product(restaurantId, 'Ketchup', stocked: true);
-    mayo = await product(restaurantId, 'Mayo', stocked: true);
-    cola = await product(restaurantId, 'Cola', stocked: true);
-    burger = await product(restaurantId, 'Burger', stocked: false);
+    ketchup = await product(businessId, 'Ketchup', stocked: true);
+    mayo = await product(businessId, 'Mayo', stocked: true);
+    cola = await product(businessId, 'Cola', stocked: true);
+    burger = await product(businessId, 'Burger', stocked: false);
     await level(mayo, 5000, 0);
     await level(cola, 48000, 500);
 
     final other = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('ot', 'OT') RETURNING id",
     );
     await db.query(
       pg.config,
-      'INSERT INTO pos_categories (restaurant_id, name_en, slug) '
+      'INSERT INTO pos_categories (business_id, name_en, slug) '
       "VALUES (@r, 'Theirs', 'theirs')",
       parameters: {'r': other},
     );
@@ -216,8 +216,8 @@ void main() {
       final rows = await db.query(
         pg.config,
         'SELECT entity_type, entity_id, actor_name, before_value, after_value '
-        'FROM pos_audit_events WHERE restaurant_id = @r AND action = @a',
-        parameters: {'r': restaurantId, 'a': AuditAction.stockCostSet},
+        'FROM pos_audit_events WHERE business_id = @r AND action = @a',
+        parameters: {'r': businessId, 'a': AuditAction.stockCostSet},
       );
       expect(rows, hasLength(1));
       expect(rows.first[0], AuditAction.entityProduct);
@@ -284,7 +284,7 @@ void main() {
       expect(await refusedWith(999999, 300), OpeningCostProblem.itemUnknown);
     });
 
-    test("another restaurant's item", () async {
+    test("another business's item", () async {
       expect(await refusedWith(theirs, 300), OpeningCostProblem.itemUnknown);
       expect(await levelOf(theirs), isEmpty);
     });
@@ -320,11 +320,11 @@ void main() {
     // refuses a movement of nothing: a receipt of nothing is a mistake.
     Future<void> insertMovement(String kind, int milli) => db.query(
       pg.config,
-      'INSERT INTO pos_stock_movements (restaurant_id, branch_id, product_id, '
+      'INSERT INTO pos_stock_movements (business_id, branch_id, product_id, '
       '  kind, quantity_milli, balance_milli, average_cost_minor) '
       'VALUES (@r, @b, @p, @k, @q, 0, 0)',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'p': cola,
         'k': kind,

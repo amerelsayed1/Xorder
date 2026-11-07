@@ -241,7 +241,7 @@ void main() {
 /// turns seating on for takeaway, and their takeaway tickets have rounds to send
 /// like any other table.
 void _configuredSeating() {
-  group('what counts as seated is the restaurant\'s answer', () {
+  group('what counts as seated is the business\'s answer', () {
     Ticket takeaway({int? tableId}) => Ticket(
       id: 't1',
       orderType: OrderType.takeaway,
@@ -266,7 +266,7 @@ void _configuredSeating() {
       );
     });
 
-    test('a takeaway the restaurant seats, at a table, sends a round', () {
+    test('a takeaway the business seats, at a table, sends a round', () {
       expect(
         TicketHoldAction.forTicket(takeaway(tableId: 4), seated: true),
         TicketHoldAction.sendRound,

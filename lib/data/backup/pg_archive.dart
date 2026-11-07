@@ -175,7 +175,7 @@ class PgArchive {
   /// is needed is the day it turns out to be half a file.
   ///
   /// Returns the table of contents, which the caller checks for the tables a
-  /// restaurant cannot trade without.
+  /// business cannot trade without.
   Future<String> dump({
     required BackupConnection from,
     required File to,

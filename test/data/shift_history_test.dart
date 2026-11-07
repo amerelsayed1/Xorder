@@ -25,7 +25,7 @@ import 'pg_fixture.dart';
 /// repository's own arithmetic: the list is exactly the rows the filter names;
 /// over/short is the count less what the Z report expected; and the
 /// Settlements strip is its rows summed. Run on the till's credential, so a
-/// table the query names without a grant fails here and not in a restaurant.
+/// table the query names without a grant fails here and not in a business.
 void main() {
   if (PgFixture.host == null) {
     test('shift history (skipped — set POS_PG_HOST to run)', () {}, skip: true);
@@ -34,7 +34,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late String counter1;
   late String counter2;
@@ -51,9 +51,9 @@ void main() {
   Future<String> terminal(String name, int branch) async {
     final row = await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       'VALUES (gen_random_uuid(), @r, @b, @n) RETURNING id::text',
-      parameters: {'r': restaurantId, 'b': branch, 'n': name},
+      parameters: {'r': businessId, 'b': branch, 'n': name},
     );
     return row.first[0]! as String;
   }
@@ -63,18 +63,18 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) "
+      "INSERT INTO pos_businesses (slug, name) "
       "VALUES ('shift-history', 'Shift History') RETURNING id",
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'SHH', 'Shifts') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     counter1 = await terminal('Counter 1', branchId);
     counter2 = await terminal('Counter 2', branchId);
@@ -83,10 +83,10 @@ void main() {
       final salt = PinHash.newSalt();
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         'pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'n': name,
           'u': username,
@@ -116,7 +116,7 @@ void main() {
   PostgresShiftRepository on(String terminalId) => PostgresShiftRepository(
     database: db,
     config: pg.config,
-    restaurantId: restaurantId,
+    businessId: businessId,
     branchId: branchId,
     terminalId: terminalId,
   );
@@ -144,7 +144,7 @@ void main() {
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
         branchCode: 'SHH',
@@ -160,11 +160,11 @@ void main() {
     int minor,
   ) => db.query(
     pg.config,
-    'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+    'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
     '  shift_id, kind, amount_minor, user_id) '
     'VALUES (@r, @b, @t::uuid, @s, @k, @a, @by)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'b': branchId,
       't': terminalId,
       's': shift.id,
@@ -242,13 +242,13 @@ void main() {
     // The close's ledger row, as `CloseShiftDialog` writes it.
     await db.query(
       pg.config,
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, actor_user_id, '
+      'INSERT INTO pos_audit_events (business_id, branch_id, actor_user_id, '
       '  actor_name, approved_by_id, approved_by_name, action, entity_type, '
       '  entity_id) '
       "VALUES (@r, @b, @by, 'Omar T.', 99, 'Hana M.', 'shift.closed', "
       "  'shift', @id)",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'by': omar.id,
         'id': '${c.id}',
@@ -261,16 +261,16 @@ void main() {
     // Another branch, opened today: a query that forgot the branch lists it.
     final elsewhere = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'OTH', 'Other') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     await db.query(
       pg.config,
-      'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, opened_by) '
+      'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by) '
       'VALUES (@r, @b, @t::uuid, @s)',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': elsewhere,
         't': await terminal('Other 1', elsewhere),
         's': sara.id,
@@ -288,12 +288,12 @@ void main() {
     final rows = await db.query(
       pg.config,
       'SELECT id FROM pos_shifts '
-      'WHERE restaurant_id = @r AND branch_id = @b '
+      'WHERE business_id = @r AND branch_id = @b '
       '  AND (closed_at IS NULL OR (opened_at >= @from AND opened_at < @to)) '
       '  $extra '
       'ORDER BY (closed_at IS NULL) DESC, opened_at DESC, id DESC',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'from': from.toUtc(),
         'to': to.toUtc(),
@@ -473,10 +473,10 @@ void main() {
       '  coalesce(sum(variance_minor) FILTER (WHERE variance_minor < 0), 0)::bigint, '
       '  coalesce(sum(variance_minor), 0)::bigint '
       'FROM pos_shifts '
-      'WHERE restaurant_id = @r AND branch_id = @b AND closed_at IS NOT NULL '
+      'WHERE business_id = @r AND branch_id = @b AND closed_at IS NOT NULL '
       '  AND opened_at >= @from AND opened_at < @to',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'from': from.toUtc(),
         'to': to.toUtc(),

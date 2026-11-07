@@ -59,7 +59,7 @@ sealed class EtaSigningFailure {
 }
 
 /// Nothing has been set up. The normal state of a fresh install, and the state
-/// a restaurant is in right up until the day it must not be.
+/// a business is in right up until the day it must not be.
 class NoSealConfigured extends EtaSigningFailure {
   const NoSealConfigured();
 }
@@ -82,7 +82,7 @@ class SealRefused extends EtaSigningFailure {
 abstract interface class EtaReceiptSigner {
   /// Whether this till can seal a receipt at all.
   ///
-  /// Asked before a sale is queued rather than after, so a restaurant learns
+  /// Asked before a sale is queued rather than after, so a business learns
   /// it cannot file from a settings screen instead of from a queue that has
   /// been silently growing for a fortnight.
   Future<bool> get isConfigured;

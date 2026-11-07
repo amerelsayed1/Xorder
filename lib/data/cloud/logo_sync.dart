@@ -33,7 +33,7 @@ class LogoSync {
   LogoSync({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required String platformBase,
     LogoFetch? fetch,
   }) : _db = database,
@@ -42,7 +42,7 @@ class LogoSync {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final String _platformBase;
   final LogoFetch _fetch;
 
@@ -51,9 +51,9 @@ class LogoSync {
     try {
       final rows = await _db.query(
         config,
-        'SELECT logo_remote_url, logo_fetched_url FROM pos_restaurants '
+        'SELECT logo_remote_url, logo_fetched_url FROM pos_businesses '
         'WHERE id = @r',
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       if (rows.isEmpty) return false;
       final wanted = rows.first[0] as String?;
@@ -68,14 +68,14 @@ class LogoSync {
       final written = await _db.runTx(config, (tx) async {
         final result = await tx.execute(
           Sql.named(
-            'UPDATE pos_restaurants '
+            'UPDATE pos_businesses '
             '   SET logo_bytes = @bytes, logo_mime = @mime, '
             "       logo_source = 'platform', logo_fetched_url = @url, "
             '       logo_updated_at = now() '
             ' WHERE id = @r AND logo_remote_url = @url',
           ),
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'bytes': image.bytes,
             'mime': image.mime,
             'url': wanted,

@@ -21,7 +21,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int staffId;
@@ -38,14 +38,14 @@ void main() {
   }) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
       '  opened_by, closed_at, closed_by, forced, force_reason) '
       'VALUES (@r, @b, @d::date, @by::bigint, '
       '  CASE WHEN @close::boolean THEN now() ELSE NULL END, '
       '  CASE WHEN @close::boolean THEN @by::bigint ELSE NULL END, '
       '  @forced::boolean, @reason::text) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         'd': date,
         'by': staffId,
@@ -64,11 +64,11 @@ void main() {
   }) async {
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
       '  shift_id, kind, amount_minor, user_id) '
       'VALUES (@r, @b, @t::uuid, @s, @kind, @amount, @staff) RETURNING id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': terminal,
         's': shift ?? shiftId,
@@ -81,16 +81,16 @@ void main() {
   }
 
   Future<void> setting({
-    String scope = 'restaurant',
+    String scope = 'business',
     String scopeId = '',
     String key = 'day.start_time',
     String value = '06:00',
   }) => db.query(
     pg.config,
-    'INSERT INTO pos_settings (restaurant_id, scope, scope_id, key, value) '
+    'INSERT INTO pos_settings (business_id, scope, scope_id, key, value) '
     'VALUES (@r, @scope, @scopeId, @key, @value)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'scope': scope,
       'scopeId': scopeId,
       'key': key,
@@ -107,12 +107,12 @@ void main() {
       'TRUNCATE pos_business_days, pos_cash_movements, pos_settings, '
       '  pos_orders, pos_shifts RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('day', 'Day') RETURNING id",
                 ))
                 .first[0]
@@ -120,48 +120,48 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'DY1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     otherBranchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'DY2', 'Second') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     staffId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+                  'INSERT INTO pos_users (business_id, branch_id, name, '
                   "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
                   "  'nour', 'salt', 'hash') RETURNING id",
-                  parameters: {'r': restaurantId, 'b': branchId},
+                  parameters: {'r': businessId, 'b': branchId},
                 ))
                 .first[0]
             as int;
 
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1') "
       'ON CONFLICT (id) DO NOTHING',
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
 
     shiftId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_shifts (restaurant_id, branch_id, '
+                  'INSERT INTO pos_shifts (business_id, branch_id, '
                   '  terminal_id, opened_by, opening_float_minor) '
                   'VALUES (@r, @b, @t::uuid, @by, 20000) RETURNING id',
                   parameters: {
-                    'r': restaurantId,
+                    'r': businessId,
                     'b': branchId,
                     't': terminal,
                     'by': staffId,
@@ -206,9 +206,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_business_days (restaurant_id, branch_id, '
+          'INSERT INTO pos_business_days (business_id, branch_id, '
           "  business_date, closed_at) VALUES (@r, @b, '2026-09-08'::date, now())",
-          parameters: {'r': restaurantId, 'b': branchId},
+          parameters: {'r': businessId, 'b': branchId},
         ),
         throwsA(anything),
       );
@@ -281,11 +281,11 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_cash_movements (restaurant_id, branch_id, '
+          'INSERT INTO pos_cash_movements (business_id, branch_id, '
           "  terminal_id, kind, amount_minor, user_id) "
           "VALUES (@r, @b, @t::uuid, 'pay_in', 1000, @staff)",
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             't': terminal,
             'staff': staffId,
@@ -327,30 +327,30 @@ void main() {
     });
 
     test('the same key may differ by scope', () async {
-      // A branch that opens later than the restaurant's default.
+      // A branch that opens later than the business's default.
       await setting(value: '06:00');
       await setting(scope: 'branch', scopeId: '$branchId', value: '04:00');
       await setting(scope: 'terminal', scopeId: terminal, value: '05:00');
 
       final rows = await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_settings WHERE restaurant_id = @r '
+        'SELECT count(*) FROM pos_settings WHERE business_id = @r '
         "AND key = 'day.start_time'",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       expect(rows.first[0], 3);
     });
 
-    test('a restaurant-scoped row names no scope', () async {
+    test('a business-scoped row names no scope', () async {
       await expectLater(
-        setting(scope: 'restaurant', scopeId: '$branchId'),
+        setting(scope: 'business', scopeId: '$branchId'),
         throwsA(anything),
       );
     });
 
     test('a narrower scope must name one', () async {
       // Otherwise the uniqueness constraint would let one empty-scoped branch
-      // row exist per restaurant, meaning nothing.
+      // row exist per business, meaning nothing.
       await expectLater(
         setting(scope: 'branch', scopeId: ''),
         throwsA(anything),
@@ -372,13 +372,13 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+          'INSERT INTO pos_orders (client_transaction_id, business_id, '
           '  branch_id, terminal_id, invoice_number, order_type, currency, '
           '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
           '  occurred_at, business_day_id) '
           "VALUES (gen_random_uuid(), @r, @b, @t::uuid, 'INV-X', 'dine_in', "
           "  'EGP', 2, 1000, 0, 0, 1000, now(), 999999)",
-          parameters: {'r': restaurantId, 'b': branchId, 't': terminal},
+          parameters: {'r': businessId, 'b': branchId, 't': terminal},
         ),
         throwsA(anything),
       );
@@ -388,14 +388,14 @@ void main() {
       final dayId = await openDay();
       await db.query(
         pg.config,
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         '  occurred_at, business_day_id) '
         "VALUES (gen_random_uuid(), @r, @b, @t::uuid, 'INV-Y', 'dine_in', "
         "  'EGP', 2, 1000, 0, 0, 1000, now(), @day)",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminal,
           'day': dayId,
@@ -444,25 +444,25 @@ void main() {
   });
 
   group('the seeded pay-in and pay-out reasons', () {
-    test('a restaurant the bootstrap seeded has both lists', () async {
+    test('a business the bootstrap seeded has both lists', () async {
       // Migration 9 provisioned both scopes and seeded neither, because nothing
       // recorded a cash movement yet. §22 does now.
       //
       // Seeded through `LocalBootstrap`, not by the migration: the migration's
-      // INSERT covers restaurants that already existed when it ran, and this
+      // INSERT covers businesses that already existed when it ran, and this
       // one was created afterwards. Both paths have to work, and they are
       // different code.
       await LocalBootstrap(db).seedReasonCodes(
         pg.config,
-        restaurantId,
+        businessId,
       );
 
       for (final scope in ['pay_in', 'pay_out']) {
         final rows = await db.query(
           pg.config,
           'SELECT count(*) FROM pos_reason_codes WHERE scope = @scope '
-          'AND restaurant_id = @r',
-          parameters: {'scope': scope, 'r': restaurantId},
+          'AND business_id = @r',
+          parameters: {'scope': scope, 'r': businessId},
         );
         expect(rows.first[0], isNot(0), reason: scope);
       }
@@ -471,14 +471,14 @@ void main() {
     test('the cash lists are not the sale ones', () async {
       await LocalBootstrap(db).seedReasonCodes(
         pg.config,
-        restaurantId,
+        businessId,
       );
 
       final rows = await db.query(
         pg.config,
         "SELECT code FROM pos_reason_codes WHERE scope = 'pay_in' "
-        'AND restaurant_id = @r ORDER BY sort_order',
-        parameters: {'r': restaurantId},
+        'AND business_id = @r ORDER BY sort_order',
+        parameters: {'r': businessId},
       );
       final codes = rows.map((row) => row[0]).toList();
 

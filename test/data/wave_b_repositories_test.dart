@@ -35,7 +35,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
   late int shiftId;
@@ -55,12 +55,12 @@ void main() {
       'TRUNCATE pos_business_days, pos_cash_movements, pos_settings, '
       '  pos_orders, pos_shifts, pos_parked_tickets RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_restaurants (slug, name) "
+                  "INSERT INTO pos_businesses (slug, name) "
                   "VALUES ('wb', 'Wave B') RETURNING id",
                 ))
                 .first[0]
@@ -68,19 +68,19 @@ void main() {
     branchId =
         (await db.query(
                   pg.config,
-                  "INSERT INTO pos_branches (restaurant_id, code, name) "
+                  "INSERT INTO pos_branches (business_id, code, name) "
                   "VALUES (@r, 'WB1', 'Main') RETURNING id",
-                  parameters: {'r': restaurantId},
+                  parameters: {'r': businessId},
                 ))
                 .first[0]
             as int;
     staffId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+                  'INSERT INTO pos_users (business_id, branch_id, name, '
                   "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
                   "  'nour', 'salt', 'hash') RETURNING id",
-                  parameters: {'r': restaurantId, 'b': branchId},
+                  parameters: {'r': businessId, 'b': branchId},
                 ))
                 .first[0]
             as int;
@@ -99,19 +99,19 @@ void main() {
 
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'Counter 1') ON CONFLICT (id) DO NOTHING",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
 
     shiftId =
         (await db.query(
                   pg.config,
-                  'INSERT INTO pos_shifts (restaurant_id, branch_id, '
+                  'INSERT INTO pos_shifts (business_id, branch_id, '
                   '  terminal_id, opened_by, opening_float_minor) '
                   'VALUES (@r, @b, @t::uuid, @by, 20000) RETURNING id',
                   parameters: {
-                    'r': restaurantId,
+                    'r': businessId,
                     'b': branchId,
                     't': terminal,
                     'by': staffId,
@@ -121,7 +121,7 @@ void main() {
             as int;
 
     final context = PosWriteContext(
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
       branchCode: 'WB1',
@@ -129,7 +129,7 @@ void main() {
     settings = PostgresSettingsRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
       terminalId: terminal,
     );
@@ -148,7 +148,7 @@ void main() {
   tearDown(() => pg.close());
 
   group('settings', () {
-    test('an unconfigured restaurant resolves to the defaults', () async {
+    test('an unconfigured business resolves to the defaults', () async {
       final loaded = await settings.load();
       expect(loaded.has(SettingKey.dayStartTime), isFalse);
       expect(DayPolicy.from(loaded).startMinutes, 6 * 60);
@@ -158,7 +158,7 @@ void main() {
       await settings.save(
         key: SettingKey.dayStartTime,
         value: '06:00',
-        scope: SettingScope.restaurant,
+        scope: SettingScope.business,
         by: nour,
       );
       await settings.save(
@@ -178,21 +178,21 @@ void main() {
       await settings.save(
         key: SettingKey.cashBlindClose,
         value: 'false',
-        scope: SettingScope.restaurant,
+        scope: SettingScope.business,
         by: nour,
       );
       await settings.save(
         key: SettingKey.cashBlindClose,
         value: 'true',
-        scope: SettingScope.restaurant,
+        scope: SettingScope.business,
         by: nour,
       );
 
       final rows = await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_settings WHERE restaurant_id = @r '
+        'SELECT count(*) FROM pos_settings WHERE business_id = @r '
         'AND key = @key',
-        parameters: {'r': restaurantId, 'key': SettingKey.cashBlindClose},
+        parameters: {'r': businessId, 'key': SettingKey.cashBlindClose},
       );
       expect(rows.first[0], 1);
       expect(CashPolicy.from(await settings.load()).blindClose, isTrue);
@@ -202,7 +202,7 @@ void main() {
       await settings.save(
         key: SettingKey.cashBlindClose,
         value: 'true',
-        scope: SettingScope.restaurant,
+        scope: SettingScope.business,
         by: nour,
       );
       final rows = await db.query(
@@ -253,14 +253,14 @@ void main() {
       for (final total in [10000, 25000]) {
         await db.query(
           pg.config,
-          'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+          'INSERT INTO pos_orders (client_transaction_id, business_id, '
           '  branch_id, terminal_id, invoice_number, order_type, currency, '
           '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
           "  occurred_at, business_day_id, status) VALUES (gen_random_uuid(), "
           "  @r, @b, @t::uuid, @invoice, 'dine_in', 'EGP', 2, "
           '  @total, 0, 0, @total, now(), @day, \'PAID\')',
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'b': branchId,
             't': terminal,
             // A separate parameter from the amount: `@total::text` inside the
@@ -285,14 +285,14 @@ void main() {
       final day = await days.open(date: DateTime(2026, 9, 8), by: nour);
       await db.query(
         pg.config,
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         "  occurred_at, business_day_id, status, voided_at, voided_by) "
         "VALUES (gen_random_uuid(), @r, @b, @t::uuid, 'INV-V', 'dine_in', "
         "  'EGP', 2, 9000, 0, 0, 9000, now(), @day, 'VOIDED', now(), @by)",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminal,
           'day': day.id,
@@ -373,18 +373,18 @@ void main() {
       final tableId =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_dining_tables (restaurant_id, branch_id, '
+                    'INSERT INTO pos_dining_tables (business_id, branch_id, '
                     "  label, seats) VALUES (@r, @b, 'T4', 4) RETURNING id",
-                    parameters: {'r': restaurantId, 'b': branchId},
+                    parameters: {'r': businessId, 'b': branchId},
                   ))
                   .first[0]
               as int;
       await db.query(
         pg.config,
-        'INSERT INTO pos_parked_tickets (restaurant_id, table_id, '
+        'INSERT INTO pos_parked_tickets (business_id, table_id, '
         "  client_transaction_id, payload) "
         "VALUES (@r, @t, gen_random_uuid(), '{}'::jsonb)",
-        parameters: {'r': restaurantId, 't': tableId},
+        parameters: {'r': businessId, 't': tableId},
       );
 
       final check = await days.check();
@@ -398,14 +398,14 @@ void main() {
       final day = await days.open(date: DateTime(2026, 9, 8), by: nour);
       await db.query(
         pg.config,
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         "  occurred_at, business_day_id, status) VALUES (gen_random_uuid(), "
         "  @r, @b, @t::uuid, 'INV-OPEN', 'dine_in', 'EGP', 2, 1000, 0, 0, "
         "  1000, now(), @day, 'SENT_TO_KITCHEN')",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminal,
           'day': day.id,
@@ -423,14 +423,14 @@ void main() {
       final day = await days.open(date: DateTime(2026, 9, 8), by: nour);
       await db.query(
         pg.config,
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         "  occurred_at, business_day_id, status) VALUES (gen_random_uuid(), "
         "  @r, @b, @t::uuid, 'INV-PAID', 'dine_in', 'EGP', 2, 1000, 0, 0, "
         "  1000, now(), @day, 'PAID')",
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           't': terminal,
           'day': day.id,
@@ -587,11 +587,11 @@ void main() {
       const otherTerminal = '55555555-5555-4555-8555-555555555555';
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         "VALUES (@t::uuid, @r, @b, 'Counter 2') ON CONFLICT (id) DO NOTHING",
         parameters: {
           't': otherTerminal,
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
         },
       );
@@ -599,11 +599,11 @@ void main() {
       final other =
           (await db.query(
                     pg.config,
-                    'INSERT INTO pos_shifts (restaurant_id, branch_id, '
+                    'INSERT INTO pos_shifts (business_id, branch_id, '
                     '  terminal_id, opened_by, opening_float_minor) '
                     'VALUES (@r, @b, @t::uuid, @by, 0) RETURNING id',
                     parameters: {
-                      'r': restaurantId,
+                      'r': businessId,
                       'b': branchId,
                       't': otherTerminal,
                       'by': staffId,

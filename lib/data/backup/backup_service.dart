@@ -28,14 +28,14 @@ import 'pg_tools.dart';
 /// dropped table, a bad migration and somebody deleting the wrong week. It does
 /// not survive the disk failing, the machine being stolen, a fire, or the
 /// ransomware run that encrypts every file the account can write — which is
-/// the list of things that actually happen to a restaurant. Copying the folder
+/// the list of things that actually happen to a business. Copying the folder
 /// off the machine is out of scope for this change; saying so, on the screen
 /// and here, is not.
 class BackupService {
   BackupService({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     required this.directory,
     required this.backups,
@@ -65,7 +65,7 @@ class BackupService {
   /// days, orders since — are all reads the till credential already holds.
   final DeploymentConfig config;
 
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   /// Absolute, and already resolved. [BackupPaths] decides the default; this
@@ -122,7 +122,7 @@ class BackupService {
   /// The tables whose absence means the archive is not worth keeping.
   ///
   /// A curated list, not every table: the question verification asks is "could
-  /// a restaurant trade and answer a tax audit from this file", and these are
+  /// a business trade and answer a tax audit from this file", and these are
   /// the rows that answer it — what was sold, what was paid, who was on, and
   /// the ledger nobody may edit. [BackupRecord.tablesFound] carries the total
   /// so a shrinking archive is still visible in the list.
@@ -361,42 +361,42 @@ class BackupService {
       '''
       SELECT
         (SELECT count(*) FROM pos_shifts s
-          WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
+          WHERE s.business_id = @business AND s.branch_id = @branch
             AND s.closed_at IS NULL),
         (SELECT count(*) FROM pos_business_days d
-          WHERE d.restaurant_id = @restaurant AND d.branch_id = @branch
+          WHERE d.business_id = @business AND d.branch_id = @branch
             AND d.closed_at IS NULL),
         (SELECT count(*) FROM pos_orders o
-          WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
+          WHERE o.business_id = @business AND o.branch_id = @branch
             AND o.received_at > @since),
         (SELECT coalesce(sum(o.total_minor), 0)::bigint FROM pos_orders o
-          WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
+          WHERE o.business_id = @business AND o.branch_id = @branch
             AND o.received_at > @since),
         (SELECT max(o.received_at) FROM pos_orders o
-          WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
+          WHERE o.business_id = @business AND o.branch_id = @branch
             AND o.received_at > @since),
         -- Owed to the platform, across BOTH queues: a refund or a shift close
         -- that never went up is as lost as a sale. The predicate is the one
         -- `pos_sync_outbox_pending_idx` is built on, so "pending" here means
         -- what the drain means by it.
         (SELECT count(*) FROM pos_outbox q
-          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+          WHERE q.business_id = @business AND q.branch_id = @branch
             AND q.delivered_at IS NULL AND q.quarantined_at IS NULL)
         + (SELECT count(*) FROM pos_sync_outbox q
-          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+          WHERE q.business_id = @business AND q.branch_id = @branch
             AND q.delivered_at IS NULL AND q.quarantined_at IS NULL),
         -- Refused by the platform and waiting on a person. Never delivered, so
         -- just as lost to a restore — counted apart because it is a warning,
         -- not a blocker; see `RestoreBlockerKind.pendingSync`.
         (SELECT count(*) FROM pos_outbox q
-          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+          WHERE q.business_id = @business AND q.branch_id = @branch
             AND q.delivered_at IS NULL AND q.quarantined_at IS NOT NULL)
         + (SELECT count(*) FROM pos_sync_outbox q
-          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+          WHERE q.business_id = @business AND q.branch_id = @branch
             AND q.delivered_at IS NULL AND q.quarantined_at IS NOT NULL)
       ''',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         // `received_at`, not `occurred_at`: the question is what is in this
         // database and would stop being in it, and a ticket rung up before the
@@ -504,7 +504,7 @@ class BackupService {
     // Not a backup, so not a thing to replace a database with. The pane never
     // offers the button on such a row; this is the second line, because a
     // record can be handed here by any caller and "restore" from a file
-    // `pg_restore` already said it could not read would leave the restaurant
+    // `pg_restore` already said it could not read would leave the business
     // with neither the old database nor a new one.
     if (!from.isRestorable) {
       throw StateError(
@@ -704,7 +704,7 @@ class BackupService {
   /// Sortable, second-resolution, and it names the database — a folder holding
   /// two branches' copies must not need a technician to open them to tell which
   /// is which. Local time, because the person reading the folder is standing in
-  /// the restaurant.
+  /// the business.
   ///
   /// The copy a restore takes first is `pre-restore-xorder_pos-….dump`. **The
   /// name is the label, because nothing else could carry it.** `trigger_kind`
@@ -747,7 +747,7 @@ class BackupService {
     return stored;
   }
 
-  /// Streamed, not read into memory. A year of a busy restaurant is a file
+  /// Streamed, not read into memory. A year of a busy business is a file
   /// nobody should be loading into a till's RAM to hash.
   static Future<String> _checksum(File file) async =>
       (await sha256.bind(file.openRead()).first).toString();
@@ -787,7 +787,7 @@ abstract final class BackupPaths {
     return '$home/.local/share/xorder-pos/backups';
   }
 
-  /// What the service should use, given what the restaurant configured.
+  /// What the service should use, given what the business configured.
   static String resolve(BackupPolicy policy, {Map<String, String>? environment}) {
     final configured = policy.directory?.trim();
     return (configured == null || configured.isEmpty)

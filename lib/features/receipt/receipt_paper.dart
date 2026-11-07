@@ -47,7 +47,7 @@ class ReceiptPaper extends StatelessWidget {
 
   final ReceiptData data;
 
-  /// The restaurant's logo, or null for none (XORD-024). The caller decides
+  /// The business's logo, or null for none (XORD-024). The caller decides
   /// whether this till prints it; see `receiptLogoProvider`.
   final Uint8List? logo;
 
@@ -295,7 +295,7 @@ class _Slip {
     );
   }
 
-  /// The restaurant's logo. In greyscale and un-dithered: a screen can show
+  /// The business's logo. In greyscale and un-dithered: a screen can show
   /// the picture, but the one-bit conversion the printer gets is a pixel pass
   /// this synchronous widget does not run. The paper is the reference; this is
   /// the same box in the same place. A logo that will not decode is left out,

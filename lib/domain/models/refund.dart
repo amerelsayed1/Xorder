@@ -51,9 +51,9 @@ enum RefundWindow {
   }
 }
 
-/// The restaurant's refund rules.
+/// The business's refund rules.
 ///
-/// §18 specifies these as **settings**, scoped to the restaurant. The scoped
+/// §18 specifies these as **settings**, scoped to the business. The scoped
 /// `pos_settings` table is Wave D, so this is a value object with the SRS's own
 /// defaults today and a single place to change when it exists — rather than six
 /// literals spread across a dialog. Nothing else in the product should ask
@@ -68,13 +68,13 @@ class RefundPolicy {
     this.reasonRequired = true,
   });
 
-  /// The shape a restaurant gets before anybody configures anything.
+  /// The shape a business gets before anybody configures anything.
   ///
   /// A 7-day window rather than `unlimited`: the specification offers both, and
   /// the safe default for money leaving a drawer is the one that expires.
   static const defaults = RefundPolicy();
 
-  /// Read from what the restaurant configured, falling back to [defaults] key
+  /// Read from what the business configured, falling back to [defaults] key
   /// by key.
   ///
   /// Partial configuration is the normal case — somebody sets a ceiling and

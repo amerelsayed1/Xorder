@@ -11,7 +11,7 @@ import '../../../domain/models/pos_unit.dart';
 import '../../../domain/models/stock_item.dart';
 import 'admin_messages.dart';
 
-/// Adding or editing one thing the restaurant buys and counts.
+/// Adding or editing one thing the business buys and counts.
 ///
 /// An item on the menu shows its name and SKU but will not change them: those
 /// are the Menu pane's, and only the unit it is counted in is set here.
@@ -34,7 +34,7 @@ class StockItemDialog extends StatefulWidget {
   /// add it as a new item.
   final String? initialName;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<StockItem?> show(

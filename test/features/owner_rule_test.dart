@@ -16,7 +16,7 @@ import 'package:xorder_pos/features/admin/presentation/staff_grants_dialog.dart'
 
 import '../support/fakes.dart';
 
-/// One owner per restaurant, and the owner's own access is not editable.
+/// One owner per business, and the owner's own access is not editable.
 ///
 /// The Staff pane's claims: it does not offer what the repository would
 /// refuse. The owner's row has no role to pick and no permissions to edit;
@@ -265,7 +265,7 @@ void main() {
   group('the fake refuses what the database refuses', () {
     // The widget tests above run against this fake. A fake more permissive
     // than the thing it stands in for would let a screen pass a test it could
-    // not pass in a restaurant.
+    // not pass in a business.
     late FakeStaffDirectoryRepository directory;
     late PosStaff amer;
     late int ownerRole;

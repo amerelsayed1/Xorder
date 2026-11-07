@@ -22,7 +22,7 @@ class PostgresUnitsRepository implements UnitsRepository {
     required PosDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database,
        _tillDb = readDatabase;
@@ -32,7 +32,7 @@ class PostgresUnitsRepository implements UnitsRepository {
   final PosDatabase _tillDb;
   final DeploymentConfig readConfig;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _columns =
@@ -43,10 +43,10 @@ class PostgresUnitsRepository implements UnitsRepository {
   Future<List<PosUnit>> all({bool includeInactive = false}) async {
     final rows = await _tillDb.query(
       readConfig,
-      'SELECT $_columns FROM pos_units WHERE restaurant_id = @r '
+      'SELECT $_columns FROM pos_units WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) _read(row)];
   }
@@ -78,7 +78,7 @@ class PostgresUnitsRepository implements UnitsRepository {
 
     return _db.runTx(config, (tx) async {
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'code': unit.code.trim(),
         'nameEn': unit.nameEn.trim(),
         'nameAr': (unit.nameAr?.trim().isEmpty ?? true)
@@ -93,11 +93,11 @@ class PostgresUnitsRepository implements UnitsRepository {
       final rows = unit.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_units (restaurant_id, code, name_en, name_ar, '
+                'INSERT INTO pos_units (business_id, code, name_en, name_ar, '
                 '  eta_unit_type, allows_fraction, is_active, sort_order) '
                 'VALUES (@r, @code, @nameEn, @nameAr, @eta, @fraction, '
                 '        @active, @sort) '
-                'ON CONFLICT (restaurant_id, code) DO NOTHING '
+                'ON CONFLICT (business_id, code) DO NOTHING '
                 'RETURNING $_columns',
               ),
               parameters: parameters,
@@ -109,7 +109,7 @@ class PostgresUnitsRepository implements UnitsRepository {
                 'UPDATE pos_units SET name_en = @nameEn, name_ar = @nameAr, '
                 '  eta_unit_type = @eta, allows_fraction = @fraction, '
                 '  is_active = @active, sort_order = @sort, updated_at = now() '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $_columns',
+                'WHERE id = @id AND business_id = @r RETURNING $_columns',
               ),
               // Without `code`: it is not in the SET list, and the driver
               // refuses a parameter the statement does not use.
@@ -130,13 +130,13 @@ class PostgresUnitsRepository implements UnitsRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,

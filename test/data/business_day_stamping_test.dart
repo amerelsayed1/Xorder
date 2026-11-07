@@ -36,7 +36,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int staffId;
@@ -57,12 +57,12 @@ void main() {
     int hoursAgo = 0,
   }) async =>
       await one(
-            'INSERT INTO pos_business_days (restaurant_id, branch_id, '
+            'INSERT INTO pos_business_days (business_id, branch_id, '
             '  business_date, opened_by, opened_at) '
             'VALUES (@r, @b, @d::date, @by, '
             '  now() - make_interval(hours => @h::int)) RETURNING id',
             {
-              'r': restaurantId,
+              'r': businessId,
               'b': branch ?? branchId,
               'd': date,
               'by': staffId,
@@ -91,7 +91,7 @@ void main() {
   }) async {
     final row = (await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, '
       '  branch_id, terminal_id, invoice_number, order_type, currency, '
       '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, business_day_id) '
@@ -101,7 +101,7 @@ void main() {
       '  @status, @day::bigint) '
       'RETURNING id, business_day_id',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': terminal,
         'total': total,
@@ -120,7 +120,7 @@ void main() {
   Future<int?> refundOf(int orderId, {int hoursAgo = 0}) async =>
       await one(
             'WITH r AS ('
-            '  INSERT INTO pos_refunds (client_refund_id, restaurant_id, '
+            '  INSERT INTO pos_refunds (client_refund_id, business_id, '
             '    branch_id, terminal_id, order_id, kind, subtotal_minor, '
             '    service_minor, vat_minor, total_minor, refunded_by, '
             '    occurred_at) '
@@ -133,7 +133,7 @@ void main() {
             "  SELECT id, @tt, 'Cash', 500, true FROM r"
             ') SELECT business_day_id FROM r',
             {
-              'r': restaurantId,
+              'r': businessId,
               'b': branchId,
               't': terminal,
               'o': orderId,
@@ -146,13 +146,13 @@ void main() {
 
   Future<int?> shift({int hoursAgo = 0}) async =>
       await one(
-            'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, '
+            'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, '
             '  opened_by, opened_at) '
             'VALUES (@r, @b, @t::uuid, @by, '
             '  now() - make_interval(hours => @h::int)) '
             'RETURNING business_day_id',
             {
-              'r': restaurantId,
+              'r': businessId,
               'b': branchId,
               't': terminal,
               'by': staffId,
@@ -192,43 +192,43 @@ void main() {
       '  pos_orders, pos_shifts, pos_terminals, pos_tender_types '
       'RESTART IDENTITY CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         await one(
-              "INSERT INTO pos_restaurants (slug, name) "
+              "INSERT INTO pos_businesses (slug, name) "
               "VALUES ('stamp', 'Stamp') RETURNING id",
             )
             as int;
     branchId =
         await one(
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'ST1', 'Main') RETURNING id",
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
     otherBranchId =
         await one(
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'ST2', 'Second') RETURNING id",
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
     staffId =
         await one(
-              'INSERT INTO pos_users (restaurant_id, branch_id, name, '
+              'INSERT INTO pos_users (business_id, branch_id, name, '
               "  username, pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', "
               "  'nour', 'salt', 'hash') RETURNING id",
-              {'r': restaurantId, 'b': branchId},
+              {'r': businessId, 'b': branchId},
             )
             as int;
 
     cashTender =
         await one(
-              'INSERT INTO pos_tender_types (restaurant_id, code, name_en, '
+              'INSERT INTO pos_tender_types (business_id, code, name_en, '
               "  kind, counts_as_cash) VALUES (@r, 'cash', 'Cash', 'cash', "
               '  true) RETURNING id',
-              {'r': restaurantId},
+              {'r': businessId},
             )
             as int;
 
@@ -236,9 +236,9 @@ void main() {
     // which is why only the shift case needed the till registered.
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@t::uuid, @r, @b, 'POS-01')",
-      parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'t': terminal, 'r': businessId, 'b': branchId},
     );
   });
 

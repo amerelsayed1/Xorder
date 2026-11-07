@@ -17,7 +17,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
 import 'pg_fixture.dart';
 
-/// What the restaurant buys and counts (migration 40).
+/// What the business buys and counts (migration 40).
 ///
 /// The claims worth a real database: a bought-only item is counted and never
 /// reaches the cashier's menu; a menu item that is counted stays counted when
@@ -48,7 +48,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int categoryId;
   late PostgresCatalogAdminRepository menu;
@@ -63,12 +63,12 @@ void main() {
     pg = await PgFixture.open('stock_items');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId =
+    businessId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_restaurants (slug, name) VALUES (@slug, 'Stock') "
+              "INSERT INTO pos_businesses (slug, name) VALUES (@slug, 'Stock') "
               'RETURNING id',
               parameters: {'slug': slug},
             )).first[0]!
@@ -76,16 +76,16 @@ void main() {
     branchId =
         (await db.query(
               pg.config,
-              "INSERT INTO pos_branches (restaurant_id, code, name) "
+              "INSERT INTO pos_branches (business_id, code, name) "
               "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-              parameters: {'r': restaurantId},
+              parameters: {'r': businessId},
             )).first[0]!
             as int;
 
     menu = PostgresCatalogAdminRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     stock = PostgresStockItemsRepository(
@@ -94,7 +94,7 @@ void main() {
       readDatabase: db,
       readConfig: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     categoryId = (await menu.saveCategory(
@@ -192,9 +192,9 @@ void main() {
     await expectLater(
       db.query(
         pg.config,
-        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        'INSERT INTO pos_products (business_id, category_id, name_en, '
         "  price_minor) VALUES (@r, NULL, 'Lost', 0)",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       ),
       throwsA(isA<PosDbException>()),
     );
@@ -225,11 +225,11 @@ void main() {
     // conversion, so while stock is held the unit it is held in is the unit.
     Future<void> hold(int productId, int milli, QuantityUnit unit) => db.query(
       pg.config,
-      'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+      'INSERT INTO pos_stock_levels (business_id, branch_id, product_id, '
       '  quantity_milli, unit, average_cost_minor) '
       'VALUES (@r, @b, @p, @q, @u, 4000)',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'p': productId,
         'q': milli,
@@ -360,8 +360,8 @@ void main() {
     final rows = await db.query(
       pg.config,
       "SELECT after_value->>'name' FROM pos_audit_events "
-      'WHERE restaurant_id = @r AND action = @a',
-      parameters: {'r': restaurantId, 'a': AuditAction.stockItemSaved},
+      'WHERE business_id = @r AND action = @a',
+      parameters: {'r': businessId, 'a': AuditAction.stockItemSaved},
     );
     expect(rows.single.single, 'Gas cylinder');
   });

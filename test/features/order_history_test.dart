@@ -355,7 +355,7 @@ void main() {
 
       // One read for three keystrokes. A query per keystroke against a table
       // holding every sale the branch ever made is a search box that gets
-      // slower the longer the restaurant has been open.
+      // slower the longer the business has been open.
       expect(repository.queries.length - before, 1);
     });
 
@@ -1326,7 +1326,7 @@ void main() {
       expect(find.text('Upstairs'), findsOneWidget);
     });
 
-    testWidgets('a method the restaurant renamed reads as they named it', (
+    testWidgets('a method the business renamed reads as they named it', (
       tester,
     ) async {
       await pump(

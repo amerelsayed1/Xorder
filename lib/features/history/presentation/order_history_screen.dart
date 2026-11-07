@@ -455,7 +455,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
 
   Widget _filters(BuildContext context, AppStrings strings, bool seesEveryone) {
     final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const [];
-    // Every method the restaurant has ever had, retired ones included: a sale
+    // Every method the business has ever had, retired ones included: a sale
     // paid with a voucher scheme that ended in June is still a sale somebody
     // may need to find by it.
     final tenders = ref.watch(tenderTypesAllProvider).valueOrNull ?? const [];

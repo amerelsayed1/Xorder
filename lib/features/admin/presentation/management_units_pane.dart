@@ -15,8 +15,8 @@ import 'unit_dialog.dart';
 
 /// The units stock is counted and bought in.
 ///
-/// Seven come with every restaurant — each, kg, g, litre, ml, box, pack — and
-/// the rest are the restaurant's own: a sack of rice, a tray of thirty eggs.
+/// Seven come with every business — each, kg, g, litre, ml, box, pack — and
+/// the rest are the business's own: a sack of rice, a tray of thirty eggs.
 /// Retired rather than deleted, because a purchase order from last month still
 /// names the unit it was written in.
 class ManagementUnitsPane extends ConsumerStatefulWidget {

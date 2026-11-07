@@ -649,7 +649,7 @@ void main() {
       expect(find.byKey(const Key('receipt-logo')), findsNothing);
     });
 
-    testWidgets('and none when the restaurant has no logo', (tester) async {
+    testWidgets('and none when the business has no logo', (tester) async {
       await previewing(tester);
 
       expect(find.byKey(const Key('receipt-logo')), findsNothing);

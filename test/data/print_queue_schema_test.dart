@@ -29,7 +29,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresPrintQueueRepository queue;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
 
   const terminal = 'till-1';
@@ -42,26 +42,26 @@ void main() {
     pg = await PgFixture.open('print_queue');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('print-queue', 'Print') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('print-queue', 'Print') "
       'RETURNING id',
     )).first[0]! as int;
 
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'PQ', 'Print') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
 
     queue = PostgresPrintQueueRepository(
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminal,
         branchCode: 'PQ',
@@ -125,7 +125,7 @@ void main() {
         database: db,
         config: pg.config,
         context: PosWriteContext(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           terminalId: 'till-2',
           branchCode: 'PQ',
@@ -239,10 +239,10 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+          'INSERT INTO pos_print_jobs (business_id, branch_id, terminal_id, '
           "  printer_name, payload, status) "
           "VALUES (@r, @b, @t, 'p', '\\x1b40'::bytea, 'printed')",
-          parameters: {'r': restaurantId, 'b': branchId, 't': terminal},
+          parameters: {'r': businessId, 'b': branchId, 't': terminal},
         ),
         throwsA(
           predicate(
@@ -257,10 +257,10 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+          'INSERT INTO pos_print_jobs (business_id, branch_id, terminal_id, '
           "  printer_name, payload, status) "
           "VALUES (@r, @b, @t, 'p', '\\x1b40'::bytea, 'maybe')",
-          parameters: {'r': restaurantId, 'b': branchId, 't': terminal},
+          parameters: {'r': businessId, 'b': branchId, 't': terminal},
         ),
         throwsA(anything),
       );

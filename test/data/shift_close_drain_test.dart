@@ -33,7 +33,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late DeploymentConfig cloud;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late String terminalId;
   late PosStaff sara;
@@ -43,32 +43,32 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('close-drain', 'Close Drain') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('close-drain', 'Close Drain') RETURNING id",
     )).first[0] as int;
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) VALUES (@r, 'CLD', 'Close') RETURNING id",
-      parameters: {'r': restaurantId},
+      "INSERT INTO pos_branches (business_id, code, name) VALUES (@r, 'CLD', 'Close') RETURNING id",
+      parameters: {'r': businessId},
     )).first[0] as int;
     terminalId = (await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (gen_random_uuid(), @r, @b, 'Counter 1') RETURNING id::text",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     )).first[0] as String;
 
     final salt = PinHash.newSalt();
     final row = await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, @b, 'Sara M.', 'sara', @s, @h) RETURNING id",
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         's': salt,
         'h': await PinHash.hash('1111', salt),
@@ -91,7 +91,7 @@ void main() {
   PostgresShiftRepository shifts() => PostgresShiftRepository(
         database: db,
         config: cloud,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: terminalId,
       );

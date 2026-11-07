@@ -667,7 +667,7 @@ void main() {
   ) async {
     // **It rendered `entry.action` raw.** Every row said
     // `supplier_invoice.saved`, in mono, in both languages — on the one screen
-    // whose whole purpose is telling a restaurant who changed something.
+    // whose whole purpose is telling a business who changed something.
     final container = await open(tester, pane: ManagementPane.activity);
     final audit =
         container.read(auditRepositoryProvider) as FakeAuditRepository;
@@ -776,7 +776,7 @@ void main() {
     // **It rendered as `purchase.manage`.** `AdminText.capability` ends in a
     // fall-through so a capability from a newer build is shown rather than
     // hidden, and the effect on one from *this* build was the raw key on the
-    // screen where a restaurant owner decides who may spend money.
+    // screen where a business owner decides who may spend money.
     final container = await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
 

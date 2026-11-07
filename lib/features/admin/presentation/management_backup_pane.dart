@@ -28,13 +28,13 @@ import 'admin_pane_bits.dart';
 /// **The pane says out loud what a local backup is not.** A copy on the same
 /// disk as the database survives a bad edit and a dropped table, and does not
 /// survive the disk failing, the machine being stolen, a fire, or a ransomware
-/// run — which is most of what actually ends a restaurant's records. Off-machine
+/// run — which is most of what actually ends a business's records. Off-machine
 /// copying is not built; the warning strip is there because a screen that
 /// implies otherwise is worse than no screen.
 ///
 /// **And it says out loud when it cannot work at all.** `pg_dump` is a binary
 /// that has to be on the machine. A backup button that silently did nothing
-/// would leave a restaurant believing it had copies, so the tools are located,
+/// would leave a business believing it had copies, so the tools are located,
 /// the answer is printed, and when it is "nowhere" the pane lists the places it
 /// looked in and what to install.
 class ManagementBackupPane extends ConsumerStatefulWidget {
@@ -543,11 +543,11 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
   }
 }
 
-/// How long it has been since this restaurant last had a real copy.
+/// How long it has been since this business last had a real copy.
 ///
 /// The one number on this screen that matters at a glance. A verified copy is
 /// the only kind that counts here: a list full of unverified rows is a list of
-/// nights the restaurant did not have a backup, and summarising it as "last
+/// nights the business did not have a backup, and summarising it as "last
 /// backup: yesterday" would be the reassuring lie.
 class _Freshness extends StatelessWidget {
   const _Freshness({required this.records});
@@ -577,7 +577,7 @@ class _Freshness extends StatelessWidget {
           strings.backupLastVerified(backupStamp(newest.takenAt)),
           style: PosText.ui(size: 12.5, color: palette.muted),
         ),
-        // Two days, not one: a restaurant that closes Sunday should not be
+        // Two days, not one: a business that closes Sunday should not be
         // shouted at on Monday morning for a Saturday backup.
         if (days >= 2) ...[
           const SizedBox(height: PosSpace.xs),
@@ -893,7 +893,7 @@ InputDecoration _boxed(PosPalette palette, {String? label}) => InputDecoration(
 /// What the back office should say about backups, or null for nothing.
 ///
 /// Only a VERIFIED copy counts, and two days rather than one before an old one
-/// is called old — a restaurant closed on Sunday should not be told off on
+/// is called old — a business closed on Sunday should not be told off on
 /// Monday morning. Null records (still loading) say nothing.
 String? backupWarning(
   AppStrings strings,
@@ -952,7 +952,7 @@ Future<BackupNowOutcome?> takeBackupOnDemand(
 
 /// Write one backup setting — the folder, or copying at day close.
 ///
-/// Restaurant-wide: there is one database per branch, and two tills
+/// Business-wide: there is one database per branch, and two tills
 /// disagreeing about where its copies go is two half-filled folders. Shared
 /// with General's card for the reason [takeBackupOnDemand] is.
 Future<void> saveBackupSetting(
@@ -963,7 +963,7 @@ Future<void> saveBackupSetting(
 }) async {
   await ref
       .read(settingsRepositoryProvider)
-      .save(key: key, value: value, scope: SettingScope.restaurant, by: by);
+      .save(key: key, value: value, scope: SettingScope.business, by: by);
   ref.invalidate(settingsProvider);
 }
 
@@ -991,7 +991,7 @@ Color backupOutcomeTone(PosPalette palette, BackupOutcome outcome) =>
 /// switch is what the card shows.
 ///
 /// **Shown to everybody who reaches General; acted on only with
-/// `backup.manage`.** Whether the restaurant has a copy is worth a manager
+/// `backup.manage`.** Whether the business has a copy is worth a manager
 /// knowing — they are the one who rings the owner. But Back up now is absent
 /// without the capability rather than greyed, as the plan asks, and the switch
 /// reads the policy without changing it: the same gate the pane applies to its

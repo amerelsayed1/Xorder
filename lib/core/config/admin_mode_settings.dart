@@ -1,7 +1,7 @@
 /// How this terminal lets somebody into Admin Mode.
 ///
 /// Per terminal, in `config.json` beside the printer, rather than per
-/// restaurant: the till at the counter and the PC in the office can want
+/// business: the till at the counter and the PC in the office can want
 /// different timeouts, and neither is a fact about the business.
 class AdminModeSettings {
   const AdminModeSettings({

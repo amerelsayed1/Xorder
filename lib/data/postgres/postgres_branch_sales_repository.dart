@@ -21,7 +21,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
   const PostgresBranchSalesRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
     this.currency = 'EGP',
     this.exponent = 2,
@@ -30,7 +30,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
   final String currency;
   final int exponent;
@@ -42,7 +42,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
   static final _settled = [for (final status in settledStatuses) status.wire];
 
   /// Payments by terminal and method, over a `sales` CTE that has `id`,
-  /// `restaurant_id` and `terminal_id`.
+  /// `business_id` and `terminal_id`.
   ///
   /// Public so the reports (`PostgresReportsRepository`) group tenders exactly
   /// as the branch view does. The label, the snapshotted cash flag and the
@@ -61,7 +61,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
       FROM pos_order_payments p
       JOIN sales s ON s.id = p.order_id
       LEFT JOIN pos_tender_types tt
-        ON tt.restaurant_id = s.restaurant_id AND tt.id = p.tender_type_id
+        ON tt.business_id = s.business_id AND tt.id = p.tender_type_id
       GROUP BY s.terminal_id, p.tender_type_id, p.label, coalesce(tt.kind, 'other'),
                p.counts_as_cash
     )''';
@@ -86,7 +86,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
   static const _dayCte = '''
     day AS (
       SELECT id, opened_at, closed_at FROM pos_business_days
-      WHERE restaurant_id = @restaurant AND branch_id = @branch
+      WHERE business_id = @business AND branch_id = @branch
         AND business_date = @date::date
     )''';
 
@@ -121,12 +121,12 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
     WITH $_dayCte,
     terminals AS (
       SELECT id, name FROM pos_terminals
-      WHERE restaurant_id = @restaurant AND branch_id = @branch
+      WHERE business_id = @business AND branch_id = @branch
     ),
     sales AS (
-      SELECT o.id, o.restaurant_id, o.terminal_id, o.total_minor, o.discount_minor
+      SELECT o.id, o.business_id, o.terminal_id, o.total_minor, o.discount_minor
       FROM pos_orders o
-      WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
+      WHERE o.business_id = @business AND o.branch_id = @branch
         AND o.status = ANY(@statuses)
         AND ${_inDay('o')}
         AND (@until::timestamptz IS NULL OR o.occurred_at < @until::timestamptz)
@@ -142,7 +142,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
     refund_totals AS (
       SELECT r.terminal_id, count(*) AS refunds, sum(r.total_minor)::bigint AS refunded
       FROM pos_refunds r
-      WHERE r.restaurant_id = @restaurant AND r.branch_id = @branch
+      WHERE r.business_id = @business AND r.branch_id = @branch
         AND ${_inDay('r')}
         AND (@until::timestamptz IS NULL OR r.occurred_at < @until::timestamptz)
       GROUP BY r.terminal_id
@@ -194,7 +194,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
       config,
       _summarySql,
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'date': businessDayWire(businessDay),
         'statuses': _settled,
@@ -266,14 +266,14 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
       SELECT count(*)
       FROM pos_outbox ob
       JOIN pos_orders o ON o.id = ob.order_id
-      WHERE ob.restaurant_id = @restaurant AND ob.branch_id = @branch
+      WHERE ob.business_id = @business AND ob.branch_id = @branch
         AND o.terminal_id::text = @terminal
         AND ob.delivered_at IS NULL
         AND o.status = ANY(@statuses)
         AND ${_inDay('o')}
       ''',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'terminal': terminalId,
         'date': businessDayWire(businessDay),

@@ -1,4 +1,4 @@
-/// Who the restaurant buys from.
+/// Who the business buys from.
 ///
 /// The first row of the purchasing chain, and the reason it comes first:
 /// nothing downstream is honest without it. A cost price nobody purchased is a
@@ -49,9 +49,9 @@ class Supplier {
   final String nameEn;
   final String? nameAr;
 
-  /// The restaurant's own reference — an account number with the supplier, or
+  /// The business's own reference — an account number with the supplier, or
   /// whatever the bookkeeper already writes on the invoices. Optional, because
-  /// most small restaurants have none and inventing one would be a field they
+  /// most small businesses have none and inventing one would be a field they
   /// have to fill in with a lie.
   final String code;
 
@@ -65,7 +65,7 @@ class Supplier {
   /// Kept because a purchase invoice is the *input* side of the same VAT the
   /// receipt reports, and a return that claims input tax has to say whose.
   /// Nine digits in Egypt — validated in shape only, for the same reason the
-  /// receipt profile's is: a list that changes must not stop a restaurant
+  /// receipt profile's is: a list that changes must not stop a business
   /// recording a delivery.
   final String? taxNumber;
 
@@ -85,7 +85,7 @@ class Supplier {
 
   /// What must be fixed before this can be saved.
   ///
-  /// Short on purpose. A restaurant recording a delivery at seven in the
+  /// Short on purpose. A business recording a delivery at seven in the
   /// morning needs to write down who it came from, not fill in a form — and
   /// everything else here can be added when somebody has the invoice in front
   /// of them.
@@ -147,7 +147,7 @@ class Supplier {
 /// [invoiced] less [paid], with [overdue] the part whose payment term has
 /// already run out. The three travel together because a screen that showed the
 /// balance without the overdue share would answer the wrong question: a
-/// restaurant does not ask *what do I owe*, it asks *what do I owe now*.
+/// business does not ask *what do I owe*, it asks *what do I owe now*.
 class SupplierBalance {
   const SupplierBalance({
     required this.supplierId,

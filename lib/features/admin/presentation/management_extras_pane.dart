@@ -229,7 +229,7 @@ class _Row extends StatelessWidget {
             color: pos.accentSoft,
             alignment: Alignment.center,
             child: Icon(
-              group.isVariant ? Icons.restaurant : Icons.add,
+              group.isVariant ? Icons.business : Icons.add,
               size: 18,
               color: pos.accent,
             ),
@@ -340,7 +340,7 @@ class _ExtraDialog extends StatefulWidget {
   final OptionGroupDraft? group;
   final List<Category> categories;
 
-  /// Which names the restaurant writes its content in (XORD-005).
+  /// Which names the business writes its content in (XORD-005).
   final ContentLanguages languages;
   final Future<AdminRefusal?> Function(OptionGroupDraft group) onSave;
 

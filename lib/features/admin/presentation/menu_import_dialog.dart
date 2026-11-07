@@ -35,7 +35,7 @@ typedef MenuFileSource = Future<MenuFile?> Function();
 
 /// Importing a menu from a spreadsheet.
 ///
-/// **Read, show, then apply — never read and apply.** A restaurant hands over
+/// **Read, show, then apply — never read and apply.** A business hands over
 /// four hundred rows and the operator has no way to know what is in them; a
 /// dialog that imported on the strength of a file name would be asking someone
 /// to approve something they cannot see. So this shows what it would do first,
@@ -253,7 +253,7 @@ class _MenuImportDialogState extends ConsumerState<MenuImportDialog> {
         style: PosText.ui(size: 13.5, color: palette.body, height: 1.5),
       ),
       const SizedBox(height: PosSpace.md),
-      // The header the file needs, so a restaurant knows what to send back.
+      // The header the file needs, so a business knows what to send back.
       Container(
         padding: const EdgeInsets.all(PosSpace.sm),
         decoration: BoxDecoration(border: Border.fromBorderSide(palette.resting)),

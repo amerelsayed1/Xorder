@@ -14,7 +14,7 @@ import 'pg_fixture.dart';
 
 /// The Management section's writes, against a real database.
 ///
-/// The questions here are the ones a restaurant actually runs into: a cashier
+/// The questions here are the ones a business actually runs into: a cashier
 /// who found the screen, a manager deleting a role somebody is on, and the
 /// Sunday-afternoon one — disabling the last account that can hand out
 /// permissions. Each is checked at the data layer, because that is the layer
@@ -27,7 +27,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late PostgresRolesRepository roles;
   late PostgresStaffDirectoryRepository staff;
   late PostgresAuditRepository audit;
@@ -42,35 +42,35 @@ void main() {
     await PosMigrator(db).migrate(pg.config);
 
     // The database outlives the run — `PgFixture` creates it once and never
-    // drops it — so last run's restaurants are still here, and the per-test
+    // drops it — so last run's businesses are still here, and the per-test
     // slugs below start counting from zero again. Staff and roles cascade;
     // the audit rows deliberately do not, and are ignored because every test
-    // reads its own restaurant.
-    await db.query(pg.config, "DELETE FROM pos_restaurants WHERE slug LIKE 'admin-%'");
+    // reads its own business.
+    await db.query(pg.config, "DELETE FROM pos_businesses WHERE slug LIKE 'admin-%'");
   });
 
   tearDownAll(() => pg.close());
 
-  /// A restaurant of its own per test. Every table under migration 2 is scoped
+  /// A business of its own per test. Every table under migration 2 is scoped
   /// to one, so this isolates without truncating — which the audit ledger
   /// refuses anyway, by design.
   setUp(() async {
     final slug = 'admin-${tenant++}';
     final rows = await db.query(
       pg.config,
-      'INSERT INTO pos_restaurants (slug, name) VALUES (@slug, @slug) RETURNING id',
+      'INSERT INTO pos_businesses (slug, name) VALUES (@slug, @slug) RETURNING id',
       parameters: {'slug': slug},
     );
-    restaurantId = rows.first[0] as int;
+    businessId = rows.first[0] as int;
 
     seeded = {};
     for (final entry in SystemRoles.seeded.entries) {
       final row = await db.query(
         pg.config,
-        'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, capabilities, is_system) '
+        'INSERT INTO pos_roles (business_id, code, name_en, name_ar, capabilities, is_system) '
         'VALUES (@r, @code, @nameEn, @nameAr, @capabilities, true) RETURNING id',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': entry.key,
           'nameEn': entry.value.nameEn,
           'nameAr': entry.value.nameAr,
@@ -89,17 +89,17 @@ void main() {
     roles = PostgresRolesRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
     staff = PostgresStaffDirectoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
     audit = PostgresAuditRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
     );
 
     // The installer's account, created directly so the first write in each test
@@ -426,7 +426,7 @@ void main() {
       cloud = PostgresStaffDirectoryRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         offline: false,
       );
     });

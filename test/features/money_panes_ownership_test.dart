@@ -24,7 +24,7 @@ import 'package:xorder_pos/features/admin/presentation/management_tenders_pane.d
 /// rates are the platform's on a cloud till — the bootstrap seeder writes
 /// `pos_money_config` — so the pane disappeared; then Wave D put payment methods
 /// and service charges in it, which are local on both deployments, and a cloud
-/// restaurant was left unable to say how it takes money. That was patched by
+/// business was left unable to say how it takes money. That was patched by
 /// gating half a pane, and is now settled properly: three panes, and each one
 /// the platform owns says so. Since POS-BE-013 that is two of them — the bundle
 /// delivers payment methods too, and the drain sends a payment only on a
@@ -198,7 +198,7 @@ void main() {
     // **The bug this test exists for charged customers twice.**
     // `saveMoneyConfig` replaces the whole payload and the codec writes
     // `tax_mode` into it, so a `TaxConfig` built in the pane without that field
-    // silently reset an inclusive restaurant to exclusive — and every ticket
+    // silently reset an inclusive business to exclusive — and every ticket
     // afterwards added 14% on top of prices that already contained it. Nothing
     // on any screen sets the mode, which is exactly why saving an unrelated rate
     // must not change it.
@@ -229,7 +229,7 @@ void main() {
   //
   // `TaxConfig.defaultTaxGroup` prefers the stored default group over `vatBp`,
   // and every offline setup seeds one at 14%. The box edited only `vatBp`, so a
-  // restaurant that typed 0 went on charging 14% — and the box, which read
+  // business that typed 0 went on charging 14% — and the box, which read
   // `vatBp` back, showed the 0 it had been given.
   const standard = TaxGroup(id: 1, nameEn: 'VAT', rateBp: 1400, isDefault: true);
   const zeroGroup = TaxGroup(id: 1, nameEn: 'VAT', rateBp: 0, isDefault: true);

@@ -14,7 +14,7 @@ import 'pg_fixture.dart';
 ///
 /// `report.export` is new (BO-11). A branch server from before it has an owner
 /// role without it, and nothing else would ever add it — the seed only runs
-/// for restaurants created afterwards. Without this the owner of every
+/// for businesses created afterwards. Without this the owner of every
 /// existing install could not export, and their own role would stop passing
 /// the rule that the owner holds everything.
 void main() {
@@ -25,16 +25,16 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   setUp(() async {
     pg = await PgFixture.open('report_export');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('rx', 'RX') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('rx', 'RX') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -42,11 +42,11 @@ void main() {
 
   Future<void> role(String code, Set<String> capabilities) => db.query(
     pg.config,
-    'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+    'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
     '  capabilities, is_system) '
     'VALUES (@r, @code, @code, @code, @capabilities, true)',
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'code': code,
       'capabilities': capabilities.toList(),
     },
@@ -54,8 +54,8 @@ void main() {
 
   Future<List<String>> held(String code) async => ((await db.query(
     pg.config,
-    'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @code',
-    parameters: {'r': restaurantId, 'code': code},
+    'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @code',
+    parameters: {'r': businessId, 'code': code},
   )).first[0]! as List).cast<String>();
 
   /// The roles as a branch server that had not run 48 would hold them.

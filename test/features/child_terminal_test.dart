@@ -53,7 +53,7 @@ SiteLicence _site({
   int terminalCount = 1,
 }) => SiteLicence(
   file: _file(claims ?? _claims()),
-  restaurantId: 7,
+  businessId: 7,
   mode: mode,
   terminalCount: terminalCount,
 );
@@ -250,7 +250,7 @@ void main() {
       source: InMemorySiteLicenceSource(licence),
       verifySignature: (_) async => true,
       clock: DateTime.now,
-      restaurantId: 7,
+      businessId: 7,
     );
 
     const tablet = DeploymentConfig(

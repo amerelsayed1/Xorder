@@ -41,7 +41,7 @@ enum PaymentBucket {
   /// Rule 3, in one place for both sources.
   ///
   /// `account` is decided FIRST, before the cash flag. On account is money
-  /// owed, and a restaurant that ticked "counts as cash" on it by mistake must
+  /// owed, and a business that ticked "counts as cash" on it by mistake must
   /// not see a debt reported as takings. The cash flag is the one snapshotted
   /// on the PAYMENT row at settlement (migration 23), not today's tender
   /// configuration — a flag changed on Thursday must not re-describe Tuesday.
@@ -63,7 +63,7 @@ enum PaymentBucket {
 
   /// Whether money in this bucket was collected — the question rule 3 exists
   /// to answer. A voucher is collected: it was paid for before it was spent,
-  /// and nobody owes the restaurant for it.
+  /// and nobody owes the business for it.
   bool get isCollected => switch (this) {
     cash || electronic || other => true,
     onAccount => false,

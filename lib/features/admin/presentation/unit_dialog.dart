@@ -23,7 +23,7 @@ class UnitDialog extends StatefulWidget {
   /// Null adds a new one.
   final PosUnit? unit;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<PosUnit?> show(

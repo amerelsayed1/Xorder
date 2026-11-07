@@ -31,7 +31,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   PosStaff holder(Set<String> capabilities) => PosStaff(
     id: 0,
@@ -55,10 +55,10 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('bl', 'BL') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('bl', 'BL') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -67,8 +67,8 @@ void main() {
   Future<List<Object?>> row() async => (await db.query(
     pg.config,
     'SELECT logo_bytes, logo_mime, logo_source, logo_remote_url, '
-    '       logo_fetched_url FROM pos_restaurants WHERE id = @r',
-    parameters: {'r': restaurantId},
+    '       logo_fetched_url FROM pos_businesses WHERE id = @r',
+    parameters: {'r': businessId},
   )).first;
 
   PostgresBusinessLogoRepository repo({
@@ -77,13 +77,13 @@ void main() {
   }) => PostgresBusinessLogoRepository(
     database: db,
     config: pg.config,
-    restaurantId: restaurantId,
+    businessId: businessId,
     offline: offline,
     adminAvailable: adminAvailable,
   );
 
   group('migration 58', () {
-    test('a restaurant that existed before it has no logo', () async {
+    test('a business that existed before it has no logo', () async {
       final r = await row();
       expect(r.every((v) => v == null), isTrue, reason: '$r');
     });
@@ -92,8 +92,8 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          "UPDATE pos_restaurants SET logo_bytes = '\\x00'::bytea WHERE id = @r",
-          parameters: {'r': restaurantId},
+          "UPDATE pos_businesses SET logo_bytes = '\\x00'::bytea WHERE id = @r",
+          parameters: {'r': businessId},
         ),
         throwsA(anything),
       );
@@ -104,9 +104,9 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          "UPDATE pos_restaurants SET logo_bytes = '\\x00'::bytea, "
+          "UPDATE pos_businesses SET logo_bytes = '\\x00'::bytea, "
           "logo_mime = 'image/gif', logo_source = 'local' WHERE id = @r",
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ),
         throwsA(anything),
       );
@@ -116,15 +116,15 @@ void main() {
   group('migration 59', () {
     Future<List<String>> held(String code) async => ((await db.query(
       pg.config,
-      'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @c',
-      parameters: {'r': restaurantId, 'c': code},
+      'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @c',
+      parameters: {'r': businessId, 'c': code},
     )).first[0]! as List).cast<String>();
 
     Future<void> role(String code, Set<String> capabilities) => db.query(
       pg.config,
-      'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+      'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
       '  capabilities, is_system) VALUES (@r, @c, @c, @c, @caps, false)',
-      parameters: {'r': restaurantId, 'c': code, 'caps': capabilities.toList()},
+      parameters: {'r': businessId, 'c': code, 'caps': capabilities.toList()},
     );
 
     Future<List<int>> rerun() async {
@@ -261,8 +261,8 @@ void main() {
 
     BootstrapBundle bundle({BootstrapBranding? branding}) => BootstrapBundle(
       configVersion: 1,
-      restaurant: BootstrapRestaurant(
-        id: restaurantId,
+      business: BootstrapBusiness(
+        id: businessId,
         name: 'BL',
         slug: 'bl',
         currency: 'EGP',
@@ -285,7 +285,7 @@ void main() {
     ).seed(
       BootstrapBundle(
         configVersion: ++version,
-        restaurant: bundle().restaurant,
+        business: bundle().business,
         terminal: bundle().terminal,
         branches: bundle().branches,
         money: bundle().money,
@@ -309,7 +309,7 @@ void main() {
         LogoSync(
           database: db,
           config: pg.config,
-          restaurantId: restaurantId,
+          businessId: businessId,
           platformBase: platform,
           fetch: (uri) async {
             asked?.add(uri.toString());
@@ -428,7 +428,7 @@ void main() {
       final late = LogoSync(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         platformBase: platform,
         fetch: (uri) async {
           await seed(const BootstrapBranding(logoUrl: newer));

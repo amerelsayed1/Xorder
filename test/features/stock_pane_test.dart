@@ -65,7 +65,7 @@ void main() {
   ) async {
     await open(tester);
 
-    // By the name the restaurant gave the unit, not its code.
+    // By the name the business gave the unit, not its code.
     expect(find.text('12.5 Kilogram'), findsOneWidget);
     expect(find.text('48 Each'), findsOneWidget);
     // 12.5 × 95.00 + (−2 × 60.00) + 48 × 5.00 = 1307.50

@@ -36,7 +36,7 @@ class Combo {
   /// What the meal costs, before any upgrades.
   final Money price;
 
-  /// Which rate it attracts. Null means the restaurant's default — a combo is
+  /// Which rate it attracts. Null means the business's default — a combo is
   /// taxed like anything else.
   final int? taxGroupId;
 

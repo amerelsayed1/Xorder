@@ -166,8 +166,8 @@ void main() {
     testWidgets('says so plainly when nothing is configured', (tester) async {
       await open(tester);
 
-      // Not an empty box. A restaurant with no promotions is a normal
-      // restaurant, and a cashier can still type one.
+      // Not an empty box. A business with no promotions is a normal
+      // business, and a cashier can still type one.
       expect(
         find.textContaining('No discounts are configured'),
         findsOneWidget,
@@ -538,7 +538,7 @@ void main() {
 /// This used to hand everybody the same limit, which was harmless while an
 /// approval retried with no ceiling at all. It retries under the APPROVER'S
 /// ceiling now, and a fake that gave the supervisor the cashier's 10% would
-/// test a restaurant where nobody can approve anything.
+/// test a business where nobody can approve anything.
 class _Discounts implements DiscountsRepository {
   const _Discounts(
     this._offered,

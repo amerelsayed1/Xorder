@@ -86,7 +86,7 @@ void main() {
 
   testWidgets('the code is shown and cannot be typed over', (tester) async {
     // Every place that renders an order type reads its name off the `OrderType`
-    // enum, so the code is identity rather than data. A restaurant renames the
+    // enum, so the code is identity rather than data. A business renames the
     // label; it does not invent a fifth code.
     await open(tester)();
 
@@ -169,7 +169,7 @@ void main() {
   testWidgets('every switch says what it does, not just what it is', (
     tester,
   ) async {
-    // "Has a table" tells a restaurant owner nothing about the floor plan.
+    // "Has a table" tells a business owner nothing about the floor plan.
     await open(tester)();
 
     expect(find.textContaining('Turns on the floor plan'), findsOneWidget);

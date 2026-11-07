@@ -13,21 +13,21 @@ import 'pos_database.dart';
 /// **Entirely on the administrator connection**, unlike almost everything else
 /// in this directory. A till does not buy anything: purchasing is a back-office
 /// act from end to end, and giving the counter credential SELECT on who the
-/// restaurant owes money to would be handing out its commercial position for no
+/// business owes money to would be handing out its commercial position for no
 /// operational benefit.
 class PostgresSuppliersRepository implements SuppliersRepository {
   const PostgresSuppliersRepository({
     required PosDatabase database,
     required this.config,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   static const _columns =
@@ -62,10 +62,10 @@ class PostgresSuppliersRepository implements SuppliersRepository {
 
     final rows = await _db.query(
       config,
-      'SELECT $_columns FROM pos_suppliers WHERE restaurant_id = @r '
+      'SELECT $_columns FROM pos_suppliers WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY name_en, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) _read(row)];
   }
@@ -95,7 +95,7 @@ class PostgresSuppliersRepository implements SuppliersRepository {
 
     return _db.runTx(config, (tx) async {
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'nameEn': supplier.nameEn.trim(),
         'nameAr': supplier.nameAr?.trim(),
         'code': supplier.code.trim(),
@@ -113,7 +113,7 @@ class PostgresSuppliersRepository implements SuppliersRepository {
       final rows = supplier.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_suppliers (restaurant_id, name_en, name_ar, '
+                'INSERT INTO pos_suppliers (business_id, name_en, name_ar, '
                 '  code, contact_name, phone, email, address, tax_number, '
                 '  payment_term_days, notes, is_active, updated_by) '
                 'VALUES (@r, @nameEn, @nameAr, @code, @contact, @phone, '
@@ -130,7 +130,7 @@ class PostgresSuppliersRepository implements SuppliersRepository {
                 '  tax_number = @tax, payment_term_days = @terms, '
                 '  notes = @notes, is_active = @active, updated_at = now(), '
                 '  updated_by = @by '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $_columns',
+                'WHERE id = @id AND business_id = @r RETURNING $_columns',
               ),
               parameters: {...parameters, 'id': supplier.id},
             );
@@ -142,13 +142,13 @@ class PostgresSuppliersRepository implements SuppliersRepository {
       await tx.execute(
         Sql.named('''
         INSERT INTO pos_audit_events
-          (restaurant_id, branch_id, actor_user_id, actor_name, action,
+          (business_id, branch_id, actor_user_id, actor_name, action,
            entity_type, entity_id, after_value)
-        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+        VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
                 @after::jsonb)
         '''),
         parameters: {
-          'restaurant': restaurantId,
+          'business': businessId,
           'branch': branchId,
           'by': by.id == 0 ? null : by.id,
           'actor': by.name,

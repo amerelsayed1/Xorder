@@ -62,7 +62,7 @@ void main() {
         posDbCredentialsProvider
             .overrideWithValue(InMemoryPosDbCredentials(PgFixture.password)),
         // The menu is not what this suite is about — the orders swap point is.
-        // Bind the fake catalogue explicitly rather than seeding a restaurant
+        // Bind the fake catalogue explicitly rather than seeding a business
         // into the wiring database just to have something priced to sell.
         catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       ],
@@ -72,7 +72,7 @@ void main() {
     container.read(deploymentProvider.notifier).apply(branchConfig);
     if (provisioned) {
       container.read(terminalProfileProvider.notifier).apply(const TerminalProfile(
-            restaurantId: 1,
+            businessId: 1,
             branchId: 13,
             branchCode: 'MAADI',
             branchName: 'Maadi',
@@ -108,7 +108,7 @@ void main() {
   test('with e-receipts on, every sale is filed on top', () {
     final container = containerFor(provisioned: true, files: true);
     // Wrapped, not bare. Every terminal with a database queues an e-receipt
-    // for every sale, because the obligation is the restaurant's rather than
+    // for every sale, because the obligation is the business's rather than
     // the deployment's — a branch that files nothing is one whose receipt
     // profile is blank, which the decorator checks per sale rather than at
     // construction.
@@ -203,7 +203,7 @@ void main() {
       // supposed to catch. Build one that reads the wizard's own credential
       // store, as production does.
       // English, asked for rather than assumed: the product's default is
-      // Arabic — its restaurants are in Egypt — and this group reads the
+      // Arabic — its businesses are in Egypt — and this group reads the
       // English refusals. An override rather than `apply('en')`, because apply
       // writes the choice to the terminal's config file, and this is a
       // pure-Dart test with no platform to find that file on.

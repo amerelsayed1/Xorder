@@ -83,7 +83,7 @@ abstract final class SlipMetrics {
   static const grandTotal = totalAmountSize;
   static const footerText = strongSize;
 
-  /// The restaurant's logo (XORD-024): at most this tall, in dots at the 80mm
+  /// The business's logo (XORD-024): at most this tall, in dots at the 80mm
   /// reference — about 15mm of paper — and never wider than the content.
   static const logoMaxHeight = 120.0;
   static const logoAfter = 10.0;

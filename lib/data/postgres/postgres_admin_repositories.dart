@@ -26,14 +26,14 @@ class _AdminContext {
   const _AdminContext({
     required this.database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.terminalId,
   });
 
   final PosDatabase database;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int? branchId;
   final String? terminalId;
 
@@ -63,16 +63,16 @@ class _AdminContext {
     final shiftId = await openShiftIdFor(tx, terminalId);
     await tx.execute(
       Sql.named(
-        'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, shift_id, '
+        'INSERT INTO pos_audit_events (business_id, branch_id, terminal_id, shift_id, '
         '  actor_user_id, actor_name, approved_by_id, approved_by_name, action, '
         '  entity_type, entity_id, before_value, after_value, reason) '
-        'VALUES (@restaurant, @branch, @terminal, @shift, @actorId, @actorName, '
+        'VALUES (@business, @branch, @terminal, @shift, @actorId, @actorName, '
         '  @approverId, @approverName, @action, @entityType, @entityId, '
         // Cast rather than trusting the driver to infer jsonb from a string.
         '  @before::jsonb, @after::jsonb, @reason)',
       ),
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'terminal': terminalId,
         'shift': shiftId,
@@ -142,7 +142,7 @@ class PostgresRolesRepository implements RolesRepository {
   PostgresRolesRepository({
     required PosDatabase database,
     required DeploymentConfig config,
-    required int restaurantId,
+    required int businessId,
     PosDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
@@ -151,7 +151,7 @@ class PostgresRolesRepository implements RolesRepository {
   }) : _c = _AdminContext(
          database: database,
          config: config,
-         restaurantId: restaurantId,
+         businessId: businessId,
          branchId: branchId,
          terminalId: terminalId,
        ),
@@ -160,7 +160,7 @@ class PostgresRolesRepository implements RolesRepository {
          // on one connection; production passes the till's.
          database: readDatabase ?? database,
          config: readConfig ?? config,
-         restaurantId: restaurantId,
+         businessId: businessId,
          branchId: branchId,
          terminalId: terminalId,
        );
@@ -177,8 +177,8 @@ class PostgresRolesRepository implements RolesRepository {
   Future<List<PosRole>> all() async {
     final rows = await _read.database.query(
       _read.config,
-      'SELECT $roleColumns FROM pos_roles WHERE restaurant_id = @r ORDER BY id',
-      parameters: {'r': _read.restaurantId},
+      'SELECT $roleColumns FROM pos_roles WHERE business_id = @r ORDER BY id',
+      parameters: {'r': _read.businessId},
     );
     return [for (final row in rows) roleFromRow(row)];
   }
@@ -209,12 +209,12 @@ class PostgresRolesRepository implements RolesRepository {
       if (role.id == 0) {
         final rows = await tx.execute(
           Sql.named(
-            'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, capabilities) '
+            'INSERT INTO pos_roles (business_id, code, name_en, name_ar, capabilities) '
             'VALUES (@r, @code, @nameEn, @nameAr, @capabilities) '
             'RETURNING $roleColumns',
           ),
           parameters: {
-            'r': _c.restaurantId,
+            'r': _c.businessId,
             'code': role.code,
             'nameEn': role.nameEn,
             'nameAr': role.nameAr,
@@ -243,9 +243,9 @@ class PostgresRolesRepository implements RolesRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT $roleColumns FROM pos_roles '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': role.id, 'r': _c.restaurantId},
+        parameters: {'id': role.id, 'r': _c.businessId},
       );
       if (existing.isEmpty) {
         return const AdminResult.refused(EditedElsewhere(0));
@@ -256,12 +256,12 @@ class PostgresRolesRepository implements RolesRepository {
         Sql.named(
           'UPDATE pos_roles SET name_en = @nameEn, name_ar = @nameAr, '
           '  capabilities = @capabilities, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $roleColumns',
         ),
         parameters: {
           'id': role.id,
-          'r': _c.restaurantId,
+          'r': _c.businessId,
           'nameEn': role.nameEn,
           'nameAr': role.nameAr,
           'capabilities': capabilities,
@@ -303,9 +303,9 @@ class PostgresRolesRepository implements RolesRepository {
       // manager hunting through a list; the names are one join away.
       final held = await tx.execute(
         Sql.named(
-          'SELECT name FROM pos_users WHERE role_id = @id AND restaurant_id = @r ORDER BY name',
+          'SELECT name FROM pos_users WHERE role_id = @id AND business_id = @r ORDER BY name',
         ),
-        parameters: {'id': role.id, 'r': _c.restaurantId},
+        parameters: {'id': role.id, 'r': _c.businessId},
       );
       if (held.isNotEmpty) {
         return AdminResult<void>.refused(
@@ -315,9 +315,9 @@ class PostgresRolesRepository implements RolesRepository {
 
       await tx.execute(
         Sql.named(
-          'DELETE FROM pos_roles WHERE id = @id AND restaurant_id = @r',
+          'DELETE FROM pos_roles WHERE id = @id AND business_id = @r',
         ),
-        parameters: {'id': role.id, 'r': _c.restaurantId},
+        parameters: {'id': role.id, 'r': _c.businessId},
       );
       await _c.audit(
         tx,
@@ -360,7 +360,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   PostgresStaffDirectoryRepository({
     required PosDatabase database,
     required DeploymentConfig config,
-    required int restaurantId,
+    required int businessId,
     PosDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
@@ -370,7 +370,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   }) : _c = _AdminContext(
          database: database,
          config: config,
-         restaurantId: restaurantId,
+         businessId: businessId,
          branchId: branchId,
          terminalId: terminalId,
        ),
@@ -379,7 +379,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
          // with one connection; production passes the till's.
          database: readDatabase ?? database,
          config: readConfig ?? config,
-         restaurantId: restaurantId,
+         businessId: businessId,
          branchId: branchId,
          terminalId: terminalId,
        );
@@ -414,10 +414,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   Future<List<PosStaff>> all({bool includeInactive = true}) async {
     final rows = await _read.database.query(
       _read.config,
-      'SELECT $_staffColumns $_from WHERE s.restaurant_id = @r '
+      'SELECT $_staffColumns $_from WHERE s.business_id = @r '
       '${includeInactive ? '' : 'AND s.is_active '}'
       'ORDER BY s.is_active DESC, s.name',
-      parameters: {'r': _read.restaurantId},
+      parameters: {'r': _read.businessId},
     );
     return [for (final row in rows) _staffFrom(row)];
   }
@@ -433,8 +433,8 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final rows = await _read.database.query(
       _read.config,
       'SELECT $_staffColumns, s.pin_salt, s.pin_hash $_from '
-      'WHERE s.restaurant_id = @r AND s.is_active ORDER BY s.id',
-      parameters: {'r': _read.restaurantId},
+      'WHERE s.business_id = @r AND s.is_active ORDER BY s.id',
+      parameters: {'r': _read.businessId},
     );
 
     // Every candidate is hashed even after a match, exactly as
@@ -485,7 +485,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final grants = directGrants.toList()..sort();
 
     return _c.database.runTx(_c.config, (tx) async {
-      // One owner per restaurant — see [OwnerAlreadyExists]. Asked here so the
+      // One owner per business — see [OwnerAlreadyExists]. Asked here so the
       // manager gets a sentence naming the owner; migration 42 refuses the same
       // insert with an exception if anything gets past this.
       final ownerRole = await _lockOwnerRole(tx);
@@ -501,14 +501,14 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, '
+          'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, '
           '  pin_hash, role_id, capabilities) '
           'VALUES (@r, @branch, @name, @username, @salt, @hash, @role, @grants) '
-          'ON CONFLICT (restaurant_id, username) DO NOTHING '
+          'ON CONFLICT (business_id, username) DO NOTHING '
           'RETURNING id',
         ),
         parameters: {
-          'r': _c.restaurantId,
+          'r': _c.businessId,
           'branch': branchId ?? _c.branchId,
           'name': name,
           'username': username,
@@ -590,7 +590,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       //
       // The role half applies to the ACTIVE owner only. A disabled former
       // owner is not the owner, and has to be movable: otherwise the person
-      // who sold the restaurant could never come back as its manager, because
+      // who sold the business could never come back as its manager, because
       // re-enabling them on Owner is refused while the new owner is active.
       // Their grants stay shut either way — they are still on the role that
       // holds everything.
@@ -663,12 +663,12 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
           '  role_id = coalesce(@role, role_id), '
           '  branch_id = coalesce(@branch, branch_id), '
           '  capabilities = coalesce(@grants, capabilities) '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING id',
         ),
         parameters: {
           'id': staffId,
-          'r': _c.restaurantId,
+          'r': _c.businessId,
           'name': name,
           'username': username,
           'role': roleId,
@@ -730,7 +730,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
         return const AdminResult<PosStaff>.refused(EditedElsewhere(0));
       }
 
-      // Bringing a former owner back while somebody else owns the restaurant
+      // Bringing a former owner back while somebody else owns the business
       // would make two. Disabling the owner is not touched here — that is the
       // lock-out rule's business, below, and it is how a handover starts.
       if (isActive &&
@@ -749,7 +749,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       // Refused, not warned about: the screen that would put this back is the
       // screen this would make unreachable, and the remedy from there is a psql
-      // prompt at a restaurant on a Sunday.
+      // prompt at a business on a Sunday.
       if (!isActive && before.can(PosCapability.staffManage)) {
         final survives = await _someoneElseCanManageStaff(
           tx,
@@ -764,9 +764,9 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       await tx.execute(
         Sql.named(
-          'UPDATE pos_users SET is_active = @active WHERE id = @id AND restaurant_id = @r',
+          'UPDATE pos_users SET is_active = @active WHERE id = @id AND business_id = @r',
         ),
-        parameters: {'id': staffId, 'r': _c.restaurantId, 'active': isActive},
+        parameters: {'id': staffId, 'r': _c.businessId, 'active': isActive},
       );
 
       await _c.audit(
@@ -828,11 +828,11 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_users SET pin_salt = @salt, pin_hash = @hash '
-          'WHERE id = @id AND restaurant_id = @r RETURNING name',
+          'WHERE id = @id AND business_id = @r RETURNING name',
         ),
         parameters: {
           'id': staffId,
-          'r': _c.restaurantId,
+          'r': _c.businessId,
           'salt': salt,
           'hash': hash,
         },
@@ -861,8 +861,8 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final rows = await _read.database.query(
         _read.config,
         'SELECT id FROM pos_users '
-        'WHERE restaurant_id = @r AND password_hash IS NOT NULL',
-        parameters: {'r': _read.restaurantId},
+        'WHERE business_id = @r AND password_hash IS NOT NULL',
+        parameters: {'r': _read.businessId},
       );
       return {for (final row in rows) row[0]! as int};
     } on PosDbException catch (error) {
@@ -898,9 +898,9 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_users SET password_hash = @hash, password_set_at = now() '
-          'WHERE id = @id AND restaurant_id = @r AND is_active RETURNING name',
+          'WHERE id = @id AND business_id = @r AND is_active RETURNING name',
         ),
-        parameters: {'id': by.id, 'r': _c.restaurantId, 'hash': hash},
+        parameters: {'id': by.id, 'r': _c.businessId, 'hash': hash},
       );
       if (rows.isEmpty) {
         return const AdminResult<void>.refused(EditedElsewhere(0));
@@ -947,10 +947,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_users SET password_hash = NULL, password_set_at = NULL '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           '  AND password_hash IS NOT NULL RETURNING name',
         ),
-        parameters: {'id': staffId, 'r': _c.restaurantId},
+        parameters: {'id': staffId, 'r': _c.businessId},
       );
       // Nothing to clear is not a refusal: the person is where the manager
       // wanted them, and a ledger row for a change that did not happen would
@@ -991,11 +991,11 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_users SET password_hash = NULL, password_set_at = NULL '
-          'WHERE restaurant_id = @r AND is_active '
+          'WHERE business_id = @r AND is_active '
           '  AND lower(trim(username)) = @u AND password_hash IS NOT NULL '
           'RETURNING id, name',
         ),
-        parameters: {'r': _c.restaurantId, 'u': wanted},
+        parameters: {'r': _c.businessId, 'u': wanted},
       );
       if (rows.isEmpty) return const AdminResult<String?>.done(null);
 
@@ -1122,10 +1122,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
       await tx.execute(
         Sql.named(
-          "DELETE FROM pos_permission_limits WHERE restaurant_id = @r "
+          "DELETE FROM pos_permission_limits WHERE business_id = @r "
           "  AND subject_type = 'staff' AND subject_id = @s",
         ),
-        parameters: {'r': _c.restaurantId, 's': staffId},
+        parameters: {'r': _c.businessId, 's': staffId},
       );
       for (final entry in limits.entries) {
         // A limit that limits nothing is not written at all — unlimited is the
@@ -1133,12 +1133,12 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
         if (entry.value.isUnlimited) continue;
         await tx.execute(
           Sql.named(
-            'INSERT INTO pos_permission_limits (restaurant_id, subject_type, '
+            'INSERT INTO pos_permission_limits (business_id, subject_type, '
             "  subject_id, limit_key, limit_bp, limit_minor, updated_by) "
             "VALUES (@r, 'staff', @s, @k, @bp, @m, @by)",
           ),
           parameters: {
-            'r': _c.restaurantId,
+            'r': _c.businessId,
             's': staffId,
             'k': entry.key,
             'bp': entry.value.maxBp,
@@ -1194,10 +1194,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   }) async {
     final rows = await tx.execute(
       Sql.named(
-        'SELECT $_staffColumns $_from WHERE s.id = @id AND s.restaurant_id = @r'
+        'SELECT $_staffColumns $_from WHERE s.id = @id AND s.business_id = @r'
         '${lock ? ' FOR UPDATE OF s' : ''}',
       ),
-      parameters: {'id': id, 'r': _c.restaurantId},
+      parameters: {'id': id, 'r': _c.businessId},
     );
     return rows.isEmpty ? null : _staffFrom(rows.first);
   }
@@ -1205,14 +1205,14 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   Future<PosRole?> _readRole(TxSession tx, int id) async {
     final rows = await tx.execute(
       Sql.named(
-        'SELECT $roleColumns FROM pos_roles WHERE id = @id AND restaurant_id = @r',
+        'SELECT $roleColumns FROM pos_roles WHERE id = @id AND business_id = @r',
       ),
-      parameters: {'id': id, 'r': _c.restaurantId},
+      parameters: {'id': id, 'r': _c.businessId},
     );
     return rows.isEmpty ? null : roleFromRow(rows.first);
   }
 
-  /// This restaurant's owner role, locked for the rest of the transaction —
+  /// This business's owner role, locked for the rest of the transaction —
   /// or null when it has none.
   ///
   /// Locked so that two managers appointing an owner from two tills at once
@@ -1224,10 +1224,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   Future<int?> _lockOwnerRole(TxSession tx) async {
     final rows = await tx.execute(
       Sql.named(
-        'SELECT id FROM pos_roles WHERE restaurant_id = @r AND code = @owner '
+        'SELECT id FROM pos_roles WHERE business_id = @r AND code = @owner '
         'FOR NO KEY UPDATE',
       ),
-      parameters: {'r': _c.restaurantId, 'owner': SystemRoles.ownerCode},
+      parameters: {'r': _c.businessId, 'owner': SystemRoles.ownerCode},
     );
     return rows.isEmpty ? null : rows.first[0] as int;
   }
@@ -1242,11 +1242,11 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT name FROM pos_users '
-        'WHERE restaurant_id = @r AND role_id = @role AND is_active '
+        'WHERE business_id = @r AND role_id = @role AND is_active '
         '  AND (@id::bigint IS NULL OR id <> @id::bigint) '
         'ORDER BY id LIMIT 1',
       ),
-      parameters: {'r': _c.restaurantId, 'role': ownerRoleId, 'id': excluding},
+      parameters: {'r': _c.businessId, 'role': ownerRoleId, 'id': excluding},
     );
     return rows.isEmpty ? null : rows.first[0] as String;
   }
@@ -1263,10 +1263,10 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     }
     removed += (await tx.execute(
       Sql.named(
-        "DELETE FROM pos_permission_limits WHERE restaurant_id = @r "
+        "DELETE FROM pos_permission_limits WHERE business_id = @r "
         "  AND subject_type = 'staff' AND subject_id = @s",
       ),
-      parameters: {'r': _c.restaurantId, 's': staffId},
+      parameters: {'r': _c.businessId, 's': staffId},
     )).affectedRows;
     return removed > 0;
   }
@@ -1282,12 +1282,12 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT 1 FROM pos_users s LEFT JOIN pos_roles r ON r.id = s.role_id '
-        'WHERE s.restaurant_id = @r AND s.is_active AND s.id <> @id '
+        'WHERE s.business_id = @r AND s.is_active AND s.id <> @id '
         "  AND ('staff.manage' = ANY(s.capabilities) "
         "    OR 'staff.manage' = ANY(coalesce(r.capabilities, '{}'::text[]))) "
         'LIMIT 1',
       ),
-      parameters: {'r': _c.restaurantId, 'id': excluding},
+      parameters: {'r': _c.businessId, 'id': excluding},
     );
     return rows.isNotEmpty;
   }
@@ -1297,13 +1297,13 @@ class PostgresAuditRepository implements AuditRepository {
   PostgresAuditRepository({
     required PosDatabase database,
     required DeploymentConfig config,
-    required int restaurantId,
+    required int businessId,
     int? branchId,
     String? terminalId,
   }) : _c = _AdminContext(
          database: database,
          config: config,
-         restaurantId: restaurantId,
+         businessId: businessId,
          branchId: branchId,
          terminalId: terminalId,
        );
@@ -1346,13 +1346,13 @@ class PostgresAuditRepository implements AuditRepository {
       _c.config,
       'SELECT id, action, entity_type, entity_id, actor_user_id, actor_name, '
       '  approved_by_id, approved_by_name, before_value, after_value, reason, occurred_at '
-      'FROM pos_audit_events WHERE restaurant_id = @r '
+      'FROM pos_audit_events WHERE business_id = @r '
       '  AND (@entityType::text IS NULL OR entity_type = @entityType) '
       '  AND (@entityId::text IS NULL OR entity_id = @entityId) '
       '  AND (@staffId::bigint IS NULL OR actor_user_id = @staffId) '
       'ORDER BY occurred_at DESC, id DESC LIMIT @limit',
       parameters: {
-        'r': _c.restaurantId,
+        'r': _c.businessId,
         'entityType': entityType,
         'entityId': entityId,
         'staffId': staffId,

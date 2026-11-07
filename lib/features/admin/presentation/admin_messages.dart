@@ -28,7 +28,7 @@ abstract final class AdminText {
   /// What a permission means, in the words a manager ticking the box needs.
   ///
   /// The capability *name* is not shown on its own anywhere: `price.override`
-  /// tells a restaurant owner nothing, and a permission screen nobody
+  /// tells a business owner nothing, and a permission screen nobody
   /// understands is a permission screen everybody ticks.
   static String capability(AppStrings s, String capability) =>
       switch (capability) {
@@ -74,7 +74,7 @@ abstract final class AdminText {
   /// What an audit row *did*, in a sentence.
   ///
   /// **The Activity pane rendered `entry.action` raw** — every row read
-  /// `supplier_invoice.saved`, in both languages, on the screen a restaurant
+  /// `supplier_invoice.saved`, in both languages, on the screen a business
   /// looks at when it wants to know who changed something. Same shape of gap as
   /// the unlabelled capability, one screen over, and worse: there was no switch
   /// with a missing case, there was no switch.
@@ -202,7 +202,7 @@ abstract final class AdminText {
   ///
   /// Enum-keyed, so a fourth outcome fails to compile rather than rendering
   /// `unverified` on a badge. And the middle case is not a hedge: a copy that
-  /// could not be read back is shown as **not a backup**, because a restaurant
+  /// could not be read back is shown as **not a backup**, because a business
   /// that believes it has one is in a worse position than one that knows it
   /// does not.
   static String backupOutcome(AppStrings s, BackupOutcome outcome) =>
@@ -253,7 +253,7 @@ abstract final class AdminText {
   /// person needs and "4.19 MB" is precision nobody asked for.
   ///
   /// Powers of 1024 with the short units, which is what every file manager a
-  /// restaurant has ever used shows.
+  /// business has ever used shows.
   static String bytes(int size) {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
 
@@ -285,7 +285,7 @@ abstract final class AdminText {
         PurchaseStatus.cancelled => s.statusCancelled,
       };
 
-  /// How the restaurant paid somebody. Enum-keyed for the same reason.
+  /// How the business paid somebody. Enum-keyed for the same reason.
   static String paymentMethod(AppStrings s, SupplierPaymentMethod method) =>
       switch (method) {
         SupplierPaymentMethod.cash => s.methodCash,
@@ -329,7 +329,7 @@ abstract final class AdminText {
     'ml' => s.unitMillilitre,
     'box' => s.unitBox,
     'pack' => s.unitPack,
-    // One the restaurant added. Its code is what it wrote on the delivery
+    // One the business added. Its code is what it wrote on the delivery
     // note; the screens that list units show the names it gave it.
     final code => code,
   };

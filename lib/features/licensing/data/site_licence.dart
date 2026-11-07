@@ -7,21 +7,21 @@ import 'licence_service.dart';
 ///
 /// A child tablet activates nothing of its own (see `TerminalRole`). The main
 /// device writes its signed licence into the database they share, and this is
-/// that row: the file itself, which restaurant it belongs to, and the mode the
+/// that row: the file itself, which business it belongs to, and the mode the
 /// main device runs in — a child runs in whatever its main device does.
 class SiteLicence {
   const SiteLicence({
     required this.file,
-    required this.restaurantId,
+    required this.businessId,
     required this.mode,
     this.terminalCount = 0,
   });
 
   final LicenseFile file;
-  final int restaurantId;
+  final int businessId;
   final DeploymentMode mode;
 
-  /// Terminals already registered to the restaurant, the main device among
+  /// Terminals already registered to the business, the main device among
   /// them. What makes `max_terminals` a count the child can actually check
   /// rather than the advisory number it is on a lone till.
   final int terminalCount;
@@ -31,14 +31,14 @@ class SiteLicence {
 /// `PostgresSiteLicence`; nothing here touches the driver.
 abstract interface class SiteLicenceSource {
   /// The licence the main device published, or null when it has published
-  /// none yet. [restaurantId] narrows it once the child knows which restaurant
+  /// none yet. [businessId] narrows it once the child knows which business
   /// it belongs to; before that — while it is still being set up — the most
   /// recent one is the only one there is.
-  Future<SiteLicence?> read({int? restaurantId});
+  Future<SiteLicence?> read({int? businessId});
 
   /// Called on the main device only, whenever its licence is (re)installed.
   Future<void> publish({
-    required int restaurantId,
+    required int businessId,
     required LicenseFile file,
     required DeploymentMode mode,
   });
@@ -51,16 +51,16 @@ class InMemorySiteLicenceSource implements SiteLicenceSource {
   SiteLicence? licence;
 
   @override
-  Future<SiteLicence?> read({int? restaurantId}) async => licence;
+  Future<SiteLicence?> read({int? businessId}) async => licence;
 
   @override
   Future<void> publish({
-    required int restaurantId,
+    required int businessId,
     required LicenseFile file,
     required DeploymentMode mode,
   }) async => licence = SiteLicence(
     file: file,
-    restaurantId: restaurantId,
+    businessId: businessId,
     mode: mode,
     terminalCount: licence?.terminalCount ?? 0,
   );
@@ -75,14 +75,14 @@ class InMemorySiteLicenceSource implements SiteLicenceSource {
 /// it.
 ///
 /// Activation is closed on purpose. A licence typed into a child would be a
-/// second licence for the same restaurant, pinned to the device most likely to
+/// second licence for the same business, pinned to the device most likely to
 /// leave the building; a child is renewed by renewing the main device.
 class SiteLicenceService implements LicenceService {
   SiteLicenceService({
     required this.source,
     required this.verifySignature,
     required this.clock,
-    this.restaurantId,
+    this.businessId,
     this.keyId,
   });
 
@@ -92,7 +92,7 @@ class SiteLicenceService implements LicenceService {
   /// The key id this build verifies with — see [LicenseVerifier.keyId].
   final String? keyId;
   final DateTime Function() clock;
-  final int? restaurantId;
+  final int? businessId;
 
   @override
   bool get canActivateOnline => false;
@@ -144,7 +144,7 @@ class SiteLicenceService implements LicenceService {
   /// anyway, and the connection failure is the thing worth reading.
   @override
   Future<LicenseEntitlement> current(DeploymentConfig deployment) async {
-    final site = await source.read(restaurantId: restaurantId);
+    final site = await source.read(businessId: businessId);
     if (site == null) {
       return const LicenseEntitlement(
         state: LicenseState.missing,
@@ -159,5 +159,5 @@ class SiteLicenceService implements LicenceService {
 
   @override
   Future<LicenseFile?> installed() async =>
-      (await source.read(restaurantId: restaurantId))?.file;
+      (await source.read(businessId: businessId))?.file;
 }

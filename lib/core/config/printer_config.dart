@@ -16,7 +16,7 @@ class PrinterConfig {
   /// hardware step, and what a till with no printer keeps for ever.
   static const none = PrinterConfig();
 
-  /// 80mm paper, 203dpi, 72mm printable — the roll every Egyptian restaurant
+  /// 80mm paper, 203dpi, 72mm printable — the roll every Egyptian business
   /// buys, and the default for that reason.
   static const width80mm = 576;
 
@@ -82,7 +82,7 @@ class PrinterConfig {
   /// number nobody standing at a counter knows.
   final int paperWidthDots;
 
-  /// Whether the restaurant's logo is printed (and previewed) at the top of the
+  /// Whether the business's logo is printed (and previewed) at the top of the
   /// receipt, when it has one (XORD-024).
   ///
   /// On by default: a till that already holds a logo prints it after the

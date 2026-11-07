@@ -56,7 +56,7 @@ class _Profiles implements ReceiptProfileRepository {
   }
 }
 
-/// The restaurant's settings, as the writes that reached them.
+/// The business's settings, as the writes that reached them.
 class _Settings implements SettingsRepository {
   final saved = <(String, String, SettingScope)>[];
 
@@ -366,7 +366,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(settings.saved, [
-        (SettingKey.backupOnDayClose, 'false', SettingScope.restaurant),
+        (SettingKey.backupOnDayClose, 'false', SettingScope.business),
       ]);
     });
 

@@ -1,6 +1,6 @@
 import '../../core/money/quantity.dart';
 
-/// Something the restaurant buys and counts — chicken, cooking oil, a bottle
+/// Something the business buys and counts — chicken, cooking oil, a bottle
 /// of water it also sells.
 ///
 /// **A product row, not a table of its own.** Receiving, stock movements and

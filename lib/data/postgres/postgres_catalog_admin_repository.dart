@@ -46,7 +46,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   PostgresCatalogAdminRepository({
     required this.database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.terminalId,
     this.adminAvailable = true,
@@ -55,7 +55,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
   final PosDatabase database;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
   final int? branchId;
   final String? terminalId;
 
@@ -104,7 +104,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final rows = await tx.execute(
           Sql.named(
             'INSERT INTO pos_categories '
-            '  (restaurant_id, name_en, name_ar, slug, sort_order, is_active) '
+            '  (business_id, name_en, name_ar, slug, sort_order, is_active) '
             'VALUES (@r, @nameEn, @nameAr, @slug, @sort, true) '
             'RETURNING $_categoryColumns',
           ),
@@ -125,9 +125,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT $_categoryColumns FROM pos_categories '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': category.id, 'r': restaurantId},
+        parameters: {'id': category.id, 'r': businessId},
       );
       if (existing.isEmpty) {
         return const AdminResult.refused(EditedElsewhere(0));
@@ -139,7 +139,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           'UPDATE pos_categories SET name_en = @nameEn, name_ar = @nameAr, '
           '  slug = @slug, sort_order = @sort, '
           '  revision = revision + 1, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_categoryColumns',
         ),
         parameters: {..._categoryParams(category), 'id': category.id},
@@ -172,10 +172,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         Sql.named(
           'UPDATE pos_categories SET is_active = @active, '
           '  revision = revision + 1, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_categoryColumns',
         ),
-        parameters: {'id': category.id, 'r': restaurantId, 'active': restore},
+        parameters: {'id': category.id, 'r': businessId, 'active': restore},
       );
       if (rows.isEmpty) return const AdminResult.refused(EditedElsewhere(0));
 
@@ -199,9 +199,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final rows = await database.query(
       config,
       'SELECT $_categoryColumns FROM pos_categories '
-      'WHERE restaurant_id = @r AND NOT is_active '
+      'WHERE business_id = @r AND NOT is_active '
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     return [for (final row in rows) _categoryFrom(row)];
   }
@@ -218,9 +218,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT $_categoryColumns FROM pos_categories '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': category.id, 'r': restaurantId},
+        parameters: {'id': category.id, 'r': businessId},
       );
       if (existing.isEmpty) {
         return const AdminResult<void>.refused(EditedElsewhere(0));
@@ -245,9 +245,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       // Its links to option groups cascade; nothing else points at it.
       await tx.execute(
         Sql.named(
-          'DELETE FROM pos_categories WHERE id = @id AND restaurant_id = @r',
+          'DELETE FROM pos_categories WHERE id = @id AND business_id = @r',
         ),
-        parameters: {'id': category.id, 'r': restaurantId},
+        parameters: {'id': category.id, 'r': businessId},
       );
       await _audit(
         tx,
@@ -284,9 +284,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final categoryIds = <String, int>{};
       final existing = await tx.execute(
         Sql.named(
-          'SELECT id, name_en FROM pos_categories WHERE restaurant_id = @r',
+          'SELECT id, name_en FROM pos_categories WHERE business_id = @r',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       for (final row in existing) {
         categoryIds[(row[1]! as String).trim().toLowerCase()] = row[0]! as int;
@@ -299,13 +299,13 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
         final rows = await tx.execute(
           Sql.named(
-            'INSERT INTO pos_categories (restaurant_id, name_en, sort_order) '
+            'INSERT INTO pos_categories (business_id, name_en, sort_order) '
             'VALUES (@r, @name, ('
             '  SELECT coalesce(max(sort_order), 0) + 1 FROM pos_categories '
-            '   WHERE restaurant_id = @r)) '
+            '   WHERE business_id = @r)) '
             'RETURNING id',
           ),
-          parameters: {'r': restaurantId, 'name': name.trim()},
+          parameters: {'r': businessId, 'name': name.trim()},
         );
         categoryIds[key] = rows.first[0]! as int;
         categoriesCreated++;
@@ -340,7 +340,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           final inserted = await tx.execute(
             Sql.named(
               'INSERT INTO pos_products '
-              '  (restaurant_id, category_id, name_en, name_ar, price_minor, '
+              '  (business_id, category_id, name_en, name_ar, price_minor, '
               '   sku, barcode, is_available, sort_order) '
               'VALUES (@r, @category, @nameEn, @nameAr, @price, @sku, '
               '        @barcode, @available, ('
@@ -349,7 +349,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
               'RETURNING id',
             ),
             parameters: {
-              'r': restaurantId,
+              'r': businessId,
               'category': categoryId,
               'nameEn': row.nameEn,
               'nameAr': row.nameAr,
@@ -388,11 +388,11 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             // Only ever filled in, never cleared: a file with no SKU column is
             // silent about SKUs, not an instruction to forget them.
             '  sku = coalesce(@sku, sku) '
-            'WHERE id = @id AND restaurant_id = @r',
+            'WHERE id = @id AND business_id = @r',
           ),
           parameters: {
             'id': row.existingProductId,
-            'r': restaurantId,
+            'r': businessId,
             'category': categoryId,
             'nameEn': row.nameEn,
             'nameAr': row.nameAr,
@@ -458,7 +458,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     }
 
     return database.runTx(config, (tx) async {
-      // SKUs are unique per restaurant (`pos_products_sku_unique`). Asked here,
+      // SKUs are unique per business (`pos_products_sku_unique`). Asked here,
       // in the transaction, so a clash is a sentence in the editor and not the
       // database's unique-violation exception reaching the dialog. A blank SKU
       // means "none" and never clashes. The index stays the backstop for two
@@ -468,9 +468,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final clash = await tx.execute(
           Sql.named(
             'SELECT 1 FROM pos_products '
-            'WHERE restaurant_id = @r AND sku = @sku AND id <> @id LIMIT 1',
+            'WHERE business_id = @r AND sku = @sku AND id <> @id LIMIT 1',
           ),
-          parameters: {'r': restaurantId, 'sku': sku, 'id': product.id},
+          parameters: {'r': businessId, 'sku': sku, 'id': product.id},
         );
         if (clash.isNotEmpty) {
           return const AdminResult<Product>.refused(
@@ -488,7 +488,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final rows = await tx.execute(
           Sql.named(
             'INSERT INTO pos_products '
-            '  (restaurant_id, category_id, name_en, name_ar, price_minor, '
+            '  (business_id, category_id, name_en, name_ar, price_minor, '
             '   discounted_price_minor, sku, barcode, is_available, sort_order, '
             '   tax_group_id, is_stocked, stock_unit) '
             'VALUES (@r, @category, @nameEn, @nameAr, @price, @discounted, '
@@ -513,9 +513,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT $_productColumns FROM pos_products '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': product.id, 'r': restaurantId},
+        parameters: {'id': product.id, 'r': businessId},
       );
       if (existing.isEmpty) {
         return const AdminResult.refused(EditedElsewhere(0));
@@ -527,7 +527,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       // would still refuse — as an exception on a price edit, not a sentence.
       final held = await StockUnitGuard.check(
         tx,
-        restaurantId: restaurantId,
+        businessId: businessId,
         productId: product.id,
         unit: product.stockUnit ?? QuantityUnit.each,
       );
@@ -542,7 +542,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           '  tax_group_id = @taxGroup, is_stocked = @stocked, '
           '  stock_unit = @stockUnit, '
           '  revision = revision + 1, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_productColumns',
         ),
         parameters: {..._productParams(product), 'id': product.id},
@@ -593,10 +593,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         Sql.named(
           'UPDATE pos_products SET is_available = @available, '
           '  revision = revision + 1, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_productColumns',
         ),
-        parameters: {'id': product.id, 'r': restaurantId, 'available': restore},
+        parameters: {'id': product.id, 'r': businessId, 'available': restore},
       );
       if (rows.isEmpty) return const AdminResult.refused(EditedElsewhere(0));
 
@@ -652,18 +652,18 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     return database.runTx(this.config, (tx) async {
       final existing = await tx.execute(
         Sql.named(
-          'SELECT payload FROM pos_money_config WHERE restaurant_id = @r',
+          'SELECT payload FROM pos_money_config WHERE business_id = @r',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       // The rate the ticket actually charges, which is the default group's
       // whenever one exists — see `TaxConfig.defaultTaxGroup`.
       final groupBefore = await tx.execute(
         Sql.named(
           'SELECT rate_bp FROM pos_tax_groups '
-          'WHERE restaurant_id = @r AND is_default FOR UPDATE',
+          'WHERE business_id = @r AND is_default FOR UPDATE',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       final beforePayload = existing.isEmpty
           ? null
@@ -675,25 +675,25 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final payload = jsonEncode(MoneyConfigCodec.fromTaxConfig(config));
       await tx.execute(
         Sql.named(
-          'INSERT INTO pos_money_config (restaurant_id, payload, synced_at) '
+          'INSERT INTO pos_money_config (business_id, payload, synced_at) '
           'VALUES (@r, @payload::jsonb, now()) '
-          'ON CONFLICT (restaurant_id) DO UPDATE '
+          'ON CONFLICT (business_id) DO UPDATE '
           '  SET payload = @payload::jsonb, synced_at = now()',
         ),
-        parameters: {'r': restaurantId, 'payload': payload},
+        parameters: {'r': businessId, 'payload': payload},
       );
 
       // **The VAT box has to move the rate the till charges.** Once a default
       // tax group exists (every offline setup seeds one at 14%) the ticket
       // prices from it and never reads `vat_bp`, so saving only the payload
-      // left a restaurant that typed 0 still charging 14%. One default group
-      // per restaurant is a unique index, so this is one row or none.
+      // left a business that typed 0 still charging 14%. One default group
+      // per business is a unique index, so this is one row or none.
       final groupAfter = await tx.execute(
         Sql.named(
           'UPDATE pos_tax_groups SET rate_bp = @vat '
-          'WHERE restaurant_id = @r AND is_default RETURNING rate_bp',
+          'WHERE business_id = @r AND is_default RETURNING rate_bp',
         ),
-        parameters: {'r': restaurantId, 'vat': config.vatBp},
+        parameters: {'r': businessId, 'vat': config.vatBp},
       );
 
       await _audit(
@@ -701,7 +701,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         by: by,
         action: AuditAction.moneyConfigChanged,
         entityType: AuditAction.entityMoney,
-        entityId: '$restaurantId',
+        entityId: '$businessId',
         before: before == null && groupBefore.isEmpty
             ? null
             : {
@@ -745,13 +745,13 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     return database.runTx(config, (tx) async {
       final before = await tx.execute(
         Sql.named(
-          'SELECT content_languages FROM pos_restaurants WHERE id = @r',
+          'SELECT content_languages FROM pos_businesses WHERE id = @r',
         ),
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
       if (before.isEmpty) {
         return const AdminResult<ContentLanguages>.refused(
-          CatalogInvalid('This restaurant is not set up on this till yet.'),
+          CatalogInvalid('This business is not set up on this till yet.'),
         );
       }
       final was = before.first[0] as String?;
@@ -759,9 +759,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
       await tx.execute(
         Sql.named(
-          'UPDATE pos_restaurants SET content_languages = @value WHERE id = @r',
+          'UPDATE pos_businesses SET content_languages = @value WHERE id = @r',
         ),
-        parameters: {'r': restaurantId, 'value': languages.wire},
+        parameters: {'r': businessId, 'value': languages.wire},
       );
 
       await _audit(
@@ -769,7 +769,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         by: by,
         action: AuditAction.contentLanguagesSaved,
         entityType: AuditAction.entityContentLanguages,
-        entityId: '$restaurantId',
+        entityId: '$businessId',
         before: {'content_languages': was},
         after: {'content_languages': languages.wire},
       );
@@ -826,9 +826,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         await tx.execute(
           Sql.named(
             'UPDATE pos_tax_groups SET is_default = false '
-            'WHERE restaurant_id = @r AND is_default AND id <> @id',
+            'WHERE business_id = @r AND is_default AND id <> @id',
           ),
-          parameters: {'r': restaurantId, 'id': group.id},
+          parameters: {'r': businessId, 'id': group.id},
         );
       }
 
@@ -839,9 +839,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final wasDefault = await tx.execute(
           Sql.named(
             'SELECT is_default FROM pos_tax_groups '
-            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @id AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'id': group.id, 'r': restaurantId},
+          parameters: {'id': group.id, 'r': businessId},
         );
         if (wasDefault.isEmpty) {
           return const AdminResult<TaxGroup>.refused(EditedElsewhere(0));
@@ -866,7 +866,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
       const columns = 'id, name_en, name_ar, rate_bp, is_default, is_active';
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'nameEn': group.nameEn.trim(),
         'nameAr': group.nameAr?.trim(),
         'rate': group.rateBp,
@@ -877,7 +877,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final rows = group.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_tax_groups (restaurant_id, name_en, name_ar, '
+                'INSERT INTO pos_tax_groups (business_id, name_en, name_ar, '
                 '  rate_bp, is_default, is_active) '
                 'VALUES (@r, @nameEn, @nameAr, @rate, @isDefault, @active) '
                 'RETURNING $columns',
@@ -889,7 +889,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
                 'UPDATE pos_tax_groups SET name_en = @nameEn, '
                 '  name_ar = @nameAr, rate_bp = @rate, '
                 '  is_default = @isDefault, is_active = @active '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $columns',
+                'WHERE id = @id AND business_id = @r RETURNING $columns',
               ),
               parameters: {...parameters, 'id': group.id},
             );
@@ -952,9 +952,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final already = await tx.execute(
           Sql.named(
             'SELECT is_active FROM pos_order_types '
-            'WHERE restaurant_id = @r AND code = @code',
+            'WHERE business_id = @r AND code = @code',
           ),
-          parameters: {'r': restaurantId, 'code': orderType.type.wire},
+          parameters: {'r': businessId, 'code': orderType.type.wire},
         );
         final wasOn = already.isNotEmpty && already.first[0] == true;
         if (!wasOn) {
@@ -964,7 +964,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         }
       }
 
-      // A restaurant with no active order type has a till that cannot start a
+      // A business with no active order type has a till that cannot start a
       // ticket. Refused rather than warned, like the last cash tender method:
       // the fix afterwards is a database edit by somebody who will not know
       // that is what they are doing.
@@ -972,9 +972,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final remaining = await tx.execute(
           Sql.named(
             'SELECT count(*) FROM pos_order_types '
-            'WHERE restaurant_id = @r AND is_active AND code <> @code',
+            'WHERE business_id = @r AND is_active AND code <> @code',
           ),
-          parameters: {'r': restaurantId, 'code': orderType.type.wire},
+          parameters: {'r': businessId, 'code': orderType.type.wire},
         );
         if ((remaining.first[0]! as int) == 0) {
           return const AdminResult<OrderTypeConfig>.refused(
@@ -987,17 +987,17 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       }
 
       // **Upsert on the code, not on an id.** The four rows are seeded, so a
-      // restaurant whose seed predates a column edits a row this build has
+      // business whose seed predates a column edits a row this build has
       // never inserted — and `OrderTypeConfig` carries no id, because the code
       // is the identity.
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_order_types (restaurant_id, code, name_en, name_ar, '
+          'INSERT INTO pos_order_types (business_id, code, name_en, name_ar, '
           '  requires_table, requires_customer, requires_address, is_active, '
           '  sort_order) '
           'VALUES (@r, @code, @nameEn, @nameAr, @table, @customer, @address, '
           '        @active, @sort) '
-          'ON CONFLICT (restaurant_id, code) DO UPDATE SET '
+          'ON CONFLICT (business_id, code) DO UPDATE SET '
           '  name_en = EXCLUDED.name_en, name_ar = EXCLUDED.name_ar, '
           '  requires_table = EXCLUDED.requires_table, '
           '  requires_customer = EXCLUDED.requires_customer, '
@@ -1006,7 +1006,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           'RETURNING id',
         ),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'code': orderType.type.wire,
           'nameEn': orderType.nameEn.trim(),
           'nameAr': orderType.nameAr?.trim(),
@@ -1058,7 +1058,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     }
 
     return database.runTx(config, (tx) async {
-      // A restaurant that retires its last cash method has a till that cannot
+      // A business that retires its last cash method has a till that cannot
       // put anything in the drawer, and a cash-up that will read zero for the
       // rest of time. Refused rather than warned: the fix afterwards is a
       // database edit, and the person who did it will not know that is what
@@ -1067,10 +1067,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final remaining = await tx.execute(
           Sql.named(
             'SELECT count(*) FROM pos_tender_types '
-            'WHERE restaurant_id = @r AND is_active AND counts_as_cash '
+            'WHERE business_id = @r AND is_active AND counts_as_cash '
             '  AND id <> @id',
           ),
-          parameters: {'r': restaurantId, 'id': method.id},
+          parameters: {'r': businessId, 'id': method.id},
         );
         if ((remaining.first[0]! as int) == 0) {
           return const AdminResult<TenderMethod>.refused(
@@ -1085,7 +1085,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       // `id` is added only for the UPDATE: `Sql.named` refuses a parameter the
       // statement does not use, and the INSERT does not name one.
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'code': method.code.trim(),
         'nameEn': method.nameEn.trim(),
         'nameAr': method.nameAr?.trim(),
@@ -1105,7 +1105,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final rows = method.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_tender_types (restaurant_id, code, name_en, '
+                'INSERT INTO pos_tender_types (business_id, code, name_en, '
                 '  name_ar, kind, counts_as_cash, opens_drawer, '
                 '  requires_reference, refund_allowed, is_active, sort_order) '
                 'VALUES (@r, @code, @nameEn, @nameAr, @kind, @cash, @drawer, '
@@ -1121,7 +1121,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
                 '  opens_drawer = @drawer, requires_reference = @reference, '
                 '  refund_allowed = @refund, is_active = @active, '
                 '  sort_order = @sort '
-                'WHERE id = @id AND restaurant_id = @r RETURNING $columns',
+                'WHERE id = @id AND business_id = @r RETURNING $columns',
               ),
               parameters: {...parameters, 'id': method.id},
             );
@@ -1225,12 +1225,12 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final rows = await tx.execute(
           Sql.named(
             'INSERT INTO pos_dining_tables '
-            '  (restaurant_id, branch_id, label, seats, area_name) '
+            '  (business_id, branch_id, label, seats, area_name) '
             'VALUES (@r, @branch, @label, @seats, @area) '
             'RETURNING $_tableColumns',
           ),
           parameters: {
-            'r': restaurantId,
+            'r': businessId,
             'branch': branch,
             'label': labels[i],
             'seats': tables[i].seats,
@@ -1281,7 +1281,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
     return database.runTx(config, (tx) async {
       final parameters = {
-        'r': restaurantId,
+        'r': businessId,
         'branch': branch,
         'label': table.label.trim(),
         'seats': table.seats,
@@ -1310,7 +1310,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final rows = await tx.execute(
           Sql.named(
             'INSERT INTO pos_dining_tables '
-            '  (restaurant_id, branch_id, label, seats, area_name) '
+            '  (business_id, branch_id, label, seats, area_name) '
             'VALUES (@r, @branch, @label, @seats, @area) '
             'RETURNING $_tableColumns',
           ),
@@ -1331,9 +1331,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final existing = await tx.execute(
         Sql.named(
           'SELECT $_tableColumns FROM pos_dining_tables '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': table.id, 'r': restaurantId},
+        parameters: {'id': table.id, 'r': businessId},
       );
       if (existing.isEmpty) {
         return const AdminResult<DiningTable>.refused(EditedElsewhere(0));
@@ -1344,7 +1344,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         Sql.named(
           'UPDATE pos_dining_tables SET label = @label, seats = @seats, '
           '  area_name = @area '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_tableColumns',
         ),
         // `branch` is for the INSERT only; the driver refuses a named
@@ -1379,10 +1379,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_dining_tables SET is_active = @active '
-          'WHERE id = @id AND restaurant_id = @r '
+          'WHERE id = @id AND business_id = @r '
           'RETURNING $_tableColumns',
         ),
-        parameters: {'id': table.id, 'r': restaurantId, 'active': restore},
+        parameters: {'id': table.id, 'r': businessId, 'active': restore},
       );
       if (rows.isEmpty) {
         return const AdminResult<DiningTable>.refused(EditedElsewhere(0));
@@ -1472,16 +1472,16 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       Sql.named(
         'SELECT g.id, CASE g.apply_scope '
         "  WHEN 'all' THEN (SELECT count(*) FROM pos_products p "
-        '                    WHERE p.restaurant_id = g.restaurant_id) '
+        '                    WHERE p.business_id = g.business_id) '
         "  WHEN 'categories' THEN (SELECT count(*) FROM pos_products p "
         '    JOIN pos_modifier_group_categories c '
         '      ON c.category_id = p.category_id AND c.group_id = g.id) '
         '  ELSE (SELECT count(*) FROM pos_product_modifier_groups l '
         '         WHERE l.group_id = g.id) END '
         'FROM pos_modifier_groups g '
-        'WHERE g.restaurant_id = @r AND g.is_global',
+        'WHERE g.business_id = @r AND g.is_global',
       ),
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     final reach = {for (final row in counts) row[0]! as int: row[1]! as int};
 
@@ -1571,9 +1571,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       // record: an order line keeps its own summary of what was chosen.
       await tx.execute(
         Sql.named(
-          'DELETE FROM pos_modifier_groups WHERE id = @id AND restaurant_id = @r',
+          'DELETE FROM pos_modifier_groups WHERE id = @id AND business_id = @r',
         ),
-        parameters: {'id': group.id, 'r': restaurantId},
+        parameters: {'id': group.id, 'r': businessId},
       );
       await _audit(
         tx,
@@ -1628,9 +1628,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final product = await tx.execute(
         Sql.named(
           'SELECT category_id FROM pos_products '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': productId, 'r': restaurantId},
+        parameters: {'id': productId, 'r': businessId},
       );
       if (product.isEmpty) {
         return const AdminResult<List<OptionGroupRef>>.refused(
@@ -1687,9 +1687,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           Sql.named(
             'SELECT id, name_en, is_global, apply_scope, is_variant '
             'FROM pos_modifier_groups '
-            'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+            'WHERE business_id = @r AND id = ANY(@ids::bigint[])',
           ),
-          parameters: {'r': restaurantId, 'ids': sharedIds},
+          parameters: {'r': businessId, 'ids': sharedIds},
         );
         final found = {for (final row in rows) row[0]! as int: row};
         for (final id in sharedIds) {
@@ -1729,14 +1729,14 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final reaching = await tx.execute(
         Sql.named(
           'SELECT g.name_en FROM pos_modifier_groups g '
-          'WHERE g.restaurant_id = @r AND g.is_global AND g.is_variant '
+          'WHERE g.business_id = @r AND g.is_global AND g.is_variant '
           "  AND (g.apply_scope = 'all' "
           "       OR (g.apply_scope = 'categories' AND EXISTS ("
           '         SELECT 1 FROM pos_modifier_group_categories c '
           '          WHERE c.group_id = g.id AND c.category_id = @category))) '
           'ORDER BY g.name_en, g.name_ar, g.id',
         ),
-        parameters: {'r': restaurantId, 'category': categoryId},
+        parameters: {'r': businessId, 'category': categoryId},
       );
       sizes.addAll([for (final row in reaching) row[0]! as String]);
       if (sizes.length > 1) {
@@ -1769,12 +1769,12 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final gone = await tx.execute(
           Sql.named(
             'DELETE FROM pos_modifier_groups g '
-            'WHERE g.id = @id AND g.restaurant_id = @r AND NOT g.is_global '
+            'WHERE g.id = @id AND g.business_id = @r AND NOT g.is_global '
             '  AND NOT EXISTS (SELECT 1 FROM pos_product_modifier_groups l '
             '                   WHERE l.group_id = g.id) '
             'RETURNING g.id',
           ),
-          parameters: {'id': dropped.id, 'r': restaurantId},
+          parameters: {'id': dropped.id, 'r': businessId},
         );
         if (gone.isEmpty) continue;
         await _audit(
@@ -1867,7 +1867,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     OptionGroupDraft? before,
   }) async {
     final parameters = <String, Object?>{
-      'r': restaurantId,
+      'r': businessId,
       'nameEn': group.nameEn,
       'nameAr': group.nameAr,
       'displayEn': group.displayNameEn,
@@ -1884,7 +1884,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     if (group.id == 0) {
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_modifier_groups (restaurant_id, name_en, name_ar, '
+          'INSERT INTO pos_modifier_groups (business_id, name_en, name_ar, '
           '  display_name_en, display_name_ar, is_required, max_select, '
           '  min_select, free_options, is_variant, is_global, apply_scope) '
           'VALUES (@r, @nameEn, @nameAr, @displayEn, @displayAr, @required, '
@@ -1924,7 +1924,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           '  max_select = @max, min_select = @min, free_options = @free, '
           '  is_variant = @variant, apply_scope = @scope, '
           '  revision = revision + 1, updated_at = now() '
-          'WHERE id = @id AND restaurant_id = @r',
+          'WHERE id = @id AND business_id = @r',
         ),
         parameters: {...parameters, 'id': id},
       );
@@ -2039,9 +2039,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final locked = await tx.execute(
       Sql.named(
         'SELECT revision, is_global FROM pos_modifier_groups '
-        'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+        'WHERE id = @id AND business_id = @r FOR UPDATE',
       ),
-      parameters: {'id': id, 'r': restaurantId},
+      parameters: {'id': id, 'r': businessId},
     );
     if (locked.isEmpty) return (null, const EditedElsewhere(0));
 
@@ -2080,7 +2080,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     return null;
   }
 
-  /// Refuses a product whose category is another restaurant's, or is archived
+  /// Refuses a product whose category is another business's, or is archived
   /// and the product is new or moving into it (XORD-014). An item that already
   /// sits in a category archived since may still be repriced: refusing that
   /// would lock a price edit behind an unrelated archive.
@@ -2092,9 +2092,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final category = await tx.execute(
       Sql.named(
         'SELECT is_active FROM pos_categories '
-        'WHERE id = @c AND restaurant_id = @r',
+        'WHERE id = @c AND business_id = @r',
       ),
-      parameters: {'c': product.categoryId, 'r': restaurantId},
+      parameters: {'c': product.categoryId, 'r': businessId},
     );
     if (category.isEmpty) return refusal;
     if (category.first[0]! as bool) return null;
@@ -2103,11 +2103,11 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final unchanged = await tx.execute(
       Sql.named(
         'SELECT 1 FROM pos_products '
-        'WHERE id = @id AND restaurant_id = @r AND category_id = @c',
+        'WHERE id = @id AND business_id = @r AND category_id = @c',
       ),
       parameters: {
         'id': product.id,
-        'r': restaurantId,
+        'r': businessId,
         'c': product.categoryId,
       },
     );
@@ -2122,9 +2122,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT count(*) FROM pos_categories '
-        'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+        'WHERE business_id = @r AND id = ANY(@ids::bigint[])',
       ),
-      parameters: {'r': restaurantId, 'ids': categoryIds.toList()},
+      parameters: {'r': businessId, 'ids': categoryIds.toList()},
     );
     return (rows.first[0]! as int) == categoryIds.length
         ? null
@@ -2151,9 +2151,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT p.name_en FROM pos_products p '
-        'WHERE p.restaurant_id = @r AND $reach '
+        'WHERE p.business_id = @r AND $reach '
         '  AND EXISTS (SELECT 1 FROM pos_modifier_groups g '
-        '    WHERE g.restaurant_id = @r AND g.is_variant AND g.id <> @id '
+        '    WHERE g.business_id = @r AND g.is_variant AND g.id <> @id '
         '      AND (EXISTS (SELECT 1 FROM pos_product_modifier_groups l '
         '                    WHERE l.product_id = p.id AND l.group_id = g.id) '
         "           OR (g.is_global AND g.apply_scope = 'all') "
@@ -2164,7 +2164,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         'ORDER BY p.sort_order, p.id LIMIT 1',
       ),
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'id': group.id,
         if (group.scope == OptionGroupScope.categories)
           'cats': group.categoryIds.toList(),
@@ -2180,10 +2180,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         'SELECT l.group_id, g.is_global FROM pos_product_modifier_groups l '
         'JOIN pos_modifier_groups g ON g.id = l.group_id '
         'JOIN pos_products p ON p.id = l.product_id '
-        'WHERE l.product_id = @product AND p.restaurant_id = @r '
+        'WHERE l.product_id = @product AND p.business_id = @r '
         'ORDER BY l.sort_order, l.group_id',
       ),
-      parameters: {'product': productId, 'r': restaurantId},
+      parameters: {'product': productId, 'r': businessId},
     );
     final ownIds = [
       for (final row in links)
@@ -2215,7 +2215,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       '            FROM pos_modifier_group_categories c '
       "           WHERE c.group_id = g.id), '{}')";
 
-  /// Groups of this restaurant matching [where], with their options, as the
+  /// Groups of this business matching [where], with their options, as the
   /// editor holds them. [where] is always a constant in this file.
   Future<List<_Stored>> _groups(
     TxSession tx, {
@@ -2226,9 +2226,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final rows = await tx.execute(
       Sql.named(
         'SELECT $_groupColumns FROM pos_modifier_groups g '
-        'WHERE g.restaurant_id = @r AND ($where) ORDER BY $orderBy',
+        'WHERE g.business_id = @r AND ($where) ORDER BY $orderBy',
       ),
-      parameters: {...parameters, 'r': restaurantId},
+      parameters: {...parameters, 'r': businessId},
     );
     if (rows.isEmpty) return const [];
 
@@ -2339,7 +2339,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   // ── plumbing ───────────────────────────────────────────────────────────────
 
   Map<String, Object?> _categoryParams(Category category) => {
-    'r': restaurantId,
+    'r': businessId,
     'nameEn': category.nameEn.trim(),
     'nameAr': _orNull(category.nameAr),
     'slug': _orNull(category.slug),
@@ -2347,7 +2347,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   };
 
   Map<String, Object?> _productParams(Product product) => {
-    'r': restaurantId,
+    'r': businessId,
     'category': product.categoryId,
     'nameEn': product.nameEn.trim(),
     'nameAr': _orNull(product.nameAr),
@@ -2362,7 +2362,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     // **Written for the first time here.** The column has existed since Wave M
     // and the catalogue query has read it since — `COALESCE(p.tax_group_id,
     // c.tax_group_id)` — but no statement in the app ever set it, so a
-    // restaurant could define a zero-rated group and had no way to put anything
+    // business could define a zero-rated group and had no way to put anything
     // on it. Null means "whatever the category says, or the fallback rate".
     'taxGroup': product.taxGroupId,
     // Written with the rest, so saving a menu item never quietly stops it
@@ -2423,10 +2423,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       Sql.named(
         'SELECT id, category_id, name_en, name_ar, price_minor, '
         '       tax_group_id, sku, is_available '
-        'FROM pos_combos WHERE restaurant_id = @r '
+        'FROM pos_combos WHERE business_id = @r '
         'ORDER BY sort_order, id',
       ),
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     if (comboRows.isEmpty) return const <ComboDraft>[];
 
@@ -2439,9 +2439,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         '       g.max_select '
         'FROM pos_combo_groups g '
         'JOIN pos_combos c ON c.id = g.combo_id '
-        'WHERE c.restaurant_id = @r ORDER BY g.sort_order, g.id',
+        'WHERE c.business_id = @r ORDER BY g.sort_order, g.id',
       ),
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     final optionRows = await tx.execute(
       Sql.named(
@@ -2449,9 +2449,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         'FROM pos_combo_options o '
         'JOIN pos_combo_groups g ON g.id = o.combo_group_id '
         'JOIN pos_combos c ON c.id = g.combo_id '
-        'WHERE c.restaurant_id = @r ORDER BY o.sort_order, o.id',
+        'WHERE c.business_id = @r ORDER BY o.sort_order, o.id',
       ),
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
     final optionsByGroup = <int, List<ComboOptionDraft>>{};
@@ -2518,18 +2518,18 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
       final category = await tx.execute(
         Sql.named(
-          'SELECT 1 FROM pos_categories WHERE id = @id AND restaurant_id = @r',
+          'SELECT 1 FROM pos_categories WHERE id = @id AND business_id = @r',
         ),
-        parameters: {'id': combo.categoryId, 'r': restaurantId},
+        parameters: {'id': combo.categoryId, 'r': businessId},
       );
       if (category.isEmpty) return refuse(ComboProblem.categoryUnknown);
 
       if (combo.taxGroupId != null) {
         final rate = await tx.execute(
           Sql.named(
-            'SELECT 1 FROM pos_tax_groups WHERE id = @id AND restaurant_id = @r',
+            'SELECT 1 FROM pos_tax_groups WHERE id = @id AND business_id = @r',
           ),
-          parameters: {'id': combo.taxGroupId, 'r': restaurantId},
+          parameters: {'id': combo.taxGroupId, 'r': businessId},
         );
         if (rate.isEmpty) return refuse(ComboProblem.taxGroupUnknown);
       }
@@ -2541,9 +2541,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       final owned = await tx.execute(
         Sql.named(
           'SELECT id FROM pos_products '
-          'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+          'WHERE business_id = @r AND id = ANY(@ids::bigint[])',
         ),
-        parameters: {'r': restaurantId, 'ids': productIds},
+        parameters: {'r': businessId, 'ids': productIds},
       );
       if (owned.length != productIds.length) {
         return refuse(ComboProblem.productUnknown);
@@ -2553,15 +2553,15 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final clash = await tx.execute(
           Sql.named(
             'SELECT 1 FROM pos_combos '
-            'WHERE restaurant_id = @r AND sku = @sku AND id <> @id',
+            'WHERE business_id = @r AND sku = @sku AND id <> @id',
           ),
-          parameters: {'r': restaurantId, 'sku': skuOrNull, 'id': combo.id},
+          parameters: {'r': businessId, 'sku': skuOrNull, 'id': combo.id},
         );
         if (clash.isNotEmpty) return refuse(ComboProblem.skuTaken);
       }
 
       final fields = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'category': combo.categoryId,
         'nameEn': combo.nameEn.trim(),
         'nameAr': combo.nameAr?.trim().isEmpty ?? true
@@ -2578,13 +2578,13 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       if (combo.id == 0) {
         final rows = await tx.execute(
           Sql.named(
-            'INSERT INTO pos_combos (restaurant_id, category_id, name_en, '
+            'INSERT INTO pos_combos (business_id, category_id, name_en, '
             '  name_ar, price_minor, tax_group_id, sku, is_available, '
             '  sort_order) '
             'VALUES (@r, @category, @nameEn, @nameAr, @price, @taxGroup, '
             '  @sku, @available, '
             '  (SELECT coalesce(max(sort_order), 0) + 1 FROM pos_combos '
-            '    WHERE restaurant_id = @r)) '
+            '    WHERE business_id = @r)) '
             'RETURNING id',
           ),
           parameters: fields,
@@ -2594,9 +2594,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         final held = await tx.execute(
           Sql.named(
             'SELECT price_minor FROM pos_combos '
-            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @id AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'id': combo.id, 'r': restaurantId},
+          parameters: {'id': combo.id, 'r': businessId},
         );
         if (held.isEmpty) {
           return const AdminResult<ComboDraft>.refused(EditedElsewhere(0));
@@ -2607,7 +2607,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             'UPDATE pos_combos SET category_id = @category, name_en = @nameEn, '
             '  name_ar = @nameAr, price_minor = @price, '
             '  tax_group_id = @taxGroup, sku = @sku, is_available = @available '
-            'WHERE id = @id AND restaurant_id = @r',
+            'WHERE id = @id AND business_id = @r',
           ),
           parameters: {...fields, 'id': combo.id},
         );
@@ -2728,14 +2728,14 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     Map<String, Object?>? after,
   }) => tx.execute(
     Sql.named(
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, '
+      'INSERT INTO pos_audit_events (business_id, branch_id, terminal_id, '
       '  actor_user_id, actor_name, action, entity_type, entity_id, '
       '  before_value, after_value) '
       'VALUES (@r, @branch, @terminal, @actor, @actorName, @action, '
       '        @entityType, @entityId, @before::jsonb, @after::jsonb)',
     ),
     parameters: {
-      'r': restaurantId,
+      'r': businessId,
       'branch': branchId,
       'terminal': terminalId,
       'actor': by.id,

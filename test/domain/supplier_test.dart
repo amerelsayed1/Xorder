@@ -2,11 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/supplier.dart';
 
-/// Who the restaurant buys from, and what it owes them.
+/// Who the business buys from, and what it owes them.
 void main() {
   group('validation is short on purpose', () {
     test('a name is all it takes', () {
-      // A restaurant recording a delivery at seven in the morning needs to
+      // A business recording a delivery at seven in the morning needs to
       // write down who it came from, not fill in a form.
       const supplier = Supplier(id: 0, nameEn: 'Cairo Poultry');
       expect(supplier.isValid, isTrue);
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('overdue is a share of it, not a separate debt', () {
-      // A restaurant does not ask "what do I owe", it asks "what do I owe
+      // A business does not ask "what do I owe", it asks "what do I owe
       // now" — so the two travel together rather than one screen showing each.
       final b = balance(invoiced: 100000, paid: 20000, overdue: 50000);
       expect(b.outstanding.minor, 80000);

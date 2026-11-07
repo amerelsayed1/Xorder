@@ -34,7 +34,7 @@ import 'admin_messages.dart';
 /// e-wallet balances and settlements (no accounting model), rent and salaries
 /// (no expense entity — Wave Q) and the account column (no chart of accounts)
 /// have no source and are cut, not stubbed: a tile reading zero would say the
-/// restaurant made nothing, which is a claim, not an absence.
+/// business made nothing, which is a claim, not an absence.
 
 String financePeriodLabel(AppStrings s, FinancePeriod period) =>
     switch (period) {
@@ -1020,7 +1020,7 @@ class _Note extends StatelessWidget {
 // ── Profit & loss ────────────────────────────────────────────────────────────
 
 /// Finance › Profit & loss: the period as one column — sales, the tax that was
-/// never the restaurant's, revenue, cost of goods, gross profit, what was paid
+/// never the business's, revenue, cost of goods, gross profit, what was paid
 /// from the drawers, and the result.
 ///
 /// **Every line is a figure another screen already shows** (see

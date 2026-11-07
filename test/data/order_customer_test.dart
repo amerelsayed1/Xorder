@@ -27,7 +27,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int mona;
   late int karim;
@@ -44,9 +44,9 @@ void main() {
     String phone, {
     String? email,
   }) => scalar(
-    'INSERT INTO pos_customers (restaurant_id, client_transaction_id, name, '
+    'INSERT INTO pos_customers (business_id, client_transaction_id, name, '
     '  phone, email) VALUES (@r, gen_random_uuid(), @n, @p, @e) RETURNING id',
-    {'r': restaurantId, 'n': name, 'p': phone, 'e': email},
+    {'r': businessId, 'n': name, 'p': phone, 'e': email},
   );
 
   Future<int> order({
@@ -56,7 +56,7 @@ void main() {
   }) async {
     invoice++;
     return scalar(
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, customer_id) '
@@ -64,7 +64,7 @@ void main() {
       '  @total, 0, 0, 0, @total, @at::timestamptz, \'PAID\', @c) '
       'RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': terminal,
         'inv': invoiceNumber,
@@ -90,22 +90,22 @@ void main() {
       'pos_invoice_sequences RESTART IDENTITY CASCADE',
     );
     await db.query(pg.config, 'DELETE FROM pos_combos');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     invoice = 0;
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('oc2', 'OC2') RETURNING id",
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('oc2', 'OC2') RETURNING id",
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     await db.query(
       pg.config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+      'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
       "VALUES (@id::uuid, @r, @b, 'POS-01')",
-      parameters: {'id': terminal, 'r': restaurantId, 'b': branchId},
+      parameters: {'id': terminal, 'r': businessId, 'b': branchId},
     );
 
     mona = await customer('Mona Fathy', '01012345678', email: 'mona@example.com');
@@ -126,7 +126,7 @@ void main() {
     history = PostgresOrderHistoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });

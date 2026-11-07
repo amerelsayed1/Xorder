@@ -43,7 +43,7 @@ void main() {
     });
 
     test('02:00 is still last evening: the day rolls over at 06:00', () async {
-      // A restaurant that closes at 2 a.m. takes Saturday-morning money that
+      // A business that closes at 2 a.m. takes Saturday-morning money that
       // belongs to Friday's takings.
       final days = FakeBusinessDays();
       final result = await ensureBusinessDay(

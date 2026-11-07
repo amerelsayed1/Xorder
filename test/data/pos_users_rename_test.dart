@@ -22,7 +22,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int userId;
 
   setUp(() async {
@@ -36,15 +36,16 @@ void main() {
       migrations: posMigrations.where((m) => m.version < 62).toList(),
     ).migrate(pg.config);
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
+      // Version 61's names: this runs before migrations 62 and 64.
       "INSERT INTO pos_restaurants (slug, name) VALUES ('ren', 'Rename') RETURNING id",
     )).first[0]! as int;
     userId = (await db.query(
       pg.config,
       'INSERT INTO pos_staff (restaurant_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, 'Hana', 'hana', 's', 'h') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     await db.query(
       pg.config,
@@ -57,7 +58,7 @@ void main() {
       'INSERT INTO pos_audit_events (restaurant_id, actor_staff_id, actor_name, '
       "                              action, entity_type) "
       "VALUES (@r, @u, 'Hana', 'x.changed', 'x')",
-      parameters: {'r': restaurantId, 'u': userId},
+      parameters: {'r': businessId, 'u': userId},
     );
   });
 
@@ -76,8 +77,8 @@ void main() {
 
     final users = await db.query(
       pg.config,
-      'SELECT id, name FROM pos_users WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT id, name FROM pos_users WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
     expect(users.single[0], userId);
     expect(users.single[1], 'Hana');
@@ -91,17 +92,17 @@ void main() {
 
     final audit = await db.query(
       pg.config,
-      'SELECT actor_user_id FROM pos_audit_events WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT actor_user_id FROM pos_audit_events WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
     expect(audit.single[0], userId);
 
     // The id sequence moved with the table, still pointing past the old rows.
     final next = await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (business_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, 'Rana', 'rana', 's', 'h') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     expect(next.single[0], greaterThan(userId));
   });

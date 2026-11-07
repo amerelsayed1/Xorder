@@ -9,7 +9,7 @@ import 'content_language_ui.dart';
 import '../../../domain/models/supplier.dart';
 import '../../../core/text/digits.dart';
 
-/// Recording who the restaurant buys from.
+/// Recording who the business buys from.
 ///
 /// **One required field.** A delivery arrives at seven in the morning and
 /// somebody has to write down who brought it; everything else can be filled in
@@ -24,7 +24,7 @@ class SupplierDialog extends StatefulWidget {
 
   final Supplier? supplier;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<Supplier?> show(

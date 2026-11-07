@@ -27,7 +27,7 @@ import 'receipt_data.dart';
 /// How a centred line is set. Not a font: the renderers pick the actual sizes
 /// for the paper, from `SlipMetrics`.
 enum SlipEmphasis {
-  /// The restaurant's name. Largest words on the paper.
+  /// The business's name. Largest words on the paper.
   title,
 
   /// Ordinary lines — the address, a note.
@@ -69,7 +69,7 @@ class SlipCentre extends SlipBlock {
   final bool numeric;
 }
 
-/// The restaurant's logo, as the till holds it (a PNG or JPEG), centred at the
+/// The business's logo, as the till holds it (a PNG or JPEG), centred at the
 /// top of the slip.
 ///
 /// The bytes, not a decoded picture: a document is data that tests read, and
@@ -215,7 +215,7 @@ class ReceiptDocument {
   /// Build the slip from what was sold.
   ///
   /// The same arguments `ReceiptPaper` takes, and in the same order, so the
-  /// call sites can hand both the identical values. [logo] is the restaurant's
+  /// call sites can hand both the identical values. [logo] is the business's
   /// picture, or null for none. [tenderMethods] is the
   /// till's configured list, used only to put a tender's Arabic name on an
   /// Arabic slip.
@@ -233,7 +233,7 @@ class ReceiptDocument {
 
     // ── Header ────────────────────────────────────────────────────────────
     //
-    // The stamps come before the restaurant's name, not after the total:
+    // The stamps come before the business's name, not after the total:
     // somebody handed a slip has to know what it is before they read what is
     // on it.
     if (data.isReprint) blocks.add(SlipStamp(strings.receiptReprintMark));
@@ -245,7 +245,7 @@ class ReceiptDocument {
       );
     }
 
-    // The restaurant's own logo, above its name, when it has one and the till
+    // The business's own logo, above its name, when it has one and the till
     // is set to print it (the caller passes null otherwise). Nothing of
     // XOrder's goes up here: the mark is the footer's, at the bottom.
     if (logo != null && logo.isNotEmpty) blocks.add(SlipLogo(logo));
@@ -493,13 +493,13 @@ class ReceiptDocument {
       blocks.add(const SlipGap());
     }
 
-    // The restaurant's own words — a wifi password, an offer, an opening time
+    // The business's own words — a wifi password, an offer, an opening time
     // — before the boilerplate thank-you, which reads as the sign-off.
     final footer = (profile.footerNote ?? '').trim();
     if (footer.isNotEmpty) blocks.add(SlipCentre(footer));
 
     // One thank-you (owner, 26 Oct 2026): it was a thank-you, a second line
-    // saying the same and a heart. The restaurant's own words stay above it.
+    // saying the same and a heart. The business's own words stay above it.
     blocks.add(
       SlipCentre(strings.receiptThanks, emphasis: SlipEmphasis.strong),
     );

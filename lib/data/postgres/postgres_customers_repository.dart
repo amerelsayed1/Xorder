@@ -9,7 +9,7 @@ import 'pos_database.dart';
 ///
 /// **Matching happens in SQL, not in Dart.** The obvious implementation — read
 /// the directory and filter it with [PosCustomer.matches] — is fine for the
-/// hundred customers a new restaurant has and wrong for the twenty thousand an
+/// hundred customers a new business has and wrong for the twenty thousand an
 /// old one has, on a machine that is also running a sale. The model's rule
 /// still exists and is still tested; it is what the payment screen filters an
 /// already-loaded page with as somebody types, so the two agree on what a
@@ -18,7 +18,7 @@ class PostgresCustomersRepository implements CustomersRepository {
   const PostgresCustomersRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
     this.branchId,
     this.syncsToPlatform = false,
     this.onQueued,
@@ -29,7 +29,7 @@ class PostgresCustomersRepository implements CustomersRepository {
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   /// The branch an outbox row is stamped with. Null on a till that is not
   /// configured to sync.
@@ -52,12 +52,12 @@ class PostgresCustomersRepository implements CustomersRepository {
     final rows = await _db.query(
       config,
       'SELECT id, platform_id, name, phone, email, address, note '
-      'FROM pos_customers WHERE restaurant_id = @r '
+      'FROM pos_customers WHERE business_id = @r '
       '${trimmed.isEmpty ? '' : 'AND (lower(name) LIKE @name '
           '${digits.isEmpty ? '' : 'OR phone LIKE @phone'}) '}'
       'ORDER BY updated_at DESC, id DESC LIMIT @limit',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'limit': limit,
         if (trimmed.isNotEmpty) 'name': '%${trimmed.toLowerCase()}%',
         if (trimmed.isNotEmpty && digits.isNotEmpty) 'phone': '%$digits%',
@@ -100,10 +100,10 @@ class PostgresCustomersRepository implements CustomersRepository {
     final rows = await _db.query(
       config,
       '''
-      INSERT INTO pos_customers (restaurant_id, client_transaction_id, name,
+      INSERT INTO pos_customers (business_id, client_transaction_id, name,
                                  phone, email, address, note)
       VALUES (@r, gen_random_uuid(), @name, @phone, @email, @address, @note)
-      ON CONFLICT (restaurant_id, phone) DO UPDATE SET
+      ON CONFLICT (business_id, phone) DO UPDATE SET
         name       = EXCLUDED.name,
         email      = COALESCE(EXCLUDED.email, pos_customers.email),
         address    = COALESCE(EXCLUDED.address, pos_customers.address),
@@ -112,7 +112,7 @@ class PostgresCustomersRepository implements CustomersRepository {
       RETURNING id, platform_id, name, phone, email, address, note
       ''',
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'name': name.trim(),
         'phone': normalised,
         'email': _orNull(email),
@@ -145,13 +145,13 @@ class PostgresCustomersRepository implements CustomersRepository {
       config,
       '''
       INSERT INTO pos_sync_outbox
-        (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
-      SELECT @restaurant, @branch, 'customer', id, client_transaction_id
+        (business_id, branch_id, event_type, source_id, client_transaction_id)
+      SELECT @business, @branch, 'customer', id, client_transaction_id
         FROM pos_customers WHERE id = @id
-      ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+      ON CONFLICT (business_id, client_transaction_id) DO NOTHING
       ''',
       parameters: {
-        'restaurant': restaurantId,
+        'business': businessId,
         'branch': branchId,
         'id': customerId,
       },

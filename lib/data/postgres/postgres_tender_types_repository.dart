@@ -12,12 +12,12 @@ class PostgresTenderTypesRepository implements TenderTypesRepository {
   const PostgresTenderTypesRepository({
     required PosDatabase database,
     required this.config,
-    required this.restaurantId,
+    required this.businessId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
-  final int restaurantId;
+  final int businessId;
 
   @override
   Future<List<TenderMethod>> all({bool includeInactive = false}) async {
@@ -25,13 +25,13 @@ class PostgresTenderTypesRepository implements TenderTypesRepository {
       config,
       'SELECT id, code, name_en, name_ar, kind, counts_as_cash, opens_drawer, '
       '       requires_reference, refund_allowed, is_active, sort_order '
-      'FROM pos_tender_types WHERE restaurant_id = @r '
+      'FROM pos_tender_types WHERE business_id = @r '
       '${includeInactive ? '' : 'AND is_active '}'
       'ORDER BY sort_order, id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
 
-    // A restaurant with no rows is one whose migration has not run, not one
+    // A business with no rows is one whose migration has not run, not one
     // that takes no money. Falling back to the seed keeps the till selling —
     // and the seed is what the migration would have written anyway.
     if (rows.isEmpty) return TenderMethod.seeded;

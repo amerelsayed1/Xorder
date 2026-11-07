@@ -25,7 +25,7 @@ void main() {
 
   late PgFixture pg;
   late PostgresSiteLicence table;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
 
   setUpAll(() async {
@@ -38,17 +38,17 @@ void main() {
     // Cascades to the licence row and the terminals.
     await pg.database.query(
       pg.config,
-      "DELETE FROM pos_restaurants WHERE slug = 'site-licence-test'",
+      "DELETE FROM pos_businesses WHERE slug = 'site-licence-test'",
     );
     final bootstrap = LocalBootstrap(pg.database);
-    restaurantId = await bootstrap.seedRestaurant(
+    businessId = await bootstrap.seedBusiness(
       pg.config,
       slug: 'site-licence-test',
       name: 'Site Licence Test',
     );
     branchId = await bootstrap.seedBranch(
       pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       name: 'Main',
       code: 'MAIN',
     );
@@ -58,7 +58,7 @@ void main() {
 
   SiteLicenceRow licence(String payload, {String mode = 'offline'}) =>
       SiteLicenceRow(
-        restaurantId: restaurantId,
+        businessId: businessId,
         payload: payload,
         signature: 'sig-$payload',
         keyId: 'v1',
@@ -67,31 +67,31 @@ void main() {
 
   Future<void> addTerminal(String name) => pg.database.query(
     pg.config,
-    'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
-    'VALUES (@id, @restaurant, @branch, @name)',
+    'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
+    'VALUES (@id, @business, @branch, @name)',
     parameters: {
       'id': const Uuid().v4(),
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'name': name,
     },
   );
 
   test('nothing published reads as nothing, not as an error', () async {
-    expect(await table.read(restaurantId: restaurantId), isNull);
+    expect(await table.read(businessId: businessId), isNull);
   });
 
   test('a published licence reads back whole, found with or without the '
-      'restaurant', () async {
+      'business', () async {
     await table.publish(licence('first'));
 
-    final narrowed = await table.read(restaurantId: restaurantId);
+    final narrowed = await table.read(businessId: businessId);
     expect(narrowed?.payload, 'first');
     expect(narrowed?.signature, 'sig-first');
     expect(narrowed?.keyId, 'v1');
     expect(narrowed?.mode, 'offline');
-    // A tablet being set up does not know its restaurant yet.
-    expect((await table.read())?.restaurantId, restaurantId);
+    // A tablet being set up does not know its business yet.
+    expect((await table.read())?.businessId, businessId);
   });
 
   test('a renewal replaces the row rather than adding a second', () async {
@@ -100,11 +100,11 @@ void main() {
 
     final rows = await pg.database.query(
       pg.config,
-      'SELECT count(*) FROM pos_site_licence WHERE restaurant_id = @r',
-      parameters: {'r': restaurantId},
+      'SELECT count(*) FROM pos_site_licence WHERE business_id = @r',
+      parameters: {'r': businessId},
     );
     expect(rows.first[0], 1);
-    final read = await table.read(restaurantId: restaurantId);
+    final read = await table.read(businessId: businessId);
     expect(read?.payload, 'renewed');
     expect(read?.mode, 'cloud');
   });
@@ -114,6 +114,6 @@ void main() {
     await addTerminal('Counter 1');
     await addTerminal('Tablet 1');
 
-    expect((await table.read(restaurantId: restaurantId))?.terminalCount, 2);
+    expect((await table.read(businessId: businessId))?.terminalCount, 2);
   });
 }

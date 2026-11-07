@@ -418,7 +418,7 @@ void main() {
         ),
       );
       // Not 45.00 — a second override that quoted the first one's price as the
-      // list price would understate what the restaurant gave away.
+      // list price would understate what the business gave away.
       expect(twice.lines.single.priceOverride!.original.minor, 5000);
     });
   });

@@ -28,7 +28,7 @@ class PlatformLicenceApi {
            client ??
            posHttpClient(
              BaseOptions(
-               // Generous, but finite. An installer standing in a restaurant
+               // Generous, but finite. An installer standing in a business
                // watching a spinner needs to be told to import the file instead,
                // not to wait indefinitely for a platform that is down.
                connectTimeout: const Duration(seconds: 10),
@@ -103,7 +103,7 @@ class PlatformLicenceApi {
           // Omitted entirely rather than sent as null when this terminal has
           // no tenant yet. When it DOES have one the platform still checks it,
           // so an installer activating against the wrong customer's key is
-          // told so instead of quietly licensing the wrong restaurant.
+          // told so instead of quietly licensing the wrong business.
           if (slug != null && slug.isNotEmpty) 'tenant_slug': slug,
         },
         options: Options(headers: const {'Accept': 'application/json'}),

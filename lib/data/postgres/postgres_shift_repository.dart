@@ -28,7 +28,7 @@ class PostgresShiftRepository implements ShiftRepository {
   const PostgresShiftRepository({
     required PosDatabase database,
     required this._config,
-    required this._restaurantId,
+    required this._businessId,
     required this._branchId,
     required this._terminalId,
     this.onQueued,
@@ -40,7 +40,7 @@ class PostgresShiftRepository implements ShiftRepository {
 
   final PosDatabase _db;
   final DeploymentConfig _config;
-  final int _restaurantId;
+  final int _businessId;
   final int _branchId;
   final String _terminalId;
 
@@ -82,13 +82,13 @@ class PostgresShiftRepository implements ShiftRepository {
       final rows = await tx.execute(
         Sql.named(
           'INSERT INTO pos_shifts '
-          '  (restaurant_id, branch_id, terminal_id, opened_by, opening_float_minor, '
+          '  (business_id, branch_id, terminal_id, opened_by, opening_float_minor, '
           '   client_transaction_id) '
-          'VALUES (@restaurant, @branch, @terminal, @staff, @float, @client) '
+          'VALUES (@business, @branch, @terminal, @staff, @float, @client) '
           'RETURNING id, opened_at',
         ),
         parameters: {
-          'restaurant': _restaurantId,
+          'business': _businessId,
           'branch': _branchId,
           'terminal': _terminalId,
           'staff': by.id,
@@ -135,9 +135,9 @@ class PostgresShiftRepository implements ShiftRepository {
       'SELECT opened_by, max(opened_at), '
       '       count(*) FILTER (WHERE closed_at IS NULL) '
       'FROM pos_shifts '
-      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+      'WHERE business_id = @business AND branch_id = @branch '
       'GROUP BY opened_by',
-      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+      parameters: {'business': _businessId, 'branch': _branchId},
     );
 
     var open = 0;
@@ -165,11 +165,11 @@ class PostgresShiftRepository implements ShiftRepository {
           FROM pos_shifts s
           JOIN pos_users st ON st.id = s.opened_by
           LEFT JOIN pos_terminals term ON term.id = s.terminal_id
-         WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
+         WHERE s.business_id = @business AND s.branch_id = @branch
            AND s.closed_at IS NULL
          ORDER BY term.name NULLS LAST, s.opened_at, s.id
       '''),
-      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+      parameters: {'business': _businessId, 'branch': _branchId},
     );
 
     // **Each drawer by `_summarise`, the function `close` stores the
@@ -220,12 +220,12 @@ class PostgresShiftRepository implements ShiftRepository {
         );
         // An open shift whatever the dates — see [ShiftHistoryQuery].
         final dated = [
-          's.restaurant_id = @restaurant',
+          's.business_id = @business',
           's.branch_id = @branch',
           '(s.closed_at IS NULL OR (${range.where.join(' AND ')}))',
         ];
         final parameters = <String, Object?>{
-          'restaurant': _restaurantId,
+          'business': _businessId,
           'branch': _branchId,
           ...range.parameters,
         };
@@ -275,7 +275,7 @@ class PostgresShiftRepository implements ShiftRepository {
               LEFT JOIN LATERAL (
                 SELECT a.approved_by_name
                   FROM pos_audit_events a
-                 WHERE a.restaurant_id = s.restaurant_id
+                 WHERE a.business_id = s.business_id
                    AND a.entity_type = @entity
                    AND a.entity_id = s.id::text
                    AND a.action = @closed
@@ -555,7 +555,7 @@ class PostgresShiftRepository implements ShiftRepository {
             // by what the method is rather than by what it is called.
             typeId: row[3] as int?,
             // From the payment row, not from today's tender configuration. A
-            // restaurant that changes what counts as cash must not change what
+            // business that changes what counts as cash must not change what
             // a shift closed last week said the drawer should have held.
             countsAsCash: (row[4] as bool?) ?? false,
           ),
@@ -581,12 +581,12 @@ class PostgresShiftRepository implements ShiftRepository {
   }) => tx.execute(
     Sql.named('''
       INSERT INTO pos_sync_outbox
-        (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
-      VALUES (@restaurant, @branch, @type, @source, @client)
-      ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+        (business_id, branch_id, event_type, source_id, client_transaction_id)
+      VALUES (@business, @branch, @type, @source, @client)
+      ON CONFLICT (business_id, client_transaction_id) DO NOTHING
     '''),
     parameters: {
-      'restaurant': _restaurantId,
+      'business': _businessId,
       'branch': _branchId,
       'type': eventType,
       'source': sourceId,

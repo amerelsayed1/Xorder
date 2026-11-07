@@ -791,7 +791,7 @@ class _ProductDialog extends StatefulWidget {
   /// The units in use, for counting it in when it is tracked.
   final List<PosUnit> units;
 
-  /// The restaurant's named rates, for the picker. Empty on a restaurant that
+  /// The business's named rates, for the picker. Empty on a business that
   /// has configured none, in which case the picker is absent rather than
   /// offering a single choice that means nothing.
   final List<TaxGroup> taxGroups;
@@ -1146,7 +1146,7 @@ class _ProductDialogState extends State<_ProductDialog> {
           optional: true,
         ),
 
-        // Counted in stock — the bottled water a restaurant also sells. Its
+        // Counted in stock — the bottled water a business also sells. Its
         // purchases and sales then move a number somebody can check.
         const SizedBox(height: PosSpace.md),
         SwitchListTile(
@@ -1186,7 +1186,7 @@ class _ProductDialogState extends State<_ProductDialog> {
 
         // **The picker that made the named rates usable.** `tax_group_id` has
         // been on this table since Wave M and read by the catalogue query ever
-        // since; nothing wrote it, so a restaurant could define a zero-rated
+        // since; nothing wrote it, so a business could define a zero-rated
         // group and had no way to put a bottle of water on it.
         //
         // Absent where no groups are configured: a picker whose only option is

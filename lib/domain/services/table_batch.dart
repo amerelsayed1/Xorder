@@ -41,7 +41,7 @@ class TableBatchPlan {
 }
 
 abstract final class TableBatch {
-  /// One batch is at most this many tables. A restaurant with more adds a
+  /// One batch is at most this many tables. A business with more adds a
   /// second batch; a typo of an extra zero is caught here rather than saved.
   static const maxQuantity = 100;
 

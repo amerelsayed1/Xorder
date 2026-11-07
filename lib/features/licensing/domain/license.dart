@@ -175,7 +175,7 @@ class LicenseClaims {
   /// [LicenceFileDamaged] — a refusal to trade. These two claims are exactly
   /// the ones a *newer* issuer is most likely to send in a shape this build did
   /// not expect, so a wrong type here has to degrade to the default rather than
-  /// take a restaurant offline. Accepts a numeric string because JSON emitters
+  /// take a business offline. Accepts a numeric string because JSON emitters
   /// disagree about large integers.
   static int? _int(Object? value) => switch (value) {
     final num n => n.toInt(),
@@ -276,7 +276,7 @@ final class LicenceExpired extends LicenceNotice {
   const LicenceExpired();
 }
 
-/// Issued to one restaurant, installed on a terminal set up for another. Names
+/// Issued to one business, installed on a terminal set up for another. Names
 /// both sides, because an installer holding the wrong file needs to know which
 /// file they should have been holding.
 final class LicenceTenantMismatch extends LicenceNotice {
@@ -394,7 +394,7 @@ final class LicenceUnconfirmed extends LicenceNotice {
   final DateTime lastConfirmed;
 }
 
-/// The platform answered, and it has no live licence for this restaurant.
+/// The platform answered, and it has no live licence for this business.
 final class LicenceNotIssued extends LicenceNotice {
   const LicenceNotIssued();
 }

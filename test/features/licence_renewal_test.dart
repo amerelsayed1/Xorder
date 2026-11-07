@@ -45,7 +45,7 @@ Future<ProviderContainer> _pump(
   addTearDown(container.dispose);
   container.read(deploymentProvider.notifier).apply(deployment);
   // English, asked for rather than assumed: the product's default is Arabic —
-  // its restaurants are in Egypt — and these tests read English copy.
+  // its businesses are in Egypt — and these tests read English copy.
   container.read(localeProvider.notifier).apply('en');
 
   await tester.pumpWidget(

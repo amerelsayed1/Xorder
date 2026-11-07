@@ -46,7 +46,7 @@ abstract interface class LicenceService {
 /// null, which the wizard then reported as an unrecognised key. Unreachable
 /// platform, wrong platform, throttled, server error and genuinely-unknown key
 /// are five different problems with five different fixes, and an installer
-/// standing in a restaurant cannot guess which one they have from one sentence
+/// standing in a business cannot guess which one they have from one sentence
 /// that names only the least likely of them.
 class LicenceFetch {
   const LicenceFetch.found(this.file) : notice = null;
@@ -135,7 +135,7 @@ extension LicenceActivation on LicenceService {
   /// key on — an owner seeing what a key covers, an installer who got no
   /// further than the database password — and the file outlived the abandoned
   /// wizard. The next person through was then judged against a licence for a
-  /// restaurant that terminal had never been set up for. The file is carried on
+  /// business that terminal had never been set up for. The file is carried on
   /// [LicenceActivationResult.file] instead, and written when setup finishes.
   Future<LicenceActivationResult> activate({
     required DeploymentConfig deployment,
@@ -301,7 +301,7 @@ class FakeLicenceService implements LicenceService {
       maxTerminals: 4,
       features: const {'pos', 'dine_in', 'delivery'},
       modes: DeploymentMode.values.toSet(),
-      plan: 'Restaurant Pro',
+      plan: 'Business Pro',
     );
 
     return LicenceFetch.found(

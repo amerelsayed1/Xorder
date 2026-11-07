@@ -18,7 +18,7 @@ import 'pg_fixture.dart';
 /// | Mona (010…) | A 20,000, B 10,000 (7,500 of it refunded) | a voided order, an open one |
 /// | Karim (011…) | C 5,000 at this branch | D 99,000 at ANOTHER branch |
 /// | Nour (012…) | — never ordered | |
-/// | Layla | at another restaurant | |
+/// | Layla | at another business | |
 void main() {
   if (PgFixture.host == null) {
     test('customer directory (skipped — set POS_PG_HOST to run)', () {}, skip: true);
@@ -30,7 +30,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int cashId;
@@ -47,15 +47,15 @@ void main() {
   Future<int> customer(
     String name,
     String phone, {
-    int? restaurant,
+    int? business,
     String? email,
     String? address,
   }) => scalar(
-    'INSERT INTO pos_customers (restaurant_id, client_transaction_id, name, '
+    'INSERT INTO pos_customers (business_id, client_transaction_id, name, '
     '  phone, email, address) '
     'VALUES (@r, gen_random_uuid(), @n, @p, @e, @a) RETURNING id',
     {
-      'r': restaurant ?? restaurantId,
+      'r': business ?? businessId,
       'n': name,
       'p': phone,
       'e': email,
@@ -73,7 +73,7 @@ void main() {
   }) async {
     invoice++;
     return scalar(
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, customer_id, voided_at, voided_by) '
@@ -83,7 +83,7 @@ void main() {
       "  CASE WHEN @status::text = 'VOIDED' THEN @by::bigint END) "
       'RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branch ?? branchId,
         't': onTerminal ?? terminal,
         'inv': 'CD-$invoice',
@@ -100,14 +100,14 @@ void main() {
   Future<void> refund(int orderId, int total) => db.runTx(pg.config, (tx) async {
     final rows = await tx.execute(
       Sql.named(
-        'INSERT INTO pos_refunds (client_refund_id, restaurant_id, branch_id, '
+        'INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
         '  terminal_id, order_id, kind, subtotal_minor, service_minor, '
         '  vat_minor, total_minor, refunded_by, occurred_at) '
         'VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, '
         "  'partial', @total, 0, 0, @total, @by, now()) RETURNING id",
       ),
       parameters: {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         't': terminal,
         'o': orderId,
@@ -136,27 +136,27 @@ void main() {
       'pos_invoice_sequences RESTART IDENTITY CASCADE',
     );
     await db.query(pg.config, 'DELETE FROM pos_combos');
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     invoice = 0;
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cd', 'CD') RETURNING id",
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cd', 'CD') RETURNING id",
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MANS', 'Mansoura') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     otherBranchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'TANT', 'Tanta') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     nourStaff = await scalar(
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, '
       "  pin_salt, pin_hash) VALUES (@r, @b, 'Nour Adel', 'nour', 's', 'h') "
       'RETURNING id',
-      {'r': restaurantId, 'b': branchId},
+      {'r': businessId, 'b': branchId},
     );
     for (final (id, name, branch) in [
       (terminal, 'POS-01', branchId),
@@ -164,15 +164,15 @@ void main() {
     ]) {
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (@id::uuid, @r, @b, @name)',
-        parameters: {'id': id, 'r': restaurantId, 'b': branch, 'name': name},
+        parameters: {'id': id, 'r': businessId, 'b': branch, 'name': name},
       );
     }
     cashId = await scalar(
-      'INSERT INTO pos_tender_types (restaurant_id, code, name_en, kind, '
+      'INSERT INTO pos_tender_types (business_id, code, name_en, kind, '
       "  counts_as_cash) VALUES (@r, 'cash', 'cash', 'cash', true) RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
 
     mona = await customer(
@@ -210,14 +210,14 @@ void main() {
     expect(a, isPositive);
 
     final other = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('ot', 'OT') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('ot', 'OT') RETURNING id",
     );
-    await customer('Layla Other', '01312345678', restaurant: other);
+    await customer('Layla Other', '01312345678', business: other);
 
     directory = PostgresCustomerDirectoryRepository(
       database: db,
       config: pg.config,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
   });
@@ -279,7 +279,7 @@ void main() {
   });
 
   group('who is listed', () {
-    test('everybody on file for this restaurant, and nobody else\'s', () async {
+    test('everybody on file for this business, and nobody else\'s', () async {
       final names = (await directory.list()).map((s) => s.customer.name);
 
       expect(names, containsAll(['Mona Fathy', 'Karim Said', 'Nour Hassan']));
@@ -323,7 +323,7 @@ void main() {
       expect(await directory.list(query: 'zzzz'), isEmpty);
     });
 
-    test('a name search does not match another restaurant\'s customer', () async {
+    test('a name search does not match another business\'s customer', () async {
       expect(await directory.list(query: 'Layla'), isEmpty);
     });
   });
@@ -359,7 +359,7 @@ void main() {
       expect(await directory.recentOrders(karim), hasLength(1));
     });
 
-    test('a customer of another restaurant lists nothing here', () async {
+    test('a customer of another business lists nothing here', () async {
       final theirs = await scalar(
         "SELECT id FROM pos_customers WHERE name = 'Layla Other'",
       );

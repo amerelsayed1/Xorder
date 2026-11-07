@@ -1,4 +1,4 @@
-/// Why somebody did something the restaurant will later ask about.
+/// Why somebody did something the business will later ask about.
 ///
 /// A void with no reason is a void nobody can investigate, and "the cashier
 /// remembers" stops being true by the end of the shift. The SRS makes a reason
@@ -77,7 +77,7 @@ class ReasonCode {
   final int id;
   final ReasonScope scope;
 
-  /// Stable and machine-readable. A restaurant renaming "Manager comp" must not
+  /// Stable and machine-readable. A business renaming "Manager comp" must not
   /// change what a year of reports groups on.
   final String code;
 
@@ -103,7 +103,7 @@ class ReasonCode {
 /// A reason, and whatever the person typed beside it.
 ///
 /// [reason] is null only when the list was [ReasonRequirement.disabled] — the
-/// restaurant switched reasons off for that act, and the caller still needs
+/// business switched reasons off for that act, and the caller still needs
 /// something to carry a note in.
 class ReasonSelection {
   const ReasonSelection({this.reason, this.note});
@@ -119,20 +119,20 @@ class ReasonSelection {
 
 /// Whether a reason has to be given at all.
 ///
-/// Configured per act by the restaurant (SRS §20). Until Settings can hold it
+/// Configured per act by the business (SRS §20). Until Settings can hold it
 /// — Wave D — [SystemReasons.defaultRequirement] is the answer, and it follows
 /// the SRS: required for anything that moves or unmakes money.
 enum ReasonRequirement { required, optional, disabled }
 
-/// The reasons every restaurant starts with.
+/// The reasons every business starts with.
 ///
 /// Production copy from the patterns handoff, in both languages, used verbatim.
-/// Seeded rather than hardcoded: a restaurant edits, adds to and retires these,
+/// Seeded rather than hardcoded: a business edits, adds to and retires these,
 /// and the code never reads a reason by name.
 ///
-/// Migration 9 carries a frozen copy of this list for restaurants that already
+/// Migration 9 carries a frozen copy of this list for businesses that already
 /// existed when it ran. **This constant is the living definition** — the
-/// bootstrap seeds new restaurants from here, exactly as `SystemRoles` works.
+/// bootstrap seeds new businesses from here, exactly as `SystemRoles` works.
 abstract final class SystemReasons {
   /// The ten choices, in picker order. Position 10 is *Other*, which the picker
   /// keys to `0` because that is where a hand reaches for it on a keypad.
@@ -375,7 +375,7 @@ abstract final class SystemReasons {
         ),
       ];
 
-  /// The scopes seeded on a new restaurant.
+  /// The scopes seeded on a new business.
   static const seededScopes = <ReasonScope>[
     ReasonScope.voidAct,
     ReasonScope.refund,

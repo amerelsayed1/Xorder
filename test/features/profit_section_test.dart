@@ -30,7 +30,7 @@ import '../support/fonts.dart';
 /// `test/data/profit_report_test.dart`'s. What only a widget test can say is
 /// that the page tells the truth about what it does not know: the margin sits
 /// beside its coverage, an item with no cost is a tag and dashes and never a
-/// zero, a loss reads as one, a tax-inclusive restaurant is warned — and that
+/// zero, a loss reads as one, a tax-inclusive business is warned — and that
 /// the list above is not held hostage by the section beneath it.
 const _owner = PosStaff(
   id: 1,
@@ -396,7 +396,7 @@ void main() {
   });
 
   group('prices that include tax', () {
-    testWidgets('an inclusive restaurant is warned, over the table',
+    testWidgets('an inclusive business is warned, over the table',
         (tester) async {
       await _pane(tester, reports: _Reports(inclusive: true));
 

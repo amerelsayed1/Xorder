@@ -26,7 +26,7 @@ class ServiceChargeDialog extends StatefulWidget {
 
   final ServiceCharge? charge;
 
-  /// Which name fields the restaurant writes its content in (XORD-005).
+  /// Which name fields the business writes its content in (XORD-005).
   final ContentLanguages languages;
 
   static Future<ServiceCharge?> show(

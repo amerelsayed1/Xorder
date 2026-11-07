@@ -1,8 +1,8 @@
-/// What a kind of order requires, as the restaurant configured it (§31).
+/// What a kind of order requires, as the business configured it (§31).
 ///
 /// **This exists to delete a comparison.** `type == OrderType.dineIn` appeared
 /// in the router, the cart panel and the ticket engine, and in all three what
-/// it meant was *"does this kind of order have a table"*. A restaurant that
+/// it meant was *"does this kind of order have a table"*. A business that
 /// seats people for catering, or one whose drive-thru bays are numbered like
 /// tables, could not say so — the answer was compiled in.
 ///
@@ -39,7 +39,7 @@ class OrderTypeConfig {
 
   /// Whether a customer must be named before it can be settled. Nothing reads
   /// this yet — customers are Wave H — and it is stored now because it is the
-  /// same row and a restaurant configuring delivery expects to set it.
+  /// same row and a business configuring delivery expects to set it.
   final bool requiresCustomer;
 
   final bool requiresAddress;

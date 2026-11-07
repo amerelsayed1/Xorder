@@ -616,7 +616,7 @@ void main() {
       );
     }
 
-    test('is the first block, above the restaurant name', () {
+    test('is the first block, above the business name', () {
       final blocks = withLogo(mark).blocks;
 
       expect(blocks.first, isA<SlipLogo>());

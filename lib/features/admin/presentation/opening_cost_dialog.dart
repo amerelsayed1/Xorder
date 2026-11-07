@@ -25,7 +25,7 @@ class OpeningCostDialog extends StatefulWidget {
 
   final StockLevel level;
 
-  /// The unit the restaurant calls it, for "12.5 Kilogram".
+  /// The unit the business calls it, for "12.5 Kilogram".
   final String unitName;
 
   static Future<Money?> show(

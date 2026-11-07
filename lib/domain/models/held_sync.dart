@@ -19,7 +19,7 @@ library;
 /// An enum and not the wire `event_type`, so the label switch is total: a sixth
 /// lifecycle event added to the outbox's CHECK without a sentence here fails to
 /// compile in `AdminText.heldSyncKind`, rather than showing `cash_movement` to
-/// a restaurant owner.
+/// a business owner.
 enum HeldSyncKind {
   /// A settled sale — a row in `pos_outbox`.
   sale(null),

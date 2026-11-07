@@ -338,7 +338,7 @@ class OutboxDrain {
              o.table_id, o.currency, o.exponent, o.subtotal_minor,
              o.discount_minor, o.service_minor, o.vat_minor, o.total_minor,
              o.occurred_at, o.served_by, s.client_transaction_id,
-             o.restaurant_id
+             o.business_id
       FROM pos_outbox ob
       JOIN pos_orders o ON o.id = ob.order_id
       LEFT JOIN pos_shifts s ON s.id = o.shift_id
@@ -357,7 +357,7 @@ class OutboxDrain {
       final payments = await _paymentsFor(
         orderId,
         clientTransactionId,
-        restaurantId: row[16] as int,
+        businessId: row[16] as int,
       );
       if (payments.stranded.isNotEmpty) {
         await _hold(outboxId, payments.stranded);
@@ -904,7 +904,7 @@ class OutboxDrain {
       '''
       SELECT r.client_refund_id, o.client_transaction_id, reason.code, r.note,
              r.refunded_by, r.approved_by_id, shift.client_transaction_id,
-             r.occurred_at, r.restaurant_id,
+             r.occurred_at, r.business_id,
              sale.id, sale.delivered_at, sale.quarantined_at
         FROM pos_refunds r
         JOIN pos_orders o ON o.id = r.order_id
@@ -963,7 +963,7 @@ class OutboxDrain {
 
     final tenders = await _refundTendersFor(
       sourceId,
-      restaurantId: row[8] as int,
+      businessId: row[8] as int,
     );
     if (tenders.stranded.isNotEmpty) {
       return _Held(
@@ -1045,15 +1045,15 @@ class OutboxDrain {
   /// lines — half of them would be refused anyway, and a refund recorded short
   /// would understate what a shift handed back.
   Future<({List<Map<String, Object?>> sendable, List<String> stranded})>
-  _refundTendersFor(int refundId, {required int restaurantId}) async {
+  _refundTendersFor(int refundId, {required int businessId}) async {
     final rows = await _db.query(
       config,
       'SELECT t.platform_id, p.amount_minor, p.tender_type_id, p.label '
       'FROM pos_refund_payments p '
       'LEFT JOIN pos_tender_types t '
-      '  ON t.id = p.tender_type_id AND t.restaurant_id = @restaurant '
+      '  ON t.id = p.tender_type_id AND t.business_id = @restaurant '
       'WHERE p.refund_id = @refund ORDER BY p.id',
-      parameters: {'refund': refundId, 'restaurant': restaurantId},
+      parameters: {'refund': refundId, 'restaurant': businessId},
     );
     return (
       sendable: [
@@ -1180,7 +1180,7 @@ class OutboxDrain {
   _paymentsFor(
     int orderId,
     String orderClientId, {
-    required int restaurantId,
+    required int businessId,
   }) async {
     final rows = await _db.query(
       config,
@@ -1188,9 +1188,9 @@ class OutboxDrain {
       '       p.tender_type_id, p.label '
       'FROM pos_order_payments p '
       'LEFT JOIN pos_tender_types t '
-      '  ON t.id = p.tender_type_id AND t.restaurant_id = @restaurant '
+      '  ON t.id = p.tender_type_id AND t.business_id = @restaurant '
       'WHERE p.order_id = @order ORDER BY p.id',
-      parameters: {'order': orderId, 'restaurant': restaurantId},
+      parameters: {'order': orderId, 'restaurant': businessId},
     );
     return (
       sendable: [
@@ -1325,7 +1325,7 @@ class SyncingOrdersRepository implements OrdersRepository {
 
   /// Kicks the drain too. A voided order is a row the platform has to hear
   /// about as much as a paid one — arguably more, since it is the one a
-  /// restaurant will be asked about.
+  /// business will be asked about.
   @override
   Future<SubmitOrderResult> voidOrder(
     Ticket ticket, {

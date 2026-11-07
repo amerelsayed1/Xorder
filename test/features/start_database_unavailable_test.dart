@@ -17,7 +17,7 @@ import '../support/fakes.dart';
 /// Found on the real till: after its database was deleted the start screen
 /// printed `PosDbException(missingDatabase): Severity.fatal 3D000: database
 /// "demo_cashier_db" does not exist` in the middle of a black screen, with no
-/// way to try again. A restaurant hits the same thing after a disk fault or a
+/// way to try again. A business hits the same thing after a disk fault or a
 /// reset database server, and cannot be expected to read that.
 void main() {
   const en = EnStrings();

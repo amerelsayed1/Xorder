@@ -160,7 +160,7 @@ void main() {
 
   group('the Users section', () {
     // The bundled faces, not the test font: the test font draws every glyph a
-    // full em wide, so an overflow at 1100 px in it is one no restaurant
+    // full em wide, so an overflow at 1100 px in it is one no business
     // would see. It first bit on the back office's tab strip, which the owner
     // has since taken away (15 Sep 2026).
     setUpAll(loadPosFonts);

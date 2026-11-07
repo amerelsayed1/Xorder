@@ -4947,6 +4947,110 @@ const posMigrations = <PosMigration>[
       ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0
     ''',
   ]),
+  // `pos_restaurants` becomes `pos_businesses`, and everything named after it
+  // follows: every `restaurant_id` column, the id sequence, constraint, index
+  // and trigger names, the bodies of the functions that name them, and the
+  // settings scope `'restaurant'` (owner, 2026-11-07: Xorder serves cafés, food
+  // trucks and cloud kitchens as well, so the code and the schema say
+  // "business").
+  //
+  // **A rename, not a copy**, exactly as migration 62: every row, key, grant
+  // and sequence value is kept; `ALTER ... RENAME` changes only a name in the
+  // catalogue. One transaction (see `PosMigrator`), so a failure leaves the old
+  // names in place. Looked up rather than listed, so a name an older database
+  // never had does not fail the migration.
+  //
+  // **What does not follow, on purpose:** the platform's wire fields
+  // (`restaurant`, `restaurant_id` in the cloud API and bootstrap bundle) and
+  // the role code `restaurant_manager`, which the platform also sends — both
+  // are the cloud's to rename, mapped in `lib/data/cloud/`.
+  //
+  // **Rollout.** As 62: a till on an older binary fails on its first query
+  // once this has run. Upgrade every till on the branch together.
+  PosMigration(64, 'pos_restaurants becomes pos_businesses', [
+    'ALTER TABLE pos_restaurants RENAME TO pos_businesses',
+    'ALTER SEQUENCE pos_restaurants_id_seq RENAME TO pos_businesses_id_seq',
+    r'''
+    DO $rename$
+    DECLARE
+      c record;
+    BEGIN
+      FOR c IN
+        SELECT table_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND column_name = 'restaurant_id'
+      LOOP
+        EXECUTE format('ALTER TABLE %I RENAME COLUMN restaurant_id TO business_id',
+                       c.table_name);
+      END LOOP;
+
+      -- Constraints first: a primary key or unique constraint carries its
+      -- index with it, so the index loop below finds only the free-standing.
+      FOR c IN
+        SELECT con.conrelid::regclass::text AS tbl, con.conname
+          FROM pg_constraint con
+          JOIN pg_namespace n ON n.oid = con.connamespace
+         WHERE n.nspname = 'public' AND con.conname LIKE '%restaurant%'
+      LOOP
+        EXECUTE format('ALTER TABLE %s RENAME CONSTRAINT %I TO %I', c.tbl,
+          c.conname,
+          replace(replace(c.conname, 'pos_restaurants', 'pos_businesses'),
+                  'restaurant', 'business'));
+      END LOOP;
+
+      FOR c IN
+        SELECT cl.relname
+          FROM pg_class cl
+          JOIN pg_namespace n ON n.oid = cl.relnamespace
+         WHERE n.nspname = 'public' AND cl.relkind = 'i'
+           AND cl.relname LIKE '%restaurant%'
+      LOOP
+        EXECUTE format('ALTER INDEX %I RENAME TO %I', c.relname,
+          replace(replace(c.relname, 'pos_restaurants', 'pos_businesses'),
+                  'restaurant', 'business'));
+      END LOOP;
+
+      FOR c IN
+        SELECT t.tgname, t.tgrelid::regclass::text AS tbl
+          FROM pg_trigger t
+         WHERE NOT t.tgisinternal AND t.tgname LIKE '%restaurant%'
+      LOOP
+        EXECUTE format('ALTER TRIGGER %I ON %s RENAME TO %I', c.tgname, c.tbl,
+          replace(replace(c.tgname, 'pos_restaurants', 'pos_businesses'),
+                  'restaurant', 'business'));
+      END LOOP;
+
+      -- Function bodies are resolved when they run, not when they are made,
+      -- so each one that names the old table or column would fail on its next
+      -- call. Re-created from its own definition with the new table and column
+      -- names only: a parameter called `restaurant` (pos_seed_units) cannot be
+      -- renamed by CREATE OR REPLACE, and it is nobody's business outside the
+      -- function, so the bare word is left alone.
+      FOR c IN
+        SELECT p.oid
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'public'
+           AND (p.prosrc LIKE '%pos_restaurants%'
+                OR p.prosrc LIKE '%restaurant_id%')
+      LOOP
+        EXECUTE replace(replace(pg_get_functiondef(c.oid),
+          'pos_restaurants', 'pos_businesses'),
+          'restaurant_id', 'business_id');
+      END LOOP;
+    END $rename$
+    ''',
+    // The settings scope is a stored value, guarded by two CHECKs (migration
+    // 14) that name it.
+    'ALTER TABLE pos_settings DROP CONSTRAINT IF EXISTS pos_settings_scope_known',
+    'ALTER TABLE pos_settings '
+        'DROP CONSTRAINT IF EXISTS pos_settings_scope_id_present',
+    "UPDATE pos_settings SET scope = 'business' WHERE scope = 'restaurant'",
+    "ALTER TABLE pos_settings ADD CONSTRAINT pos_settings_scope_known "
+        "CHECK (scope IN ('business', 'branch', 'terminal'))",
+    "ALTER TABLE pos_settings ADD CONSTRAINT pos_settings_scope_id_present "
+        "CHECK ((scope = 'business' AND scope_id = '') "
+        "OR (scope <> 'business' AND scope_id <> ''))",
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

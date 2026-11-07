@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/backup/pg_tools.dart';
 
 import '../support/lan_tls_fixtures.dart';
 
-/// The rules a copy has to keep before anybody trusts it with a restaurant's
+/// The rules a copy has to keep before anybody trusts it with a business's
 /// only record of its trading. Run against a fake `pg_dump`, so they hold on a
 /// machine with no PostgreSQL; `pg_archive_restore_test.dart` runs the real
 /// tools end to end.

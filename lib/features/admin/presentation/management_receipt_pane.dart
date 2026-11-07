@@ -26,14 +26,14 @@ import '../../../core/text/digits.dart';
 /// very different consequences: a missing footer note is a blank line, and a
 /// missing registration number is a receipt that cannot be filed.
 ///
-/// The form **saves while it is still incomplete**, on purpose. A restaurant
+/// The form **saves while it is still incomplete**, on purpose. A business
 /// fills this in over several sittings — somebody types the trade name today
 /// and rings the accountant about the activity code next week — so a form that
 /// demanded all fourteen fields before it would accept any of them would be a
 /// form that lost the first thirteen.
 ///
 /// **The slip is beside the form**, drawn by the same `ReceiptPaper` a real
-/// receipt is, from what is in the boxes right now. A restaurant deciding how
+/// receipt is, from what is in the boxes right now. A business deciding how
 /// its name and address read on paper should not have to save, ring a sale and
 /// print one to find out.
 ///
@@ -378,9 +378,9 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
     );
   }
 
-  /// A sale for the preview, from this restaurant's own menu.
+  /// A sale for the preview, from this business's own menu.
   ///
-  /// **Real items, not an invented one.** Two dishes the restaurant sells, at
+  /// **Real items, not an invented one.** Two dishes the business sells, at
   /// their prices, taxed the way this till taxes — so the preview is a slip it
   /// could actually print. With no menu to read, the slip shows the profile
   /// and no lines, rather than a dish nobody here has ever sold.

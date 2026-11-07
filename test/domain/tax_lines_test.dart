@@ -73,7 +73,7 @@ void main() {
       expect(totals.vat.minor, 140);
     });
 
-    test('a restaurant with no groups configured still charges its rate', () {
+    test('a business with no groups configured still charges its rate', () {
       // The normal case, and the one every existing order was written under.
       final totals = ticket(
         lines: [TicketLine(product: product(1, 10000), quantity: 1)],
@@ -158,7 +158,7 @@ void main() {
     });
 
     test('a product naming a group this build has not synced falls back', () {
-      // Under-charging tax is a debt the restaurant owes; over-charging is
+      // Under-charging tax is a debt the business owes; over-charging is
       // money taken from a customer. The default is the safe answer.
       final totals = ticket(
         lines: [TicketLine(product: product(1, 10000, taxGroupId: 99), quantity: 1)],
@@ -182,7 +182,7 @@ void main() {
     });
 
     test('does not inherit a zero-rated product’s treatment', () {
-      // Service is the restaurant's charge for service, not a product. A
+      // Service is the business's charge for service, not a product. A
       // ticket of nothing but bottled water still owes tax on the service.
       final totals = ticket(
         lines: [TicketLine(product: product(1, 10000, taxGroupId: 2), quantity: 1)],

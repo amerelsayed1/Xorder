@@ -93,7 +93,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int otherBranchId;
   late int supplierId;
@@ -162,7 +162,7 @@ void main() {
       PostgresShiftRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branch ?? branchId,
         terminalId: terminal,
       );
@@ -177,16 +177,16 @@ void main() {
     int? day,
     String? reason = 'petty_expense',
   }) => scalar(
-    'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+    'INSERT INTO pos_cash_movements (business_id, branch_id, terminal_id, '
     '  shift_id, business_day_id, kind, amount_minor, reason_id, user_id, '
     '  occurred_at) '
     'SELECT @r, t.branch_id, t.id, @s, @d, @k, @a, '
-    '  (SELECT id FROM pos_reason_codes WHERE restaurant_id = @r '
+    '  (SELECT id FROM pos_reason_codes WHERE business_id = @r '
     '     AND scope = @scope AND code = @code ORDER BY id LIMIT 1), '
     '  @staff, @at::timestamptz '
     'FROM pos_terminals t WHERE t.id = @t::uuid RETURNING id',
     {
-      'r': restaurantId,
+      'r': businessId,
       't': terminal,
       's': shifts[terminal]!.id,
       'd': day,
@@ -207,7 +207,7 @@ void main() {
   }) async {
     invoice++;
     final id = await scalar(
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, shift_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, discount_minor, service_minor, vat_minor, total_minor, '
       '  occurred_at, status, served_by, voided_at, voided_by) '
@@ -217,7 +217,7 @@ void main() {
       "  CASE WHEN @status::text = 'VOIDED' THEN @by::bigint END "
       'FROM pos_terminals t WHERE t.id = @t::uuid RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         't': terminal,
         's': shifts[terminal]!.id,
         'inv': 'FE-$invoice',
@@ -302,41 +302,41 @@ void main() {
   }
 
   Future<int> reason(String scope, String code) => scalar(
-    'SELECT id FROM pos_reason_codes WHERE restaurant_id = @r '
+    'SELECT id FROM pos_reason_codes WHERE business_id = @r '
     'AND scope = @scope AND code = @code',
-    {'r': restaurantId, 'scope': scope, 'code': code},
+    {'r': businessId, 'scope': scope, 'code': code},
   );
 
   setUp(() async {
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
     invoice = 0;
 
-    restaurantId = await scalar(
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('fe', 'Finance') "
+    businessId = await scalar(
+      "INSERT INTO pos_businesses (slug, name) VALUES ('fe', 'Finance') "
       'RETURNING id',
     );
     branchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'MANS', 'Mansoura') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     otherBranchId = await scalar(
-      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      'INSERT INTO pos_branches (business_id, code, name) '
       "VALUES (@r, 'TANT', 'Tanta') RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
     // `supplier` for a drawer payment, `correction` to put it back, and the
     // pay-out reasons the till offers — as a real install seeds them.
-    await LocalBootstrap(db).seedReasonCodes(pg.config, restaurantId);
+    await LocalBootstrap(db).seedReasonCodes(pg.config, businessId);
 
     final salt = PinHash.newSalt();
     manager = PosStaff(
       id: await scalar(
-        'INSERT INTO pos_users (restaurant_id, branch_id, name, username, '
+        'INSERT INTO pos_users (business_id, branch_id, name, username, '
         '  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
         {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           'n': 'Hoda K.',
           'u': 'hoda',
@@ -356,28 +356,28 @@ void main() {
     ]) {
       await db.query(
         pg.config,
-        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'INSERT INTO pos_terminals (id, business_id, branch_id, name) '
         'VALUES (@id::uuid, @r, @b, @name)',
-        parameters: {'id': id, 'r': restaurantId, 'b': branch, 'name': name},
+        parameters: {'id': id, 'r': businessId, 'b': branch, 'name': name},
       );
     }
 
     tender = {};
     for (final (code, cash) in [('cash', true), ('card', false)]) {
       tender[code] = await scalar(
-        'INSERT INTO pos_tender_types (restaurant_id, code, name_en, kind, '
+        'INSERT INTO pos_tender_types (business_id, code, name_en, kind, '
         '  counts_as_cash) VALUES (@r, @code, @code, @code, @cash) RETURNING id',
-        {'r': restaurantId, 'code': code, 'cash': cash},
+        {'r': businessId, 'code': code, 'cash': cash},
       );
     }
 
     day10 = await scalar(
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
       '  opened_at, closed_at, closed_by) '
       "VALUES (@r, @b, '2026-09-10'::date, @o::timestamptz, @c::timestamptz, "
       '  @by) RETURNING id',
       {
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         'o': DateTime(2026, 9, 10, 8),
         'c': DateTime(2026, 9, 11, 1, 30),
@@ -386,23 +386,23 @@ void main() {
     );
 
     supplierId = await scalar(
-      'INSERT INTO pos_suppliers (restaurant_id, name_en, payment_term_days) '
+      'INSERT INTO pos_suppliers (business_id, name_en, payment_term_days) '
       "VALUES (@r, 'Nile Dairy', 30) RETURNING id",
-      {'r': restaurantId},
+      {'r': businessId},
     );
 
     ledger = PostgresSupplierInvoicesRepository(
       database: db,
       config: pg.config,
       adminAvailable: true,
-      restaurantId: restaurantId,
+      businessId: businessId,
       branchId: branchId,
     );
     drawers = PostgresCashMovementsRepository(
       database: db,
       config: pg.config,
       context: PosWriteContext(
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: pos01,
         branchCode: 'MANS',
@@ -632,9 +632,9 @@ void main() {
     );
     final livePayments = await scalar(
       'SELECT coalesce(sum(amount_minor), 0)::bigint FROM pos_supplier_payments '
-      'WHERE restaurant_id = @r AND voided_at IS NULL '
+      'WHERE business_id = @r AND voided_at IS NULL '
       '  AND paid_at >= @from::timestamptz AND paid_at < @to::timestamptz',
-      {'r': restaurantId, 'from': range.from, 'to': range.to},
+      {'r': businessId, 'from': range.from, 'to': range.to},
     );
     expect(allPayOuts, 8400);
     expect(ownedByPayments, 4200);
@@ -700,9 +700,9 @@ void main() {
       'CROSS JOIN LATERAL (SELECT coalesce(sum(p.amount_minor), 0) AS paid '
       '  FROM pos_supplier_payments p '
       '  WHERE p.invoice_id = i.id AND p.voided_at IS NULL) live '
-      'WHERE i.restaurant_id = @r AND i.voided_at IS NULL '
+      'WHERE i.business_id = @r AND i.voided_at IS NULL '
       '  AND i.total_minor > live.paid',
-      {'r': restaurantId},
+      {'r': businessId},
     );
     expect(owed, 41000);
     expect(due.total.minor, owed);
@@ -791,7 +791,7 @@ void main() {
         database: database,
         config: config,
         context: PosWriteContext(
-          restaurantId: restaurantId,
+          businessId: businessId,
           branchId: branchId,
           terminalId: pos01,
           branchCode: 'MANS',
@@ -805,7 +805,7 @@ void main() {
       final drawersAsTill = await PostgresShiftRepository(
         database: database,
         config: config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
         terminalId: pos01,
       ).openDrawers();
@@ -830,7 +830,7 @@ void main() {
         database: connectAs(tillRole),
         config: pg.config.copyWith(databaseUser: tillRole),
         adminAvailable: true,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
       await expectLater(onTheTill.spending(range), throwsA(anything));
@@ -840,7 +840,7 @@ void main() {
         database: connectAs(officeRole),
         config: pg.config.copyWith(databaseUser: officeRole),
         adminAvailable: true,
-        restaurantId: restaurantId,
+        businessId: businessId,
         branchId: branchId,
       );
       final spent = await office.spending(range);

@@ -6,7 +6,7 @@ import 'package:xorder_pos/domain/models/tender_method.dart';
 
 /// A representative bundle, shaped exactly as the agreed POS-BE-023 contract
 /// serialises it. If the backend changes a key, this fixture is where the
-/// disagreement surfaces — before a till in a restaurant does.
+/// disagreement surfaces — before a till in a business does.
 const _fixture = '''
 {
   "config_version": 7,
@@ -104,10 +104,10 @@ void main() {
 
     test('reads the identity block and the precedence signal', () {
       expect(bundle.configVersion, 7);
-      expect(bundle.restaurant!.id, 42);
-      expect(bundle.restaurant!.slug, 'demo');
-      expect(bundle.restaurant!.currency, 'EGP');
-      expect(bundle.restaurant!.exponent, 2);
+      expect(bundle.business!.id, 42);
+      expect(bundle.business!.slug, 'demo');
+      expect(bundle.business!.currency, 'EGP');
+      expect(bundle.business!.exponent, 2);
       expect(bundle.terminal!.id, '0c9adf1e-9e3f-4a2e-b8a5-6a1f6f0f2f10');
       expect(bundle.terminal!.branchId, 3);
       expect(bundle.seedable, isTrue);
@@ -310,7 +310,7 @@ void main() {
     });
 
     test('a menu named in Arabic only is a menu, not nothing', () {
-      // The platform lets a restaurant name its menu in one language; the
+      // The platform lets a business name its menu in one language; the
       // dashboard and the diner's menu resolve by locale and fall back. The
       // till required `name_en` and dropped every row without one — every
       // category, then every item under them — and opened its sale screen on

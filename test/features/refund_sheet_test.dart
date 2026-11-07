@@ -345,7 +345,7 @@ void main() {
     testWidgets('refunds switched off say so', (tester) async {
       await open(tester, policy: const RefundPolicy(enabled: false));
       expect(
-        find.text('Refunds are switched off for this restaurant.'),
+        find.text('Refunds are switched off for this business.'),
         findsOneWidget,
       );
     });

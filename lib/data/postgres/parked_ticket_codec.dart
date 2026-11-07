@@ -31,7 +31,7 @@ abstract final class ParkedTicketCodec {
     'exponent': ticket.exponent,
     'rounds_sent': ticket.roundsSent,
     // The rules the ticket was priced under travel with it, all of them. The
-    // four scalars alone used to: a parked table at an inclusive restaurant
+    // four scalars alone used to: a parked table at an inclusive business
     // came back exclusive and grew its VAT on top, a zero-rated line came back
     // at the standard rate, and a delivery fee came back as the legacy 12%.
     // Snapshotted rather than re-read from the live config on resume because
@@ -280,7 +280,7 @@ abstract final class ParkedTicketCodec {
         // absence decodes to the constructor's default — exclusive, no named
         // rates, no §38 charges — which is exactly what those payloads were
         // decoded to before. What an older payload lost it stays without:
-        // nothing in it says the restaurant was inclusive.
+        // nothing in it says the business was inclusive.
         taxMode: TaxMode.fromWire(
           tax['mode'] is String ? tax['mode'] as String : null,
         ),
@@ -305,7 +305,7 @@ abstract final class ParkedTicketCodec {
                 // rows of the same age. That only knows the seeded ids: a
                 // cloud till's platform tenders sit above
                 // [TenderMethod.seededIdCeiling], so an old parked wallet the
-                // restaurant counts as cash still comes back as not-cash. It
+                // business counts as cash still comes back as not-cash. It
                 // cannot be recovered from anything the payload holds.
                 countsAsCash: raw['counts_as_cash'] is bool
                     ? raw['counts_as_cash'] as bool

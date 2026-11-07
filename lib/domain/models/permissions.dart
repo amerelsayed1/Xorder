@@ -21,7 +21,7 @@ abstract final class PosCapability {
   /// next order can be tied to them (XORD-001).
   ///
   /// Its own key rather than part of [operate] because it writes a name and a
-  /// phone number into a list the platform shares with the restaurant's other
+  /// phone number into a list the platform shares with the business's other
   /// tills and its marketing. *Choosing* somebody already on file needs only
   /// [operate]: that changes who an order is for, not who is on file. The
   /// string is the platform's own (`TenantCapability::CUSTOMERS_CREATE`), so a
@@ -32,7 +32,7 @@ abstract final class PosCapability {
   /// delivery, drive-thru.
   ///
   /// Its own key rather than [settingsManage], because switching a type off
-  /// removes it from every till's sale screen at once — a restaurant-wide
+  /// removes it from every till's sale screen at once — a business-wide
   /// decision a floor manager who may fix a receipt should not make by
   /// accident. Not back-office-only in spirit but never a cashier's, so it sits
   /// in [backOffice]. The string is the platform's own
@@ -42,7 +42,7 @@ abstract final class PosCapability {
 
   /// Upload, replace or remove the business logo (XORD-021).
   ///
-  /// Its own key, not [settingsManage]: the logo is the face of the restaurant
+  /// Its own key, not [settingsManage]: the logo is the face of the business
   /// on every till's start screen, so changing it is a decision for the owner
   /// rather than for whoever may fix a receipt. Seeded to the owner only
   /// (migration 59); anybody else is given it in Roles. The string is the one
@@ -425,7 +425,7 @@ abstract final class LimitKey {
 /// Held as raw stored values — basis points and minor units — rather than as a
 /// [Money], because a limit belongs to a role and a role outlives the currency
 /// question: the row says `50000`, and which currency that is depends on the
-/// restaurant reading it.
+/// business reading it.
 class PermissionLimit {
   const PermissionLimit({this.maxBp, this.maxMinor});
 
@@ -468,7 +468,7 @@ class PermissionLimit {
 /// Whether a per-person override adds a permission or takes one away (§105).
 ///
 /// **DENY wins over ALLOW, and both win over roles.** The reason is what an
-/// override is *for*: it is how a restaurant says "this one person, despite
+/// override is *for*: it is how a business says "this one person, despite
 /// their role". A DENY that could be outvoted by a second role would be a
 /// safety measure somebody could undo by accident.
 enum OverrideEffect {
@@ -524,7 +524,7 @@ enum PermissionRisk {
   /// changes.
   high,
 
-  /// The restaurant's data or its access control. Never overridable (§107),
+  /// The business's data or its access control. Never overridable (§107),
   /// and hidden rather than disabled (§112).
   critical;
 
@@ -593,9 +593,9 @@ enum CapabilityGroup {
   final List<String> capabilities;
 }
 
-/// A named set of capabilities, owned by one restaurant.
+/// A named set of capabilities, owned by one business.
 ///
-/// Roles are per-restaurant rather than global because two restaurants sharing
+/// Roles are per-business rather than global because two businesses sharing
 /// a branch server must not share a definition of "manager" — one of them
 /// changing what a manager may do would silently change it for the other.
 class PosRole {
@@ -619,7 +619,7 @@ class PosRole {
   final Set<String> capabilities;
 
   /// Seeded by the installer. The name and the capabilities are editable — a
-  /// restaurant's idea of a supervisor is its own — but a system role cannot be
+  /// business's idea of a supervisor is its own — but a system role cannot be
   /// deleted, because deleting the last role that holds [PosCapability.staffManage]
   /// locks everybody out of the screen that would fix it.
   final bool isSystem;
@@ -647,7 +647,7 @@ class PosRole {
 
 /// The four roles the installer seeds, and what they hold.
 ///
-/// Seeded rather than hardcoded: these are a starting point a restaurant edits,
+/// Seeded rather than hardcoded: these are a starting point a business edits,
 /// not a set of privileges the code enforces. What the code enforces is that
 /// [ownerCode] keeps every capability — see `RolesRepository.save`.
 abstract final class SystemRoles {
@@ -657,7 +657,7 @@ abstract final class SystemRoles {
   static const cashierCode = 'cashier';
 
   /// Everything, always. The role that can grant capabilities must hold them
-  /// all, or a restaurant can reach a state where nobody can grant a capability
+  /// all, or a business can reach a state where nobody can grant a capability
   /// that nobody holds.
   static const owner = <String>{...PosCapability.all};
 
@@ -691,7 +691,7 @@ abstract final class SystemRoles {
   };
 
   /// The person on the floor at 1am. Everything a shift needs, nothing that
-  /// changes what the restaurant sells or who works there.
+  /// changes what the business sells or who works there.
   static const supervisor = <String>{
     PosCapability.operate,
     PosCapability.customersCreate,
@@ -735,13 +735,13 @@ abstract final class SystemRoles {
     // supervisor, not from the screen.
   };
 
-  /// Six more starting points a restaurant can pick from (§49).
+  /// Six more starting points a business can pick from (§49).
   ///
   /// **Templates, not roles.** Nothing seeds these and nothing enforces them —
   /// they are what the role editor offers when somebody presses *New role*, so
-  /// that a restaurant creating an accountant does not start from an empty
+  /// that a business creating an accountant does not start from an empty
   /// checklist and tick things until the screen stops complaining. Choosing one
-  /// creates an ordinary role the restaurant then edits.
+  /// creates an ordinary role the business then edits.
   ///
   /// They are deliberately *narrow*. A template that granted a bit too much
   /// would be a template that quietly widened access every time somebody used
@@ -806,7 +806,7 @@ abstract final class SystemRoles {
           },
         ),
         // Rings up and settles delivery orders. No drawer: a driver carrying a
-        // float is a cash-handling arrangement the restaurant makes, not a
+        // float is a cash-handling arrangement the business makes, not a
         // permission the till grants.
         'delivery': (
           nameEn: 'Delivery staff',
@@ -818,11 +818,11 @@ abstract final class SystemRoles {
             PosCapability.receiptReprint,
           },
         ),
-        // Everything a manager has except the people. A restaurant group's
+        // Everything a manager has except the people. A business group's
         // branch manager runs the branch; who works there is head office's.
         'restaurant_manager': (
-          nameEn: 'Restaurant manager',
-          nameAr: 'مدير المطعم',
+          nameEn: 'Business manager',
+          nameAr: 'مدير المنشأة',
           // Spelled out rather than derived from [manager] minus one key: a
           // derived set changes silently every time somebody edits `manager`,
           // and a template that quietly gained `backup.manage` because a

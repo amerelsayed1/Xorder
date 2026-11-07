@@ -24,7 +24,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int staffId;
 
@@ -32,13 +32,13 @@ void main() {
   Future<int> insertOrder({int quantity = 2}) async {
     final order = await db.query(
       pg.config,
-      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      'INSERT INTO pos_orders (client_transaction_id, business_id, branch_id, '
       '  terminal_id, invoice_number, order_type, currency, exponent, '
       '  subtotal_minor, service_minor, vat_minor, total_minor, occurred_at) '
       "VALUES (gen_random_uuid(), @r, @b, gen_random_uuid(), 'INV-' || "
       "  floor(random() * 1000000)::text, 'dine_in', 'EGP', 2, "
       '  10000, 1200, 1568, 12768, now()) RETURNING id',
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     );
     final orderId = order.first[0] as int;
 
@@ -66,28 +66,28 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    final restaurant = await db.query(
+    final business = await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('lifecycle', 'Lifecycle') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('lifecycle', 'Lifecycle') "
       'RETURNING id',
     );
-    restaurantId = restaurant.first[0] as int;
+    businessId = business.first[0] as int;
 
     final branch = await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) VALUES (@r, 'LFC', 'Main') "
+      "INSERT INTO pos_branches (business_id, code, name) VALUES (@r, 'LFC', 'Main') "
       'RETURNING id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     branchId = branch.first[0] as int;
 
     final staff = await db.query(
       pg.config,
-      'INSERT INTO pos_users (restaurant_id, branch_id, name, username, pin_salt, pin_hash) '
+      'INSERT INTO pos_users (business_id, branch_id, name, username, pin_salt, pin_hash) '
       "VALUES (@r, @b, 'Hana Mostafa', 'hana', 'salt', 'hash') RETURNING id",
-      parameters: {'r': restaurantId, 'b': branchId},
+      parameters: {'r': businessId, 'b': branchId},
     );
     staffId = staff.first[0] as int;
   });
@@ -242,20 +242,20 @@ void main() {
   });
 
   group('reason codes', () {
-    test('a restaurant that predates the migration gets the lists', () async {
-      // This restaurant was inserted in setUp, after migration 9 ran, so it is
+    test('a business that predates the migration gets the lists', () async {
+      // This business was inserted in setUp, after migration 9 ran, so it is
       // deliberately NOT covered by the migration's backfill — it stands in for
       // the case `seedReasonCodes` exists to handle.
       final before = await db.query(
         pg.config,
-        'SELECT count(*) FROM pos_reason_codes WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'SELECT count(*) FROM pos_reason_codes WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
       expect(before.first[0], 0);
 
       final created = await LocalBootstrap(
         db,
-      ).seedReasonCodes(pg.config, restaurantId);
+      ).seedReasonCodes(pg.config, businessId);
 
       // Summed per scope, not multiplied: pay-in and pay-out have their own
       // lists, because "Staff meal" is not a reason anybody puts money into a
@@ -269,14 +269,14 @@ void main() {
     });
 
     test('each scope gets the list that belongs to it', () async {
-      await LocalBootstrap(db).seedReasonCodes(pg.config, restaurantId);
+      await LocalBootstrap(db).seedReasonCodes(pg.config, businessId);
 
       Future<List<Object?>> codesFor(String scope) async {
         final rows = await db.query(
           pg.config,
-          'SELECT code FROM pos_reason_codes WHERE restaurant_id = @r '
+          'SELECT code FROM pos_reason_codes WHERE business_id = @r '
           'AND scope = @scope ORDER BY sort_order',
-          parameters: {'r': restaurantId, 'scope': scope},
+          parameters: {'r': businessId, 'scope': scope},
         );
         return rows.map((row) => row[0]).toList();
       }
@@ -289,30 +289,30 @@ void main() {
 
     test('re-seeding never resets an edited list', () async {
       final bootstrap = LocalBootstrap(db);
-      await bootstrap.seedReasonCodes(pg.config, restaurantId);
+      await bootstrap.seedReasonCodes(pg.config, businessId);
 
-      // A restaurant renames one and retires another.
+      // A business renames one and retires another.
       await db.query(
         pg.config,
         "UPDATE pos_reason_codes SET name_en = 'On the house' "
-        "WHERE restaurant_id = @r AND code = 'manager_comp'",
-        parameters: {'r': restaurantId},
+        "WHERE business_id = @r AND code = 'manager_comp'",
+        parameters: {'r': businessId},
       );
       await db.query(
         pg.config,
         "UPDATE pos_reason_codes SET is_active = false "
-        "WHERE restaurant_id = @r AND code = 'training'",
-        parameters: {'r': restaurantId},
+        "WHERE business_id = @r AND code = 'training'",
+        parameters: {'r': businessId},
       );
 
-      expect(await bootstrap.seedReasonCodes(pg.config, restaurantId), 0);
+      expect(await bootstrap.seedReasonCodes(pg.config, businessId), 0);
 
       final rows = await db.query(
         pg.config,
         'SELECT code, name_en, is_active FROM pos_reason_codes '
-        "WHERE restaurant_id = @r AND scope = 'void' "
+        "WHERE business_id = @r AND scope = 'void' "
         "  AND code IN ('manager_comp', 'training') ORDER BY code",
-        parameters: {'r': restaurantId},
+        parameters: {'r': businessId},
       );
 
       // An upgrade that quietly reinstates a choice somebody deliberately
@@ -322,13 +322,13 @@ void main() {
     });
 
     test('only Other demands a note', () async {
-      await LocalBootstrap(db).seedReasonCodes(pg.config, restaurantId);
+      await LocalBootstrap(db).seedReasonCodes(pg.config, businessId);
 
       final rows = await db.query(
         pg.config,
         'SELECT code FROM pos_reason_codes '
-        "WHERE restaurant_id = @r AND scope = 'void' AND requires_note",
-        parameters: {'r': restaurantId},
+        "WHERE business_id = @r AND scope = 'void' AND requires_note",
+        parameters: {'r': businessId},
       );
 
       // A property of the reason, not of the list: "Wrong item made" explains
@@ -341,35 +341,35 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en) '
+          'INSERT INTO pos_reason_codes (business_id, scope, code, name_en) '
           "VALUES (@r, 'vibes', 'why_not', 'Why not')",
-          parameters: {'r': restaurantId},
+          parameters: {'r': businessId},
         ),
         throwsA(isA<Exception>()),
       );
     });
 
-    test('two restaurants keep their own vocabularies', () async {
+    test('two businesses keep their own vocabularies', () async {
       final other = await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') RETURNING id",
       );
       final otherId = other.first[0] as int;
 
       final bootstrap = LocalBootstrap(db);
-      await bootstrap.seedReasonCodes(pg.config, restaurantId);
+      await bootstrap.seedReasonCodes(pg.config, businessId);
       await bootstrap.seedReasonCodes(pg.config, otherId);
 
       await db.query(
         pg.config,
         "UPDATE pos_reason_codes SET name_en = 'On the house' "
-        'WHERE restaurant_id = @r',
-        parameters: {'r': restaurantId},
+        'WHERE business_id = @r',
+        parameters: {'r': businessId},
       );
 
       final rows = await db.query(
         pg.config,
-        "SELECT name_en FROM pos_reason_codes WHERE restaurant_id = @r "
+        "SELECT name_en FROM pos_reason_codes WHERE business_id = @r "
         "  AND scope = 'void' AND code = 'manager_comp'",
         parameters: {'r': otherId},
       );

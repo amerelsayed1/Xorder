@@ -14,8 +14,8 @@ void main(List<String> args) {
   }
   stdout.writeln('config_version: ${bundle.configVersion}');
   stdout.writeln('seedable: ${bundle.seedable}');
-  stdout.writeln('restaurant: ${bundle.restaurant?.slug} '
-      '${bundle.restaurant?.currency}/${bundle.restaurant?.exponent}');
+  stdout.writeln('business: ${bundle.business?.slug} '
+      '${bundle.business?.currency}/${bundle.business?.exponent}');
   stdout.writeln('terminal: ${bundle.terminal?.id} branch ${bundle.terminal?.branchId}');
   stdout.writeln('branches: ${bundle.branches.length} '
       '(first code: ${bundle.branches.isEmpty ? '-' : bundle.branches.first.code})');

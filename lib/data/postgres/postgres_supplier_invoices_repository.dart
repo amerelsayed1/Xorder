@@ -31,14 +31,14 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     required PosDatabase database,
     required this.config,
     required this.adminAvailable,
-    required this.restaurantId,
+    required this.businessId,
     required this.branchId,
   }) : _db = database;
 
   final PosDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
-  final int restaurantId;
+  final int businessId;
   final int branchId;
 
   /// The invoice columns, plus the payments against it.
@@ -130,9 +130,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final rows = await _db.query(
       config,
       'SELECT $_invoiceColumns FROM pos_supplier_invoices i '
-      'WHERE i.restaurant_id = @r AND i.voided_at IS NULL '
+      'WHERE i.business_id = @r AND i.voided_at IS NULL '
       '${supplierId == null ? '' : 'AND i.supplier_id = @s '}'
-      // Filtered in SQL rather than in Dart: an old restaurant has thousands of
+      // Filtered in SQL rather than in Dart: an old business has thousands of
       // settled invoices and the screen wants the dozen that are not.
       'AND i.total_minor > (SELECT COALESCE(SUM(p.amount_minor), 0)::bigint '
       '                       FROM pos_supplier_payments p '
@@ -140,7 +140,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       '                        AND p.voided_at IS NULL) '
       // Oldest due first, which is the order somebody pays in.
       'ORDER BY i.due_at, i.id',
-      parameters: {'r': restaurantId, 's': ?supplierId},
+      parameters: {'r': businessId, 's': ?supplierId},
     );
     return [for (final row in rows) _readInvoice(row)];
   }
@@ -153,7 +153,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     // covers. Neither table has a business day: an invoice is dated off the
     // paper, and a payment on the day the bookkeeper says it was made.
     final window = <String, Object?>{
-      'r': restaurantId,
+      'r': businessId,
       'from': filter.from.toUtc(),
       'to': filter.to.toUtc(),
     };
@@ -161,7 +161,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final invoices = await tx.execute(
         Sql.named(
           'SELECT $_invoiceColumns FROM pos_supplier_invoices i '
-          'WHERE i.restaurant_id = @r '
+          'WHERE i.business_id = @r '
           '  AND i.issued_at >= @from AND i.issued_at < @to '
           'ORDER BY i.issued_at DESC, i.id DESC',
         ),
@@ -170,7 +170,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final payments = await tx.execute(
         Sql.named(
           'SELECT $_paymentColumns FROM pos_supplier_payments y '
-          'WHERE y.restaurant_id = @r '
+          'WHERE y.business_id = @r '
           '  AND y.paid_at >= @from AND y.paid_at < @to '
           'ORDER BY y.paid_at DESC, y.id DESC',
         ),
@@ -205,10 +205,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         'SELECT y.cash_movement_id FROM pos_supplier_payments y '
         'JOIN pos_cash_movements AS m ON m.id = y.cash_movement_id '
         '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
-        'WHERE y.restaurant_id = @r AND m.branch_id = @b '
+        'WHERE y.business_id = @r AND m.branch_id = @b '
         '  AND ${drawers.where.join(' AND ')}',
       ),
-      parameters: {'r': restaurantId, 'b': branchId, ...drawers.parameters},
+      parameters: {'r': businessId, 'b': branchId, ...drawers.parameters},
     );
     return {for (final row in linked) row[0]! as int};
   }
@@ -220,10 +220,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final rows = await _db.query(
       config,
       'SELECT $_invoiceColumns FROM pos_supplier_invoices i '
-      'WHERE i.restaurant_id = @r '
+      'WHERE i.business_id = @r '
       '${supplierId == null ? '' : 'AND i.supplier_id = @s '}'
       'ORDER BY i.issued_at DESC, i.id DESC LIMIT @limit',
-      parameters: {'r': restaurantId, 'limit': limit, 's': ?supplierId},
+      parameters: {'r': businessId, 'limit': limit, 's': ?supplierId},
     );
     return [for (final row in rows) _readInvoice(row)];
   }
@@ -235,8 +235,8 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final rows = await _db.query(
       config,
       'SELECT $_invoiceColumns FROM pos_supplier_invoices i '
-      'WHERE i.id = @id AND i.restaurant_id = @r',
-      parameters: {'id': id, 'r': restaurantId},
+      'WHERE i.id = @id AND i.business_id = @r',
+      parameters: {'id': id, 'r': businessId},
     );
     return rows.isEmpty ? null : _readInvoice(rows.first);
   }
@@ -251,10 +251,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final rows = await _db.query(
       config,
       'SELECT $_paymentColumns FROM pos_supplier_payments y '
-      'WHERE y.restaurant_id = @r '
+      'WHERE y.business_id = @r '
       '${supplierId == null ? '' : 'AND y.supplier_id = @s '}'
       'ORDER BY y.paid_at DESC, y.id DESC LIMIT @limit',
-      parameters: {'r': restaurantId, 'limit': limit, 's': ?supplierId},
+      parameters: {'r': businessId, 'limit': limit, 's': ?supplierId},
     );
     return [for (final row in rows) _readPayment(row)];
   }
@@ -310,11 +310,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         FROM pos_suppliers s
         LEFT JOIN (SELECT supplier_id, SUM(total_minor)::bigint AS invoiced
                      FROM pos_supplier_invoices
-                    WHERE restaurant_id = @r AND voided_at IS NULL
+                    WHERE business_id = @r AND voided_at IS NULL
                     GROUP BY supplier_id) bill ON bill.supplier_id = s.id
         LEFT JOIN (SELECT supplier_id, SUM(amount_minor) AS paid
                      FROM pos_supplier_payments
-                    WHERE restaurant_id = @r AND voided_at IS NULL
+                    WHERE business_id = @r AND voided_at IS NULL
                     GROUP BY supplier_id) cash ON cash.supplier_id = s.id
         LEFT JOIN (SELECT i.supplier_id,
                           SUM(GREATEST(i.total_minor - COALESCE((
@@ -323,14 +323,14 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
                              WHERE p.invoice_id = i.id
                                AND p.voided_at IS NULL), 0), 0))::bigint AS overdue
                      FROM pos_supplier_invoices i
-                    WHERE i.restaurant_id = @r
+                    WHERE i.business_id = @r
                       AND i.voided_at IS NULL
                       AND i.due_at < @asOf
                     GROUP BY i.supplier_id) late ON late.supplier_id = s.id
-       WHERE s.restaurant_id = @r
+       WHERE s.business_id = @r
        ORDER BY s.name_en, s.id
       ''',
-      parameters: {'r': restaurantId, 'asOf': when},
+      parameters: {'r': businessId, 'asOf': when},
     );
 
     return [
@@ -377,13 +377,13 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final supplier = await tx.execute(
         Sql.named(
           'SELECT name_en, payment_term_days FROM pos_suppliers '
-          'WHERE id = @s AND restaurant_id = @r',
+          'WHERE id = @s AND business_id = @r',
         ),
-        parameters: {'s': invoice.supplierId, 'r': restaurantId},
+        parameters: {'s': invoice.supplierId, 'r': businessId},
       );
       if (supplier.isEmpty) {
         return const AdminResult<int>.refused(
-          CatalogInvalid('That supplier is not on this restaurant.'),
+          CatalogInvalid('That supplier is not on this business.'),
         );
       }
 
@@ -393,12 +393,12 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final clash = await tx.execute(
         Sql.named(
           'SELECT id FROM pos_supplier_invoices '
-          'WHERE restaurant_id = @r AND supplier_id = @s '
+          'WHERE business_id = @r AND supplier_id = @s '
           '  AND lower(btrim(number)) = lower(btrim(@number)) '
           '  AND voided_at IS NULL AND id <> @id',
         ),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           's': invoice.supplierId,
           'number': invoice.number,
           'id': invoice.id,
@@ -419,9 +419,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         final held = await tx.execute(
           Sql.named(
             'SELECT voided_at FROM pos_supplier_invoices '
-            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @id AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'id': invoice.id, 'r': restaurantId},
+          parameters: {'id': invoice.id, 'r': businessId},
         );
         if (held.isEmpty) {
           return const AdminResult<int>.refused(EditedElsewhere(0));
@@ -437,7 +437,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       }
 
       final parameters = <String, Object?>{
-        'r': restaurantId,
+        'r': businessId,
         'b': branchId,
         's': invoice.supplierId,
         'name': supplier.first[0]! as String,
@@ -455,7 +455,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final rows = invoice.id == 0
           ? await tx.execute(
               Sql.named(
-                'INSERT INTO pos_supplier_invoices (restaurant_id, branch_id, '
+                'INSERT INTO pos_supplier_invoices (business_id, branch_id, '
                 '  supplier_id, supplier_name, purchase_order_id, '
                 '  purchase_order_reference, number, total_minor, tax_minor, '
                 '  issued_at, due_at, note, created_by, updated_by) '
@@ -473,14 +473,14 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
                 '  purchase_order_id = @order, '
                 '  purchase_order_reference = @orderRef, '
                 '  updated_at = now(), updated_by = @by '
-                'WHERE id = @id AND restaurant_id = @r RETURNING id',
+                'WHERE id = @id AND business_id = @r RETURNING id',
               ),
               // Only what the UPDATE names. `Sql.named` refuses superfluous
               // parameters, and the insert's map carries three the update does
               // not use — the branch, the supplier and its name, none of which
               // an existing invoice may be moved to anyway.
               parameters: {
-                'r': restaurantId,
+                'r': businessId,
                 'id': invoice.id,
                 'number': invoice.number.trim(),
                 'total': invoice.total.minor,
@@ -537,9 +537,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           '     FROM pos_supplier_payments '
           '    WHERE invoice_id = @id AND voided_at IS NULL) '
           'FROM pos_supplier_invoices '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': id, 'r': restaurantId},
+        parameters: {'id': id, 'r': businessId},
       );
       if (held.isEmpty) {
         return const AdminResult<int>.refused(EditedElsewhere(0));
@@ -567,11 +567,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           'UPDATE pos_supplier_invoices SET voided_at = now(), '
           '  voided_by = @by, void_reason_id = @reason, void_note = @note, '
           '  updated_at = now(), updated_by = @by '
-          'WHERE id = @id AND restaurant_id = @r',
+          'WHERE id = @id AND business_id = @r',
         ),
         parameters: {
           'id': id,
-          'r': restaurantId,
+          'r': businessId,
           'by': by.id == 0 ? null : by.id,
           'reason': reasonId,
           'note': note?.trim(),
@@ -597,7 +597,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
 
   /// The reason a supplier pay-out is recorded under.
   ///
-  /// One of the restaurant's own `ReasonScope.payOut` codes — `SystemReasons`
+  /// One of the business's own `ReasonScope.payOut` codes — `SystemReasons`
   /// has seeded `supplier` since migration 14 — rather than a new code or a free
   /// sentence. The pay-out list already had the right answer on it, and asking
   /// the manager to pick "Supplier payment" from a list on a screen that says
@@ -608,15 +608,15 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
   /// is voided. `correction` is what `SystemReasons.cashIn` calls it.
   static const _payInReasonCode = 'correction';
 
-  /// The id of one of this restaurant's active reason codes, or null.
+  /// The id of one of this business's active reason codes, or null.
   Future<int?> _reasonId(TxSession tx, String scope, String code) async {
     final rows = await tx.execute(
       Sql.named(
         'SELECT id FROM pos_reason_codes '
-        'WHERE restaurant_id = @r AND scope = @scope AND code = @code '
+        'WHERE business_id = @r AND scope = @scope AND code = @code '
         '  AND is_active ORDER BY id LIMIT 1',
       ),
-      parameters: {'r': restaurantId, 'scope': scope, 'code': code},
+      parameters: {'r': businessId, 'scope': scope, 'code': code},
     );
     return rows.isEmpty ? null : rows.first[0]! as int;
   }
@@ -640,11 +640,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     if (blocked != null) return AdminResult.refused(blocked);
 
     // **Two authorities, not one.** `purchase.manage` is permission to say what
-    // the restaurant owes and has paid; reaching into a till drawer is
+    // the business owes and has paid; reaching into a till drawer is
     // `cash.movement`, which is what the till itself checks before a pay-out.
     // A bookkeeper entering invoices is not automatically somebody who may take
     // 500 out of a drawer, and the manager role holds both anyway — so
-    // requiring both costs a real restaurant nothing and stops the back office
+    // requiring both costs a real business nothing and stops the back office
     // becoming a way around the counter's own gate.
     //
     // Refused outright rather than quietly recorded without the movement: a
@@ -690,13 +690,13 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       final supplier = await tx.execute(
         Sql.named(
           'SELECT name_en FROM pos_suppliers '
-          'WHERE id = @s AND restaurant_id = @r',
+          'WHERE id = @s AND business_id = @r',
         ),
-        parameters: {'s': payment.supplierId, 'r': restaurantId},
+        parameters: {'s': payment.supplierId, 'r': businessId},
       );
       if (supplier.isEmpty) {
         return const AdminResult<int>.refused(
-          CatalogInvalid('That supplier is not on this restaurant.'),
+          CatalogInvalid('That supplier is not on this business.'),
         );
       }
 
@@ -717,13 +717,13 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
             '    WHERE invoice_id = @i AND voided_at IS NULL), '
             '  number '
             'FROM pos_supplier_invoices '
-            'WHERE id = @i AND restaurant_id = @r FOR UPDATE',
+            'WHERE id = @i AND business_id = @r FOR UPDATE',
           ),
-          parameters: {'i': payment.invoiceId, 'r': restaurantId},
+          parameters: {'i': payment.invoiceId, 'r': businessId},
         );
         if (bill.isEmpty) {
           return const AdminResult<int>.refused(
-            CatalogInvalid('That invoice is not on this restaurant.'),
+            CatalogInvalid('That invoice is not on this business.'),
           );
         }
         if (bill.first[0]! as int != payment.supplierId) {
@@ -780,10 +780,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           Sql.named(
             'SELECT terminal_id::text, business_day_id, closed_at '
             'FROM pos_shifts '
-            'WHERE id = @s AND restaurant_id = @r AND branch_id = @b '
+            'WHERE id = @s AND business_id = @r AND branch_id = @b '
             'FOR UPDATE',
           ),
-          parameters: {'s': fromShiftId, 'r': restaurantId, 'b': branchId},
+          parameters: {'s': fromShiftId, 'r': businessId, 'b': branchId},
         );
         if (drawer.isEmpty) {
           return const AdminResult<int>.refused(
@@ -811,7 +811,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         if (reasonId == null) {
           return const AdminResult<int>.refused(
             CatalogInvalid(
-              'This restaurant has no active pay-out reason coded "supplier", '
+              'This business has no active pay-out reason coded "supplier", '
               'so the drawer movement would have nothing to be reported under. '
               'Add it to the pay-out reasons first.',
             ),
@@ -830,7 +830,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         final movement = await tx.execute(
           Sql.named(CashMovementWrite.sql),
           parameters: CashMovementWrite.parameters(
-            restaurantId: restaurantId,
+            businessId: businessId,
             branchId: branchId,
             terminalId: drawer.first[0]! as String,
             shiftId: fromShiftId,
@@ -855,14 +855,14 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
 
       final rows = await tx.execute(
         Sql.named(
-          'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
+          'INSERT INTO pos_supplier_payments (business_id, branch_id, '
           '  supplier_id, supplier_name, invoice_id, method, amount_minor, '
           '  reference, paid_at, note, cash_movement_id, created_by) '
           'VALUES (@r, @b, @s, @name, @i, @method, @amount, @ref, @at, @note, '
           '        @movement, @by) RETURNING id',
         ),
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           'b': branchId,
           's': payment.supplierId,
           'name': supplier.first[0]! as String,
@@ -919,9 +919,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         Sql.named(
           'SELECT voided_at, amount_minor, cash_movement_id, supplier_name '
           'FROM pos_supplier_payments '
-          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          'WHERE id = @id AND business_id = @r FOR UPDATE',
         ),
-        parameters: {'id': id, 'r': restaurantId},
+        parameters: {'id': id, 'r': businessId},
       );
       if (held.isEmpty) {
         return const AdminResult<int>.refused(EditedElsewhere(0));
@@ -987,7 +987,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           if (reasonForPayIn == null) {
             return const AdminResult<int>.refused(
               CatalogInvalid(
-                'This restaurant has no active pay-in reason coded '
+                'This business has no active pay-in reason coded '
                 '"correction", so the cash has nowhere to go back in under. '
                 'Add it to the pay-in reasons first.',
               ),
@@ -1012,7 +1012,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           final movement = await tx.execute(
             Sql.named(CashMovementWrite.sql),
             parameters: CashMovementWrite.parameters(
-              restaurantId: restaurantId,
+              businessId: businessId,
               branchId: branchId,
               terminalId: drawer.first[1]! as String,
               shiftId: drawer.first[0]! as int,
@@ -1054,11 +1054,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         Sql.named(
           'UPDATE pos_supplier_payments SET voided_at = now(), '
           '  voided_by = @by, void_reason_id = @reason, void_note = @note '
-          'WHERE id = @id AND restaurant_id = @r',
+          'WHERE id = @id AND business_id = @r',
         ),
         parameters: {
           'id': id,
-          'r': restaurantId,
+          'r': businessId,
           'by': by.id == 0 ? null : by.id,
           'reason': reasonId,
           'note': note?.trim(),
@@ -1086,8 +1086,8 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final rows = await _db.query(
       config,
       'SELECT $_paymentColumns FROM pos_supplier_payments y '
-      'WHERE y.id = @id AND y.restaurant_id = @r',
-      parameters: {'id': id, 'r': restaurantId},
+      'WHERE y.id = @id AND y.business_id = @r',
+      parameters: {'id': id, 'r': businessId},
     );
     return rows.isEmpty ? null : _readPayment(rows.first);
   }
@@ -1102,13 +1102,13 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
   }) => tx.execute(
     Sql.named('''
     INSERT INTO pos_audit_events
-      (restaurant_id, branch_id, actor_user_id, actor_name, action,
+      (business_id, branch_id, actor_user_id, actor_name, action,
        entity_type, entity_id, after_value)
-    VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+    VALUES (@business, @branch, @by, @actor, @action, @type, @entity,
             @after::jsonb)
     '''),
     parameters: {
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'by': by.id == 0 ? null : by.id,
       'actor': by.name,
@@ -1129,12 +1129,12 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
   }) => tx.execute(
     Sql.named('''
       INSERT INTO pos_sync_outbox
-        (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
-      VALUES (@restaurant, @branch, 'cash_movement', @source, @client)
-      ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+        (business_id, branch_id, event_type, source_id, client_transaction_id)
+      VALUES (@business, @branch, 'cash_movement', @source, @client)
+      ON CONFLICT (business_id, client_transaction_id) DO NOTHING
     '''),
     parameters: {
-      'restaurant': restaurantId,
+      'business': businessId,
       'branch': branchId,
       'source': sourceId,
       'client': clientTransactionId,

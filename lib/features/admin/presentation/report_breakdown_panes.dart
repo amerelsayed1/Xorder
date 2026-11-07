@@ -908,7 +908,7 @@ class _MethodsTable extends StatelessWidget {
                   color: colors[i % colors.length],
                 ),
                 const SizedBox(width: PosSpace.sm),
-                // The restaurant's own name for the method, as written on the
+                // The business's own name for the method, as written on the
                 // payment rows.
                 Expanded(child: _name(context, tender.method.label)),
               ],

@@ -541,7 +541,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
   /// upgrade it does not exist until this has run. If the upgrade fails and
   /// the password cannot be stored for that reason, the person is let in on
   /// the PIN this once, with the failure said above every pane, as a failed
-  /// upgrade always is: Backup is behind this door, and a restaurant whose
+  /// upgrade always is: Backup is behind this door, and a business whose
   /// upgrade broke must still be able to reach it. Next time they are asked
   /// again.
   Future<AdminSignIn> setPassword({

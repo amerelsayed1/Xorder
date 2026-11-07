@@ -21,7 +21,7 @@ class StockLevel {
   final String nameEn;
   final String? nameAr;
 
-  /// In the unit it is counted in. Signed: a restaurant that sold what the
+  /// In the unit it is counted in. Signed: a business that sold what the
   /// system never saw arrive is telling the truth about the sale, and the
   /// stock says so rather than clamping at zero and hiding it.
   final Quantity onHand;

@@ -28,7 +28,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
 
   const manager = PosStaff(
     id: 0,
@@ -56,10 +56,10 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
-    restaurantId = (await db.query(
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('cl', 'CL') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('cl', 'CL') RETURNING id",
     )).first[0]! as int;
   });
 
@@ -67,19 +67,19 @@ void main() {
 
   Future<String> stored() async => (await db.query(
     pg.config,
-    'SELECT content_languages FROM pos_restaurants WHERE id = @r',
-    parameters: {'r': restaurantId},
+    'SELECT content_languages FROM pos_businesses WHERE id = @r',
+    parameters: {'r': businessId},
   )).first[0]! as String;
 
   PostgresCatalogAdminRepository repo({bool offline = true}) =>
       PostgresCatalogAdminRepository(
         database: db,
         config: pg.config,
-        restaurantId: restaurantId,
+        businessId: businessId,
         offline: offline,
       );
 
-  test('migration 57: a restaurant that existed before it is `both`', () async {
+  test('migration 57: a business that existed before it is `both`', () async {
     expect(await stored(), 'both');
   });
 
@@ -87,8 +87,8 @@ void main() {
     await expectLater(
       db.query(
         pg.config,
-        "UPDATE pos_restaurants SET content_languages = 'fr' WHERE id = @r",
-        parameters: {'r': restaurantId},
+        "UPDATE pos_businesses SET content_languages = 'fr' WHERE id = @r",
+        parameters: {'r': businessId},
       ),
       throwsA(anything),
     );
@@ -141,8 +141,8 @@ void main() {
   group('a cloud till receives it from the bundle', () {
     BootstrapBundle bundle({String? contentLanguages}) => BootstrapBundle(
       configVersion: 1,
-      restaurant: BootstrapRestaurant(
-        id: restaurantId,
+      business: BootstrapBusiness(
+        id: businessId,
         name: 'CL',
         slug: 'cl',
         currency: 'EGP',
@@ -176,8 +176,8 @@ void main() {
   });
 
   group('the bundle parser', () {
-    BootstrapRestaurant? parse(Map<String, Object?> extra) =>
-        BootstrapRestaurant.fromJson({
+    BootstrapBusiness? parse(Map<String, Object?> extra) =>
+        BootstrapBusiness.fromJson({
           'id': 1,
           'name': 'CL',
           'slug': 'cl',

@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/domain/models/content_languages.dart';
 
-/// XORD-035 — the POS writes names in one language: the restaurant's own
+/// XORD-035 — the POS writes names in one language: the business's own
 /// choice when it made one, the till's language when it did not.
 void main() {
   group('which single language a form is written in', () {

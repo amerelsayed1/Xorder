@@ -30,7 +30,7 @@ void main() {
 
   late PgFixture pg;
   late PosDatabase db;
-  late int restaurantId;
+  late int businessId;
   late int branchId;
   late int cashId;
   late int cardId;
@@ -48,26 +48,26 @@ void main() {
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
     await pg.truncate();
-    await db.query(pg.config, 'DELETE FROM pos_restaurants');
+    await db.query(pg.config, 'DELETE FROM pos_businesses');
 
-    restaurantId = (await db.query(
+    businessId = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('fa', 'Accounts') "
+      "INSERT INTO pos_businesses (slug, name) VALUES ('fa', 'Accounts') "
       'RETURNING id',
     )).first[0]! as int;
     branchId = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'MAIN', 'Main') RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     )).first[0]! as int;
     final ids = await db.query(
       pg.config,
-      "INSERT INTO pos_tender_types (restaurant_id, code, name_en, kind, "
+      "INSERT INTO pos_tender_types (business_id, code, name_en, kind, "
       "  counts_as_cash, opens_drawer, sort_order) VALUES "
       "(@r, 'cash', 'Cash', 'cash', true, true, 1), "
       "(@r, 'card', 'Card', 'card', false, false, 2) RETURNING id",
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     );
     cashId = ids[0][0]! as int;
     cardId = ids[1][0]! as int;
@@ -78,21 +78,21 @@ void main() {
   PostgresFinancialAccountsAdminRepository admin({
     bool offline = true,
     bool adminAvailable = true,
-    int? onRestaurant,
+    int? onBusiness,
   }) => PostgresFinancialAccountsAdminRepository(
     database: db,
     config: pg.config,
-    restaurantId: onRestaurant ?? restaurantId,
+    businessId: onBusiness ?? businessId,
     branchId: branchId,
     offline: offline,
     adminAvailable: adminAvailable,
   );
 
-  PostgresFinancialAccountsRepository reader({int? onRestaurant}) =>
+  PostgresFinancialAccountsRepository reader({int? onBusiness}) =>
       PostgresFinancialAccountsRepository(
         database: db,
         config: pg.config,
-        restaurantId: onRestaurant ?? restaurantId,
+        businessId: onBusiness ?? businessId,
       );
 
   FinancialAccount draft({
@@ -120,10 +120,10 @@ void main() {
   Future<List<String>> audit() async => [
     for (final row in await db.query(
       pg.config,
-      'SELECT action FROM pos_audit_events WHERE restaurant_id = @r '
+      'SELECT action FROM pos_audit_events WHERE business_id = @r '
       "AND action IN ('financial_account.saved', 'tender_account_default.saved') "
       'ORDER BY id',
-      parameters: {'r': restaurantId},
+      parameters: {'r': businessId},
     ))
       row[0]! as String,
   ];
@@ -132,9 +132,9 @@ void main() {
     test('an account has one of three kinds, and a name', () async {
       Future<void> insert(String name, String kind) => db.query(
         pg.config,
-        'INSERT INTO pos_financial_accounts (restaurant_id, name, kind) '
+        'INSERT INTO pos_financial_accounts (business_id, name, kind) '
         'VALUES (@r, @n, @k)',
-        parameters: {'r': restaurantId, 'n': name, 'k': kind},
+        parameters: {'r': businessId, 'n': name, 'k': kind},
       );
 
       await expectLater(insert('Bad', 'crypto'), throwsA(anything));
@@ -148,11 +148,11 @@ void main() {
 
       Future<void> insert(int? branch) => db.query(
         pg.config,
-        'INSERT INTO pos_tender_account_defaults (restaurant_id, '
+        'INSERT INTO pos_tender_account_defaults (business_id, '
         '  tender_type_id, branch_id, branch_key, financial_account_id) '
         'VALUES (@r, @t, @b, @k, @a)',
         parameters: {
-          'r': restaurantId,
+          'r': businessId,
           't': cardId,
           'b': branch,
           'k': branch ?? 0,
@@ -173,10 +173,10 @@ void main() {
       await expectLater(
         db.query(
           pg.config,
-          'INSERT INTO pos_tender_account_defaults (restaurant_id, '
+          'INSERT INTO pos_tender_account_defaults (business_id, '
           '  tender_type_id, branch_id, branch_key, financial_account_id) '
           'VALUES (@r, @t, NULL, 7, @a)',
-          parameters: {'r': restaurantId, 't': cardId, 'a': account.id},
+          parameters: {'r': businessId, 't': cardId, 'a': account.id},
         ),
         throwsA(anything),
       );
@@ -204,21 +204,18 @@ void main() {
   group('migration 60', () {
     Future<List<String>> held(String code) async => ((await db.query(
       pg.config,
-      'SELECT capabilities FROM pos_roles WHERE restaurant_id = @r AND code = @c',
-      parameters: {'r': restaurantId, 'c': code},
+      'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @c',
+      parameters: {'r': businessId, 'c': code},
     )).first[0]! as List).cast<String>();
 
     Future<void> role(String code, Set<String> capabilities) => db.query(
       pg.config,
-      'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, '
+      'INSERT INTO pos_roles (business_id, code, name_en, name_ar, '
       '  capabilities, is_system) VALUES (@r, @c, @c, @c, @caps, false)',
-      parameters: {'r': restaurantId, 'c': code, 'caps': capabilities.toList()},
+      parameters: {'r': businessId, 'c': code, 'caps': capabilities.toList()},
     );
 
-    Future<List<int>> rerun() async {
-      await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 60');
-      return PosMigrator(db).migrate(pg.config);
-    }
+    Future<List<int>> rerun() => pg.replay(60);
 
     test('the owner is given the key, and nobody else', () async {
       await role('owner', {PosCapability.operate, PosCapability.settingsManage});
@@ -337,14 +334,14 @@ void main() {
       expect(await problem(draft(name: 'Other', branch: 99999)), AccountProblem.branchUnknown);
     });
 
-    test('another restaurant\'s branch and accounts are not reachable', () async {
+    test('another business\'s branch and accounts are not reachable', () async {
       final other = (await db.query(
         pg.config,
-        "INSERT INTO pos_restaurants (slug, name) VALUES ('other', 'Other') RETURNING id",
+        "INSERT INTO pos_businesses (slug, name) VALUES ('other', 'Other') RETURNING id",
       )).first[0]! as int;
       final theirBranch = (await db.query(
         pg.config,
-        "INSERT INTO pos_branches (restaurant_id, code, name) "
+        "INSERT INTO pos_branches (business_id, code, name) "
         "VALUES (@r, 'X', 'X') RETURNING id",
         parameters: {'r': other},
       )).first[0]! as int;
@@ -352,11 +349,11 @@ void main() {
       final result = await admin().saveAccount(draft(branch: theirBranch), by: owner);
       expect((result.refusal! as AccountRefused).problem, AccountProblem.branchUnknown);
 
-      final theirs = (await admin(onRestaurant: other).saveAccount(draft(name: 'Theirs'), by: owner)).value!;
+      final theirs = (await admin(onBusiness: other).saveAccount(draft(name: 'Theirs'), by: owner)).value!;
       expect(await reader().accounts(includeInactive: true), isEmpty);
-      expect(await reader(onRestaurant: other).accounts(), hasLength(1));
+      expect(await reader(onBusiness: other).accounts(), hasLength(1));
 
-      // Editing another restaurant's account by id is a lost row, not an edit.
+      // Editing another business's account by id is a lost row, not an edit.
       final edit = await admin().saveAccount(draft(id: theirs.id, name: 'Mine now'), by: owner);
       expect(edit.refusal, isA<EditedElsewhere>());
     });
@@ -461,10 +458,10 @@ void main() {
       // Written straight into the table, as an older build would have.
       await db.query(
         pg.config,
-        'INSERT INTO pos_tender_account_defaults (restaurant_id, '
+        'INSERT INTO pos_tender_account_defaults (business_id, '
         '  tender_type_id, branch_id, branch_key, financial_account_id) '
         'VALUES (@r, @t, NULL, 0, @a)',
-        parameters: {'r': restaurantId, 't': cardId, 'a': safe.id},
+        parameters: {'r': businessId, 't': cardId, 'a': safe.id},
       );
       expect((await reader().defaults()).single.accountId, safe.id);
 
@@ -556,8 +553,8 @@ void main() {
       List<Map<String, Object?>>? tenders,
     }) => BootstrapBundle(
       configVersion: version,
-      restaurant: BootstrapRestaurant(
-        id: restaurantId,
+      business: BootstrapBusiness(
+        id: businessId,
         name: 'Accounts',
         slug: 'fa',
         currency: 'EGP',
@@ -620,8 +617,8 @@ void main() {
 
       final localCard = (await db.query(
         pg.config,
-        'SELECT id FROM pos_tender_types WHERE restaurant_id = @r AND platform_id = 501',
-        parameters: {'r': restaurantId},
+        'SELECT id FROM pos_tender_types WHERE business_id = @r AND platform_id = 501',
+        parameters: {'r': businessId},
       )).first[0]! as int;
       final rows = await reader().defaults();
 
@@ -684,14 +681,14 @@ void main() {
     });
   });
 
-  test('the branches an account can be tied to are this restaurant\'s own', () async {
+  test('the branches an account can be tied to are this business\'s own', () async {
     final other = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('o2', 'O2') RETURNING id",
+      "INSERT INTO pos_businesses (slug, name) VALUES ('o2', 'O2') RETURNING id",
     )).first[0]! as int;
     await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) VALUES (@r, 'Z', 'Zed')",
+      "INSERT INTO pos_branches (business_id, code, name) VALUES (@r, 'Z', 'Zed')",
       parameters: {'r': other},
     );
 

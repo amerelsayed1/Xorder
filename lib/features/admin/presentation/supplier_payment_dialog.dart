@@ -16,7 +16,7 @@ import 'admin_messages.dart';
 /// **The amount starts at what the chosen invoice still owes.** Nearly every
 /// payment settles a bill in full, so the common case is one tap; typing over it
 /// is how a part payment gets recorded. Pointing it at no invoice pays *on
-/// account*, which is real — a restaurant hands the dairy man 2,000 on Friday
+/// account*, which is real — a business hands the dairy man 2,000 on Friday
 /// against a running tab — and is offered as its own choice rather than left as
 /// what happens when somebody forgets to pick one.
 ///
@@ -357,7 +357,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
 ///
 /// A switch and not a second payment method: *cash* is what the supplier was
 /// handed, and *out of the drawer* is where it came from. Folding them into one
-/// button labelled "Cash from till" would leave a restaurant that pays from an
+/// button labelled "Cash from till" would leave a business that pays from an
 /// office safe choosing between a method that is wrong and a drawer movement it
 /// does not want.
 class _DrawerSwitch extends StatelessWidget {

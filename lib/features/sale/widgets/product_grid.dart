@@ -31,7 +31,7 @@ class ProductGrid extends StatelessWidget {
 
   /// Meals, shown **before** the products in the same category.
   ///
-  /// First because that is what a restaurant selling meals wants sold: a combo
+  /// First because that is what a business selling meals wants sold: a combo
   /// buried under forty items is a combo nobody rings up, and the reason it
   /// exists is that it is the thing the shop would rather sell.
   final List<Combo> combos;

@@ -404,7 +404,7 @@ void _tenderCashTests() {
         countsAsCash: true,
       ).ticket!;
       // A cloud till's platform tender: an id above the seeded ones, which
-      // the restaurant has said counts as cash. No lookup can recover that.
+      // the business has said counts as cash. No lookup can recover that.
       ticket = TicketEngine.addTender(
         ticket,
         typeId: 17,
@@ -462,7 +462,7 @@ void _fullTicketTests() {
   group('the rules a ticket was priced under survive a restart (R-SALE-2)', () {
     /// The failure this guards against is a parked table that comes back
     /// priced under different rules than it was rung up under: an inclusive
-    /// restaurant's bill growing its VAT on top, a zero-rated bottle charged
+    /// business's bill growing its VAT on top, a zero-rated bottle charged
     /// the standard rate, a delivery fee turned back into 12%, and a delivery
     /// with nobody to deliver it to. Before the fix only the four scalar rates
     /// were written, and `adopt` takes the decoded ticket as it is.
