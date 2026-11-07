@@ -83,8 +83,11 @@ class PostgresOrdersRepository implements OrdersRepository {
       // guarantee.
       final existing = await tx.execute(
         Sql.named(
-          'SELECT id, invoice_number FROM pos_orders '
-          'WHERE business_id = @business AND client_transaction_id = @txn',
+          'SELECT o.id, o.invoice_number, '
+          '       (SELECT x.server_invoice_number FROM pos_outbox x '
+          '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1) '
+          'FROM pos_orders o '
+          'WHERE o.business_id = @business AND o.client_transaction_id = @txn',
         ),
         parameters: {'business': _context.businessId, 'txn': ticket.id},
       );
@@ -94,7 +97,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           clientTransactionId: ticket.id,
           queued: false,
           serverId: row[0] as int,
-          invoiceNumber: row[1] as String?,
+          invoiceNumber: _printable(row[1] as String?, row[2] as String?),
         );
       }
 
@@ -168,8 +171,11 @@ class PostgresOrdersRepository implements OrdersRepository {
       if (inserted.isEmpty) {
         final winner = await tx.execute(
           Sql.named(
-            'SELECT id, invoice_number FROM pos_orders '
-            'WHERE business_id = @business AND client_transaction_id = @txn',
+            'SELECT o.id, o.invoice_number, '
+            '       (SELECT x.server_invoice_number FROM pos_outbox x '
+            '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1) '
+            'FROM pos_orders o '
+            'WHERE o.business_id = @business AND o.client_transaction_id = @txn',
           ),
           parameters: {'business': _context.businessId, 'txn': ticket.id},
         );
@@ -178,7 +184,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           clientTransactionId: ticket.id,
           queued: false,
           serverId: row[0] as int,
-          invoiceNumber: row[1] as String?,
+          invoiceNumber: _printable(row[1] as String?, row[2] as String?),
         );
       }
 
@@ -199,13 +205,25 @@ class PostgresOrdersRepository implements OrdersRepository {
         // ever go.
         queued: queued,
         serverId: orderId,
-        invoiceNumber: inserted.first[1] as String?,
+        invoiceNumber: _printable(inserted.first[1] as String?, null),
       );
     });
     // Refused inside the transaction, thrown out here: `runTx` translates
     // anything thrown inside it into a database failure, and this is not one.
     return outcome ?? (throw CheckChangedElsewhere(ticket.tableId));
   }
+
+  /// The invoice number a receipt may print for this sale (XORD-058).
+  ///
+  /// **On a cloud till the platform numbers the sale** (POS-BE-008), so the
+  /// only number worth printing is [server]'s; until the drain has brought it
+  /// back the receipt says PROVISIONAL (owner decision, 2026-11-07). The till's
+  /// own sequence ([local]) still numbers the row — history, the day close and
+  /// the outbox order by it — but printed, it named a sale by a number the
+  /// dashboard never showed, and two tills on one branch would print the same
+  /// one. An offline till has no platform, and its own number is the invoice.
+  String? _printable(String? local, String? server) =>
+      _config.mode.syncsSalesToPlatform ? server : local;
 
   /// Let go of [ticket]'s parked check as part of the sale, and confirm it is
   /// the check being paid (XORD-045, XORD-046 for a held ticket). False
