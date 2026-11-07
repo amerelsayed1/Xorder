@@ -70,7 +70,7 @@ class PosOrderService
         // A customer on the ticket must be this restaurant's own. After the
         // replay short-circuit (a stored order is returned as stored, never
         // re-judged) and before anything is written. A walk-in carries none.
-        $this->assertCustomerInTenant($terminal, $data['customer_id'] ?? null);
+        $customer = $this->customerInTenant($terminal, $data['customer_id'] ?? null);
 
         // Two vocabularies, one meaning. The onboarding wizard and the plan
         // features write `pickup`; the POS sends `takeaway`. They are the same
@@ -156,7 +156,7 @@ class PosOrderService
         // is preserved; the original utc-offset is not (recorded in §006).
         $clientCreatedAt = Carbon::parse($data['created_at'])->setTimezone(config('app.timezone'));
 
-        $order = DB::transaction(function () use ($terminal, $branch, $data, $priced, $mismatch, $asserted, $actor, $shift, $restaurant, $currency, $exp, $payloadHash, $clientCreatedAt) {
+        $order = DB::transaction(function () use ($terminal, $branch, $data, $priced, $mismatch, $asserted, $actor, $shift, $restaurant, $currency, $exp, $payloadHash, $clientCreatedAt, $customer) {
             $invoiceNumber = $this->invoices->next(
                 $branch,
                 $clientCreatedAt,
@@ -184,6 +184,11 @@ class PosOrderService
                 'source' => 'pos',
                 'branch_id' => $branch->id,
                 'customer_id' => $data['customer_id'] ?? null,
+                // G2: the dashboard's customer column reads these, as it does
+                // for a diner's order — a snapshot of who the sale was for, as
+                // the record read when it was rung up. A walk-in has none.
+                'customer_name' => $customer?->name,
+                'customer_phone' => $customer?->phone,
                 // Legacy projection so the dashboard renders POS orders with
                 // zero changes: same shape the public path stores.
                 'items' => array_map(fn ($l) => [
@@ -547,22 +552,25 @@ class PosOrderService
      * first). Looked up against the TERMINAL's restaurant explicitly rather
      * than through the global scope, so the answer does not depend on which
      * tenant the request context happens to have pinned. A customer of another
-     * restaurant and one that never existed get the same answer.
+     * restaurant and one that never existed get the same answer. Returns the
+     * customer (null for a walk-in) so the order can carry its name and phone.
      */
-    private function assertCustomerInTenant(PosTerminal $terminal, mixed $customerId): void
+    private function customerInTenant(PosTerminal $terminal, mixed $customerId): ?Customer
     {
         if ($customerId === null) {
-            return;
+            return null;
         }
 
-        $owned = Customer::withoutGlobalScopes()
+        $customer = Customer::withoutGlobalScopes()
             ->where('restaurant_id', $terminal->restaurant_id)
             ->whereKey((int) $customerId)
-            ->exists();
+            ->first(['id', 'name', 'phone']);
 
-        if (! $owned) {
+        if ($customer === null) {
             throw new PosApiException('CUSTOMER_NOT_FOUND', 422);
         }
+
+        return $customer;
     }
 
     /**

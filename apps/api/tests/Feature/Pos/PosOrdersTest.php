@@ -433,9 +433,9 @@ class PosOrdersTest extends PosTestCase
 
     // ------------------------------------------------------- order customer
 
-    private function customerOf(Restaurant $restaurant, string $name = 'Mona'): Customer
+    private function customerOf(Restaurant $restaurant, string $name = 'Mona', ?string $phone = null): Customer
     {
-        $customer = new Customer(['name' => $name]);
+        $customer = new Customer(['name' => $name, 'phone' => $phone]);
         $customer->restaurant_id = $restaurant->id;
         $customer->save();
 
@@ -453,6 +453,35 @@ class PosOrdersTest extends PosTestCase
             $customer->id,
             Order::withoutGlobalScopes()->where('channel', 'pos')->sole()->customer_id,
         );
+    }
+
+    public function test_the_order_carries_its_customers_name_and_phone_for_the_dashboard(): void
+    {
+        $customer = $this->customerOf($this->restaurant, 'عامر السيد', '01001234567');
+        $token = $this->token();
+
+        $this->postJson('/api/pos/orders', $this->payload(['customer_id' => $customer->id]), $this->deviceHeaders($token))
+            ->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('channel', 'pos')->sole();
+        $this->assertSame('عامر السيد', $order->customer_name);
+        $this->assertSame($customer->fresh()->phone, $order->customer_phone);
+        $this->assertNotNull($order->customer_phone);
+
+        // The Orders page reads the same columns a diner's order fills.
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($this->owner)->getJson('/api/dashboard/orders')
+            ->assertOk()
+            ->assertJsonPath('data.0.customer_name', 'عامر السيد')
+            ->assertJsonPath('data.0.customer_phone', $order->customer_phone);
+    }
+
+    public function test_a_walk_in_sale_has_no_customer_name_or_phone(): void
+    {
+        $this->postJson('/api/pos/orders', $this->payload(), $this->deviceHeaders($this->token()))->assertCreated();
+
+        $order = Order::withoutGlobalScopes()->where('channel', 'pos')->sole();
+        $this->assertNull($order->customer_name);
+        $this->assertNull($order->customer_phone);
     }
 
     public function test_another_restaurants_customer_is_refused_and_nothing_is_written(): void
