@@ -70,6 +70,11 @@ return [
         'pos_pin_set' => 'POS PIN set.',
         'pos_pin_cleared' => 'POS PIN cleared.',
         'order_received' => 'Order received.',
+        // XORD-047: diner orders are priced by the server from item ids.
+        'menu_refresh_required' => 'The menu has been updated. Please refresh the page and add your items again.',
+        'menu_item_unavailable' => 'An item in your order is no longer available. Please refresh the menu.',
+        'menu_option_unavailable' => 'An option you chose is no longer available. Please refresh the menu.',
+        'menu_option_choice_invalid' => 'Please check the choices for an item in your order.',
         'order_not_found' => 'Order not found.',
         'refund_not_found' => 'Refund not found.',
         'receipt_profile_stale' => 'Somebody else saved this receipt profile while you were editing. Reload to see their version.',

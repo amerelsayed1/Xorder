@@ -65,6 +65,11 @@ return [
         'pos_pin_set' => 'تم تعيين رمز نقاط البيع.',
         'pos_pin_cleared' => 'تم مسح رمز نقاط البيع.',
         'order_received' => 'تم استلام الطلب.',
+        // XORD-047: diner orders are priced by the server from item ids.
+        'menu_refresh_required' => 'تم تحديث المنيو. حدّث الصفحة وأضف طلبك مرة أخرى من فضلك.',
+        'menu_item_unavailable' => 'صنف في طلبك لم يعد متاحاً. حدّث المنيو من فضلك.',
+        'menu_option_unavailable' => 'اختيار في طلبك لم يعد متاحاً. حدّث المنيو من فضلك.',
+        'menu_option_choice_invalid' => 'راجع اختيارات أحد الأصناف في طلبك من فضلك.',
         'order_not_found' => 'لم يتم العثور على الطلب.',
         'refund_not_found' => 'لم يتم العثور على الاسترداد.',
         'receipt_profile_stale' => 'قام شخص آخر بحفظ بيانات الفاتورة أثناء تعديلك. أعد التحميل لعرض نسخته.',

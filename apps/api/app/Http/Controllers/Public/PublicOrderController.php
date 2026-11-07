@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\OrderRound;
 use App\Services\BranchEgressIpService;
 use App\Services\CustomerDirectory;
+use App\Services\DinerOrderPricing;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
 use App\Services\TableVisitService;
@@ -66,6 +67,27 @@ class PublicOrderController extends Controller
             return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
         }
 
+        $data = $request->validated();
+
+        // Priced here, from the menu, before anything is written (XORD-047).
+        // The phone's line_total and total are discarded: they were how a
+        // modified request set its own price. An item that cannot be sold
+        // throws a 422 now, while there is still nothing to roll back.
+        //
+        // Before the tenant is pinned below, not inside it: the menu loader
+        // pins and then CLEARS the tenant itself, which would leave the
+        // directory upsert and the order write unscoped.
+        $priced = app(DinerOrderPricing::class)->price(
+            $restaurant,
+            $data['items'],
+            $data['lang'] ?? $restaurant->default_language->value,
+        );
+        $data['items'] = $priced['items'];
+        // Clamped to the total column's capacity (decimal(10,2)) exactly as
+        // before: 100 lines of a very expensive item must not be a 500.
+        $data['total'] = min((float) $priced['total'], 99999999.99);
+        unset($data['lang']);
+
         // Pin the tenant so the customer directory upsert below is scoped and
         // stamped to this restaurant (public request has no auth context). The
         // override is released in a finally so a thrown exception can never leak
@@ -73,22 +95,6 @@ class PublicOrderController extends Controller
         TenantContext::overrideId($restaurant->id);
 
         try {
-            $data = $request->validated();
-
-            // Recompute the order total from the submitted line totals rather than
-            // trusting the client's `total`. Line prices are still a customer
-            // snapshot (the menu is fulfilled over WhatsApp, no payment taken and
-            // the payload carries no item ids to re-price against), but the stored
-            // total can no longer contradict its own line items — a forged
-            // `total` of 0 or 999999 is normalized before it reaches history,
-            // stats and reports.
-            //
-            // Clamp to the total column's capacity (decimal(10,2)): each of up to
-            // 100 line_totals is capped at 1,000,000, so the raw sum can reach
-            // 100,000,000 and overflow the column (a 500 on this public endpoint).
-            $sum = collect($data['items'] ?? [])
-                ->sum(fn ($item) => (float) ($item['line_total'] ?? 0));
-            $data['total'] = min($sum, 99999999.99);
 
             [$customer, $address] = $this->directory->upsert($data);
 
@@ -285,10 +291,19 @@ class PublicOrderController extends Controller
                 'variant' => $line['variant'] ?? null,
                 'options' => $line['options'] ?? [],
                 'note' => $line['note'] ?? null,
-                'unit_price' => round((float) $line['line_total'] / $quantity, 2),
+                'unit_price' => $line['unit_price'],
                 'line_total' => $line['line_total'],
             ]);
             $item->restaurant_id = $order->restaurant_id;
+            // Server-priced (XORD-047): the menu item it was priced from, and
+            // the figures in minor units, written beside the decimals the
+            // dashboard reads — the columns POS orders already fill.
+            $item->forceFill([
+                'menu_item_id' => $line['menu_item_id'] ?? null,
+                'unit_price_minor' => (int) round((float) $line['unit_price'] * 100),
+                'line_total_minor' => (int) round((float) $line['line_total'] * 100),
+                'price_source' => $line['price_source'] ?? 'server',
+            ]);
             $item->save();
         }
     }

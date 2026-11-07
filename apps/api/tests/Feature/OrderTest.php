@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
@@ -14,6 +15,8 @@ use Tests\TestCase;
 
 class OrderTest extends TestCase
 {
+    use BuildsDinerOrders;
+
     use RefreshDatabase;
 
     /** Order management is gated on the system_ordering feature. */
@@ -22,13 +25,13 @@ class OrderTest extends TestCase
         app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'system_ordering' => true]);
     }
 
-    private function payload(): array
+    private function payload(?Restaurant $restaurant = null): array
     {
         return [
-            'items' => [
+            'items' => $this->dinerItems([
                 ['name' => 'برجر', 'qty' => 2, 'options' => ['جبنة إضافية'], 'note' => 'بدون بصل', 'line_total' => 150],
                 ['name' => 'Pizza', 'qty' => 1, 'variant' => 'Medium', 'options' => [], 'note' => null, 'line_total' => 80],
-            ],
+            ], $restaurant),
             'total' => 230,
             'customer_name' => 'Amer',
             'customer_phone' => '+201234567890',
@@ -102,10 +105,10 @@ class OrderTest extends TestCase
 
         // Client sends a forged total that doesn't match its line items.
         $this->postJson('/api/public/restaurants/demo/orders', [
-            'items' => [
+            'items' => $this->dinerItems([
                 ['name' => 'Burger', 'qty' => 2, 'line_total' => 150],
                 ['name' => 'Pizza', 'qty' => 1, 'line_total' => 80],
-            ],
+            ]),
             'total' => 0.01,
             'customer_phone' => '+201234567890',
         ])->assertCreated();
@@ -123,7 +126,7 @@ class OrderTest extends TestCase
         // Postgres; the recompute must clamp to the column max, never 500.
         $items = array_fill(0, 100, ['name' => 'X', 'qty' => 1, 'line_total' => 1000000]);
         $this->postJson('/api/public/restaurants/demo/orders', [
-            'items' => $items,
+            'items' => $this->dinerItems($items),
             'total' => 100,
             'customer_phone' => '+201234567890',
         ])->assertCreated();
@@ -165,8 +168,8 @@ class OrderTest extends TestCase
         $admin = User::factory()->restaurantAdmin($mine->id)->create();
         $this->enableSystemOrdering($mine);
 
-        $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload())->assertCreated();
-        $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload())->assertCreated();
+        $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload($mine))->assertCreated();
+        $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload($other))->assertCreated();
 
         $this->actingAs($admin)->getJson('/api/dashboard/orders')
             ->assertOk()
@@ -184,8 +187,8 @@ class OrderTest extends TestCase
         $admin = User::factory()->restaurantAdmin($mine->id)->create();
         $this->enableSystemOrdering($mine);
 
-        $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload());
-        $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload());
+        $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload($mine));
+        $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload($other));
 
         $myOrder = Order::withoutGlobalScopes()->where('restaurant_id', $mine->id)->first();
         $foreignOrder = Order::withoutGlobalScopes()->where('restaurant_id', $other->id)->first();

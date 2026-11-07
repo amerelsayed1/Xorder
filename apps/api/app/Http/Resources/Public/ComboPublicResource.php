@@ -30,6 +30,8 @@ class ComboPublicResource extends JsonResource
                 'max_select' => $g->max_select,
                 'is_variant' => $g->is_variant,
                 'items' => $g->items->map(fn ($it) => [
+                    // The choice's own id, which the order names (XORD-047).
+                    'id' => $it->id,
                     'name_en' => $it->menuItem?->name_en,
                     'name_ar' => $it->menuItem?->name_ar,
                     'extra_price' => $it->extra_price,
