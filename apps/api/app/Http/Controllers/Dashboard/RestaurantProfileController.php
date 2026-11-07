@@ -34,9 +34,16 @@ class RestaurantProfileController extends Controller
         $accentChanged = array_key_exists('brand_color', $data)
             && strtolower((string) $data['brand_color']) !== strtolower((string) $restaurant->brand_color);
 
+        // Content languages ride the POS bundle (restaurant.default_language and
+        // bilingual), so a change must tell the tills too.
+        $languagesChanged = (array_key_exists('default_language', $data)
+                && (string) $data['default_language'] !== (string) $restaurant->default_language?->value)
+            || (array_key_exists('bilingual', $data)
+                && (bool) $data['bilingual'] !== ($restaurant->bilingual !== false));
+
         $restaurant->update($data);
 
-        if ($trnChanged || $accentChanged) {
+        if ($trnChanged || $accentChanged || $languagesChanged) {
             PosConfigVersion::bump($restaurant);
         }
 

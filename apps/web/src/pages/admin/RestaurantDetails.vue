@@ -540,495 +540,548 @@ const sections = computed(() => [
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const restaurantName = (x) => pickLocalized(x, 'name', locale.value)
 const initial = (x) => localizedInitial(x, 'name', locale.value)
+
+// Display-only: the subscription end date for the summary band, and its tone.
+const endDateFmt = computed(() => sub.subscription_end_date
+    ? new Date(sub.subscription_end_date).toLocaleDateString(locale.value, { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—')
+const subTone = computed(() => {
+    if (sub.subscription_status === 'EXPIRED' || sub.subscription_status === 'SUSPENDED') return 'tone-red'
+    if (daysLeft.value !== null && daysLeft.value <= 7) return 'tone-red'
+    if (sub.subscription_status === 'TRIAL' || (daysLeft.value !== null && daysLeft.value <= 30)) return 'tone-amber'
+    return 'tone-ok'
+})
 </script>
 
 <template>
-    <!-- Loading -->
-    <div v-if="loading" class="space-y-6 max-w-3xl">
-        <Skeleton w="100%" h="96px" rounded="14px" />
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Skeleton v-for="n in 4" :key="n" w="100%" h="74px" rounded="14px" />
-        </div>
-        <Skeleton w="100%" h="120px" rounded="14px" />
-        <Skeleton w="100%" h="200px" rounded="14px" />
+    <!-- Loading: mirrors header, subscription band, tabs and first card -->
+    <div v-if="loading" class="space-y-5 max-w-5xl" aria-hidden="true">
+        <Skeleton w="90px" h="16px" />
+        <Skeleton w="100%" h="96px" rounded="15px" />
+        <Skeleton w="100%" h="92px" rounded="15px" />
+        <Skeleton w="100%" h="44px" rounded="12px" />
+        <Skeleton w="100%" h="200px" rounded="15px" />
     </div>
 
     <!-- Not found / load error -->
     <div v-else-if="loadError" class="max-w-3xl">
         <div class="card p-8 text-center space-y-3">
-            <div class="grid place-items-center mx-auto" style="width:48px;height:48px;border-radius:12px;background:var(--gray-soft);color:var(--gray)">
+            <div class="grid place-items-center mx-auto" style="width:48px;height:48px;border-radius:12px;background:var(--gray-soft);color:var(--body)">
                 <Icon :name="loadError === 'notfound' ? 'building' : 'close'" :size="22" />
             </div>
             <h1 class="page-title">{{ loadError === 'notfound' ? t('admin.not_found_title') : t('admin.load_failed_title') }}</h1>
-            <p class="page-sub">{{ loadError === 'notfound' ? t('admin.not_found_help') : t('admin.load_failed_help') }}</p>
+            <p class="page-sub" style="color:var(--body)">{{ loadError === 'notfound' ? t('admin.not_found_help') : t('admin.load_failed_help') }}</p>
             <div class="flex items-center justify-center gap-2 pt-1">
-                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-                <button v-if="loadError !== 'notfound'" @click="loadAll" class="btn btn-accent">{{ t('common.retry') }}</button>
+                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost cta">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+                <button v-if="loadError !== 'notfound'" @click="loadAll" class="btn btn-accent cta">{{ t('common.retry') }}</button>
             </div>
         </div>
     </div>
 
-    <div v-else-if="r" class="space-y-6 max-w-5xl">
-        <div class="flex items-center justify-between gap-3">
-            <RouterLink :to="{ name: 'admin.restaurants' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-            <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id } }" class="btn btn-ghost"><Icon name="edit" :size="16" />{{ t('admin.edit_details') }}</RouterLink>
-        </div>
+    <div v-else-if="r" class="space-y-5 max-w-5xl">
+        <RouterLink :to="{ name: 'admin.restaurants' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
 
-        <!-- Identity + at-a-glance health -->
-        <div class="card p-5 space-y-4">
-            <div class="flex items-center gap-4">
-                <span v-if="!r.logo_url" class="grid place-items-center text-white font-semibold flex-shrink-0"
-                    style="width:56px;height:56px;border-radius:13px;font-size:22px;font-family:var(--font-display);background:var(--accent)">{{ initial(r) }}</span>
-                <img v-else :src="r.logo_url" class="h-14 w-14 rounded-xl object-cover flex-shrink-0" />
-                <div class="min-w-0">
-                    <h1 class="page-title truncate">{{ restaurantName(r) }}</h1>
-                    <a :href="asPreview(r.public_url)" target="_blank" class="mono text-sm underline" style="color:var(--accent)">{{ r.public_url }}</a>
+        <!-- Identity + primary actions -->
+        <section class="card p-5">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-4 min-w-0">
+                    <span v-if="!r.logo_url" class="avatar-lg">{{ initial(r) }}</span>
+                    <img v-else :src="r.logo_url" :alt="restaurantName(r)" class="h-14 w-14 rounded-xl object-cover flex-shrink-0" />
+                    <div class="min-w-0">
+                        <h1 class="page-title truncate">{{ restaurantName(r) }}</h1>
+                        <a :href="asPreview(r.public_url)" target="_blank" rel="noopener" class="mono text-sm url-link truncate block">{{ r.public_url }}</a>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <span class="badge" :class="statusBadgeClass"><span class="dot"></span>{{ t('status.' + r.status) }}</span>
+                            <span class="badge" :class="orderingAvailable ? 'badge-green' : 'badge-gray'">
+                                {{ t('admin.ordering_title') }}: {{ orderingAvailable ? t('admin.ordering_on') : t('admin.ordering_unavailable') }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <a :href="asPreview(r.public_url)" target="_blank" rel="noopener" class="btn btn-ghost cta"><Icon name="external" :size="16" />{{ t('dashboard.view_menu') }}</a>
+                    <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id } }" class="btn btn-ghost cta"><Icon name="edit" :size="16" />{{ t('admin.edit_details') }}</RouterLink>
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 pt-1">
-                <span class="badge" :class="statusBadgeClass"><span class="dot"></span>{{ t('status.' + r.status) }}</span>
-                <span class="badge" :class="subBadgeClass">{{ t('subscription_status.' + sub.subscription_status) }}</span>
-                <span v-if="sub.subscription_plan" class="badge badge-gray">{{ sub.subscription_plan }}</span>
-                <span v-if="daysLeft !== null" class="badge" :class="daysLeft <= 7 ? 'badge-red' : 'badge-gray'">
-                    {{ daysLeft >= 0 ? t('admin.days_left', { n: daysLeft }) : t('admin.expired_ago', { n: -daysLeft }) }}
-                </span>
-                <span class="badge" :class="orderingAvailable ? 'badge-green' : 'badge-gray'">
-                    {{ t('admin.ordering_title') }}: {{ orderingAvailable ? t('admin.ordering_on') : t('admin.ordering_unavailable') }}
-                </span>
+        </section>
+
+        <!-- Subscription state: the thing support/sales look at first -->
+        <section class="card sub-band" :class="subTone" :aria-label="t('restaurant.subscription')">
+            <div class="sub-cell">
+                <div class="sub-label">{{ t('restaurant.plan') }}</div>
+                <div class="sub-value">{{ sub.subscription_plan || '—' }}</div>
             </div>
+            <div class="sub-cell">
+                <div class="sub-label">{{ t('common.status') }}</div>
+                <div><span class="badge" :class="subBadgeClass">{{ t('subscription_status.' + sub.subscription_status) }}</span></div>
+            </div>
+            <div class="sub-cell">
+                <div class="sub-label">{{ t('admin.end_date') }}</div>
+                <div class="sub-value">{{ endDateFmt }}</div>
+                <div v-if="daysLeft !== null" class="mt-1">
+                    <span class="badge" :class="daysLeft <= 7 ? 'badge-red' : (daysLeft <= 30 ? 'badge-amber' : 'badge-gray')">
+                        {{ daysLeft >= 0 ? t('admin.days_left', { n: daysLeft }) : t('admin.expired_ago', { n: -daysLeft }) }}
+                    </span>
+                </div>
+            </div>
+            <div class="sub-cell sub-cta">
+                <button type="button" class="btn btn-accent cta" @click="activeSection = 'subscription'">{{ t('admin.manage_subscription') }}</button>
+            </div>
+        </section>
+
+        <p v-if="msg" class="notice notice-ok" role="status"><Icon name="check" :size="16" />{{ msg }}</p>
+        <p v-if="errMsg" class="notice notice-err" role="alert"><Icon name="alert" :size="16" />{{ errMsg }}</p>
+
+        <!-- Section tabs; the danger zone is always last and set apart -->
+        <div class="tab-bar" role="tablist">
+            <button
+                v-for="s in sections"
+                :key="s.key"
+                type="button"
+                role="tab"
+                class="tab"
+                :class="{ active: activeSection === s.key, danger: s.key === 'danger' }"
+                :aria-selected="activeSection === s.key"
+                @click="activeSection = s.key"
+            >
+                <Icon :name="s.icon" :size="17" aria-hidden="true" />
+                <span>{{ s.label }}</span>
+            </button>
         </div>
 
-        <!-- At-a-glance business snapshot -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div class="stat">
-                <div class="stat-label">{{ t('admin.stat_items') }}</div>
-                <div class="stat-num">{{ r.menu_items_count ?? 0 }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">{{ t('admin.stat_categories') }}</div>
-                <div class="stat-num">{{ r.categories_count ?? 0 }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">{{ t('admin.stat_features') }}</div>
-                <div class="stat-num" style="color:var(--accent)">{{ r.features?.length ?? 0 }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">{{ t('admin.member_since') }}</div>
-                <div class="stat-num" style="font-size:16px">{{ memberSince }}</div>
-            </div>
-        </div>
+        <!-- Section content -->
+        <div class="space-y-5" role="tabpanel">
+            <!-- Overview: restaurant status + footprint -->
+            <template v-if="activeSection === 'overview'">
+                <section class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('admin.restaurant_status') }}</h2>
+                    <p class="help mb-3">{{ t('admin.status_help') }}</p>
+                    <div class="segmented seg">
+                        <button v-for="s in statuses" :key="s" type="button" :class="{ active: r.status === s }" :aria-pressed="r.status === s" @click="setStatus(s)">{{ t('status.' + s) }}</button>
+                    </div>
+                </section>
 
-        <p v-if="msg" class="badge badge-green"><span class="dot"></span>{{ msg }}</p>
-        <p v-if="errMsg" class="badge badge-red"><span class="dot"></span>{{ errMsg }}</p>
+                <section class="grid grid-cols-2 sm:grid-cols-4 gap-4" :aria-label="t('admin.section_overview')">
+                    <div class="stat">
+                        <div class="stat-label" style="color:var(--body)">{{ t('admin.stat_items') }}</div>
+                        <div class="stat-num">{{ r.menu_items_count ?? 0 }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label" style="color:var(--body)">{{ t('admin.stat_categories') }}</div>
+                        <div class="stat-num">{{ r.categories_count ?? 0 }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label" style="color:var(--body)">{{ t('admin.stat_features') }}</div>
+                        <div class="stat-num">{{ r.features?.length ?? 0 }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label" style="color:var(--body)">{{ t('admin.member_since') }}</div>
+                        <div class="stat-num" style="font-size:18px;margin-top:10px">{{ memberSince }}</div>
+                    </div>
+                </section>
+            </template>
 
-        <!-- Side menu + section content -->
-        <div class="detail-shell">
-            <!-- Left side menu -->
-            <aside class="detail-nav">
-                <button
-                    v-for="s in sections"
-                    :key="s.key"
-                    type="button"
-                    class="detail-nav-item"
-                    :class="{ active: activeSection === s.key, danger: s.key === 'danger' }"
-                    @click="activeSection = s.key"
-                >
-                    <Icon :name="s.icon" :size="18" />
-                    <span>{{ s.label }}</span>
-                </button>
-            </aside>
-
-            <!-- Section content -->
-            <div class="detail-content space-y-6">
-                <!-- Overview: restaurant status -->
-                <template v-if="activeSection === 'overview'">
-                    <section class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('admin.restaurant_status') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.status_help') }}</p>
-                        <div class="segmented">
-                            <button v-for="s in statuses" :key="s" :class="{ active: r.status === s }" @click="setStatus(s)">{{ t('status.' + s) }}</button>
-                        </div>
-                    </section>
-                </template>
-
-                <!-- Client info: admin account -->
-                <template v-else-if="activeSection === 'client'">
-                    <section class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('admin.admin_account') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.admin_account_help') }}</p>
-                        <div v-if="r.admin" class="space-y-3">
-                            <!-- Read-only view -->
-                            <template v-if="!editingAdmin">
-                                <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <div>
-                                        <div class="font-medium" style="color:var(--ink)">{{ r.admin.name }}</div>
-                                        <div class="mono text-sm" style="color:var(--muted)">@{{ r.admin.username }}</div>
-                                        <div v-if="r.admin.email" class="mono text-sm" style="color:var(--muted)">{{ r.admin.email }}</div>
-                                    </div>
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <button @click="startEditAdmin" class="btn btn-ghost"><Icon name="edit" :size="16" />{{ t('admin.edit_account') }}</button>
-                                        <button @click="resetAdminPassword" :disabled="resettingPw" class="btn btn-ghost">
-                                            {{ resettingPw ? t('admin.resetting') : t('admin.reset_password') }}
-                                        </button>
-                                    </div>
+            <!-- Client info: admin account -->
+            <template v-else-if="activeSection === 'client'">
+                <section class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('admin.admin_account') }}</h2>
+                    <p class="help mb-4">{{ t('admin.admin_account_help') }}</p>
+                    <div v-if="r.admin" class="space-y-3">
+                        <!-- Read-only view -->
+                        <template v-if="!editingAdmin">
+                            <div class="flex items-center justify-between gap-3 flex-wrap">
+                                <div class="min-w-0">
+                                    <div class="font-semibold" style="color:var(--ink)">{{ r.admin.name }}</div>
+                                    <div class="mono text-sm" style="color:var(--body)">@{{ r.admin.username }}</div>
+                                    <div v-if="r.admin.email" class="mono text-sm" style="color:var(--body)">{{ r.admin.email }}</div>
                                 </div>
-                                <div v-if="newPassword" class="rounded-xl p-3" style="background:var(--accent-soft);border:1px solid var(--line)">
-                                    <div class="label mb-1.5">{{ t('admin.new_password_label') }} — {{ t('restaurant.generated_password_note') }}</div>
-                                    <div class="flex items-center gap-2">
-                                        <code class="url-chip flex-1">{{ newPassword }}</code>
-                                        <button @click="copyPassword" class="btn btn-ghost btn-sm">{{ pwCopied ? t('common.copied') : t('common.copy') }}</button>
-                                    </div>
-                                </div>
-                            </template>
-
-                            <!-- Inline edit form -->
-                            <template v-else>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
-                                        <input v-model="adminForm.name" class="input" />
-                                        <span v-if="adminErrors.name" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.name[0] }}</span>
-                                    </label>
-                                    <label class="block"><span class="label">{{ t('restaurant.admin_username') }}</span>
-                                        <input v-model="adminForm.username" type="text" autocapitalize="none" spellcheck="false" class="input" dir="ltr" />
-                                        <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
-                                        <span v-if="adminErrors.username" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.username[0] }}</span>
-                                    </label>
-                                </div>
-                                <label class="block"><span class="label">{{ t('restaurant.admin_email') }}</span>
-                                    <input v-model="adminForm.email" type="email" dir="ltr" class="input" />
-                                    <span v-if="adminErrors.email" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.email[0] }}</span>
-                                </label>
-                                <div class="flex items-center gap-2">
-                                    <button @click="saveAdmin" :disabled="savingAdmin" class="btn btn-accent">
-                                        {{ savingAdmin ? t('common.saving') : t('common.save') }}
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <button type="button" @click="startEditAdmin" class="btn btn-ghost cta"><Icon name="edit" :size="16" />{{ t('admin.edit_account') }}</button>
+                                    <button type="button" @click="resetAdminPassword" :disabled="resettingPw" class="btn btn-ghost cta">
+                                        {{ resettingPw ? t('admin.resetting') : t('admin.reset_password') }}
                                     </button>
-                                    <button @click="cancelEditAdmin" :disabled="savingAdmin" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                                </div>
-                            </template>
-                        </div>
-                        <p v-else class="page-sub">{{ t('admin.no_admin_account') }}</p>
-                    </section>
-                </template>
-
-                <!-- Subscription -->
-                <template v-else-if="activeSection === 'subscription'">
-                    <section class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('restaurant.subscription') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.subscription_dates_hint') }}</p>
-                        <div class="space-y-4">
-                            <label class="block"><span class="block label">{{ t('restaurant.plan') }}</span>
-                                <select v-model="sub.subscription_plan" class="input max-w-xs">
-                                    <option value="">{{ t('plan.none_option') }}</option>
-                                    <option v-for="opt in planOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                                </select></label>
-                            <div class="block">
-                                <span class="block label">{{ t('common.status') }}</span>
-                                <div class="segmented mt-1.5 flex-wrap">
-                                    <button v-for="s in subStatuses" :key="s" :class="{ active: sub.subscription_status === s }" @click="sub.subscription_status = s">{{ t('subscription_status.' + s) }}</button>
                                 </div>
                             </div>
+                            <div v-if="newPassword" class="rounded-xl p-3" style="background:var(--accent-soft);border:1px solid var(--line)">
+                                <div class="label mb-1.5">{{ t('admin.new_password_label') }} — {{ t('restaurant.generated_password_note') }}</div>
+                                <div class="flex items-center gap-2">
+                                    <code class="url-chip flex-1">{{ newPassword }}</code>
+                                    <button type="button" @click="copyPassword" class="btn btn-ghost btn-sm act">{{ pwCopied ? t('common.copied') : t('common.copy') }}</button>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Inline edit form -->
+                        <template v-else>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <label class="block"><span class="label">{{ t('admin.start_date') }}</span>
-                                    <input v-model="sub.subscription_start_date" type="date" class="input" /></label>
-                                <label class="block"><span class="label">{{ t('admin.end_date') }}</span>
-                                    <input v-model="sub.subscription_end_date" type="date" class="input" /></label>
+                                <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
+                                    <input v-model="adminForm.name" class="input" />
+                                    <span v-if="adminErrors.name" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.name[0] }}</span>
+                                </label>
+                                <label class="block"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                                    <input v-model="adminForm.username" type="text" autocapitalize="none" spellcheck="false" class="input" dir="ltr" />
+                                    <span class="help">{{ t('restaurant.admin_username_hint') }}</span>
+                                    <span v-if="adminErrors.username" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.username[0] }}</span>
+                                </label>
                             </div>
-                        </div>
-                        <button @click="saveSubscription" class="btn btn-accent mt-4">{{ t('admin.save_subscription') }}</button>
-                    </section>
-                </template>
-
-                <!-- QR -->
-                <template v-else-if="activeSection === 'qr'">
-                    <section class="card p-5">
-                        <h2 class="h-card mb-3">{{ t('nav.qr') }}</h2>
-                        <div class="flex items-center gap-5 flex-wrap">
-                            <div v-if="qr" v-html="qr.svg" class="qrbox h-40 w-40 p-2 rounded-xl" style="background:#fff;border:1px solid var(--line)"></div>
-                            <div class="flex flex-col gap-2">
-                                <button @click="downloadQr" class="btn btn-ghost">{{ t('admin.download_png') }}</button>
-                                <button @click="exportTablesJson" :disabled="exportingTables" class="btn btn-ghost">
-                                    <Icon v-if="exportingTables" name="loading" :size="16" class="animate-spin" />
-                                    {{ t('admin.export_tables_json') }}
+                            <label class="block"><span class="label">{{ t('restaurant.admin_email') }}</span>
+                                <input v-model="adminForm.email" type="email" dir="ltr" class="input" />
+                                <span v-if="adminErrors.email" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.email[0] }}</span>
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <button type="button" @click="saveAdmin" :disabled="savingAdmin" class="btn btn-accent cta">
+                                    {{ savingAdmin ? t('common.saving') : t('common.save') }}
                                 </button>
-                                <a :href="asPreview(r.public_url)" target="_blank" class="btn btn-dark">{{ t('dashboard.view_menu') }}</a>
+                                <button type="button" @click="cancelEditAdmin" :disabled="savingAdmin" class="btn btn-ghost cta">{{ t('common.cancel') }}</button>
+                            </div>
+                        </template>
+                    </div>
+                    <p v-else class="help">{{ t('admin.no_admin_account') }}</p>
+                </section>
+            </template>
+
+            <!-- Subscription -->
+            <template v-else-if="activeSection === 'subscription'">
+                <section class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('restaurant.subscription') }}</h2>
+                    <p class="help mb-4">{{ t('admin.subscription_dates_hint') }}</p>
+                    <div class="space-y-4">
+                        <label class="block"><span class="block label">{{ t('restaurant.plan') }}</span>
+                            <select v-model="sub.subscription_plan" class="input max-w-xs">
+                                <option value="">{{ t('plan.none_option') }}</option>
+                                <option v-for="opt in planOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                            </select></label>
+                        <div class="block">
+                            <span class="block label">{{ t('common.status') }}</span>
+                            <div class="segmented seg mt-1.5 flex-wrap">
+                                <button v-for="s in subStatuses" :key="s" type="button" :class="{ active: sub.subscription_status === s }" :aria-pressed="sub.subscription_status === s" @click="sub.subscription_status = s">{{ t('subscription_status.' + s) }}</button>
                             </div>
                         </div>
-                    </section>
-                </template>
-
-                <!-- POS: plan-derived access, the tenant's licence, and its
-                     terminals. A tenant is created with its licence and NO
-                     terminal, so "no terminals yet" is an ordinary empty state
-                     with a create button — never an error. -->
-                <template v-else-if="activeSection === 'pos'">
-                    <section class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('admin.pos_status_title') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.pos_plan_hint') }}</p>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <span class="badge" :class="posIncluded ? 'badge-green' : 'badge-gray'"><span class="dot"></span>
-                                {{ !sub.subscription_plan ? t('admin.pos_plan_none')
-                                    : (posIncluded ? t('admin.pos_plan_included', { plan: sub.subscription_plan })
-                                        : t('admin.pos_plan_not_included', { plan: sub.subscription_plan })) }}
-                            </span>
-                            <RouterLink :to="{ name: 'admin.plans' }" class="text-sm" style="color:var(--accent)">{{ t('admin.pos_edit_plan') }}</RouterLink>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label class="block"><span class="label">{{ t('admin.start_date') }}</span>
+                                <input v-model="sub.subscription_start_date" type="date" class="input" /></label>
+                            <label class="block"><span class="label">{{ t('admin.end_date') }}</span>
+                                <input v-model="sub.subscription_end_date" type="date" class="input" /></label>
                         </div>
-                    </section>
+                    </div>
+                    <div class="mt-5 pt-4" style="border-top:1px solid var(--line)">
+                        <button type="button" @click="saveSubscription" class="btn btn-accent cta">{{ t('admin.save_subscription') }}</button>
+                    </div>
+                </section>
+            </template>
 
-                    <!-- Licence — issued with the tenant, in the same
-                         transaction. It belongs to the CLIENT, not to any
-                         terminal, so it renders whether or not a till exists. -->
-                    <section v-if="canViewLicence" class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('admin.pos_licence_title') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.pos_licence_help') }}</p>
-
-                        <p v-if="posLicenceFailed" class="text-sm" style="color:var(--muted)">{{ t('admin.pos_licence_failed') }}</p>
-                        <p v-else-if="!posLicence" class="text-sm" style="color:var(--muted)">{{ t('admin.pos_licence_none') }}</p>
-                        <div v-else class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <div>
-                                <div class="label">{{ t('licence.ref') }}</div>
-                                <div class="mono text-sm" style="color:var(--ink)">{{ posLicence.licence_ref }}</div>
-                            </div>
-                            <div>
-                                <div class="label">{{ t('common.status') }}</div>
-                                <span class="badge" :class="posLicence.state === 'active' ? 'badge-green' : 'badge-amber'">
-                                    {{ t('licence.state.' + posLicence.state) }}
-                                </span>
-                            </div>
-                            <div>
-                                <div class="label">{{ t('licence.expires') }}</div>
-                                <div class="text-sm" style="color:var(--body)">{{ posLicence.expires_at?.slice(0, 10) }}</div>
-                            </div>
-                            <div>
-                                <!-- Seats SOLD. Nothing here created a till. -->
-                                <div class="label">{{ t('licence.max_terminals') }}</div>
-                                <div class="text-sm" style="color:var(--body)">{{ posLicence.max_terminals ?? t('licence.unlimited') }}</div>
-                            </div>
-                        </div>
-
-                        <div v-if="posLicence" class="mt-4">
-                            <RouterLink :to="{ name: 'admin.licences.show', params: { id: posLicence.id } }" class="text-sm" style="color:var(--accent)">
-                                {{ t('admin.pos_licence_open') }}
-                            </RouterLink>
-                        </div>
-                    </section>
-
-                    <section v-if="canViewFleet" class="card p-5">
-                        <h2 class="h-card mb-1">{{ t('admin.pos_terminals_title') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.pos_terminals_help') }}</p>
-
-                        <p v-if="posLoaded" class="text-sm mb-1"
-                            :style="{ color: posOver ? 'var(--red)' : (posAtLimit ? 'var(--amber)' : 'var(--body)'), fontWeight: posOver ? 600 : 400 }">
-                            <span class="label">{{ t('admin.pos_seats_label') }}:</span>
-                            {{ t('admin.pos_seats', { claimed: posClaimed, max: posMax ?? '∞' }) }}
-                            <span v-if="posOver"> — {{ t('admin.pos_seats_over') }}</span>
-                        </p>
-                        <p v-if="posLoaded" class="text-xs mb-3" style="color:var(--muted)">{{ t('admin.pos_seats_note') }}</p>
-
-                        <div v-if="posLoading" class="space-y-2">
-                            <Skeleton v-for="n in 3" :key="n" w="100%" h="40px" rounded="10px" />
-                        </div>
-                        <div v-else-if="posFailed" class="flex items-center gap-3">
-                            <p class="text-sm" style="color:var(--muted)">{{ t('admin.pos_terminals_failed') }}</p>
-                            <button @click="loadPosTerminals" class="btn btn-ghost btn-sm">{{ t('common.retry') }}</button>
-                        </div>
-                        <!-- Zero terminals is a valid, expected state for a
-                             newly created client — say so, and offer the one
-                             action that changes it. -->
-                        <div v-else-if="!posTerminals.length">
-                            <p class="text-sm" style="color:var(--muted)">{{ t('admin.pos_no_terminals') }}</p>
-                            <p class="text-xs mt-1" style="color:var(--muted)">{{ t('admin.pos_no_terminals_hint') }}</p>
-                        </div>
-                        <div v-else class="overflow-x-auto">
-                            <table class="w-full text-sm" style="min-width:640px">
-                                <thead>
-                                    <tr style="color:var(--muted)">
-                                        <th class="py-2 pe-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.name') }}</th>
-                                        <th class="py-2 px-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.branch') }}</th>
-                                        <th class="py-2 px-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
-                                        <th class="py-2 px-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.last_seen') }}</th>
-                                        <th class="py-2 px-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.version') }}</th>
-                                        <th class="py-2 px-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('admin.pos_seat') }}</th>
-                                        <th class="py-2 px-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.pending') }}</th>
-                                        <th v-if="canManageFleet" class="py-2 ps-3"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="term in posTerminals" :key="term.id" class="border-t" style="border-color:var(--line)">
-                                        <td class="py-2.5 pe-3">
-                                            <div style="color:var(--ink)">{{ term.name }}</div>
-                                            <div class="mono text-xs" style="color:var(--muted)">{{ term.terminal_id }}</div>
-                                        </td>
-                                        <td class="py-2.5 px-3" style="color:var(--body)">{{ posBranchName(term) }}</td>
-                                        <td class="py-2.5 px-3"><span class="badge" :class="posStateCls(term.state)">{{ t('pos_terminals.state.' + term.state) }}</span></td>
-                                        <td class="py-2.5 px-3" style="color:var(--body)">{{ posRelTime(term.last_seen_at) }}</td>
-                                        <td class="py-2.5 px-3" style="color:var(--body)">{{ term.app_version || '—' }}</td>
-                                        <td class="py-2.5 px-3 text-center">
-                                            <span v-if="posHoldsSeat(term)" :title="t('admin.pos_seat_held')" style="color:var(--ink)">1</span>
-                                            <span v-else :title="t('admin.pos_seat_none')" style="color:var(--muted)">&mdash;</span>
-                                        </td>
-                                        <td class="py-2.5 px-3 text-center">
-                                            <span v-if="term.pending_count > 0" class="badge badge-amber">{{ term.pending_count }}</span>
-                                            <span v-else style="color:var(--muted)">—</span>
-                                        </td>
-                                        <td v-if="canManageFleet" class="py-2.5 ps-3 text-end">
-                                            <div class="flex gap-1 justify-end">
-                                                <!-- Revoked is the only state a
-                                                     terminal can be deleted from,
-                                                     so the two actions never show
-                                                     together. -->
-                                                <template v-if="term.state !== 'revoked'">
-                                                    <button @click="issuePairingCode(term)" class="btn btn-ghost btn-sm">
-                                                        {{ t('admin.pos_pairing_code_issue') }}
-                                                    </button>
-                                                    <button @click="revokeTerminal(term)" class="btn btn-ghost btn-sm" style="color:var(--red)">
-                                                        {{ t('pos_terminals.revoke') }}
-                                                    </button>
-                                                </template>
-                                                <button v-else @click="deleteTerminal(term)" class="btn btn-ghost btn-sm" style="color:var(--red)">
-                                                    {{ t('pos_terminals.delete') }}
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Pairing code: plaintext in one response and never
-                             again, so it stays on screen until dismissed. -->
-                        <div v-if="pairing" class="card p-4 mt-4" style="border-color:var(--green);background:var(--green-soft)">
-                            <p class="font-medium" style="color:var(--green)">{{ t('admin.pos_pairing_code_title', { name: pairing.name }) }}</p>
-                            <p class="mono text-2xl mt-1" style="color:var(--ink)">{{ pairing.code }}</p>
-                            <p class="text-sm mt-1" style="color:var(--green)">{{ t('admin.pos_pairing_code_note', { hours: pairing.hours }) }}</p>
-                            <button @click="pairing = null" class="btn btn-ghost btn-sm mt-2">{{ t('common.done') }}</button>
-                        </div>
-
-                        <!-- Create terminal — the only path from the platform
-                             side, and deliberately not part of tenant creation. -->
-                        <div v-if="canManageFleet" class="mt-4">
-                            <p v-if="!posBranches.length" class="text-sm" style="color:var(--amber)">{{ t('admin.pos_terminal_needs_branch') }}</p>
-                            <p v-else-if="posAtLimit || posOver" class="text-sm" style="color:var(--amber)">
-                                {{ t('admin.pos_seats_full', { max: posMax }) }}
-                            </p>
-                            <button v-else-if="!creatingTerminal" @click="openTerminalForm" class="btn btn-dark btn-sm">
-                                {{ t('admin.pos_create_terminal') }}
+            <!-- QR -->
+            <template v-else-if="activeSection === 'qr'">
+                <section class="card p-5">
+                    <h2 class="h-card mb-4">{{ t('nav.qr') }}</h2>
+                    <div class="flex items-center gap-5 flex-wrap">
+                        <div v-if="qr" v-html="qr.svg" class="qrbox h-40 w-40 p-2 rounded-xl" style="background:var(--card);border:1px solid var(--line)"></div>
+                        <div class="flex flex-col gap-2">
+                            <button type="button" @click="downloadQr" class="btn btn-ghost cta">{{ t('admin.download_png') }}</button>
+                            <button type="button" @click="exportTablesJson" :disabled="exportingTables" class="btn btn-ghost cta">
+                                <Icon v-if="exportingTables" name="loading" :size="16" class="animate-spin" />
+                                {{ t('admin.export_tables_json') }}
                             </button>
-
-                            <form v-else @submit.prevent="submitTerminal" class="space-y-3 pt-1">
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <label class="block"><span class="label">{{ t('admin.pos_terminal_name') }}</span>
-                                        <input v-model="terminalForm.name" class="input" :placeholder="t('admin.pos_terminal_name_placeholder')" required />
-                                        <FormError :errors="terminalErrors" field="name" /></label>
-                                    <label class="block"><span class="label">{{ t('admin.pos_terminal_branch') }}</span>
-                                        <select v-model="terminalForm.branch_id" class="input" required>
-                                            <option v-for="b in posBranches" :key="b.id" :value="b.id">
-                                                {{ (locale === 'ar' ? b.name_ar || b.name_en : b.name_en || b.name_ar) || ('#' + b.id) }}
-                                            </option>
-                                        </select>
-                                        <FormError :errors="terminalErrors" field="branch_id" /></label>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button type="submit" class="btn btn-dark btn-sm" :disabled="savingTerminal">{{ t('admin.pos_create_terminal') }}</button>
-                                    <button type="button" @click="creatingTerminal = false" class="btn btn-ghost btn-sm">{{ t('common.cancel') }}</button>
-                                </div>
-                            </form>
+                            <a :href="asPreview(r.public_url)" target="_blank" class="btn btn-dark cta">{{ t('dashboard.view_menu') }}</a>
                         </div>
+                    </div>
+                </section>
+            </template>
 
-                        <div class="mt-4">
-                            <RouterLink :to="{ name: 'admin.licences' }" class="text-sm" style="color:var(--accent)">{{ t('admin.pos_licences_link') }}</RouterLink>
+            <!-- POS: plan-derived access, the tenant's licence, and its
+                 terminals. A tenant is created with its licence and NO
+                 terminal, so "no terminals yet" is an ordinary empty state
+                 with a create button — never an error. -->
+            <template v-else-if="activeSection === 'pos'">
+                <section class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('admin.pos_status_title') }}</h2>
+                    <p class="help mb-3">{{ t('admin.pos_plan_hint') }}</p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="badge" :class="posIncluded ? 'badge-green' : 'badge-gray'"><span class="dot"></span>
+                            {{ !sub.subscription_plan ? t('admin.pos_plan_none')
+                                : (posIncluded ? t('admin.pos_plan_included', { plan: sub.subscription_plan })
+                                    : t('admin.pos_plan_not_included', { plan: sub.subscription_plan })) }}
+                        </span>
+                        <RouterLink :to="{ name: 'admin.plans' }" class="text-link">{{ t('admin.pos_edit_plan') }}</RouterLink>
+                    </div>
+                </section>
+
+                <!-- Licence — issued with the tenant, in the same
+                     transaction. It belongs to the CLIENT, not to any
+                     terminal, so it renders whether or not a till exists. -->
+                <section v-if="canViewLicence" class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('admin.pos_licence_title') }}</h2>
+                    <p class="help mb-3">{{ t('admin.pos_licence_help') }}</p>
+
+                    <p v-if="posLicenceFailed" class="help">{{ t('admin.pos_licence_failed') }}</p>
+                    <p v-else-if="!posLicence" class="help">{{ t('admin.pos_licence_none') }}</p>
+                    <div v-else class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div>
+                            <div class="label">{{ t('licence.ref') }}</div>
+                            <div class="mono text-sm" style="color:var(--ink)">{{ posLicence.licence_ref }}</div>
                         </div>
-                    </section>
-                </template>
+                        <div>
+                            <div class="label">{{ t('common.status') }}</div>
+                            <span class="badge" :class="posLicence.state === 'active' ? 'badge-green' : 'badge-amber'">
+                                {{ t('licence.state.' + posLicence.state) }}
+                            </span>
+                        </div>
+                        <div>
+                            <div class="label">{{ t('licence.expires') }}</div>
+                            <div class="text-sm" style="color:var(--ink)">{{ posLicence.expires_at?.slice(0, 10) }}</div>
+                        </div>
+                        <div>
+                            <!-- Seats SOLD. Nothing here created a till. -->
+                            <div class="label">{{ t('licence.max_terminals') }}</div>
+                            <div class="text-sm" style="color:var(--ink)">{{ posLicence.max_terminals ?? t('licence.unlimited') }}</div>
+                        </div>
+                    </div>
 
-                <!-- Activity / audit trail for this restaurant -->
-                <template v-else-if="activeSection === 'activity'">
-                    <!-- Files first: the trail IS a file per day, so the tab
-                         leads with them. Counts and downloads are scoped to
-                         this restaurant. -->
-                    <ActivityFilesPanel :restaurant-id="id" start-open @select="openDay" />
-
-                    <div class="flex justify-end">
-                        <RouterLink :to="{ name: 'admin.audit', query: { restaurant_id: id } }" class="text-sm" style="color:var(--accent)">
-                            {{ t('audit.view_all') }} {{ backArrow === '←' ? '→' : '←' }}
+                    <div v-if="posLicence" class="mt-4">
+                        <RouterLink :to="{ name: 'admin.licences.show', params: { id: posLicence.id } }" class="text-link">
+                            {{ t('admin.pos_licence_open') }}
                         </RouterLink>
                     </div>
-                </template>
+                </section>
 
-                <!-- Danger zone -->
-                <template v-else-if="activeSection === 'danger'">
-                    <section class="card p-5" style="border-color:#f1c9c4">
-                        <h2 class="h-card mb-1" style="color:#c0392b">{{ t('admin.danger_zone') }}</h2>
-                        <p class="page-sub mb-3">{{ t('admin.danger_zone_help') }}</p>
+                <section v-if="canViewFleet" class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('admin.pos_terminals_title') }}</h2>
+                    <p class="help mb-3">{{ t('admin.pos_terminals_help') }}</p>
+
+                    <p v-if="posLoaded" class="text-sm mb-1"
+                        :style="{ color: posOver ? 'var(--red)' : (posAtLimit ? 'var(--p-primary-800)' : 'var(--body)'), fontWeight: posOver ? 600 : 400 }">
+                        <span class="label">{{ t('admin.pos_seats_label') }}:</span>
+                        {{ t('admin.pos_seats', { claimed: posClaimed, max: posMax ?? '∞' }) }}
+                        <span v-if="posOver"> — {{ t('admin.pos_seats_over') }}</span>
+                    </p>
+                    <p v-if="posLoaded" class="help mb-3" style="margin-top:0">{{ t('admin.pos_seats_note') }}</p>
+
+                    <div v-if="posLoading" class="space-y-2">
+                        <Skeleton v-for="n in 3" :key="n" w="100%" h="44px" rounded="10px" />
+                    </div>
+                    <div v-else-if="posFailed" class="flex items-center gap-3">
+                        <p class="help" style="margin-top:0">{{ t('admin.pos_terminals_failed') }}</p>
+                        <button type="button" @click="loadPosTerminals" class="btn btn-ghost btn-sm act">{{ t('common.retry') }}</button>
+                    </div>
+                    <!-- Zero terminals is a valid, expected state for a
+                         newly created client — say so, and offer the one
+                         action that changes it. -->
+                    <div v-else-if="!posTerminals.length" class="empty-box">
+                        <p class="text-sm" style="color:var(--ink)">{{ t('admin.pos_no_terminals') }}</p>
+                        <p class="help" style="margin-top:2px">{{ t('admin.pos_no_terminals_hint') }}</p>
+                    </div>
+                    <div v-else class="overflow-x-auto">
+                        <table class="w-full text-sm" style="min-width:680px">
+                            <thead>
+                                <tr>
+                                    <th class="t-th text-start">{{ t('common.name') }}</th>
+                                    <th class="t-th text-start">{{ t('pos_terminals.branch') }}</th>
+                                    <th class="t-th text-start">{{ t('common.status') }}</th>
+                                    <th class="t-th text-start">{{ t('pos_terminals.last_seen') }}</th>
+                                    <th class="t-th text-start">{{ t('pos_terminals.version') }}</th>
+                                    <th class="t-th text-center">{{ t('admin.pos_seat') }}</th>
+                                    <th class="t-th text-center">{{ t('pos_terminals.pending') }}</th>
+                                    <th v-if="canManageFleet" class="t-th"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="term in posTerminals" :key="term.id" class="t-row">
+                                    <td class="t-td">
+                                        <div style="color:var(--ink);font-weight:600">{{ term.name }}</div>
+                                        <div class="mono text-xs" style="color:var(--body)">{{ term.terminal_id }}</div>
+                                    </td>
+                                    <td class="t-td" style="color:var(--body)">{{ posBranchName(term) }}</td>
+                                    <td class="t-td"><span class="badge" :class="posStateCls(term.state)">{{ t('pos_terminals.state.' + term.state) }}</span></td>
+                                    <td class="t-td" style="color:var(--body)">{{ posRelTime(term.last_seen_at) }}</td>
+                                    <td class="t-td" style="color:var(--body)">{{ term.app_version || '—' }}</td>
+                                    <td class="t-td text-center">
+                                        <span v-if="posHoldsSeat(term)" :title="t('admin.pos_seat_held')" style="color:var(--ink)">1</span>
+                                        <span v-else :title="t('admin.pos_seat_none')" style="color:var(--body)">&mdash;</span>
+                                    </td>
+                                    <td class="t-td text-center">
+                                        <span v-if="term.pending_count > 0" class="badge badge-amber">{{ term.pending_count }}</span>
+                                        <span v-else style="color:var(--body)">—</span>
+                                    </td>
+                                    <td v-if="canManageFleet" class="t-td text-end">
+                                        <div class="flex gap-1.5 justify-end">
+                                            <!-- Revoked is the only state a
+                                                 terminal can be deleted from,
+                                                 so the two actions never show
+                                                 together. -->
+                                            <template v-if="term.state !== 'revoked'">
+                                                <button type="button" @click="issuePairingCode(term)" class="btn btn-ghost btn-sm act">
+                                                    {{ t('admin.pos_pairing_code_issue') }}
+                                                </button>
+                                                <button type="button" @click="revokeTerminal(term)" class="btn btn-ghost btn-sm act" style="color:var(--red)">
+                                                    {{ t('pos_terminals.revoke') }}
+                                                </button>
+                                            </template>
+                                            <button v-else type="button" @click="deleteTerminal(term)" class="btn btn-ghost btn-sm act" style="color:var(--red)">
+                                                {{ t('pos_terminals.delete') }}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pairing code: plaintext in one response and never
+                         again, so it stays on screen until dismissed. -->
+                    <div v-if="pairing" class="card p-4 mt-4" role="status" style="border-color:var(--green);background:var(--green-soft)">
+                        <p class="font-medium" style="color:var(--green)">{{ t('admin.pos_pairing_code_title', { name: pairing.name }) }}</p>
+                        <p class="mono text-2xl mt-1" style="color:var(--ink)">{{ pairing.code }}</p>
+                        <p class="text-sm mt-1" style="color:var(--body)">{{ t('admin.pos_pairing_code_note', { hours: pairing.hours }) }}</p>
+                        <button type="button" @click="pairing = null" class="btn btn-ghost btn-sm act mt-2">{{ t('common.done') }}</button>
+                    </div>
+
+                    <!-- Create terminal — the only path from the platform
+                         side, and deliberately not part of tenant creation. -->
+                    <div v-if="canManageFleet" class="mt-4">
+                        <p v-if="!posBranches.length" class="text-sm" style="color:var(--p-primary-800)">{{ t('admin.pos_terminal_needs_branch') }}</p>
+                        <p v-else-if="posAtLimit || posOver" class="text-sm" style="color:var(--p-primary-800)">
+                            {{ t('admin.pos_seats_full', { max: posMax }) }}
+                        </p>
+                        <button v-else-if="!creatingTerminal" type="button" @click="openTerminalForm" class="btn btn-dark cta">
+                            {{ t('admin.pos_create_terminal') }}
+                        </button>
+
+                        <form v-else @submit.prevent="submitTerminal" class="space-y-3 pt-1">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <label class="block"><span class="label">{{ t('admin.pos_terminal_name') }}</span>
+                                    <input v-model="terminalForm.name" class="input" :placeholder="t('admin.pos_terminal_name_placeholder')" required />
+                                    <FormError :errors="terminalErrors" field="name" /></label>
+                                <label class="block"><span class="label">{{ t('admin.pos_terminal_branch') }}</span>
+                                    <select v-model="terminalForm.branch_id" class="input" required>
+                                        <option v-for="b in posBranches" :key="b.id" :value="b.id">
+                                            {{ (locale === 'ar' ? b.name_ar || b.name_en : b.name_en || b.name_ar) || ('#' + b.id) }}
+                                        </option>
+                                    </select>
+                                    <FormError :errors="terminalErrors" field="branch_id" /></label>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="submit" class="btn btn-dark cta" :disabled="savingTerminal">{{ t('admin.pos_create_terminal') }}</button>
+                                <button type="button" @click="creatingTerminal = false" class="btn btn-ghost cta">{{ t('common.cancel') }}</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="mt-4">
+                        <RouterLink :to="{ name: 'admin.licences' }" class="text-link">{{ t('admin.pos_licences_link') }}</RouterLink>
+                    </div>
+                </section>
+            </template>
+
+            <!-- Activity / audit trail for this restaurant -->
+            <template v-else-if="activeSection === 'activity'">
+                <!-- Files first: the trail IS a file per day, so the tab
+                     leads with them. Counts and downloads are scoped to
+                     this restaurant. -->
+                <ActivityFilesPanel :restaurant-id="id" start-open @select="openDay" />
+
+                <div class="flex justify-end">
+                    <RouterLink :to="{ name: 'admin.audit', query: { restaurant_id: id } }" class="text-link">
+                        {{ t('audit.view_all') }} {{ backArrow === '←' ? '→' : '←' }}
+                    </RouterLink>
+                </div>
+            </template>
+
+            <!-- Danger zone: last, and visually apart from everything else -->
+            <template v-else-if="activeSection === 'danger'">
+                <section class="card danger-card">
+                    <div class="danger-head">
+                        <Icon name="alert" :size="18" aria-hidden="true" />
+                        <h2 class="h-card" style="color:var(--red)">{{ t('admin.danger_zone') }}</h2>
+                    </div>
+                    <div class="p-5">
+                        <p class="help mb-4" style="margin-top:0">{{ t('admin.danger_zone_help') }}</p>
                         <div class="flex flex-wrap gap-2">
                             <button
                                 v-if="r.status !== 'ARCHIVED'"
+                                type="button"
                                 @click="archiveRestaurant"
                                 :disabled="archiving"
-                                class="btn btn-ghost"
+                                class="btn btn-ghost cta"
                             >{{ archiving ? t('admin.archiving') : t('common.archive') }}</button>
                             <button
                                 v-else
+                                type="button"
                                 @click="hardDeleteRestaurant"
                                 :disabled="deleting"
-                                class="btn btn-ghost"
-                                style="color:#c0392b;border-color:#f1c9c4"
+                                class="btn btn-ghost cta danger-btn"
                             ><Icon name="trash" :size="16" />{{ deleting ? t('admin.deleting') : t('common.delete') }}</button>
                         </div>
-                    </section>
-                </template>
-            </div>
+                    </div>
+                </section>
+            </template>
         </div>
     </div>
 </template>
 
 <style scoped>
-.detail-shell {
-    display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
-}
-.detail-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    position: sticky;
-    top: 16px;
-}
-.detail-nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 500;
-    text-align: start;
-    cursor: pointer;
-    transition: background .15s ease, color .15s ease;
-}
-.detail-nav-item:hover { background: var(--gray-soft); color: var(--ink); }
-.detail-nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent);
-    border-color: var(--line);
-    font-weight: 600;
-}
-.detail-nav-item.danger.active { background: #fdecea; color: #c0392b; border-color: #f1c9c4; }
-.detail-nav-item.danger:hover { color: #c0392b; }
+/* Colours come from theme variables only. Badge text is re-tinted for contrast
+   on soft backgrounds. */
+.badge.badge-amber { color: var(--p-primary-800); }
+.badge.badge-gray { color: var(--body); }
 
-@media (max-width: 640px) {
-    .detail-shell { grid-template-columns: 1fr; gap: 16px; }
-    .detail-nav {
-        position: static;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-    .detail-nav-item { flex: 0 0 auto; }
-    .detail-nav-item span { display: inline; }
+.cta { min-height: 44px; justify-content: center; }
+.act { min-height: 36px; }
+@media (max-width: 640px) { .act { min-height: 44px; } }
+.help { display: block; font-size: 13.5px; margin-top: 5px; color: var(--body); }
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; font-weight: 500; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.text-link { font-size: 14px; font-weight: 500; color: var(--p-primary-700); }
+.text-link:hover { text-decoration: underline; }
+.url-link { color: var(--p-primary-700); text-decoration: underline; max-width: 100%; }
+.seg button { color: var(--body); min-height: 38px; }
+.seg button.active { color: var(--ink); }
+
+.avatar-lg { width: 56px; height: 56px; border-radius: 14px; flex: none; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); font-size: 22px; font-weight: 700; font-family: var(--font-display); }
+
+/* Subscription band */
+.sub-band { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 16px 24px; align-items: center; padding: 16px 20px;
+    border-inline-start: 5px solid var(--green); }
+.sub-band.tone-amber { border-inline-start-color: var(--accent); background: var(--amber-soft); }
+.sub-band.tone-red { border-inline-start-color: var(--red); background: var(--red-soft); }
+.sub-label { font-size: 13px; font-weight: 500; color: var(--body); margin-bottom: 3px; }
+.sub-value { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--ink); overflow-wrap: anywhere; }
+.sub-cta { justify-self: end; }
+@media (max-width: 720px) {
+    .sub-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sub-cta { grid-column: 1 / -1; justify-self: stretch; }
+    .sub-cta .btn { width: 100%; }
 }
+
+/* Banners */
+.notice { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; font-size: 14.5px; font-weight: 500; }
+.notice-ok { background: var(--green-soft); color: var(--green); }
+.notice-err { background: var(--red-soft); color: var(--red); }
+
+/* Section tabs */
+.tab-bar { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); padding-bottom: 0; scrollbar-width: thin; }
+.tab { display: inline-flex; align-items: center; gap: 8px; flex: none; min-height: 44px; padding: 0 14px; margin-bottom: -1px;
+    background: transparent; border: 0; border-bottom: 3px solid transparent; color: var(--body); font-size: 14.5px; font-weight: 500;
+    cursor: pointer; transition: color .15s, border-color .15s, background .15s; border-radius: 10px 10px 0 0; }
+.tab:hover { color: var(--ink); background: var(--gray-soft); }
+.tab.active { color: var(--ink); font-weight: 700; border-bottom-color: var(--accent); }
+/* Danger tab: pushed to the far end, separated by a divider */
+.tab.danger { color: var(--red); margin-inline-start: auto; position: relative; }
+.tab.danger::before { content: ''; position: absolute; inset-inline-start: -8px; top: 10px; bottom: 10px; width: 1px; background: var(--line); }
+.tab.danger:hover { background: var(--red-soft); }
+.tab.danger.active { border-bottom-color: var(--red); }
+
+/* Terminals table */
+.t-th { padding: 9px 12px; font-size: 12.5px; font-weight: 600; color: var(--body); background: var(--page); border-bottom: 1px solid var(--line); }
+.t-td { padding: 10px 12px; vertical-align: middle; }
+.t-row { border-top: 1px solid var(--line); }
+.t-row:first-child { border-top: none; }
+.empty-box { padding: 20px; border: 1px dashed var(--line); border-radius: 12px; background: var(--page); }
+
+/* Danger zone */
+.danger-card { border-color: color-mix(in srgb, var(--red) 35%, var(--card)); overflow: hidden; }
+.danger-head { display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: var(--red-soft); color: var(--red);
+    border-bottom: 1px solid color-mix(in srgb, var(--red) 25%, var(--card)); }
+.danger-btn { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, var(--card)); }
+.danger-btn:hover { background: var(--red-soft); }
 </style>

@@ -35,6 +35,18 @@ class PlanLimitService
         return ($max !== null && Category::count() >= $max) ? $max : null;
     }
 
+    /**
+     * Returns the plan's category cap when adding [$adding] more would pass it,
+     * else null. The batch counts whole: a cap of 10 with 8 on file refuses a
+     * batch of 3, it does not store two.
+     */
+    public function categoryLimitWouldBeExceeded(Restaurant $restaurant, int $adding): ?int
+    {
+        $max = $this->plan($restaurant)?->max_categories;
+
+        return ($max !== null && Category::count() + $adding > $max) ? $max : null;
+    }
+
     /** Returns the exceeded limit, or null when the create is allowed. */
     public function branchLimitReached(Restaurant $restaurant): ?int
     {

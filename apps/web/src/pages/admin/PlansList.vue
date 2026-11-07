@@ -75,50 +75,60 @@ async function removePlan(p) {
 
 <template>
     <div class="space-y-5">
-        <div class="flex items-start justify-between gap-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('nav.plans') }}</h1>
-                <p class="page-sub">{{ t('plan.subtitle') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('plan.subtitle') }}</p>
             </div>
-            <RouterLink :to="{ name: 'admin.plans.create' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('plan.create') }}</RouterLink>
+            <RouterLink :to="{ name: 'admin.plans.create' }" class="btn btn-accent cta"><Icon name="plus" :size="16" />{{ t('plan.create') }}</RouterLink>
         </div>
 
-        <div class="card overflow-x-auto">
-            <table class="w-full text-sm" style="min-width:640px">
+        <div class="card tbl-card">
+            <table class="w-full">
                 <thead>
-                    <tr style="color:var(--muted)">
-                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
-                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('plan.name') }}</th>
-                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.price') }}</th>
-                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.branches') }}</th>
-                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.entitlements') }}</th>
-                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
-                        <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
+                    <tr>
+                        <th class="th text-start">#</th>
+                        <th class="th text-start">{{ t('plan.name') }}</th>
+                        <th class="th text-end">{{ t('plan.price') }}</th>
+                        <th class="th text-center">{{ t('plan.branches') }}</th>
+                        <th class="th text-start">{{ t('plan.entitlements') }}</th>
+                        <th class="th text-start">{{ t('common.status') }}</th>
+                        <th class="th text-end">{{ t('common.actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
                     <TableSkeleton v-if="loading" :cols="7" />
-                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
-                    <tr v-for="(p, idx) in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
-                        :style="{ borderColor: 'var(--line)', opacity: p.is_active ? 1 : 0.6 }"
-                        @click="router.push({ name: 'admin.plans.edit', params: { id: p.id } })">
-                        <td class="px-5 py-3 text-start" style="color:var(--muted)">{{ idx + 1 }}</td>
-                        <td class="px-5 py-3 font-medium text-start" style="color:var(--ink)">{{ p.name }}</td>
-                        <td class="px-3 py-3 text-center" style="color:var(--body)">{{ price(p) }}</td>
-                        <td class="px-3 py-3 text-center" style="color:var(--body)"><span class="badge badge-gray">{{ branchLimit(p) }}</span></td>
-                        <td class="px-3 py-3">
-                            <div class="flex flex-wrap justify-center gap-1" style="max-width:340px;margin-inline:auto">
-                                <span v-for="k in planCaps(p)" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>
-                                <span v-if="!planCaps(p).length" style="color:var(--muted)">—</span>
+                    <tr v-else-if="!rows.length">
+                        <td colspan="7">
+                            <div class="empty">
+                                <span class="empty-ico"><Icon name="star" :size="22" /></span>
+                                <p>{{ t('plan.none') }}</p>
+                                <RouterLink :to="{ name: 'admin.plans.create' }" class="btn btn-accent btn-sm"><Icon name="plus" :size="14" />{{ t('plan.create') }}</RouterLink>
                             </div>
                         </td>
-                        <td class="px-3 py-3 text-center">
-                            <span class="badge" :class="p.is_active ? 'badge-green' : 'badge-gray'">{{ p.is_active ? t('plan.active') : t('plan.inactive') }}</span>
+                    </tr>
+                    <tr v-for="(p, idx) in rows" :key="p.id" class="row"
+                        :class="{ 'is-off': !p.is_active }"
+                        @click="router.push({ name: 'admin.plans.edit', params: { id: p.id } })">
+                        <td class="td num" style="color:var(--body)">{{ idx + 1 }}</td>
+                        <td class="td">
+                            <RouterLink :to="{ name: 'admin.plans.edit', params: { id: p.id } }" class="plan-name" @click.stop>{{ p.name }}</RouterLink>
                         </td>
-                        <td class="px-5 py-3 text-end whitespace-nowrap" @click.stop>
+                        <td class="td text-end num" style="color:var(--ink);font-weight:600;white-space:nowrap">{{ price(p) }}</td>
+                        <td class="td text-center"><span class="badge badge-gray">{{ branchLimit(p) }}</span></td>
+                        <td class="td">
+                            <div class="flex flex-wrap gap-1.5" style="max-width:360px">
+                                <span v-for="k in planCaps(p)" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>
+                                <span v-if="!planCaps(p).length" style="color:var(--body)">—</span>
+                            </div>
+                        </td>
+                        <td class="td">
+                            <span class="badge" :class="p.is_active ? 'badge-green' : 'badge-gray'"><span class="dot"></span>{{ p.is_active ? t('plan.active') : t('plan.inactive') }}</span>
+                        </td>
+                        <td class="td text-end whitespace-nowrap" @click.stop>
                             <div class="inline-flex items-center gap-2">
-                                <RouterLink :to="{ name: 'admin.plans.edit', params: { id: p.id } }" class="btn btn-ghost" style="padding:5px 11px;font-size:12px">{{ t('common.edit') }}</RouterLink>
-                                <button @click="removePlan(p)" :disabled="deleting === p.id" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')">
+                                <RouterLink :to="{ name: 'admin.plans.edit', params: { id: p.id } }" class="btn btn-ghost btn-sm act">{{ t('common.edit') }}</RouterLink>
+                                <button type="button" @click="removePlan(p)" :disabled="deleting === p.id" class="icon-btn icon-btn-danger act-icon" :title="t('common.delete')" :aria-label="t('common.delete')">
                                     <Icon name="trash" :size="16" />
                                 </button>
                             </div>
@@ -131,13 +141,37 @@ async function removePlan(p) {
 </template>
 
 <style scoped>
+.badge.badge-gray { color: var(--body); }
+.cta { min-height: 44px; }
+
+/* Wide table scrolls inside its card instead of breaking the page. */
+.tbl-card { overflow-x: auto; }
+.tbl-card table { min-width: 760px; font-size: 14.5px; }
+.th { padding: 11px 16px; font-size: 12.5px; font-weight: 600; color: var(--body); background: var(--page); border-bottom: 1px solid var(--line); }
+.th:first-child, .td:first-child { padding-inline-start: 20px; }
+.th:last-child, .td:last-child { padding-inline-end: 20px; }
+.td { padding: 12px 16px; min-height: 56px; vertical-align: middle; }
+.row { border-top: 1px solid var(--line); cursor: pointer; transition: background .15s; }
+.row:hover { background: var(--page); }
+.row:hover .plan-name { color: var(--p-primary-700); }
+.is-off .plan-name { color: var(--body); }
+.num { font-variant-numeric: tabular-nums; }
+.plan-name { font-size: 15px; font-weight: 600; color: var(--ink); }
 .plan-cap {
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 999px;
-    background: var(--accent-soft, color-mix(in srgb, var(--accent) 10%, transparent));
-    color: var(--accent-dark, var(--accent));
+    background: var(--accent-soft);
+    color: var(--p-primary-800);
     white-space: nowrap;
+}
+.act { min-height: 36px; }
+.act-icon { width: 36px; height: 36px; color: var(--red); }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 44px 16px; text-align: center; color: var(--body); }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--p-primary-700); }
+@media (max-width: 640px) {
+    .act { min-height: 44px; }
+    .act-icon { width: 44px; height: 44px; }
 }
 </style>

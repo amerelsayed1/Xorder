@@ -122,6 +122,7 @@ An `M` (modified, not `A` added) on a migration older than the last release is a
 - **F1** — If `deploy.sh`, `entrypoint.sh`, `Dockerfile`, or compose files changed: note that per project memory, **deploy.sh edits need a second deploy** to take effect, and call out migration-order / rebuild implications explicitly.
 - **F2** — Rollback is possible: the pre-deploy backup exists and `deploy.sh` auto-rollback trap is intact. Know the rollback command before shipping.
 - **F3** — No `pnpm` frozen-lockfile surprise: if deps changed, `pnpm-lock.yaml` is committed and consistent.
+- **F4** — Base images get security fixes. Production builds from floating tags (`php:*-fpm-alpine`, `nginx:*-alpine`, `node`, `composer`), so a build that reuses the VPS's cached layers silently ships an old PHP or nginx. Confirm `pull: true` is set on the `app` and `web` build blocks in `docker-compose.cohost.yml` (`grep -n 'pull: true' docker-compose.cohost.yml` should show two hits), and note the PHP version the image will build with. If a PHP security release has shipped since the last deploy, say so and make it a WARN until the live container reports the fixed version (`docker compose ... exec app php -v` on the server).
 
 ---
 

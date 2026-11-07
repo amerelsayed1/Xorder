@@ -60,6 +60,19 @@ class PosDefaultTendersTest extends PosTestCase
         $this->assertSame(['Cash', 'Card'], collect($claim['bootstrap']['money']['tender_types'])->pluck('name')->all());
     }
 
+    public function test_the_bundle_says_which_languages_the_menu_is_written_in(): void
+    {
+        // XORD-005: with default_language it tells the till which name fields to
+        // ask for. Bilingual by default.
+        ['response' => $claim] = $this->claimTerminal();
+        $this->assertTrue($claim['bootstrap']['restaurant']['bilingual']);
+
+        $this->restaurant->forceFill(['bilingual' => false, 'default_language' => LanguageEnum::EN])->save();
+        ['response' => $again] = $this->claimTerminal();
+        $this->assertFalse($again['bootstrap']['restaurant']['bilingual']);
+        $this->assertSame('en', $again['bootstrap']['restaurant']['default_language']);
+    }
+
     public function test_path_b_register_also_delivers_a_non_empty_list(): void
     {
         $role = new Role(['name' => 'Installer']);

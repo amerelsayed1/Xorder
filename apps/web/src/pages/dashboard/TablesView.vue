@@ -57,6 +57,39 @@ const labelList = ref(null)
 const bulkCount = computed(() =>
     form.labels.map(l => (l || '').trim()).filter(Boolean).length)
 
+// --- Generate a numbered run (XORD-006) --------------------------------------
+// "Table 1" … "Table 10" from a prefix, a start number and a quantity. It only
+// fills the list below: the owner sees every name before anything is saved and
+// can still edit or drop any of them. The server's 100-name ceiling is the real
+// limit; this is the same number so the form refuses before the request does.
+const MAX_GENERATED = 100
+const gen = reactive({ prefix: '', start: 1, count: 10 })
+const genValid = computed(() => {
+    const start = Number(gen.start), count = Number(gen.count)
+    return Number.isInteger(start) && start >= 0 && Number.isInteger(count) && count >= 1 && count <= MAX_GENERATED
+})
+const genNames = computed(() => {
+    if (!genValid.value) return []
+    const start = Number(gen.start)
+    return Array.from({ length: Number(gen.count) }, (_, i) => `${gen.prefix}${start + i}`.trim())
+})
+function applyGenerated() {
+    if (!genValid.value) return
+    form.labels = [...genNames.value]
+}
+// Names repeated inside the list: the server would quietly collapse them, which
+// reads as "I asked for ten and got nine". Say so before saving instead.
+const repeatedLabels = computed(() => {
+    const seen = new Set(), repeated = new Set()
+    for (const raw of form.labels) {
+        const name = (raw || '').trim()
+        if (!name) continue
+        if (seen.has(name)) repeated.add(name)
+        seen.add(name)
+    }
+    return [...repeated]
+})
+
 async function addLabelField(afterIndex) {
     form.labels.splice(afterIndex + 1, 0, '')
     await nextTick()
@@ -119,6 +152,7 @@ watch(() => filters.search, () => { clearTimeout(searchTimer); searchTimer = set
 
 function openCreate() {
     editing.value = null; bulkMode.value = false; errors.value = {}
+    gen.prefix = t('tbl.gen_default_prefix'); gen.start = 1; gen.count = 10
     Object.assign(form, blank(), {
         dining_area_id: activeAreas.value[0]?.id || '',
     })
@@ -278,23 +312,33 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 
 <template>
     <div class="space-y-5">
+        <!-- Header: title + one-line subtitle, primary actions at the end -->
         <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
+            <div class="min-w-0">
                 <h1 class="page-title">{{ t('tbl.tables_title') }}</h1>
-                <p class="page-sub">{{ t('tbl.tables_sub', { count: rows.length }) }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('tbl.tables_sub', { count: rows.length }) }}</p>
             </div>
-            <div class="flex items-center gap-2">
-                <button v-if="rows.length" class="btn btn-ghost" :disabled="!!downloading" @click="downloadAllQr">
+            <div class="flex flex-wrap items-center gap-2">
+                <button v-if="rows.length" class="btn btn-ghost act-btn" :disabled="!!downloading" @click="downloadAllQr">
                     <Icon v-if="allDownloading" name="loading" :size="16" class="animate-spin" />
                     <Icon v-else name="download" :size="16" />
                     {{ t('tbl.download_all', { n: rows.length }) }}
                 </button>
-                <button v-if="canCreate" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+                <button v-if="canCreate" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent act-btn"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
         </div>
 
-        <p v-if="!failed && !loading && !areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
+        <!-- Tables are optional (counter cafes, food trucks and cloud kitchens have none).
+             This is guidance, not a warning. -->
+        <div v-if="!failed && !loading && !areas.length" class="note" role="note">
+            <span class="note-ico" aria-hidden="true"><Icon name="info" :size="18" /></span>
+            <div class="min-w-0">
+                <p class="note-title">{{ t('tbl.no_area_first') }}</p>
+                <p class="note-text">{{ t('tbl.optional_note') }}</p>
+            </div>
+        </div>
 
+        <!-- Occupancy -->
         <div class="flex flex-wrap items-center gap-2">
             <div class="segmented tabs" role="tablist" :aria-label="t('tbl.occupancy')">
                 <button v-for="key in OCCUPANCY_TABS" :key="key || 'all'" type="button" role="tab"
@@ -305,28 +349,31 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     <span v-if="occupancyCounts" class="tab-count">{{ occupancyCounts[key || 'all'] }}</span>
                 </button>
             </div>
-            <select v-model="filters.dining_area_id" class="input" style="max-width:14rem">
+        </div>
+        <!-- Filters -->
+        <div class="filters">
+            <select v-model="filters.dining_area_id" class="input filter-sel" :aria-label="t('tbl.area')">
                 <option value="">{{ t('tbl.all_areas') }}</option>
                 <option v-for="a in areas" :key="a.id" :value="a.id">{{ areaName(a) }}</option>
             </select>
-            <select v-model="filters.status" class="input" style="max-width:11rem">
+            <select v-model="filters.status" class="input filter-sel" :aria-label="t('common.status')">
                 <option value="">{{ t('tbl.all_status') }}</option>
                 <option value="active">{{ t('common.active') }}</option>
                 <option value="inactive">{{ t('common.inactive') }}</option>
             </select>
-            <input v-model="filters.search" class="input" style="max-width:14rem" :placeholder="t('tbl.search_tables')" />
+            <input v-model="filters.search" class="input filter-search" :placeholder="t('tbl.search_tables')" :aria-label="t('tbl.search_tables')" />
         </div>
 
-        <!-- Bulk action bar — appears once one or more rows are ticked. -->
+        <!-- Bulk action bar: appears once one or more rows are ticked. -->
         <div v-if="canDelete && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('tbl.selected_count', { n: selected.size }) }}</span>
-            <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
-            <button class="btn btn-accent btn-sm" :disabled="!!downloading" @click="bulkDownloadQr">
+            <button class="btn btn-ghost btn-sm act-btn" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
+            <button class="btn btn-accent btn-sm act-btn" :disabled="!!downloading" @click="bulkDownloadQr">
                 <Icon v-if="bulkDownloading" name="loading" :size="15" class="animate-spin" />
                 <Icon v-else name="download" :size="15" />
                 {{ t('tbl.download_selected') }}
             </button>
-            <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
+            <button class="btn btn-danger btn-sm act-btn" :disabled="bulkDeleting" @click="bulkRemove">
                 <Icon v-if="bulkDeleting" name="loading" :size="15" class="animate-spin" />
                 <Icon v-else name="trash" :size="15" />
                 {{ t('tbl.delete_selected') }}
@@ -335,43 +382,53 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
-            <div v-else-if="failed === 'plan'" class="p-8 text-center text-sm" style="color:var(--muted)">{{ t('tbl.not_in_plan') }}</div>
+            <div v-else-if="failed === 'plan'" class="empty">
+                <span class="empty-ico" aria-hidden="true"><Icon name="table" :size="22" /></span>
+                <p class="empty-text">{{ t('tbl.not_in_plan') }}</p>
+            </div>
             <ErrorState v-else-if="failed" @retry="load" />
-            <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_tables') }}</div>
+            <div v-else-if="!rows.length" class="empty">
+                <span class="empty-ico" aria-hidden="true"><Icon name="table" :size="22" /></span>
+                <p class="empty-text">{{ t('tbl.none_tables') }}</p>
+                <p class="empty-sub">{{ t('tbl.optional_note') }}</p>
+                <button v-if="canCreate && activeAreas.length" class="btn btn-accent act-btn" @click="openCreate"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            </div>
             <template v-else>
                 <!-- Select-all header (only when the user can delete). -->
-                <div v-if="canDelete" class="flex items-center gap-3 px-5 py-2.5 tbl-head" style="border-color:var(--line)">
+                <div v-if="canDelete" class="tbl-head">
                     <input type="checkbox" class="row-check" :checked="allSelected"
                         :indeterminate.prop="someSelected" :aria-label="t('tbl.select_all')" @change="toggleAll" />
-                    <span class="tbl-num" style="color:var(--muted)">#</span>
-                    <span class="text-xs" style="color:var(--muted)">{{ t('tbl.select_all') }}</span>
+                    <span class="text-sm" style="color:var(--body)">{{ t('tbl.select_all') }}</span>
                 </div>
                 <ul>
-                    <li v-for="(tbl, i) in rows" :key="tbl.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0"
-                        :class="{ 'row-selected': selected.has(tbl.id) }" style="border-color:var(--line)">
-                        <input v-if="canDelete" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
-                            :aria-label="tbl.label" @change="toggleSelect(tbl.id)" />
-                        <span class="tbl-num hide-sm" style="color:var(--muted)">{{ i + 1 }}</span>
-                        <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0 hide-sm" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
-                        <div class="flex-1 min-w-0">
-                            <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
-                            <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
+                    <li v-for="(tbl, i) in rows" :key="tbl.id" class="row" :class="{ 'row-selected': selected.has(tbl.id) }">
+                        <div class="row-main">
+                            <input v-if="canDelete" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
+                                :aria-label="tbl.label" @change="toggleSelect(tbl.id)" />
+                            <span class="tbl-num">{{ i + 1 }}</span>
+                            <div class="row-ico" aria-hidden="true"><Icon name="table" :size="22" /></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="row-name truncate">{{ tbl.label }}</div>
+                                <div class="row-sub truncate">{{ areaLabel(tbl.dining_area_id) }}</div>
+                            </div>
                         </div>
-                        <div v-if="tbl.occupancy && tbl.occupancy.state !== 'inactive'" class="occ">
-                            <span class="occ-badge" :class="'occ-' + tbl.occupancy.state">
-                                <span class="occ-dot" :class="'occ-dot-' + tbl.occupancy.state" aria-hidden="true"></span>
-                                {{ t('tbl.occ_' + tbl.occupancy.state) }}
-                            </span>
-                            <span v-if="tbl.occupancy.has_request" class="occ-badge occ-request">{{ t('tbl.occ_bill') }}</span>
-                            <span v-if="occupancyDetail(tbl.occupancy)" class="occ-detail">{{ occupancyDetail(tbl.occupancy) }}</span>
+                        <div class="row-side">
+                            <div v-if="tbl.occupancy && tbl.occupancy.state !== 'inactive'" class="occ">
+                                <span class="occ-badge" :class="'occ-' + tbl.occupancy.state">
+                                    <span class="occ-dot" :class="'occ-dot-' + tbl.occupancy.state" aria-hidden="true"></span>
+                                    {{ t('tbl.occ_' + tbl.occupancy.state) }}
+                                </span>
+                                <span v-if="tbl.occupancy.has_request" class="occ-badge occ-request">{{ t('tbl.occ_bill') }}</span>
+                                <span v-if="occupancyDetail(tbl.occupancy)" class="occ-detail">{{ occupancyDetail(tbl.occupancy) }}</span>
+                            </div>
+                            <!-- On a phone the chip is dropped to leave room for occupancy. -->
+                            <StatusBadge class="hide-sm" :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
+                            <button v-if="canUpdate" type="button" class="switch" :class="{ on: tbl.is_active }" role="switch"
+                                :aria-checked="tbl.is_active" :aria-label="tbl.is_active ? t('common.active') : t('common.inactive')" @click="toggleActive(tbl)"></button>
+                            <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')" :aria-label="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
+                            <button v-if="canUpdate" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                            <button v-if="canDelete" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')"><Icon name="trash" :size="17" /></button>
                         </div>
-                        <!-- The switch beside it already says active/inactive; on a phone
-                             the chip is dropped to leave room for occupancy. -->
-                        <StatusBadge class="hide-sm" :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
-                        <button v-if="canUpdate" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
-                        <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
-                        <button v-if="canUpdate" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                        <button v-if="canDelete" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                     </li>
                 </ul>
             </template>
@@ -381,8 +438,8 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         <Dialog v-if="showModal" :title="editing ? t('common.edit') : t('tbl.tables_title')" @close="showModal = false">
             <div class="space-y-4">
                 <!-- Create only: toggle to add a numbered batch in one save. -->
-                <label v-if="!editing" class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                    <button type="button" class="switch" :class="{ on: bulkMode }" @click="bulkMode = !bulkMode"></button>
+                <label v-if="!editing" class="toggle-line">
+                    <button type="button" class="switch" :class="{ on: bulkMode }" role="switch" :aria-checked="bulkMode" @click="bulkMode = !bulkMode"></button>
                     {{ t('tbl.add_multiple') }}
                 </label>
                 <label class="block"><span class="label">{{ t('tbl.area') }}</span>
@@ -393,22 +450,37 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 
                 <!-- Bulk create: one field per table name; Enter adds another. -->
                 <template v-if="bulkMode && !editing">
+                    <div class="gen-box" data-test="gen-box">
+                        <span class="label">{{ t('tbl.gen_title') }}</span>
+                        <div class="gen-row">
+                            <label class="block"><span class="label">{{ t('tbl.gen_prefix') }}</span>
+                                <input v-model="gen.prefix" class="input" :placeholder="t('tbl.gen_default_prefix')" data-test="gen-prefix" /></label>
+                            <label class="block"><span class="label">{{ t('tbl.gen_start') }}</span>
+                                <input v-model.number="gen.start" type="number" min="0" step="1" class="input" dir="ltr" data-test="gen-start" /></label>
+                            <label class="block"><span class="label">{{ t('tbl.gen_count') }}</span>
+                                <input v-model.number="gen.count" type="number" min="1" :max="MAX_GENERATED" step="1" class="input" dir="ltr" data-test="gen-count" /></label>
+                        </div>
+                        <p v-if="!genValid" class="text-sm" style="color:var(--danger, #b42318)" data-test="gen-invalid">{{ t('tbl.gen_invalid', { max: MAX_GENERATED }) }}</p>
+                        <p v-else class="text-sm" style="color:var(--body)" data-test="gen-preview">{{ t('tbl.gen_preview', { first: genNames[0], last: genNames[genNames.length - 1] }) }}</p>
+                        <button type="button" class="btn btn-ghost btn-sm" :disabled="!genValid" data-test="gen-apply" @click="applyGenerated">{{ t('tbl.gen_apply') }}</button>
+                    </div>
                     <div class="block">
                         <span class="label">{{ t('tbl.table_names') }}</span>
-                        <div ref="labelList" class="space-y-2">
+                        <div ref="labelList" class="space-y-2 mt-1.5">
                             <div v-for="(lbl, i) in form.labels" :key="i" class="flex items-center gap-2">
-                                <span class="tbl-num" style="color:var(--muted)">{{ i + 1 }}</span>
-                                <input v-model="form.labels[i]" class="input tbl-label-input flex-1"
+                                <span class="tbl-num">{{ i + 1 }}</span>
+                                <input v-model="form.labels[i]" class="input tbl-label-input flex-1" style="margin-top:0"
                                     :placeholder="t('tbl.label')" @keydown.enter.prevent="addLabelField(i)" />
                                 <button v-if="form.labels.length > 1" type="button" class="icon-btn icon-btn-danger"
-                                    :title="t('common.delete')" @click="removeLabelField(i)"><Icon name="trash" :size="16" /></button>
+                                    :title="t('common.delete')" :aria-label="t('common.delete')" @click="removeLabelField(i)"><Icon name="trash" :size="16" /></button>
                             </div>
                         </div>
                         <button type="button" class="btn btn-ghost btn-sm mt-2" @click="addLabelField(form.labels.length - 1)">
                             <Icon name="plus" :size="15" />{{ t('tbl.add_name') }}
                         </button>
                         <FormError :errors="errors" field="labels" />
-                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('tbl.enter_hint') }}</p>
+                        <p v-if="repeatedLabels.length" class="text-sm mt-1" style="color:var(--danger, #b42318)" data-test="repeated">{{ t('tbl.gen_duplicates', { names: repeatedLabels.join(', ') }) }}</p>
+                        <p class="text-sm mt-1" style="color:var(--body)">{{ t('tbl.enter_hint') }}</p>
                     </div>
                 </template>
 
@@ -420,13 +492,13 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     <label class="block"><span class="label">{{ t('tbl.notes') }}</span>
                         <textarea v-model="form.notes" rows="2" class="input"></textarea></label>
                 </template>
-                <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                    <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>
+                <label class="toggle-line">
+                    <button type="button" class="switch" :class="{ on: form.is_active }" role="switch" :aria-checked="form.is_active" @click="form.is_active = !form.is_active"></button>
                     {{ t('common.active') }}
                 </label>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" :disabled="saving || (bulkMode && !editing && !bulkCount)" class="btn btn-accent">
+                <div class="flex flex-wrap justify-end gap-2 pt-3 form-actions">
+                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost act-btn">{{ t('common.cancel') }}</button>
+                    <button @click="save" :disabled="saving || (bulkMode && !editing && !bulkCount)" class="btn btn-accent act-btn">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                         {{ saving ? t('common.saving') : (bulkMode && !editing && bulkCount ? t('tbl.save_count', { n: bulkCount }) : t('common.save')) }}
                     </button>
@@ -437,13 +509,13 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         <!-- QR modal -->
         <Dialog v-if="qrModal" :title="`${t('tbl.table')} : ${qrModal.table.label}`" @close="qrModal = null">
             <div class="space-y-4 text-center">
-                <div v-if="qrLoading" class="py-10" style="color:var(--muted)">…</div>
+                <div v-if="qrLoading" class="py-10" style="color:var(--body)">…</div>
                 <div v-else class="mx-auto qr-box" v-html="qrModal.svg"></div>
-                <p class="text-xs break-all" style="color:var(--muted)" dir="ltr">{{ qrModal.url }}</p>
+                <p class="text-xs break-all" style="color:var(--body)" dir="ltr">{{ qrModal.url }}</p>
                 <p class="text-sm" style="color:var(--body)">{{ t('tbl.scan_hint') }}</p>
-                <div class="flex justify-center gap-2 pt-1">
-                    <button v-if="canUpdate" @click="regenerateQr" class="btn btn-ghost">{{ t('tbl.qr_regenerate') }}</button>
-                    <button @click="downloadQr" class="btn btn-accent"><Icon name="download" :size="16" />{{ t('tbl.qr_download') }}</button>
+                <div class="flex flex-wrap justify-center gap-2 pt-1">
+                    <button v-if="canUpdate" @click="regenerateQr" class="btn btn-ghost act-btn">{{ t('tbl.qr_regenerate') }}</button>
+                    <button @click="downloadQr" class="btn btn-accent act-btn"><Icon name="download" :size="16" />{{ t('tbl.qr_download') }}</button>
                 </div>
             </div>
         </Dialog>
@@ -451,24 +523,50 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 </template>
 
 <style scoped>
+/* Colours come from the shared theme variables only. */
+
 /* The QR SVG is generated at a fixed pixel size; make it fit its box so it
    never overflows onto the URL/hint text below. */
-.qr-box { width: 15rem; height: 15rem; }
+.qr-box { width: 15rem; height: 15rem; max-width: 100%; }
 .qr-box :deep(svg) { width: 100%; height: 100%; display: block; }
 
-/* Row number + multi-select */
-.tbl-num { flex: none; width: 1.75rem; text-align: center; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.tbl-head { border-bottom: 1px solid var(--line); background: var(--page); }
-.row-check { flex: none; width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-.row-selected { background: var(--accent-soft); }
+/* Guidance note (optional-feature hint), deliberately calm: not an error. */
+.note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px;
+    background: var(--accent-soft); border: 1px solid var(--line); }
+.note-ico { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none;
+    background: var(--card); color: var(--p-primary-700); }
+.note-title { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.note-text { font-size: 14px; color: var(--body); margin-top: 2px; line-height: 1.55; }
+
+/* Filters */
+.filters { display: flex; flex-wrap: wrap; gap: 10px; }
+.filters .input { margin-top: 0; min-height: 44px; }
+.filter-sel { flex: 1 1 150px; max-width: 14rem; }
+.filter-search { flex: 2 1 200px; max-width: 18rem; }
+
+/* Rows */
+.tbl-head { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--page); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; min-height: 64px;
+    border-top: 1px solid var(--line); transition: background .15s; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--page); }
+.row-main { display: flex; align-items: center; gap: 12px; flex: 1 1 220px; min-width: 0; }
+.row-side { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.row-ico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; flex: none;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.row-name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.row-sub { font-size: 13.5px; color: var(--body); margin-top: 1px; }
+.tbl-num { flex: none; width: 1.5rem; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--body); }
+.row-check { flex: none; width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.row-selected, .row-selected:hover { background: var(--accent-soft); }
 
 /* Bulk action bar surfaced above the list for the current selection. */
-.bulk-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-radius: 12px;
-    background: var(--accent-soft); border: 1px solid var(--accent);
-}
-.bulk-count { font-weight: 600; font-size: 13.5px; color: var(--accent); margin-inline-end: auto; }
+.gen-box { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; }
+.gen-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .gen-row { grid-template-columns: 1fr; } }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px;
+    background: var(--accent-soft); border: 1px solid var(--accent); }
+.bulk-count { font-weight: 700; font-size: 14.5px; color: var(--p-primary-800); margin-inline-end: auto; }
 .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-danger:hover:not(:disabled) { filter: brightness(.94); }
 .btn-danger:disabled { opacity: .6; cursor: default; }
@@ -487,7 +585,25 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 .occ-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .occ-dot-available { background: var(--green); }
 .occ-dot-occupied { background: #d83a2a; }
+
+/* Empty / plan-gated state: friendly, centred, not an error */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.empty-text { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.empty-sub { font-size: 14px; color: var(--body); max-width: 440px; line-height: 1.55; }
+.empty .btn { margin-top: 6px; }
+
+.toggle-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--body); min-height: 44px; }
+.form-actions { border-top: 1px solid var(--line); }
+
 @media (max-width: 640px) {
+    .row { padding-inline: 14px; }
+    .row-side { width: 100%; justify-content: flex-end; }
+    .row-side .icon-btn { width: 44px; height: 44px; }
+    .act-btn { min-height: 44px; justify-content: center; }
+    .form-actions .act-btn { flex: 1 1 auto; }
+    .filter-sel, .filter-search { max-width: none; flex-basis: 100%; }
     .occ { min-width: 0; }
     .occ-detail { display: none; }
     .hide-sm { display: none !important; }

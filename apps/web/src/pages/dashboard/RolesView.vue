@@ -136,58 +136,69 @@ async function destroy(role, reassignToId = null) {
 </script>
 
 <template>
-    <SettingsHeader :title="t('team.roles_title')" :desc="t('team.roles_sub')">
+    <SettingsHeader class="roles-head" :title="t('team.roles_title')" :desc="t('team.roles_sub')">
         <template #actions>
-            <RouterLink :to="{ name: 'dashboard.staff' }" class="set-btn">{{ t('team.staff_title') }}</RouterLink>
-            <RouterLink v-if="canCreate" :to="{ name: 'dashboard.roles.create' }" class="set-btn-primary">
+            <RouterLink :to="{ name: 'dashboard.staff' }" class="set-btn act">{{ t('team.staff_title') }}</RouterLink>
+            <RouterLink v-if="canCreate" :to="{ name: 'dashboard.roles.create' }" class="set-btn-primary act">
                 <Icon name="plus" :size="15" />{{ t('team.add_role') }}
             </RouterLink>
         </template>
     </SettingsHeader>
 
-    <div v-if="loading" class="set-stack-lg">
-        <div v-for="n in 2" :key="n" class="set-skel" style="height: 150px"></div>
-    </div>
-
-    <div v-else-if="!rows.length" class="set-card">
-        <div class="set-empty">
-            <span class="set-empty-title">{{ t('team.roles_empty') }}</span>
+    <!-- Skeleton mirrors a role card: header row + a block of chips -->
+    <div v-if="loading" class="stack">
+        <div v-for="n in 2" :key="n" class="card skel-card">
+            <div class="set-skel" style="height:18px;width:30%;border-radius:6px"></div>
+            <div class="set-skel" style="height:12px;width:20%;border-radius:6px"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <div v-for="m in 5" :key="m" class="set-skel" style="height:28px;width:90px;border-radius:999px"></div>
+            </div>
         </div>
     </div>
 
-    <div v-else class="set-stack-lg">
-        <section v-for="r in rows" :key="r.id" class="set-card">
-            <div class="set-card-head">
-                <div class="set-row-name">
-                    <span class="set-card-title">{{ roleLabel(r) }}</span>
-                    <span v-if="r.is_system" class="set-chip">{{ t('team.system_role') }}</span>
+    <div v-else-if="!rows.length" class="card empty">
+        <span class="empty-ico" aria-hidden="true"><i class="pi pi-shield" style="font-size:22px"></i></span>
+        <p class="empty-text">{{ t('team.roles_empty') }}</p>
+        <RouterLink v-if="canCreate" :to="{ name: 'dashboard.roles.create' }" class="set-btn-primary act">
+            <Icon name="plus" :size="15" />{{ t('team.add_role') }}
+        </RouterLink>
+    </div>
+
+    <div v-else class="stack">
+        <section v-for="r in rows" :key="r.id" class="card role">
+            <div class="role-head">
+                <div class="role-id">
+                    <div class="role-name">
+                        <h2 class="h-card truncate">{{ roleLabel(r) }}</h2>
+                        <span v-if="r.is_system" class="chip">{{ t('team.system_role') }}</span>
+                    </div>
+                    <span class="role-meta">
+                        {{ t('team.holders', r.users_count ?? 0, { count: r.users_count ?? 0 }) }}
+                        · {{ t('team.perm_count', capCount(r), { count: capCount(r) }) }}
+                    </span>
                 </div>
-                <span class="set-card-meta">
-                    {{ t('team.holders', r.users_count ?? 0, { count: r.users_count ?? 0 }) }}
-                    · {{ t('team.perm_count', capCount(r), { count: capCount(r) }) }}
-                </span>
-                <div class="set-row-actions">
-                    <button type="button" class="set-btn set-btn-sm" :aria-expanded="!!expanded[r.id]" @click="toggle(r)">
+                <div class="role-actions">
+                    <button type="button" class="set-btn act" :aria-expanded="!!expanded[r.id]" @click="toggle(r)">
                         {{ expanded[r.id] ? t('team.hide_permissions') : t('team.show_permissions') }}
                     </button>
-                    <RouterLink v-if="canUpdate" :to="{ name: 'dashboard.roles.edit', params: { id: r.id } }" class="set-btn set-btn-sm">{{ t('common.edit') }}</RouterLink>
+                    <RouterLink v-if="canUpdate" :to="{ name: 'dashboard.roles.edit', params: { id: r.id } }" class="set-btn act">{{ t('common.edit') }}</RouterLink>
                     <!-- Built-in roles are editable but permanent, so a tenant always has one to assign. -->
-                    <button v-if="canDelete && !r.is_system" type="button" class="set-icon-danger" :disabled="busy === r.id"
+                    <button v-if="canDelete && !r.is_system" type="button" class="set-icon-danger act-icon" :disabled="busy === r.id"
                         :title="t('team.delete_role')" :aria-label="t('team.delete_role')" @click="remove(r)">
                         <Icon name="trash" :size="16" />
                     </button>
                 </div>
             </div>
 
-            <div class="set-card-body">
-                <div v-for="g in visibleGroups(r)" :key="g.key" class="set-perm-group">
-                    <span class="set-perm-title">{{ g.title }}</span>
-                    <div class="set-perm-wrap">
-                        <span v-for="c in g.caps" :key="c" class="set-perm">{{ capLabel(c) }}</span>
+            <div class="role-body">
+                <div v-for="g in visibleGroups(r)" :key="g.key" class="perm-group">
+                    <span class="perm-title">{{ g.title }}</span>
+                    <div class="perm-wrap">
+                        <span v-for="c in g.caps" :key="c" class="perm">{{ capLabel(c) }}</span>
                     </div>
                 </div>
-                <p v-if="!capCount(r)" class="set-empty-hint">{{ t('team.no_permissions') }}</p>
-                <button v-if="hasMore(r)" type="button" class="set-link" @click="toggle(r)">
+                <p v-if="!capCount(r)" class="role-none">{{ t('team.no_permissions') }}</p>
+                <button v-if="hasMore(r)" type="button" class="more-link" :aria-expanded="!!expanded[r.id]" @click="toggle(r)">
                     {{ expanded[r.id] ? t('team.hide_permissions') : t('team.show_all_permissions', { count: capCount(r) }) }}
                 </button>
             </div>
@@ -203,14 +214,54 @@ async function destroy(role, reassignToId = null) {
                     <option v-for="r in rows.filter((x) => x.id !== reassign.id)" :key="r.id" :value="r.id">{{ roleLabel(r) }}</option>
                 </select>
             </label>
-            <div class="flex justify-end gap-2 pt-2">
-                <button class="btn btn-ghost" @click="reassign = null">{{ t('common.cancel') }}</button>
-                <button class="btn btn-dark" :disabled="!reassignTo || busy === reassign.id" @click="destroy(reassign, reassignTo)">{{ t('team.reassign_confirm') }}</button>
+            <div class="flex flex-wrap justify-end gap-2 pt-2">
+                <button class="btn btn-ghost act" @click="reassign = null">{{ t('common.cancel') }}</button>
+                <button class="btn btn-dark act" :disabled="!reassignTo || busy === reassign.id" @click="destroy(reassign, reassignTo)">{{ t('team.reassign_confirm') }}</button>
             </div>
         </div>
     </Modal>
 </template>
 
 <style scoped>
-.set-card-meta { font-size: 12.5px; color: var(--muted); }
+/* Colours come from the shared theme variables only. The settings shell's
+   own text is nudged to --body so secondary copy stays readable. */
+.roles-head :deep(.set-desc), .roles-head :deep(.set-crumb) { color: var(--body); font-size: 14px; }
+
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.skel-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+.role { overflow: hidden; }
+.role-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.role-id { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.role-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.role-meta { font-size: 14px; color: var(--body); }
+.role-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+.role-body { padding: 16px 20px 18px; display: flex; flex-direction: column; gap: 16px; }
+.role-none { font-size: 14px; color: var(--body); }
+
+.chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: var(--gray-soft); color: var(--body); }
+
+.perm-group { display: flex; flex-direction: column; gap: 8px; }
+.perm-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.perm-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
+.perm { padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--p-primary-800); font-size: 13.5px; font-weight: 500; }
+.more-link { align-self: flex-start; min-height: 36px; border: none; background: none; padding: 0; font: inherit; font-size: 14px;
+    font-weight: 600; color: var(--p-primary-700); cursor: pointer; }
+.more-link:hover { text-decoration: underline; }
+
+.act { min-height: 40px; font-size: 14px; justify-content: center; }
+.act-icon { width: 40px; height: 40px; }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.empty-text { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+
+@media (max-width: 640px) {
+    .role-head, .role-body { padding-inline: 14px; }
+    .role-actions { width: 100%; }
+    .act { min-height: 44px; }
+    .act-icon { width: 44px; height: 44px; }
+}
 </style>

@@ -1,6 +1,6 @@
 # Research — Tenant Permission Management & a Standalone POS Module
 
-Date: 2026-08-22 · Scope: `xorder-new` @ `main` (0aa7670)
+Date: 2026-08-22 · Scope: `xorder-cloud` @ `main` (0aa7670)
 
 Two asks, researched against the actual code:
 

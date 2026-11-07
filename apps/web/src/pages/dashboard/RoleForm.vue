@@ -148,11 +148,13 @@ async function submit() {
 
 <template>
     <div class="max-w-3xl">
-        <RouterLink :to="{ name: 'dashboard.roles' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-        <h1 class="page-title my-3">{{ isEdit ? t('team.edit_role') : t('team.add_role') }}</h1>
+        <RouterLink :to="{ name: 'dashboard.roles' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+        <h1 class="page-title mt-2 mb-4">{{ isEdit ? t('team.edit_role') : t('team.add_role') }}</h1>
 
         <form @submit.prevent="submit" class="space-y-5">
-            <div class="card p-6 space-y-4">
+            <!-- Names -->
+            <section class="card p-5 sm:p-6 space-y-4" aria-labelledby="rf-names">
+                <h2 id="rf-names" class="h-card">{{ t('team.sec_role') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block" dir="ltr"><span class="label">{{ t('team.role_name') }}</span>
                         <input v-model="form.name" class="input" />
@@ -161,29 +163,32 @@ async function submit() {
                         <input v-model="form.name_ar" class="input" />
                         <FormError :errors="errors" field="name_ar" /></label>
                 </div>
-                <p v-if="isSystem" class="text-xs" style="color:var(--muted)">{{ t('team.system_role') }}</p>
-            </div>
+                <p v-if="isSystem" class="sys-note"><span class="chip">{{ t('team.system_role') }}</span></p>
+            </section>
 
-            <div class="card p-6 space-y-4">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <h2 class="h-card">{{ t('team.capabilities') }}</h2>
-                        <p class="page-sub">{{ t('team.capabilities_hint') }}</p>
+            <!-- Permissions -->
+            <section class="card p-5 sm:p-6 space-y-4" aria-labelledby="rf-perms">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h2 id="rf-perms" class="h-card">{{ t('team.capabilities') }}</h2>
+                        <p class="page-sub" style="color:var(--body)">{{ t('team.capabilities_hint') }}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button type="button" class="btn btn-ghost btn-sm" @click="selectAll">{{ t('team.select_all') }}</button>
-                        <button type="button" class="btn btn-ghost btn-sm" @click="clearAll">{{ t('team.clear_all') }}</button>
+                        <button type="button" class="btn btn-ghost btn-sm act-btn" @click="selectAll">{{ t('team.select_all') }}</button>
+                        <button type="button" class="btn btn-ghost btn-sm act-btn" @click="clearAll">{{ t('team.clear_all') }}</button>
                     </div>
                 </div>
 
+                <!-- One block per functional area: a heading, the verb columns, then
+                     its resources. Every block repeats the verb header so a row is
+                     never far from the column it belongs to. -->
                 <div class="perm-grid">
-                    <div class="perm-head">
-                        <span></span>
-                        <span v-for="a in ACTIONS" :key="a" class="perm-action">{{ t('capaction.' + a) }}</span>
-                    </div>
-
-                    <template v-for="g in rowGroups" :key="g.key">
+                    <section v-for="g in rowGroups" :key="g.key" class="perm-sec">
                         <div class="perm-group">{{ groupLabel(g.key) }}</div>
+                        <div class="perm-head" aria-hidden="true">
+                            <span></span>
+                            <span v-for="a in ACTIONS" :key="a" class="perm-action">{{ t('capaction.' + a) }}</span>
+                        </div>
                         <div v-for="row in g.rows" :key="row.resource" class="perm-row">
                             <span class="perm-resource">{{ t('capres.' + row.resource) }}</span>
                             <span v-for="a in ACTIONS" :key="a" class="perm-cell">
@@ -195,10 +200,10 @@ async function submit() {
                                     :disabled="isLockedView(row.cells[a].value)"
                                     :title="isLockedView(row.cells[a].value) ? t('team.view_locked') : ''"
                                     @change="toggle(row.cells[a].value)" />
-                                <span v-else class="perm-na">—</span>
+                                <span v-else class="perm-na" aria-hidden="true">—</span>
                             </span>
                         </div>
-                    </template>
+                    </section>
                 </div>
 
                 <!-- Resources whose verbs are not CRUD. Rendered as their own
@@ -206,69 +211,82 @@ async function submit() {
                      because a checkbox under a "Delete" column that actually
                      means "close a shift and count the drawer" is worse than
                      no checkbox at all. -->
-                <div v-for="g in listGroups" :key="g.key" class="perm-list">
+                <section v-for="g in listGroups" :key="g.key" class="perm-sec">
                     <div class="perm-group">{{ groupLabel(g.key) }}</div>
-                    <div v-for="r in g.resources" :key="r.resource">
+                    <div v-for="r in g.resources" :key="r.resource" class="perm-res">
                         <p class="perm-resource-head">{{ t('capres.' + r.resource) }}</p>
-                        <label v-for="cap in r.caps" :key="cap.value" class="perm-list-row">
-                            <input
-                                type="checkbox"
-                                :checked="form.capabilities.includes(cap.value)"
-                                :disabled="isLockedView(cap.value)"
-                                :title="isLockedView(cap.value) ? t('team.view_locked') : ''"
-                                @change="toggle(cap.value)" />
-                            <span>{{ t('capaction.' + cap.action) }}</span>
-                        </label>
+                        <div class="perm-list">
+                            <label v-for="cap in r.caps" :key="cap.value" class="perm-list-row">
+                                <input
+                                    type="checkbox"
+                                    :checked="form.capabilities.includes(cap.value)"
+                                    :disabled="isLockedView(cap.value)"
+                                    :title="isLockedView(cap.value) ? t('team.view_locked') : ''"
+                                    @change="toggle(cap.value)" />
+                                <span>{{ t('capaction.' + cap.action) }}</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
+                </section>
 
                 <FormError :errors="errors" field="capabilities" />
-            </div>
+            </section>
 
-            <div class="flex justify-end gap-2">
-                <RouterLink :to="{ name: 'dashboard.roles' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : (isEdit ? t('admin.save_changes') : t('team.add_role')) }}</button>
+            <!-- Sticky action row -->
+            <div class="action-bar">
+                <RouterLink :to="{ name: 'dashboard.roles' }" class="btn btn-ghost act-btn">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving" class="btn btn-accent act-btn">{{ saving ? t('common.saving') : (isEdit ? t('admin.save_changes') : t('team.add_role')) }}</button>
             </div>
         </form>
     </div>
 </template>
 
 <style scoped>
-.perm-list { margin-top: 18px; }
-.perm-resource-head {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-    margin: 10px 0 4px;
-}
-.perm-list-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 0;
-    border-top: 1px solid var(--line);
-    font-size: 13.5px;
-    color: var(--body);
-    cursor: pointer;
-}
-.perm-list-row input[disabled] { cursor: default; }
+/* Colours come from the shared theme variables only. */
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.act-btn { min-height: 44px; justify-content: center; }
+.chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: var(--gray-soft); color: var(--body); }
 
-.perm-grid { width: 100%; overflow-x: auto; }
+/* ---- Permission matrix ---- */
+.perm-grid { display: flex; flex-direction: column; gap: 14px; overflow-x: auto; }
+.perm-sec { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 300px; }
+/* Area heading: a tinted strip so groups scan as blocks */
+.perm-group { padding: 10px 14px; background: var(--page); border-bottom: 1px solid var(--line);
+    font-size: 14px; font-weight: 700; color: var(--ink); }
 .perm-head, .perm-row {
-    display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, 68px);
-    align-items: center; gap: 4px;
+    display: grid; grid-template-columns: minmax(110px, 1fr) repeat(4, 64px);
+    align-items: center; gap: 2px; padding-inline: 14px;
 }
-.perm-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-.perm-action { font-size: 12px; color: var(--muted); text-align: center; }
-.perm-group {
-    font-size: 12px; font-weight: 600; color: var(--muted);
-    margin-top: 14px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em;
-}
-.perm-row { padding: 7px 0; border-bottom: 1px solid var(--line); }
+.perm-head { padding-block: 6px; border-bottom: 1px solid var(--line); }
+.perm-action { font-size: 13px; font-weight: 600; color: var(--body); text-align: center; }
+.perm-row { min-height: 46px; border-bottom: 1px solid var(--line); transition: background .15s; }
 .perm-row:last-child { border-bottom: 0; }
-.perm-resource { font-size: 14px; color: var(--body); }
-.perm-cell { text-align: center; }
-.perm-cell input { accent-color: var(--accent); cursor: pointer; }
+.perm-row:hover { background: var(--page); }
+.perm-resource { font-size: 14.5px; color: var(--ink); padding-block: 6px; }
+.perm-cell { display: grid; place-items: center; min-height: 44px; }
+.perm-cell input { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
 .perm-cell input:disabled { cursor: not-allowed; opacity: .55; }
-.perm-na { color: var(--line); font-size: 13px; }
+.perm-na { color: var(--muted); font-size: 13px; }
+
+/* Non-CRUD resources */
+.perm-res { padding: 10px 14px 4px; }
+.perm-res + .perm-res { border-top: 1px solid var(--line); }
+.perm-resource-head { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+.perm-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 16px; }
+.perm-list-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14.5px; color: var(--body); cursor: pointer; }
+.perm-list-row input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex: none; }
+.perm-list-row input[disabled] { cursor: not-allowed; opacity: .55; }
+
+/* Sticky save row */
+.action-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, .05); }
+
+@media (max-width: 640px) {
+    .perm-head, .perm-row { grid-template-columns: minmax(88px, 1fr) repeat(4, 46px); padding-inline: 10px; }
+    .perm-action { font-size: 12px; }
+    .action-bar .act-btn { flex: 1 1 0; }
+}
 </style>

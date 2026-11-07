@@ -208,147 +208,170 @@ async function save() {
 </script>
 
 <template>
-    <div class="max-w-2xl">
-        <RouterLink :to="{ name: 'dashboard.items' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+    <div class="form-page">
+        <RouterLink :to="{ name: 'dashboard.items' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
         <h1 class="page-title my-3">{{ isEdit ? t('item.edit_item') : t('item.new_item') }}</h1>
 
-        <div v-if="loading" class="card p-6 space-y-5">
-            <div v-for="n in 4" :key="n" class="space-y-2.5">
-                <Skeleton w="28%" h="13px" />
-                <Skeleton w="100%" h="40px" rounded="10px" />
+        <!-- Skeleton mirrors the final layout: basics, names, pricing, image, options. -->
+        <div v-if="loading" class="space-y-5">
+            <div v-for="n in 4" :key="n" class="card p-5 space-y-4">
+                <Skeleton w="30%" h="16px" />
+                <Skeleton w="100%" h="42px" rounded="10px" />
+                <Skeleton w="100%" h="42px" rounded="10px" />
             </div>
         </div>
 
         <form v-else @submit.prevent="save" class="space-y-5">
-            <div class="card p-6 space-y-4">
+            <!-- Basics: where it lives and whether the menu shows it. -->
+            <section class="card p-5 space-y-4" aria-labelledby="if-basics">
+                <h2 id="if-basics" class="h-card">{{ t('item.section_basics') }}</h2>
                 <label class="block"><span class="label">{{ t('item.category') }}</span>
                     <select v-model="form.category_id" class="input">
                         <option v-for="c in categories" :key="c.id" :value="c.id">{{ catName(c.id) }}</option>
                     </select>
                     <FormError :errors="errors" field="category_id" /></label>
-                <!-- dir goes on the field, not the label: the label text is in the UI
-                     language and must keep the page direction. -->
-                <label v-for="lng in langs" :key="'n' + lng" class="block">
-                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
-                    <input v-model="form['name_' + lng]" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'" />
-                    <FormError :errors="errors" :field="'name_' + lng" /></label>
-                <label v-for="lng in langs" :key="'d' + lng" class="block">
-                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
-                    <textarea v-model="form['description_' + lng]" rows="2" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'"></textarea></label>
-                <!-- Once the item has a size group these two are no longer the
-                     owner's to set: they mirror the default (first) size, which
-                     is what the menu card quotes and what an untouched add to
-                     cart charges. Read-only rather than hidden so the figure
-                     stays visible where managers expect to find it. -->
-                <div class="grid grid-cols-2 gap-3">
+                <div class="toggle-row">
+                    <label class="toggle-tile">
+                        <button type="button" class="switch" role="switch" :aria-checked="form.is_available" :class="{ on: form.is_available }" @click="form.is_available = !form.is_available"></button>
+                        <span>{{ t('common.available') }}</span>
+                    </label>
+                    <label class="toggle-tile">
+                        <button type="button" class="star" :class="{ on: form.is_featured }" :aria-pressed="form.is_featured" @click="form.is_featured = !form.is_featured">★</button>
+                        <span>{{ t('common.featured') }}</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Name and description in each menu language. dir goes on the field,
+                 not the label: the label text is in the UI language and must keep
+                 the page direction. -->
+            <section class="card p-5 space-y-4" aria-labelledby="if-names">
+                <h2 id="if-names" class="h-card">{{ t('item.section_names') }}</h2>
+                <div class="grid grid-cols-1 gap-4" :class="{ 'sm:grid-cols-2': bilingual }">
+                    <label v-for="lng in langs" :key="'n' + lng" class="block min-w-0">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <input v-model="form['name_' + lng]" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'" />
+                        <FormError :errors="errors" :field="'name_' + lng" /></label>
+                </div>
+                <div class="grid grid-cols-1 gap-4" :class="{ 'sm:grid-cols-2': bilingual }">
+                    <label v-for="lng in langs" :key="'d' + lng" class="block min-w-0">
+                        <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                        <textarea v-model="form['description_' + lng]" rows="3" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'"></textarea></label>
+                </div>
+            </section>
+
+            <!-- Once the item has a size group these two are no longer the
+                 owner's to set: they mirror the default (first) size, which
+                 is what the menu card quotes and what an untouched add to
+                 cart charges. Read-only rather than hidden so the figure
+                 stays visible where managers expect to find it. -->
+            <section class="card p-5 space-y-4" aria-labelledby="if-pricing">
+                <h2 id="if-pricing" class="h-card">{{ t('item.section_pricing') }}</h2>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label class="block"><span class="label">{{ t('item.price') }}<template v-if="cur"> ({{ cur }})</template></span>
-                        <input v-model="form.price" type="number" step="0.01" min="0" class="input"
+                        <input v-model="form.price" type="number" step="0.01" min="0" class="input" inputmode="decimal"
                             :readonly="!!variantGroup" :style="variantGroup ? derivedInput : null" />
                         <FormError :errors="errors" field="price" /></label>
                     <label class="block"><span class="label">{{ t('item.discounted_price') }}</span>
-                        <input v-model="form.discounted_price" type="number" step="0.01" min="0" class="input"
+                        <input v-model="form.discounted_price" type="number" step="0.01" min="0" class="input" inputmode="decimal"
                             :readonly="!!variantGroup" :style="variantGroup ? derivedInput : null" />
                         <FormError :errors="errors" field="discounted_price" /></label>
                 </div>
-                <p v-if="variantGroup" class="text-xs" style="color:var(--muted)">
+                <p v-if="variantGroup" class="help">
                     {{ t('item.priced_by_size') }}
                 </p>
+            </section>
+
+            <section class="card p-5 space-y-4" aria-labelledby="if-image">
+                <h2 id="if-image" class="h-card">{{ t('common.image') }}</h2>
                 <ImageUploader v-model="form.image_url" folder="items" :label="t('item.image')" />
-                <div class="flex gap-5">
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.is_available }" @click="form.is_available = !form.is_available"></button>
-                        {{ t('common.available') }}
-                    </label>
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="star" :class="{ on: form.is_featured }" @click="form.is_featured = !form.is_featured">★</button>
-                        {{ t('common.featured') }}
-                    </label>
-                </div>
-            </div>
+            </section>
 
             <!-- Option groups builder -->
-            <div class="card p-6">
-                <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                    <span class="label" style="margin:0">{{ t('item.options') }}</span>
-                    <div class="flex items-center gap-2">
+            <section class="card p-5 space-y-4" aria-labelledby="if-options">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <h2 id="if-options" class="h-card">{{ t('item.options') }}</h2>
+                    <div class="flex items-center gap-2 flex-wrap">
                         <!-- Attach a reusable group from the shared library -->
-                        <select v-model="pickId" @change="addFromLibrary" class="input" style="width:auto;min-width:150px;padding:6px 10px">
+                        <select v-model="pickId" @change="addFromLibrary" class="input lib-select" :aria-label="t('item.add_from_library')">
                             <option value="">+ {{ t('item.add_from_library') }}</option>
                             <option v-for="g in availableLibrary" :key="g.id" :value="g.id">{{ libLabel(g) }}</option>
                         </select>
-                        <button type="button" class="btn btn-ghost btn-sm" @click="addGroup">+ {{ t('item.add_group') }}</button>
+                        <button type="button" class="btn btn-ghost btn-sm touch" @click="addGroup">+ {{ t('item.add_group') }}</button>
                     </div>
                 </div>
-                <p v-if="!form.option_groups.length" class="text-xs" style="color:var(--muted)">{{ t('item.no_options') }}</p>
+                <p v-if="!form.option_groups.length" class="help">{{ t('item.no_options') }}</p>
 
+                <div class="space-y-3">
                 <template v-for="(g, gi) in form.option_groups" :key="gi">
                     <!-- Shared library reference: read-only, edited under Extras -->
-                    <div v-if="g.ref === 'shared'" class="rounded-xl p-3 mb-3" style="background:var(--accent-soft);border:1px solid var(--accent)">
+                    <div v-if="g.ref === 'shared'" class="grp grp-shared">
                         <div class="flex items-center gap-2">
-                            <Icon name="link" :size="15" style="color:var(--accent);flex:none" />
+                            <Icon name="link" :size="15" class="grp-link-ico" />
                             <div class="flex-1 min-w-0">
                                 <div class="font-medium truncate" style="color:var(--ink)" :dir="locale === 'ar' ? 'rtl' : 'ltr'">{{ libLabel(g) }}</div>
-                                <div class="text-xs" style="color:var(--muted)">
-                                    <span class="me-2" style="color:var(--accent)">{{ t('item.from_library') }}</span>
+                                <div class="text-xs" style="color:var(--body)">
+                                    <span class="me-2 font-semibold" style="color:var(--p-primary-800)">{{ t('item.from_library') }}</span>
                                     <span>{{ (g.options || []).map(o => pickLocalized(o, 'name', locale) || o.name_en || o.name_ar).filter(Boolean).join('، ') }}</span>
                                 </div>
                             </div>
-                            <span v-if="g.is_variant" class="text-xs px-2 py-0.5 rounded-full" style="background:var(--card);color:var(--accent)">{{ t('item.variant') }}</span>
-                            <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="close" :size="16" /></button>
+                            <span v-if="g.is_variant" class="chip">{{ t('item.variant') }}</span>
+                            <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')" @click="removeGroup(gi)"><Icon name="close" :size="16" /></button>
                         </div>
                     </div>
 
                     <!-- Inline group: typed for this item only -->
-                    <div v-else class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
+                    <div v-else class="grp">
                         <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
-                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
-                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" />
+                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input grp-input"
+                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" :aria-label="t('item.group_name_' + lng)" />
                         </div>
-                        <div class="flex items-center gap-4 flex-wrap mt-2">
-                            <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                                <button type="button" class="switch" :class="{ on: g.is_variant }" @click="toggleVariant(g)"></button>
+                        <div class="flex items-center gap-4 flex-wrap mt-3">
+                            <label class="toggle-inline">
+                                <button type="button" class="switch" role="switch" :aria-checked="g.is_variant" :class="{ on: g.is_variant }" @click="toggleVariant(g)"></button>
                                 {{ t('item.variant') }}
                             </label>
-                            <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                                <button type="button" class="switch" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
+                            <label v-if="!g.is_variant" class="toggle-inline">
+                                <button type="button" class="switch" role="switch" :aria-checked="g.is_required" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
                                 {{ t('item.required') }}
                             </label>
-                            <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                            <label v-if="!g.is_variant" class="toggle-inline">
                                 {{ t('item.max_select') }}
-                                <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
+                                <input v-model.number="g.max_select" type="number" min="1" class="input max-input" />
                             </label>
-                            <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
+                            <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" :aria-label="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
                         </div>
-                        <p v-if="g.is_variant" class="text-xs mt-1" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
-                        <div class="mt-2 space-y-2">
-                            <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
-                                <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
-                                    :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
-                                <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" />
+                        <p v-if="g.is_variant" class="help mt-2">{{ t('item.variant_hint') }}</p>
+                        <div class="mt-3 space-y-2">
+                            <div v-for="(o, oi) in g.options" :key="oi" class="opt-row">
+                                <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input opt-name"
+                                    :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" :aria-label="t('item.option_' + lng)" />
+                                <input v-model="o.price" type="number" step="0.01" min="0" class="input opt-price" inputmode="decimal" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" :aria-label="t('item.price')" />
                                 <!-- Sale price per size. Only a variant option gets
                                      one: there the option IS the item price, so a
                                      discount is meaningful. An add-on price is a
                                      delta, so discounting it makes no sense. -->
-                                <input v-if="g.is_variant" v-model="o.discounted_price" type="number" step="0.01" min="0"
-                                    class="input" style="width:90px" :placeholder="t('item.option_discount')" :title="t('item.option_discount_hint')" />
+                                <input v-if="g.is_variant" v-model="o.discounted_price" type="number" step="0.01" min="0" inputmode="decimal"
+                                    class="input opt-price" :placeholder="t('item.option_discount')" :aria-label="t('item.option_discount')" :title="t('item.option_discount_hint')" />
                                 <!-- The size the menu pre-selects, and therefore
                                      the one the item's price mirrors. -->
-                                <span v-if="o === defaultSize" class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
-                                    style="background:var(--card);color:var(--accent)">{{ t('item.default_size') }}</span>
-                                <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
+                                <span v-if="o === defaultSize" class="chip whitespace-nowrap">{{ t('item.default_size') }}</span>
+                                <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
                             </div>
                             <p v-if="groupOptionError(gi)" class="text-xs text-red-600 mt-1">{{ groupOptionError(gi) }}</p>
-                            <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
+                            <button type="button" class="btn btn-ghost btn-sm touch" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
                         </div>
                     </div>
                 </template>
+                </div>
 
-                <RouterLink :to="{ name: 'dashboard.extras' }" class="text-xs" style="color:var(--muted)">{{ t('item.manage_library') }} →</RouterLink>
-            </div>
+                <RouterLink :to="{ name: 'dashboard.extras' }" class="manage-link">{{ t('item.manage_library') }} <span class="dir-arrow" aria-hidden="true">→</span></RouterLink>
+            </section>
 
-            <div class="flex justify-end gap-2">
-                <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving || (isEdit ? !canUpdate : !canCreate)" class="btn btn-accent">
+            <!-- Separate action row, pinned to the bottom edge while the form scrolls. -->
+            <div class="action-bar">
+                <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-ghost action-btn">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving || (isEdit ? !canUpdate : !canCreate)" class="btn btn-accent action-btn">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                     {{ saving ? t('common.saving') : t('common.save') }}
                 </button>
@@ -356,3 +379,57 @@ async function save() {
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables and the PrimeVue primary scale;
+   no new hex values. */
+.form-page { max-width: 48rem; }
+.back-link { display: inline-block; font-size: 14.5px; color: var(--body); padding-block: 4px; }
+.back-link:hover { color: var(--ink); text-decoration: underline; }
+.help { font-size: 13.5px; color: var(--body); margin: 0; }
+.touch { min-height: 40px; }
+
+/* Read-only price fields (priced by size) stay readable, not greyed out. */
+.input[readonly] { color: var(--body) !important; }
+
+/* Availability / featured as two big tap targets */
+.toggle-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.toggle-tile {
+    display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--page);
+    font-size: 15px; font-weight: 500; color: var(--ink); cursor: pointer;
+}
+.toggle-tile:hover { border-color: var(--muted); }
+.toggle-inline { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body); }
+.star { min-width: 30px; min-height: 30px; }
+
+/* Option groups */
+.lib-select { width: auto; min-width: 170px; margin-top: 0; padding-block: 8px; }
+.grp { border-radius: 12px; padding: 14px; background: var(--page); border: 1px solid var(--line); }
+.grp-shared { background: var(--accent-soft); border-color: var(--p-primary-300); }
+.grp-link-ico { flex: none; color: var(--p-primary-700); }
+.grp-input { margin-top: 0; }
+.max-input { width: 72px; margin-top: 0; padding: 6px 8px; }
+.chip { font-size: 12.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--card); color: var(--p-primary-800); }
+.opt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.opt-row .input { margin-top: 0; }
+.opt-name { flex: 1 1 140px; min-width: 0; }
+.opt-price { flex: 0 0 96px; width: 96px; }
+.manage-link { display: inline-block; font-size: 14px; font-weight: 500; color: var(--p-primary-700); }
+.manage-link:hover { text-decoration: underline; }
+[dir="rtl"] .dir-arrow { display: inline-block; transform: scaleX(-1); }
+
+/* Action row */
+.action-bar {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px; border-radius: 15px;
+    background: var(--card); border: 1px solid var(--line);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, .06);
+}
+.action-btn { min-height: 46px; padding-inline: 22px; justify-content: center; }
+@media (max-width: 639px) {
+    .action-bar { padding: 10px 12px; }
+    .action-btn { flex: 1 1 0; justify-content: center; }
+}
+</style>

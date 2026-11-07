@@ -5,13 +5,58 @@ namespace App\Http\Requests\Dashboard;
 use App\Http\Requests\Concerns\GeofenceValidation;
 use App\Rules\MobileNumber;
 use App\Services\BranchEgressIpService;
+use App\Services\OrderTypeEntitlements;
+use App\Support\ContentLanguages;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBranchRequest extends FormRequest
 {
+    use PreservesDisabledLanguages;
+
+    protected function translatedFields(): array
+    {
+        return ['name'];
+    }
+
     public function authorize(): bool
     {
-        return $this->user()?->can('branches.update') ?? false;
+        if (! ($this->user()?->can('branches.update') ?? false)) {
+            return false;
+        }
+
+        // Changing which order types a branch offers is its own permission
+        // (XORD-002). A form that merely posts the list back unchanged — every
+        // branch edit does — is not a change and needs nothing extra.
+        return ! $this->changesOrderTypes()
+            || $this->user()->can('pos.settings.order_types.manage');
+    }
+
+    /**
+     * The order types the request would store, in the till's spelling, or null
+     * when it does not touch them.
+     *
+     * @return list<string>|null
+     */
+    public function requestedOrderTypes(): ?array
+    {
+        if (! $this->has('supported_order_types')) {
+            return null;
+        }
+
+        return OrderTypeEntitlements::normalise((array) ($this->input('supported_order_types') ?? []));
+    }
+
+    public function changesOrderTypes(): bool
+    {
+        $requested = $this->requestedOrderTypes();
+        if ($requested === null) {
+            return false;
+        }
+
+        $stored = OrderTypeEntitlements::normalise($this->route('branch')->supported_order_types ?? []);
+
+        return $requested !== $stored;
     }
 
     public function rules(): array
@@ -64,7 +109,10 @@ class UpdateBranchRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.restaurant_name_required', partial: true);
             GeofenceValidation::check($this, $validator);
+
+            $this->checkOrderTypes($validator);
 
             // Turning the Wi-Fi requirement on with no address on file would
             // refuse every table scan at this branch with nothing an owner
@@ -79,5 +127,34 @@ class UpdateBranchRequest extends FormRequest
                 );
             }
         });
+    }
+
+    /**
+     * Only a CHANGE is judged, so a branch that already holds something the plan
+     * no longer includes can still be renamed. A change must leave at least one
+     * type on, and may only switch on what the subscription includes.
+     */
+    private function checkOrderTypes($validator): void
+    {
+        if (! $this->changesOrderTypes()) {
+            return;
+        }
+
+        $requested = $this->requestedOrderTypes();
+        if ($requested === []) {
+            $validator->errors()->add('supported_order_types', __('xorder.validation.order_types_at_least_one'));
+
+            return;
+        }
+
+        $stored = OrderTypeEntitlements::normalise($this->route('branch')->supported_order_types ?? []);
+        $allowed = app(OrderTypeEntitlements::class)->allowed($this->user()->restaurant);
+        $notIncluded = array_values(array_diff(array_diff($requested, $stored), $allowed));
+
+        if ($notIncluded !== []) {
+            $validator->errors()->add('supported_order_types', __('xorder.validation.order_types_not_in_plan', [
+                'types' => implode(', ', $notIncluded),
+            ]));
+        }
     }
 }

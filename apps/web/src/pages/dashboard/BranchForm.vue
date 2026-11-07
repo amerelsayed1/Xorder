@@ -42,6 +42,15 @@ const form = reactive(blank())
 // array means every type is allowed, not none. The copy below has to say that.
 const POS_ORDER_TYPES = ['dine_in', 'takeaway', 'delivery', 'drive_thru']
 
+// XORD-002: the types the subscription lets this branch switch on, as the server
+// says. Null until the branch has loaded — and for an old API that does not send
+// it — in which case nothing is hidden and the server still decides.
+const entitledOrderTypes = ref(null)
+// Changing the list is its own permission; without it the boxes are read-only.
+const canManageOrderTypes = computed(() => !auth.isReadOnly && auth.can('pos.settings.order_types.manage'))
+// `pickup` and `takeaway` are one thing; the server stores takeaway.
+const canonicalType = (tp) => (tp === 'pickup' ? 'takeaway' : tp)
+
 // Anything already stored that isn't one of the four — in practice `pickup`,
 // written by the Super Admin onboarding wizard, where the value mirrors the
 // plan's ordering-channel feature keys rather than the till's tabs. Shown as a
@@ -50,7 +59,15 @@ const POS_ORDER_TYPES = ['dine_in', 'takeaway', 'delivery', 'drive_thru']
 const legacyOrderTypes = computed(() =>
     (form.supported_order_types || []).filter((tp) => !POS_ORDER_TYPES.includes(tp)))
 
-const orderTypeOptions = computed(() => [...POS_ORDER_TYPES, ...legacyOrderTypes.value])
+// Only what the plan includes is offered. Something already on the branch that
+// the plan does not include stays visible (ticked) so it can be switched off,
+// never hidden, which would make the saved list differ from what is on screen.
+const orderTypeOptions = computed(() => {
+    const offered = entitledOrderTypes.value
+    const base = offered ? POS_ORDER_TYPES.filter((tp) => offered.includes(tp)) : POS_ORDER_TYPES
+    const held = (form.supported_order_types || []).map(canonicalType).filter((tp) => POS_ORDER_TYPES.includes(tp) && !base.includes(tp))
+    return [...base, ...new Set(held), ...legacyOrderTypes.value]
+})
 
 // Arabic separates a list with ، not a comma.
 const listSep = computed(() => (locale.value === 'ar' ? '، ' : ', '))
@@ -60,8 +77,11 @@ function toggleOrderType(tp) {
     const list = form.supported_order_types
     const i = list.indexOf(tp)
     if (i === -1) list.push(tp)
-    else list.splice(i, 1)
+    // The last one stays on: a branch that sells nothing is not a setting. (An
+    // untouched empty list is different — that is the old "no restriction".)
+    else if (list.length > 1) list.splice(i, 1)
 }
+const isLastOrderType = (tp) => form.supported_order_types.length === 1 && form.supported_order_types.includes(tp)
 
 // A fence the backend would enforce: a radius with a real centre + positive
 // radius, or a polygon of >= 3 vertices (mirrors App\Support\GeoFence::isEnforceable).
@@ -114,6 +134,7 @@ onMounted(async () => {
                 supported_order_types: [...(b.supported_order_types || [])],
                 is_open: b.is_open, is_active: b.is_active,
             })
+            entitledOrderTypes.value = Array.isArray(b.entitled_order_types) ? b.entitled_order_types : null
             fenceExistedOnOpen = fenceEnforceable(form.geofence)
             await loadPresence()
         } catch (err) { /* fall through to blank form */ }
@@ -221,18 +242,21 @@ async function save() {
 </script>
 
 <template>
-    <div class="max-w-2xl">
-        <RouterLink :to="{ name: 'dashboard.branches' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-        <h1 class="page-title my-3">{{ isEdit ? t('branch.edit') : t('branch.new') }}</h1>
+    <div class="max-w-3xl">
+        <RouterLink :to="{ name: 'dashboard.branches' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+        <h1 class="page-title mt-2 mb-4">{{ isEdit ? t('branch.edit') : t('branch.new') }}</h1>
 
-        <div v-if="loading" class="card p-6 space-y-4">
-            <Skeleton class="h-10 w-full" />
-            <Skeleton class="h-10 w-full" />
-            <Skeleton class="h-40 w-full" />
+        <!-- Skeleton mirrors the final stack of cards -->
+        <div v-if="loading" class="space-y-5">
+            <Skeleton w="100%" h="340px" rounded="15px" />
+            <Skeleton w="100%" h="220px" rounded="15px" />
+            <Skeleton w="100%" h="160px" rounded="15px" />
         </div>
 
         <form v-else @submit.prevent="save" class="space-y-5">
-            <div class="card p-6 space-y-4">
+            <!-- 1. Details -->
+            <section class="card p-5 sm:p-6 space-y-4" aria-labelledby="bf-details">
+                <h2 id="bf-details" class="h-card">{{ t('branch.sec_details') }}</h2>
                 <div class="grid grid-cols-1 gap-3" :class="{ 'sm:grid-cols-2': bilingual }">
                     <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
                         <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
@@ -250,11 +274,22 @@ async function save() {
                         <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
-                <div class="block">
-                    <span class="label">{{ t('restaurant.business_hours') }}</span>
-                    <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.business_hours_hint') }}</p>
+            </section>
+
+            <!-- 2. Opening hours -->
+            <section class="card p-5 sm:p-6 space-y-3" aria-labelledby="bf-hours">
+                <div>
+                    <h2 id="bf-hours" class="h-card">{{ t('restaurant.business_hours') }}</h2>
+                    <p class="hint">{{ t('restaurant.business_hours_hint') }}</p>
+                </div>
+                <div class="hours-scroll">
                     <BusinessHoursEditor v-model="form.business_hours" :disabled="auth.isReadOnly" />
                 </div>
+            </section>
+
+            <!-- 3. Location and on-site checks -->
+            <section class="card p-5 sm:p-6 space-y-5" aria-labelledby="bf-location">
+                <h2 id="bf-location" class="h-card">{{ t('branch.sec_location') }}</h2>
                 <label class="block"><span class="label">{{ t('branch.map_url') }}</span>
                     <input v-model="form.map_url" class="input" dir="ltr" placeholder="https://maps.google.com/…" />
                     <FormError :errors="errors" field="map_url" /></label>
@@ -264,11 +299,11 @@ async function save() {
                      GEOFENCE_ENABLED is false — the API ignores the fence, so
                      drawing one would be a control that does nothing. -->
                 <div v-if="GEOFENCE_ENABLED" class="block">
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.geofence_enabled }" :disabled="auth.isReadOnly" @click="toggleGeofence"></button>
+                    <label class="toggle-line">
+                        <button type="button" class="switch" :class="{ on: form.geofence_enabled }" role="switch" :aria-checked="form.geofence_enabled" :disabled="auth.isReadOnly" @click="toggleGeofence"></button>
                         {{ t('branch.geofence_enable') }}
                     </label>
-                    <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.geofence_enable_hint') }}</p>
+                    <p class="hint" style="margin:2px 0 10px">{{ t('branch.geofence_enable_hint') }}</p>
                     <GeofenceMap v-model="form.geofence" :center="{ lat: form.latitude, lng: form.longitude }" :disabled="auth.isReadOnly" />
                     <FormError :errors="errors" field="geofence" />
                 </div>
@@ -277,36 +312,36 @@ async function save() {
                      corroborates presence but never gates an order, so there is
                      nothing here to configure. -->
                 <div v-if="presence" class="block">
-                    <div class="flex items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
                         <span class="label">{{ t('branch.wifi_title') }}</span>
-                        <button type="button" class="text-sm flex items-center gap-1" style="color:var(--muted)"
+                        <button type="button" class="link-btn"
                             :disabled="refreshingWifi" :title="t('branch.wifi_refresh')" @click="refreshPresence">
                             <Icon name="refresh" :size="14" :class="{ 'animate-spin': refreshingWifi }" />
                             {{ t('branch.wifi_refresh') }}
                         </button>
                     </div>
-                    <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.wifi_hint') }}</p>
+                    <p class="hint" style="margin:2px 0 10px">{{ t('branch.wifi_hint') }}</p>
 
-                    <div class="rounded-xl p-4 text-sm" style="border:1px solid var(--line)">
+                    <div class="wifi-box">
                         <!-- The on-site check is the prerequisite: without it no
                              scan is ever verified, so nothing can be learned.
                              Only worth saying while that check is something the
                              owner can actually switch on — when it is disabled
                              platform-wide, pointing at it would be a dead end. -->
-                        <p v-if="presence.learning_active && !presence.geofence_enabled" style="color:var(--muted)">
+                        <p v-if="presence.learning_active && !presence.geofence_enabled" class="body-text">
                             {{ t('branch.wifi_needs_geofence') }}
                         </p>
 
                         <template v-else>
                             <div class="flex items-center justify-between gap-3">
-                                <span style="color:var(--body)">{{ t('branch.wifi_title') }}</span>
+                                <span class="body-text">{{ t('branch.wifi_title') }}</span>
                                 <span class="badge" :class="presence.wifi_detected ? 'badge-green' : 'badge-gray'">
                                     <span class="dot"></span>
                                     {{ presence.wifi_detected ? t('branch.wifi_detected') : t('branch.wifi_pending') }}
                                 </span>
                             </div>
 
-                            <p v-if="!presence.wifi_detected" style="color:var(--muted);margin-top:8px">
+                            <p v-if="!presence.wifi_detected" class="body-text" style="margin-top:8px">
                                 {{ presence.learning_active ? t('branch.wifi_pending_hint') : t('branch.wifi_learning_paused') }}
                             </p>
 
@@ -314,16 +349,16 @@ async function save() {
                                  address" field: an owner cannot be expected to
                                  know theirs, but they can open this page on the
                                  branch Wi-Fi, which tells us the same thing. -->
-                            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+                            <div class="wifi-sep">
                                 <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <span style="color:var(--body)">{{ t('branch.wifi_connections') }}</span>
-                                    <button type="button" class="pill-btn" :disabled="savingWifi || auth.isReadOnly || !presence.your_ip || currentIpAdded"
+                                    <span class="body-text font-semibold" style="color:var(--ink)">{{ t('branch.wifi_connections') }}</span>
+                                    <button type="button" class="pill-btn wifi-btn" :disabled="savingWifi || auth.isReadOnly || !presence.your_ip || currentIpAdded"
                                         @click="addCurrentConnection">
                                         {{ savingWifi ? t('branch.wifi_saving') : (currentIpAdded ? t('branch.wifi_already_added') : t('branch.wifi_add_current')) }}
                                     </button>
                                 </div>
 
-                                <p v-if="presence.your_ip" style="color:var(--muted);margin-top:6px" >
+                                <p v-if="presence.your_ip" class="body-text" style="margin-top:6px">
                                     <span dir="ltr">{{ t('branch.wifi_current_is', { ip: presence.your_ip }) }}</span>
                                 </p>
 
@@ -332,21 +367,20 @@ async function save() {
                                      a table scan is not proof of presence, so
                                      promoting whatever dominates would be a way
                                      in for anyone patient enough. -->
-                                <div v-if="presence.drift.suggested" style="margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--amber-soft)">
-                                    <p style="color:var(--amber)">
+                                <div v-if="presence.drift.suggested" class="wifi-warn" style="margin-top:12px">
+                                    <p>
                                         {{ t('branch.wifi_changed', { ip: presence.drift.suggested.ip, share: presence.drift.suggested.share, days: presence.drift.window_days }) }}
                                     </p>
-                                    <button type="button" class="pill-btn" style="margin-top:8px"
+                                    <button type="button" class="pill-btn wifi-btn" style="margin-top:8px"
                                         :disabled="savingWifi || auth.isReadOnly" @click="acceptSuggestedConnection">
                                         {{ savingWifi ? t('branch.wifi_saving') : t('branch.wifi_use_changed') }}
                                     </button>
                                 </div>
 
-                                <ul v-if="presence.manual_ips.length" style="margin-top:10px">
-                                    <li v-for="ip in presence.manual_ips" :key="ip"
-                                        class="flex items-center justify-between gap-3" style="padding:6px 0">
-                                        <span class="flex items-center gap-2 flex-wrap">
-                                            <span style="color:var(--body)" dir="ltr">{{ ip }}</span>
+                                <ul v-if="presence.manual_ips.length" style="margin-top:6px">
+                                    <li v-for="ip in presence.manual_ips" :key="ip" class="ip-row">
+                                        <span class="flex items-center gap-2 flex-wrap min-w-0">
+                                            <span class="body-text" dir="ltr">{{ ip }}</span>
                                             <!-- Nothing has arrived from this address all window: almost
                                                  certainly a rotated line, so say so rather than let it sit
                                                  there looking healthy. -->
@@ -354,32 +388,32 @@ async function save() {
                                                 {{ t('branch.wifi_not_seen') }}
                                             </span>
                                         </span>
-                                        <button type="button" class="text-sm" style="color:var(--red)"
+                                        <button type="button" class="remove-btn"
                                             :disabled="savingWifi || auth.isReadOnly" @click="removeConnection(ip)">
                                             {{ t('branch.wifi_remove') }}
                                         </button>
                                     </li>
                                 </ul>
-                                <p v-else style="color:var(--muted);margin-top:10px">{{ t('branch.wifi_none_added') }}</p>
+                                <p v-else class="body-text" style="margin-top:10px">{{ t('branch.wifi_none_added') }}</p>
 
-                                <p style="color:var(--muted);margin-top:8px">{{ t('branch.wifi_add_hint') }}</p>
-                                <p v-if="presence.learned" style="color:var(--muted);margin-top:6px">{{ t('branch.wifi_learned_note') }}</p>
+                                <p class="hint" style="margin-top:8px">{{ t('branch.wifi_add_hint') }}</p>
+                                <p v-if="presence.learned" class="hint" style="margin-top:6px">{{ t('branch.wifi_learned_note') }}</p>
                                 <FormError :errors="errors" field="egress_ips.0" />
                             </div>
 
                             <template v-if="presence.wifi_detected">
                                 <div v-if="lastConfirmed" class="flex items-center justify-between gap-3" style="margin-top:10px">
-                                    <span style="color:var(--muted)">{{ t('branch.wifi_last_confirmed') }}</span>
-                                    <span style="color:var(--body)" dir="ltr">{{ lastConfirmed }}</span>
+                                    <span class="body-text">{{ t('branch.wifi_last_confirmed') }}</span>
+                                    <span class="body-text" style="color:var(--ink)" dir="ltr">{{ lastConfirmed }}</span>
                                 </div>
                                 <div v-if="presence.on_wifi_rate !== null" class="flex items-center justify-between gap-3" style="margin-top:10px">
-                                    <span style="color:var(--muted)">{{ t('branch.wifi_rate') }}</span>
-                                    <span style="color:var(--body)">{{ presence.on_wifi_rate }}%</span>
+                                    <span class="body-text">{{ t('branch.wifi_rate') }}</span>
+                                    <span class="body-text font-semibold" style="color:var(--ink)">{{ presence.on_wifi_rate }}%</span>
                                 </div>
                                 <!-- Explains the percentage, so it only belongs
                                      here when there is a percentage to explain —
                                      otherwise it reads as a caption for nothing. -->
-                                <p v-if="presence.on_wifi_rate !== null" style="color:var(--muted);margin-top:8px">
+                                <p v-if="presence.on_wifi_rate !== null" class="hint" style="margin-top:8px">
                                     {{ form.require_branch_wifi
                                         ? t('branch.wifi_rate_hint_enforced', { days: presence.window_days })
                                         : t('branch.wifi_rate_hint', { days: presence.window_days }) }}
@@ -390,16 +424,16 @@ async function save() {
                                      guard, and it states the cost in the branch's own
                                      measured numbers rather than in the abstract —
                                      the rate here IS the share of diners it keeps. -->
-                                <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
-                                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                                        <button type="button" class="switch" :class="{ on: form.require_branch_wifi }"
+                                <div class="wifi-sep">
+                                    <label class="toggle-line">
+                                        <button type="button" class="switch" :class="{ on: form.require_branch_wifi }" role="switch" :aria-checked="form.require_branch_wifi"
                                             :disabled="auth.isReadOnly"
                                             @click="form.require_branch_wifi = !form.require_branch_wifi"></button>
                                         {{ t('branch.wifi_require') }}
                                     </label>
-                                    <p style="color:var(--muted);margin-top:6px">{{ t('branch.wifi_require_hint') }}</p>
-                                    <div v-if="form.require_branch_wifi" style="margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--amber-soft)">
-                                        <p style="color:var(--amber)">
+                                    <p class="hint" style="margin-top:2px">{{ t('branch.wifi_require_hint') }}</p>
+                                    <div v-if="form.require_branch_wifi" class="wifi-warn" style="margin-top:10px">
+                                        <p>
                                             {{ presence.on_wifi_rate !== null
                                                 ? t('branch.wifi_require_warn_rate', { rate: presence.on_wifi_rate, blocked: 100 - presence.on_wifi_rate, days: presence.window_days })
                                                 : t('branch.wifi_require_warn') }}
@@ -411,56 +445,66 @@ async function save() {
                         </template>
                     </div>
                 </div>
+            </section>
 
-                <!-- POS-BE-005: the order types this branch's tills offer.
-                     Unticked-everything is the permissive state, not the empty
-                     one — the server only narrows when the list is non-empty —
-                     so the hint says "all allowed" rather than "none".
+            <!-- 4. POS-BE-005: the order types this branch's tills offer.
+                 Unticked-everything is the permissive state, not the empty
+                 one — the server only narrows when the list is non-empty —
+                 so the hint says "all allowed" rather than "none".
 
-                     Edit only: StoreBranchRequest does not (yet) validate the
-                     field, so a choice made on the create form would be dropped
-                     by `validated()` without a word. A new branch starts at []
-                     — every type allowed — and the picker appears the moment it
-                     exists. -->
-                <div v-if="isEdit" class="block">
-                    <span class="label">{{ t('branch.order_types') }}</span>
-                    <p class="page-sub" style="margin:2px 0 8px">{{ t('branch.order_types_hint') }}</p>
-                    <div class="flex flex-wrap gap-x-5 gap-y-2">
-                        <label v-for="tp in orderTypeOptions" :key="tp" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                            <input type="checkbox" class="h-4 w-4" :disabled="auth.isReadOnly"
-                                :checked="form.supported_order_types.includes(tp)" @change="toggleOrderType(tp)" />
-                            {{ t('order_type.' + tp) }}
-                        </label>
-                    </div>
-                    <p class="text-sm" style="color:var(--muted);margin-top:8px">
-                        {{ form.supported_order_types.length
-                            ? t('branch.order_types_some', { types: orderTypeNames(form.supported_order_types) })
-                            : t('branch.order_types_all') }}
-                    </p>
-                    <p v-if="legacyOrderTypes.length" class="text-xs" style="color:var(--muted);margin-top:6px">
-                        {{ t('branch.order_types_legacy', { types: orderTypeNames(legacyOrderTypes) }) }}
-                    </p>
-                    <FormError :errors="errors" field="supported_order_types" />
-                    <!-- The `.*` rule reports per-entry, so a value the server
-                         does not accept lands on the indexed key, not the array. -->
-                    <FormError :errors="errors" field="supported_order_types.0" />
+                 Edit only: StoreBranchRequest does not (yet) validate the
+                 field, so a choice made on the create form would be dropped
+                 by `validated()` without a word. A new branch starts at []
+                 — every type allowed — and the picker appears the moment it
+                 exists. -->
+            <section v-if="isEdit" class="card p-5 sm:p-6 space-y-3" aria-labelledby="bf-orders">
+                <div>
+                    <h2 id="bf-orders" class="h-card">{{ t('branch.order_types') }}</h2>
+                    <p class="hint">{{ t('branch.order_types_hint') }}</p>
                 </div>
+                <div class="type-grid">
+                    <label v-for="tp in orderTypeOptions" :key="tp" class="type-opt" :class="{ on: form.supported_order_types.includes(tp) }">
+                        <input type="checkbox" class="h-4 w-4" :disabled="!canManageOrderTypes || isLastOrderType(tp)"
+                            :data-test="'order-type-' + tp"
+                            :checked="form.supported_order_types.includes(tp)" @change="toggleOrderType(tp)" />
+                        {{ t('order_type.' + tp) }}
+                    </label>
+                </div>
+                <p class="body-text">
+                    {{ form.supported_order_types.length
+                        ? t('branch.order_types_some', { types: orderTypeNames(form.supported_order_types) })
+                        : t('branch.order_types_all') }}
+                </p>
+                <p v-if="legacyOrderTypes.length" class="hint">
+                    {{ t('branch.order_types_legacy', { types: orderTypeNames(legacyOrderTypes) }) }}
+                </p>
+                <p v-if="!canManageOrderTypes && !auth.isReadOnly" class="hint" data-test="order-types-locked">{{ t('branch.order_types_need_permission') }}</p>
+                <p v-else-if="form.supported_order_types.length === 1" class="hint">{{ t('branch.order_types_keep_one') }}</p>
+                <FormError :errors="errors" field="supported_order_types" />
+                <!-- The `.*` rule reports per-entry, so a value the server
+                     does not accept lands on the indexed key, not the array. -->
+                <FormError :errors="errors" field="supported_order_types.0" />
+            </section>
 
-                <div class="flex items-center gap-6">
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.is_open }" @click="form.is_open = !form.is_open"></button>
+            <!-- 5. Status -->
+            <section class="card p-5 sm:p-6 space-y-2" aria-labelledby="bf-status">
+                <h2 id="bf-status" class="h-card">{{ t('branch.sec_status') }}</h2>
+                <div class="flex flex-wrap items-center gap-x-8 gap-y-1">
+                    <label class="toggle-line">
+                        <button type="button" class="switch" :class="{ on: form.is_open }" role="switch" :aria-checked="form.is_open" @click="form.is_open = !form.is_open"></button>
                         {{ t('branch.open') }}
                     </label>
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>
+                    <label class="toggle-line">
+                        <button type="button" class="switch" :class="{ on: form.is_active }" role="switch" :aria-checked="form.is_active" @click="form.is_active = !form.is_active"></button>
                         {{ t('common.active') }}
                     </label>
                 </div>
-            </div>
+            </section>
 
-            <div class="flex justify-end gap-2">
-                <RouterLink :to="{ name: 'dashboard.branches' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent">
+            <!-- Sticky action row: always reachable on a long form -->
+            <div class="action-bar">
+                <RouterLink :to="{ name: 'dashboard.branches' }" class="btn btn-ghost act-btn">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent act-btn">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                     {{ saving ? t('common.saving') : t('common.save') }}
                 </button>
@@ -468,3 +512,49 @@ async function save() {
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables only. Secondary text uses
+   --body (not --muted) so it stays readable. */
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.hint { font-size: 14px; color: var(--body); line-height: 1.55; margin-top: 3px; }
+.body-text { font-size: 14px; color: var(--body); line-height: 1.55; }
+.toggle-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--body); min-height: 44px; cursor: pointer; }
+
+/* The hours editor can be wider than a phone: scroll inside the card */
+.hours-scroll { overflow-x: auto; }
+
+.link-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-size: 14px; font-weight: 500;
+    color: var(--p-primary-700); background: none; border: none; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.link-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.wifi-box { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--page); }
+.wifi-sep { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.wifi-btn { min-height: 40px; }
+.wifi-warn { padding: 10px 12px; border-radius: 10px; background: var(--amber-soft); }
+.wifi-warn p { font-size: 14px; line-height: 1.55; color: var(--p-primary-800); }
+.ip-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; min-height: 44px; }
+.remove-btn { font-size: 14px; font-weight: 500; color: var(--red); min-height: 44px; padding-inline: 4px; background: none; border: none; cursor: pointer; }
+.remove-btn:hover { text-decoration: underline; }
+.remove-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Order-type checkboxes as selectable tiles */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.type-opt { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--card); font-size: 14.5px; color: var(--ink); cursor: pointer; transition: background .15s, border-color .15s; }
+.type-opt:hover { background: var(--page); }
+.type-opt.on { background: var(--accent-soft); border-color: var(--accent); }
+.type-opt input { accent-color: var(--accent); cursor: pointer; }
+
+/* Sticky save row */
+.action-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, .05); }
+.act-btn { min-height: 44px; justify-content: center; }
+
+@media (max-width: 640px) {
+    .action-bar .act-btn { flex: 1 1 0; }
+}
+</style>

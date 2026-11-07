@@ -6,7 +6,7 @@
 //
 // Which sections appear is decided by `settings.config.js`, the same schema the
 // main sidebar consults before it offers the Settings entry at all.
-import { computed } from 'vue'
+import { computed, ref, watch, onMounted, nextTick } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '@xorder/api-client/auth.js'
@@ -26,6 +26,16 @@ const groups = computed(() => buildSettingsNav({
 // sub-menu highlights by route-name prefix rather than exact match — editing a
 // role should not leave the sub-menu looking like nothing is selected.
 const isActive = (item) => route.name === item.to.name || String(route.name || '').startsWith(item.to.name + '.')
+
+// Display only: on a phone the sub-menu is a horizontal strip, so bring the
+// current section into view instead of leaving it off-screen at the far end.
+const navEl = ref(null)
+function revealActive() {
+    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 900px)').matches) return
+    nextTick(() => navEl.value?.querySelector('.set-nav-item.active')?.scrollIntoView({ block: 'nearest', inline: 'center' }))
+}
+onMounted(revealActive)
+watch(() => route.name, revealActive)
 </script>
 
 <template>
@@ -34,7 +44,7 @@ const isActive = (item) => route.name === item.to.name || String(route.name || '
             <RouterView />
         </main>
 
-        <aside class="set-aside" :aria-label="t('settings_shell.title')">
+        <nav ref="navEl" class="set-aside" :aria-label="t('settings_shell.title')">
             <div v-for="g in groups" :key="g.key" class="set-nav-group">
                 <span class="set-nav-title">{{ t(g.labelKey) }}</span>
                 <RouterLink
@@ -45,11 +55,11 @@ const isActive = (item) => route.name === item.to.name || String(route.name || '
                     :class="{ active: isActive(item) }"
                     :aria-current="isActive(item) ? 'page' : undefined"
                 >
-                    <span v-if="isActive(item)" class="set-nav-dot" aria-hidden="true"></span>
-                    <span class="set-nav-label">{{ t(item.labelKey) }}</span>
                     <i :class="[item.icon, 'set-nav-ico']" aria-hidden="true"></i>
+                    <span class="set-nav-label">{{ t(item.labelKey) }}</span>
+                    <span v-if="isActive(item)" class="set-nav-dot" aria-hidden="true"></span>
                 </RouterLink>
             </div>
-        </aside>
+        </nav>
     </div>
 </template>

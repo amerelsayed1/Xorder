@@ -2,15 +2,34 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\OptionDiscountValidation;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateMenuItemRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+    use PreservesDisabledLanguages;
+
     public function authorize(): bool
     {
         return $this->user()?->can('menu.update') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'price',
+            'discounted_price',
+            'option_groups.*.options.*.price',
+            'option_groups.*.options.*.discounted_price',
+        ];
     }
 
     public function rules(): array
@@ -20,7 +39,8 @@ class UpdateMenuItemRequest extends FormRequest
         return [
             'category_id' => [
                 'sometimes', 'required',
-                Rule::exists('categories', 'id')->where('restaurant_id', $restaurantId),
+                // whereNull: Rule::exists() does not skip soft-deleted rows (XORD-014).
+                Rule::exists('categories', 'id')->where('restaurant_id', $restaurantId)->whereNull('deleted_at'),
             ],
             'name_ar' => ['nullable', 'string', 'max:150'],
             'name_en' => ['nullable', 'string', 'max:150'],
@@ -55,13 +75,7 @@ class UpdateMenuItemRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (($this->has('name_ar') || $this->has('name_en'))
-                && blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                // Report on the default-language name field — the one the form
-                // always renders — so single-language menus see the error.
-                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                $validator->errors()->add("name_{$lang}", __('xorder.validation.item_name_still_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.item_name_still_required', partial: true, primaryWhenBilingual: true);
 
             OptionDiscountValidation::checkItemGroups($this, $validator);
         });

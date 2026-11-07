@@ -2,16 +2,33 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\OptionDiscountValidation;
 use App\Models\OptionGroup;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateOptionGroupRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+    use PreservesDisabledLanguages;
+
     public function authorize(): bool
     {
         return $this->user()?->can('menu.update') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'options.*.price',
+            'options.*.discounted_price',
+        ];
     }
 
     public function rules(): array
@@ -40,12 +57,8 @@ class UpdateOptionGroupRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            // Only enforce when a name field was actually submitted (partial update).
-            if (($this->has('name_ar') || $this->has('name_en'))
-                && blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                $validator->errors()->add("name_{$lang}", __('xorder.validation.option_group_name_required'));
-            }
+            // Only enforced when a name field was actually submitted (partial update).
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.option_group_name_required', partial: true, primaryWhenBilingual: true);
 
             if ($this->input('apply_scope') === OptionGroup::SCOPE_CATEGORIES
                 && count($this->input('category_ids') ?? []) === 0) {

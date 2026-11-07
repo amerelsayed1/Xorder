@@ -55,6 +55,8 @@ use App\Http\Controllers\Dashboard\SupplierInvoiceController;
 use App\Http\Controllers\Dashboard\SupplierPaymentController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Dashboard\TaxRuleController;
+use App\Http\Controllers\Dashboard\FinancialAccountController;
+use App\Http\Controllers\Dashboard\TenderAccountDefaultController;
 use App\Http\Controllers\Dashboard\TenderTypeController;
 use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
@@ -192,6 +194,8 @@ Route::prefix('admin')
             Route::post('licences/{licence}/resume', [AdminLicenceController::class, 'resume']);
             Route::post('licences/{licence}/expire', [AdminLicenceController::class, 'expire']);
             Route::get('licences/{licence}/terminals', [AdminLicenceController::class, 'terminals']);
+            Route::get('licences/{licence}/activations', [AdminLicenceController::class, 'activations']);
+            Route::delete('licences/{licence}/activations/{activation}', [AdminLicenceController::class, 'releaseDevice']);
             // The on-premises delivery path: a till that may never reach the
             // internet still has to be licensable.
             Route::get('licences/{licence}/download', [AdminLicenceController::class, 'download']);
@@ -392,6 +396,7 @@ Route::prefix('dashboard')
             Route::middleware('can:menu.create')->group(function () {
                 Route::post('combos', [ComboController::class, 'store']);
                 Route::post('categories', [CategoryController::class, 'store']);
+                Route::post('categories/bulk', [CategoryController::class, 'bulkStore']);
                 Route::post('option-groups', [OptionGroupController::class, 'store']);
                 Route::post('items', [MenuItemController::class, 'store']);
                 // An import adds rows (and updates matched ones), so it needs
@@ -687,6 +692,21 @@ Route::prefix('dashboard')
                 Route::get('tax-rules', [TaxRuleController::class, 'index']);
                 Route::get('charges', [ChargeController::class, 'index']);
                 Route::get('tender-types', [TenderTypeController::class, 'index']);
+                // XORD-015: the money accounts, and which one each payment
+                // method pays into. Reading rides on settings.view (the
+                // payment-method editor needs the list); every write needs
+                // finance.accounts, NOT settings.update, so editing a payment
+                // method never lets someone redirect the money. DELETE
+                // deactivates — an account is never removed.
+                Route::get('financial-accounts', [FinancialAccountController::class, 'index']);
+                Route::get('tender-account-defaults', [TenderAccountDefaultController::class, 'index']);
+
+                Route::middleware(['can:finance.accounts', 'subscription.writable'])->group(function () {
+                    Route::post('financial-accounts', [FinancialAccountController::class, 'store']);
+                    Route::put('financial-accounts/{financialAccount}', [FinancialAccountController::class, 'update']);
+                    Route::delete('financial-accounts/{financialAccount}', [FinancialAccountController::class, 'destroy']);
+                    Route::put('tender-account-defaults', [TenderAccountDefaultController::class, 'update']);
+                });
 
                 Route::middleware(['can:settings.update', 'subscription.writable'])->group(function () {
                     Route::put('receipt-profiles/{branch}', [ReceiptProfileController::class, 'update']);

@@ -58,30 +58,66 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
 
 <template>
     <div class="space-y-5">
-        <div class="flex items-start justify-between gap-3">
-            <div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
                 <h1 class="page-title">{{ t('nav.branches') }}</h1>
-                <p class="page-sub">{{ t('branch.subtitle', { count: rows.length }) }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('branch.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button v-if="canCreate && auth.hasFeature('multi_branch')" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate && auth.hasFeature('multi_branch')" @click="openCreate" class="btn btn-accent act-btn"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
-            <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('branch.none') }}</div>
+            <div v-else-if="!rows.length" class="empty">
+                <span class="empty-ico" aria-hidden="true"><Icon name="building" :size="22" /></span>
+                <p class="empty-text">{{ t('branch.none') }}</p>
+                <button v-if="canCreate && auth.hasFeature('multi_branch')" class="btn btn-accent act-btn" @click="openCreate"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            </div>
             <ul v-else>
-                <li v-for="b in rows" :key="b.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
-                    <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="building" :size="18" /></div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-medium" style="color:var(--ink)">{{ branchName(b) }}</div>
-                        <div class="text-xs truncate" style="color:var(--muted)">{{ b.address || '—' }}</div>
+                <li v-for="b in rows" :key="b.id" class="row">
+                    <div class="row-main">
+                        <div class="row-ico" aria-hidden="true"><Icon name="building" :size="18" /></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="row-name truncate">{{ branchName(b) }}</div>
+                            <div class="row-sub truncate">{{ b.address || '—' }}</div>
+                        </div>
                     </div>
-                    <StatusBadge :value="b.is_open" :label="b.is_open ? t('branch.open') : t('branch.closed')" />
-                    <button v-if="canUpdate" class="switch" :class="{ on: b.is_open }" :title="t('branch.is_open')" @click="toggleOpen(b)"></button>
-                    <button v-if="canUpdate" @click="openEdit(b)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="canDelete" @click="remove(b)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <div class="row-side">
+                        <StatusBadge :value="b.is_open" :label="b.is_open ? t('branch.open') : t('branch.closed')" />
+                        <button v-if="canUpdate" type="button" class="switch" :class="{ on: b.is_open }" role="switch"
+                            :aria-checked="b.is_open" :aria-label="t('branch.is_open')" :title="t('branch.is_open')" @click="toggleOpen(b)"></button>
+                        <button v-if="canUpdate" @click="openEdit(b)" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                        <button v-if="canDelete" @click="remove(b)" class="icon-btn icon-btn-danger" :title="t('common.delete')" :aria-label="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    </div>
                 </li>
             </ul>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables only. */
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; min-height: 64px;
+    border-top: 1px solid var(--line); transition: background .15s; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--page); }
+.row-main { display: flex; align-items: center; gap: 12px; flex: 1 1 220px; min-width: 0; }
+.row-side { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.row-ico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; flex: none;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.row-name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.row-sub { font-size: 13.5px; color: var(--body); margin-top: 1px; }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); }
+.empty-text { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.empty .btn { margin-top: 6px; }
+
+@media (max-width: 640px) {
+    .row { padding-inline: 14px; }
+    .row-side { width: 100%; justify-content: flex-end; }
+    .row-side .icon-btn { width: 44px; height: 44px; }
+    .act-btn { min-height: 44px; justify-content: center; }
+}
+</style>

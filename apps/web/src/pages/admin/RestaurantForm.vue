@@ -503,16 +503,16 @@ async function submitCreate() {
 </script>
 
 <template>
-    <div class="max-w-2xl">
-        <RouterLink :to="{ name: 'admin.restaurants' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+    <div class="max-w-3xl">
+        <RouterLink :to="{ name: 'admin.restaurants' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
         <h1 class="page-title my-3">{{ isEdit ? t('admin.edit_restaurant') : t('admin.create_restaurant') }}</h1>
 
         <!-- Created: the two one-shot secrets, then where to go next. -->
-        <div v-if="generatedPassword || createdDone" class="card p-5 mb-4" style="border-color:var(--green);background:var(--green-soft)">
+        <div v-if="generatedPassword || createdDone" class="card p-5 mb-4" role="status" style="border-color:var(--green);background:var(--green-soft)">
             <div v-if="generatedPassword">
                 <p class="font-medium" style="color:var(--green)">{{ t('restaurant.generated_password') }}</p>
                 <p class="mono text-2xl mt-1" style="color:var(--ink)">{{ generatedPassword }}</p>
-                <p class="text-sm mt-1" style="color:var(--green)">{{ t('restaurant.generated_password_note') }}</p>
+                <p class="text-sm mt-1" style="color:var(--body)">{{ t('restaurant.generated_password_note') }}</p>
             </div>
 
             <!-- The licence is created WITH the client, in the same
@@ -522,84 +522,102 @@ async function submitCreate() {
                 <p v-if="createdLicence" class="mono text-sm mt-1" style="color:var(--body)">{{ createdLicence.licence_ref }}</p>
                 <p class="label mt-2">{{ t('licence.activation_key') }}</p>
                 <p class="mono text-2xl" style="color:var(--ink)">{{ activationKey }}</p>
-                <p class="text-sm mt-1" style="color:var(--green)">{{ t('licence.key_once_warning') }}</p>
+                <p class="text-sm mt-1" style="color:var(--body)">{{ t('licence.key_once_warning') }}</p>
             </div>
 
             <!-- Terminals are not part of creating a client. Said out loud so
                  an empty terminal list does not read as a failed setup. -->
-            <p class="text-sm mt-4" style="color:var(--green)">{{ t('restaurant.created_licence_note') }}</p>
+            <p class="text-sm mt-4" style="color:var(--body)">{{ t('restaurant.created_licence_note') }}</p>
 
             <div class="flex flex-wrap gap-2 mt-3">
-                <RouterLink v-if="createdRestaurantId" :to="{ name: 'admin.restaurants.show', params: { id: createdRestaurantId } }" class="btn btn-dark">
+                <RouterLink v-if="createdRestaurantId" :to="{ name: 'admin.restaurants.show', params: { id: createdRestaurantId } }" class="btn btn-dark cta">
                     {{ t('common.done') }} {{ forwardArrow }}
                 </RouterLink>
-                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('admin.manage_restaurants') }}</RouterLink>
+                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost cta">{{ t('admin.manage_restaurants') }}</RouterLink>
             </div>
         </div>
 
         <!-- ===================== EDIT MODE (single form) ===================== -->
         <form v-if="!generatedPassword && !createdDone && isEdit" @submit.prevent="submitEdit" class="space-y-5">
-            <div class="card p-6 space-y-4">
-                <h2 class="h-card">{{ t('admin.restaurant') }}</h2>
+            <!-- Identity -->
+            <section class="card p-6 space-y-4" aria-labelledby="rf-identity">
+                <h2 id="rf-identity" class="h-card">{{ t('admin.restaurant') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                        <input v-model="form.name_en" class="input" />
+                        <input v-model="form.name_en" class="input fld" />
                         <FormError :errors="errors" field="name_en" /></label>
                     <label class="block"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" dir="rtl" /></label>
+                        <input v-model="form.name_ar" class="input fld" dir="rtl" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
-                    <div dir="ltr" class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
-                        <input v-model="form.slug" class="flex-1 px-3 py-2.5 text-sm mono" style="border:0;outline:0;background:var(--card);color:var(--ink)" />
-                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugSuffix }}</span>
+                    <div dir="ltr" class="slug-group">
+                        <input v-model="form.slug" class="slug-input mono" />
+                        <span class="slug-suffix mono">{{ slugSuffix }}</span>
                     </div>
-                    <p class="text-xs mt-1" style="color:var(--amber)">{{ t('restaurant.slug_warning') }}</p>
+                    <p class="warn-note">{{ t('restaurant.slug_warning') }}</p>
                     <FormError :errors="errors" field="slug" /></label>
+            </section>
+
+            <!-- Contact -->
+            <section class="card p-6 space-y-4" aria-labelledby="rf-contact">
+                <h2 id="rf-contact" class="h-card">{{ t('wizard.contact_title') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input fld" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input fld" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
-                <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
+                <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input fld" /></label>
+            </section>
+
+            <!-- Branding -->
+            <section class="card p-6 space-y-4" aria-labelledby="rf-brand">
+                <h2 id="rf-brand" class="h-card">{{ t('wizard.branding_title') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" />
                     <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" />
                 </div>
-                <div class="grid grid-cols-3 gap-4 items-end">
+                <div class="grid grid-cols-2 gap-4">
                     <label class="block"><span class="label">{{ t('restaurant.brand_color') }}</span>
-                        <input v-model="form.brand_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
+                        <input v-model="form.brand_color" type="color" class="color-input" /></label>
                     <label class="block"><span class="label">{{ t('restaurant.secondary_color') }}</span>
-                        <input v-model="form.secondary_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
+                        <input v-model="form.secondary_color" type="color" class="color-input" /></label>
+                </div>
+            </section>
+
+            <!-- Menu, language, currency, ordering -->
+            <section class="card p-6 space-y-4" aria-labelledby="rf-menu">
+                <h2 id="rf-menu" class="h-card">{{ t('restaurant.section_menu') }}</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block"><span class="label">{{ t('restaurant.currency') }}</span>
-                        <select v-model="form.currency" class="input">
+                        <select v-model="form.currency" class="input fld">
                             <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.label }}</option>
                         </select>
                         <FormError :errors="errors" field="currency" /></label>
-                </div>
-                <div>
-                    <span class="label">{{ t('restaurant.menu_layout') }}</span>
-                    <select v-model="form.menu_layout" class="input mt-1.5">
-                        <option v-for="m in menuLayouts" :key="m" :value="m">{{ t('restaurant.menu_layout_' + m.replace('-', '_')) }}</option>
-                    </select>
-                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.menu_layout_hint') }}</span>
-                    <FormError :errors="errors" field="menu_layout" />
+                    <div>
+                        <span class="label">{{ t('restaurant.menu_layout') }}</span>
+                        <select v-model="form.menu_layout" class="input fld">
+                            <option v-for="m in menuLayouts" :key="m" :value="m">{{ t('restaurant.menu_layout_' + m.replace('-', '_')) }}</option>
+                        </select>
+                        <span class="help">{{ t('restaurant.menu_layout_hint') }}</span>
+                        <FormError :errors="errors" field="menu_layout" />
+                    </div>
                 </div>
                 <div>
                     <span class="label">{{ t('restaurant.language') }}</span>
                     <div class="flex gap-2 mt-1.5 flex-wrap">
                         <button v-for="opt in ['ar_only', 'en_only', 'bilingual']" :key="opt" type="button" @click="setEditLang(opt)"
-                            class="btn" :class="editLangValue === opt ? 'btn-dark' : 'btn-ghost'">{{ langOptionLabel(opt) }}</button>
+                            class="btn opt-btn" :class="editLangValue === opt ? 'btn-dark' : 'btn-ghost'" :aria-pressed="editLangValue === opt">{{ langOptionLabel(opt) }}</button>
                     </div>
-                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.bilingual_hint') }}</span>
+                    <span class="help">{{ t('restaurant.bilingual_hint') }}</span>
                     <!-- Bilingual clients choose which language the menu opens in by default. -->
                     <div v-if="editLangValue === 'bilingual'" class="mt-3">
                         <span class="label">{{ t('wizard.primary_language') }}</span>
                         <div class="flex gap-2 mt-1.5">
                             <button v-for="lng in ['ar', 'en']" :key="lng" type="button" @click="form.default_language = lng"
-                                class="btn" :class="form.default_language === lng ? 'btn-dark' : 'btn-ghost'">{{ t(`languages.${lng}`) }}</button>
+                                class="btn opt-btn" :class="form.default_language === lng ? 'btn-dark' : 'btn-ghost'" :aria-pressed="form.default_language === lng">{{ t(`languages.${lng}`) }}</button>
                         </div>
-                        <p class="text-xs mt-1.5" style="color:var(--muted)">{{ t('wizard.primary_help') }}</p>
+                        <p class="help">{{ t('wizard.primary_help') }}</p>
                     </div>
                     <FormError :errors="errors" field="default_language" />
                 </div>
@@ -607,365 +625,434 @@ async function submitCreate() {
                     <span class="label">{{ t('restaurant.ordering_mode') }}</span>
                     <div class="flex gap-2 mt-1.5 flex-wrap">
                         <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
-                            class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
+                            class="btn opt-btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'" :aria-pressed="form.ordering_mode === m">{{ t('restaurant.ordering_mode_' + m) }}</button>
                     </div>
-                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</span>
+                    <span class="help">{{ t('restaurant.ordering_mode_hint') }}</span>
                 </div>
-            </div>
+            </section>
 
             <!-- Plan & subscription are managed on the restaurant's Subscription
                  section (RestaurantDetails), not here — keeping them in both places
                  let this form silently revert a plan change made there. -->
 
-            <div class="flex justify-end gap-2">
-                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : t('admin.save_changes') }}</button>
+            <div class="action-row">
+                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost cta">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving" class="btn btn-accent cta">{{ saving ? t('common.saving') : t('admin.save_changes') }}</button>
             </div>
         </form>
 
         <!-- ===================== CREATE MODE (wizard) ===================== -->
         <div v-else-if="!generatedPassword && !createdDone">
             <!-- Stepper header -->
-            <div class="card p-4 mb-4">
+            <nav class="card p-4 mb-4" :aria-label="t('admin.create_restaurant')">
                 <div class="flex items-center justify-between gap-1">
                     <template v-for="(s, i) in steps" :key="s.n">
                         <button type="button" @click="goTo(s.n)"
-                            class="flex items-center gap-2 text-sm"
-                            :style="s.n > currentStep ? 'cursor:default;opacity:.55' : 'cursor:pointer'">
-                            <span class="inline-flex items-center justify-center rounded-full h-7 w-7 text-xs font-semibold"
-                                :style="s.n === currentStep ? 'background:var(--accent);color:#fff'
-                                    : s.n < currentStep ? 'background:var(--green-soft);color:var(--green)'
-                                    : 'background:var(--page);color:var(--muted)'">
+                            class="step-btn"
+                            :aria-current="s.n === currentStep ? 'step' : undefined"
+                            :style="s.n > currentStep ? 'cursor:default;opacity:.6' : 'cursor:pointer'">
+                            <span class="step-dot"
+                                :class="s.n === currentStep ? 'step-now' : (s.n < currentStep ? 'step-done' : 'step-todo')">
                                 {{ s.n < currentStep ? '✓' : s.n }}
                             </span>
-                            <span class="hidden md:inline" :style="s.n === currentStep ? 'color:var(--ink);font-weight:600' : 'color:var(--muted)'">{{ s.label }}</span>
+                            <span class="hidden md:inline" :style="s.n === currentStep ? 'color:var(--ink);font-weight:600' : 'color:var(--body)'">{{ s.label }}</span>
                         </button>
                         <span v-if="i < steps.length - 1" class="flex-1 h-px" style="background:var(--line)"></span>
                     </template>
                 </div>
-            </div>
+                <!-- Phone: the labels are hidden above, so name the current step here -->
+                <p class="md:hidden text-sm mt-3 font-semibold" style="color:var(--ink)">{{ currentStep }} / {{ totalSteps }} · {{ steps[currentStep - 1]?.label }}</p>
+            </nav>
 
             <!-- Step 1: Language -->
-            <div v-show="currentStep === 1" class="card p-6 space-y-4">
+            <section v-show="currentStep === 1" class="card p-6 space-y-4">
                 <div>
                     <h2 class="h-card">{{ t('wizard.lang_title') }}</h2>
-                    <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.lang_help') }}</p>
+                    <p class="help">{{ t('wizard.lang_help') }}</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <button v-for="opt in ['ar_only', 'en_only', 'bilingual']" :key="opt" type="button" @click="chooseLang(opt)"
-                        class="rounded-lg border p-4 text-start"
-                        :style="langConfig === opt ? 'border-color:var(--accent);background:var(--accent-soft,rgba(248,154,6,.08))' : 'border-color:var(--line)'">
-                        <span class="block font-medium" style="color:var(--ink)">{{ langOptionLabel(opt) }}</span>
+                        class="lang-card" :class="{ 'lang-on': langConfig === opt }" :aria-pressed="langConfig === opt">
+                        <span class="block font-semibold" style="color:var(--ink)">{{ langOptionLabel(opt) }}</span>
                     </button>
                 </div>
                 <div v-if="langConfig === 'bilingual'">
                     <span class="label">{{ t('wizard.primary_language') }}</span>
                     <div class="flex gap-2 mt-1.5">
                         <button v-for="lng in ['ar', 'en']" :key="lng" type="button" @click="primaryLanguage = lng"
-                            class="btn" :class="primaryLanguage === lng ? 'btn-dark' : 'btn-ghost'">{{ t(`languages.${lng}`) }}</button>
+                            class="btn opt-btn" :class="primaryLanguage === lng ? 'btn-dark' : 'btn-ghost'" :aria-pressed="primaryLanguage === lng">{{ t(`languages.${lng}`) }}</button>
                     </div>
-                    <p class="text-xs mt-1.5" style="color:var(--muted)">{{ t('wizard.primary_help') }}</p>
+                    <p class="help">{{ t('wizard.primary_help') }}</p>
                 </div>
-            </div>
+            </section>
 
-            <!-- Step 2: Basic info -->
-            <div v-show="currentStep === 2" class="card p-6 space-y-4">
-                <h2 class="h-card">{{ t('wizard.basics_title') }}</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
-                        <input v-model="form.name_en" @input="autoSlug" class="input" />
-                        <FormError :errors="errors" field="name_en" /></label>
-                    <label v-if="showAr" class="block"><span class="label">{{ nameLabelAr }}</span>
-                        <input v-model="form.name_ar" class="input" dir="rtl" />
-                        <FormError :errors="errors" field="name_ar" /></label>
-                </div>
-                <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
-                    <div dir="ltr" class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
-                        <input v-model="form.slug" @input="slugTouched = true" class="flex-1 px-3 py-2.5 text-sm mono" style="border:0;outline:0;background:var(--card);color:var(--ink)" />
-                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugSuffix }}</span>
+            <!-- Step 2: Basic info (restaurant, then its first admin) -->
+            <div v-show="currentStep === 2" class="space-y-5">
+                <section class="card p-6 space-y-4">
+                    <h2 class="h-card">{{ t('wizard.basics_title') }}</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
+                            <input v-model="form.name_en" @input="autoSlug" class="input fld" />
+                            <FormError :errors="errors" field="name_en" /></label>
+                        <label v-if="showAr" class="block"><span class="label">{{ nameLabelAr }}</span>
+                            <input v-model="form.name_ar" class="input fld" dir="rtl" />
+                            <FormError :errors="errors" field="name_ar" /></label>
                     </div>
-                    <FormError :errors="errors" field="slug" /></label>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.currency') }}</span>
-                        <select v-model="form.currency" class="input">
-                            <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.label }}</option>
-                        </select>
-                        <FormError :errors="errors" field="currency" /></label>
-                    <label class="block"><span class="label">{{ t('common.status') }}</span>
-                        <select v-model="form.status" class="input">
-                            <option value="ACTIVE">{{ t('status.ACTIVE') }}</option>
-                            <option value="SUSPENDED">{{ t('status.SUSPENDED') }}</option>
-                        </select></label>
-                </div>
-                <div class="pt-2" style="border-top:1px solid var(--line)">
-                    <h3 class="label" style="margin-bottom:.5rem">{{ t('admin.first_restaurant_admin') }}</h3>
+                    <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
+                        <div dir="ltr" class="slug-group">
+                            <input v-model="form.slug" @input="slugTouched = true" class="slug-input mono" />
+                            <span class="slug-suffix mono">{{ slugSuffix }}</span>
+                        </div>
+                        <FormError :errors="errors" field="slug" /></label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label class="block"><span class="label">{{ t('restaurant.currency') }}</span>
+                            <select v-model="form.currency" class="input fld">
+                                <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.label }}</option>
+                            </select>
+                            <FormError :errors="errors" field="currency" /></label>
+                        <label class="block"><span class="label">{{ t('common.status') }}</span>
+                            <select v-model="form.status" class="input fld">
+                                <option value="ACTIVE">{{ t('status.ACTIVE') }}</option>
+                                <option value="SUSPENDED">{{ t('status.SUSPENDED') }}</option>
+                            </select></label>
+                    </div>
+                </section>
+
+                <section class="card p-6 space-y-4">
+                    <h3 class="h-card">{{ t('admin.first_restaurant_admin') }}</h3>
                     <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
-                        <input v-model="form.admin.name" class="input" />
+                        <input v-model="form.admin.name" class="input fld" />
                         <FormError :errors="errors" field="admin.name" /></label>
-                    <label class="block mt-3"><span class="label">{{ t('restaurant.admin_username') }}</span>
-                        <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" dir="ltr" />
-                        <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
+                    <label class="block"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                        <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input fld" dir="ltr" />
+                        <span class="help">{{ t('restaurant.admin_username_hint') }}</span>
                         <FormError :errors="errors" field="admin.username" /></label>
-                    <label class="block mt-3"><span class="label">{{ t('restaurant.admin_email') }}</span>
-                        <input v-model="form.admin.email" @input="validateEmailField" type="email" class="input" />
+                    <label class="block"><span class="label">{{ t('restaurant.admin_email') }}</span>
+                        <input v-model="form.admin.email" @input="validateEmailField" type="email" class="input fld" />
                         <FormError :errors="errors" field="admin.email" /></label>
-                    <label class="block mt-3"><span class="label">{{ t('restaurant.admin_password') }}</span>
-                        <div class="flex gap-2 mt-1.5">
-                            <input v-model="form.admin.password" type="text" class="input" style="margin-top:0" :placeholder="t('restaurant.password_hint')" />
-                            <button type="button" @click="generatePassword" class="btn btn-ghost whitespace-nowrap">{{ t('admin.generate_password') }}</button>
+                    <label class="block"><span class="label">{{ t('restaurant.admin_password') }}</span>
+                        <div class="flex flex-wrap gap-2 mt-1.5">
+                            <input v-model="form.admin.password" type="text" class="input fld pw-input" style="margin-top:0" :placeholder="t('restaurant.password_hint')" />
+                            <button type="button" @click="generatePassword" class="btn btn-ghost whitespace-nowrap cta">{{ t('admin.generate_password') }}</button>
                         </div>
                         <FormError :errors="errors" field="admin.password" /></label>
-                </div>
+                </section>
             </div>
 
             <!-- Step 3: Contact & branding -->
-            <div v-show="currentStep === 3" class="card p-6 space-y-4">
-                <h2 class="h-card">{{ t('wizard.contact_title') }}</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input" dir="ltr" data-en-digits />
-                        <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input" dir="ltr" data-en-digits />
-                        <FormError :errors="errors" field="whatsapp_number" /></label>
-                </div>
-                <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
-                <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span><input v-model="form.opening_hours" class="input" /></label>
-                <h3 class="label pt-2" style="border-top:1px solid var(--line)">{{ t('wizard.branding_title') }}</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" />
-                    <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" />
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.brand_color') }}</span>
-                        <input v-model="form.brand_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.secondary_color') }}</span>
-                        <input v-model="form.secondary_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
-                </div>
+            <div v-show="currentStep === 3" class="space-y-5">
+                <section class="card p-6 space-y-4">
+                    <h2 class="h-card">{{ t('wizard.contact_title') }}</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input fld" dir="ltr" data-en-digits />
+                            <FormError :errors="errors" field="phone" /></label>
+                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input fld" dir="ltr" data-en-digits />
+                            <FormError :errors="errors" field="whatsapp_number" /></label>
+                    </div>
+                    <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input fld" /></label>
+                    <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span><input v-model="form.opening_hours" class="input fld" /></label>
+                </section>
+                <section class="card p-6 space-y-4">
+                    <h3 class="h-card">{{ t('wizard.branding_title') }}</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" />
+                        <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="block"><span class="label">{{ t('restaurant.brand_color') }}</span>
+                            <input v-model="form.brand_color" type="color" class="color-input" /></label>
+                        <label class="block"><span class="label">{{ t('restaurant.secondary_color') }}</span>
+                            <input v-model="form.secondary_color" type="color" class="color-input" /></label>
+                    </div>
+                </section>
             </div>
 
             <!-- Step 5: First branch -->
-            <div v-show="currentStep === 5" class="card p-6 space-y-4">
-                <div class="flex items-start justify-between gap-3">
+            <section v-show="currentStep === 5" class="card p-6 space-y-4">
+                <div class="flex items-start justify-between gap-3 flex-wrap">
                     <div>
                         <h2 class="h-card">{{ t('wizard.branch_title') }}</h2>
-                        <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.branch_optional') }}</p>
+                        <p class="help">{{ t('wizard.branch_optional') }}</p>
                     </div>
-                    <label v-if="branchAllowed" class="flex items-center gap-2 text-sm whitespace-nowrap">
+                    <label v-if="branchAllowed" class="flex items-center gap-2 text-sm whitespace-nowrap" style="color:var(--body);min-height:44px;cursor:pointer">
                         <input type="checkbox" :checked="!branchEnabled" @change="branchEnabled = !branchEnabled" class="h-4 w-4" />
                         {{ t('wizard.branch_skip') }}
                     </label>
                 </div>
                 <!-- Branches require a plan, and the plan's limit gates the form. -->
-                <p v-if="!effectivePlan" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_needs_plan') }}</p>
-                <p v-else-if="!branchAllowed" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_not_in_plan') }}</p>
-                <p v-if="branchAllowed && planBranchLimit !== null" class="text-xs" style="color:var(--muted)">{{ t('wizard.branch_limit', { n: planBranchLimit }) }}</p>
-                <p v-if="branchAllowed && !branchEnabled" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_skip_note') }}</p>
+                <p v-if="!effectivePlan" class="info-box">{{ t('wizard.branch_needs_plan') }}</p>
+                <p v-else-if="!branchAllowed" class="info-box">{{ t('wizard.branch_not_in_plan') }}</p>
+                <p v-if="branchAllowed && planBranchLimit !== null" class="help" style="margin-top:0">{{ t('wizard.branch_limit', { n: planBranchLimit }) }}</p>
+                <p v-if="branchAllowed && !branchEnabled" class="info-box">{{ t('wizard.branch_skip_note') }}</p>
                 <template v-if="branchAllowed && branchEnabled">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
-                            <input v-model="branch.name_en" class="input" />
+                            <input v-model="branch.name_en" class="input fld" />
                             <FormError :errors="errors" field="branch.name_en" /></label>
                         <label v-if="showAr" class="block"><span class="label">{{ nameLabelAr }}</span>
-                            <input v-model="branch.name_ar" class="input" dir="rtl" /></label>
+                            <input v-model="branch.name_ar" class="input fld" dir="rtl" /></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <label class="block"><span class="label">{{ t('wizard.branch_code') }}</span><input v-model="branch.code" class="input" /></label>
-                        <label class="block"><span class="label">{{ t('wizard.branch_city') }}</span><input v-model="branch.city" class="input" /></label>
+                        <label class="block"><span class="label">{{ t('wizard.branch_code') }}</span><input v-model="branch.code" class="input fld" /></label>
+                        <label class="block"><span class="label">{{ t('wizard.branch_city') }}</span><input v-model="branch.city" class="input fld" /></label>
                         <label class="block"><span class="label">{{ t('wizard.branch_country') }}</span>
-                            <select v-model="branch.country" class="input">
+                            <select v-model="branch.country" class="input fld">
                                 <option value="">{{ t('wizard.branch_country_select') }}</option>
                                 <option v-for="c in branchCountries" :key="c" :value="c">{{ t(`country.${c}`) }}</option>
                             </select></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" @input="validatePhoneField('branch.phone')" class="input" dir="ltr" data-en-digits />
+                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" @input="validatePhoneField('branch.phone')" class="input fld" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.phone" /></label>
-                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" @input="validatePhoneField('branch.whatsapp_number')" class="input" dir="ltr" data-en-digits />
+                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" @input="validatePhoneField('branch.whatsapp_number')" class="input fld" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.whatsapp_number" /></label>
                     </div>
                     <div>
                         <span class="label">{{ t('wizard.order_types') }}</span>
                         <div v-if="orderTypes.length" class="flex flex-wrap gap-2 mt-1.5">
                             <button v-for="tp in orderTypes" :key="tp" type="button" @click="toggleOrderType(tp)"
-                                class="btn" :class="branch.supported_order_types.includes(tp) ? 'btn-dark' : 'btn-ghost'">{{ t(`order_type.${tp}`) }}</button>
+                                class="btn opt-btn" :class="branch.supported_order_types.includes(tp) ? 'btn-dark' : 'btn-ghost'" :aria-pressed="branch.supported_order_types.includes(tp)">{{ t(`order_type.${tp}`) }}</button>
                         </div>
-                        <p v-else class="text-sm rounded-lg p-3 mt-1.5" style="background:var(--page);color:var(--muted)">{{ t('wizard.order_types_none') }}</p>
+                        <p v-else class="info-box mt-1.5">{{ t('wizard.order_types_none') }}</p>
                     </div>
                 </template>
-            </div>
+            </section>
 
             <!-- Step 4: Plan & features -->
-            <div v-show="currentStep === 4" class="card p-6 space-y-4">
-                <div>
-                    <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
-                    <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.features_help') }}</p>
-                </div>
-
-                <div v-if="orderingModeOptions.length > 1" class="space-y-3 pb-2" style="border-bottom:1px solid var(--line)">
-                    <h3 class="label" style="margin:0">{{ t('restaurant.ordering_mode') }}</h3>
-                    <div class="flex gap-2 flex-wrap">
-                        <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
-                            class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
-                    </div>
-                    <p class="text-xs" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</p>
-                </div>
-
-                <!-- Creation only: the licence is minted with the tenant, and
-                     editing one afterwards is the standalone licence form's job. -->
-                <div v-if="!isEdit" class="space-y-2 pb-2" style="border-bottom:1px solid var(--line)">
-                    <span class="label">{{ t('licence.modes') }}</span>
-                    <p class="text-xs" style="color:var(--muted)">{{ t('licence.modes_hint') }}</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label v-for="m in POS_MODES" :key="m" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer"
-                            :style="{ borderColor: licenceModes.includes(m) ? 'var(--accent)' : 'var(--line)' }">
-                            <input type="checkbox" :checked="licenceModes.includes(m)"
-                                @change="togglePosMode(m, $event.target.checked)" class="h-4 w-4" />
-                            <span class="text-sm" style="color:var(--ink)">{{ t('licence.mode.' + m) }}</span>
-                        </label>
-                    </div>
-                    <FormError :errors="errors" field="licence.modes" />
-                </div>
-
-                <div>
-                    <span class="label">{{ t('wizard.plan_group') }}</span>
-                    <div class="flex gap-2 mt-1.5">
-                        <button type="button" @click="planMode = 'existing'" class="btn" :class="planMode === 'existing' ? 'btn-dark' : 'btn-ghost'">{{ t('wizard.plan_existing') }}</button>
-                        <button type="button" @click="planMode = 'custom'" class="btn" :class="planMode === 'custom' ? 'btn-dark' : 'btn-ghost'">{{ t('wizard.plan_custom') }}</button>
-                    </div>
-                </div>
-
-                <label v-if="planMode === 'existing'" class="block">
-                    <select v-model="form.subscription_plan" class="input">
-                        <option value="">{{ t('wizard.select_plan') }}</option>
-                        <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
-                    </select>
-                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('wizard.plan_help') }}</span>
-                    <FormError :errors="errors" field="subscription_plan" /></label>
-
-                <!-- Custom plan builder — mirrors the plan editor; saved as an inactive plan. -->
-                <div v-else class="space-y-4 rounded-lg p-4" style="border:1px solid var(--line);background:var(--page)">
-                    <p class="text-xs" style="color:var(--muted)">{{ t('wizard.custom_plan_note') }}</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <label class="block sm:col-span-2"><span class="label">{{ t('wizard.custom_plan_name') }}</span>
-                            <input v-model="custom.name" class="input" />
-                            <FormError :errors="errors" field="subscription_plan" /></label>
-                        <label class="block"><span class="label">{{ t('plan.price') }}</span>
-                            <input v-model="custom.price" type="number" min="0" step="0.01" class="input" data-en-digits :placeholder="t('plan.price_hint')" /></label>
+            <div v-show="currentStep === 4" class="space-y-5">
+                <section class="card p-6 space-y-4">
+                    <div>
+                        <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
+                        <p class="help">{{ t('wizard.features_help') }}</p>
                     </div>
 
-                    <div class="block">
-                        <span class="label">{{ t('plan.ordering') }}</span>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-                            <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: customOrdering.channel === 'whatsapp' ? 'var(--accent)' : 'var(--line)' }">
-                                <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'whatsapp'" @change="setCustomChannel('whatsapp')" class="h-4 w-4" />
-                                <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_whatsapp') }}</span>
-                            </label>
-                            <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: customOrdering.channel === 'system' ? 'var(--accent)' : 'var(--line)' }">
-                                <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'system'" @change="setCustomChannel('system')" class="h-4 w-4" />
-                                <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_system') }}</span>
+                    <div v-if="orderingModeOptions.length > 1" class="space-y-3 pb-3 sep-b">
+                        <h3 class="label" style="margin:0">{{ t('restaurant.ordering_mode') }}</h3>
+                        <div class="flex gap-2 flex-wrap">
+                            <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
+                                class="btn opt-btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'" :aria-pressed="form.ordering_mode === m">{{ t('restaurant.ordering_mode_' + m) }}</button>
+                        </div>
+                        <p class="help" style="margin-top:0">{{ t('restaurant.ordering_mode_hint') }}</p>
+                    </div>
+
+                    <!-- Creation only: the licence is minted with the tenant, and
+                         editing one afterwards is the standalone licence form's job. -->
+                    <div v-if="!isEdit" class="space-y-2 pb-3 sep-b">
+                        <span class="label">{{ t('licence.modes') }}</span>
+                        <p class="help" style="margin-top:0">{{ t('licence.modes_hint') }}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label v-for="m in POS_MODES" :key="m" class="choice" :class="{ 'choice-on': licenceModes.includes(m) }">
+                                <input type="checkbox" :checked="licenceModes.includes(m)"
+                                    @change="togglePosMode(m, $event.target.checked)" class="h-4 w-4" />
+                                <span class="choice-title">{{ t('licence.mode.' + m) }}</span>
                             </label>
                         </div>
-                        <div v-if="customOrdering.channel === 'whatsapp'" class="mt-2 ps-3 border-s-2" style="border-color:var(--line)">
-                            <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
-                            <div class="flex gap-4 mt-1">
-                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.waPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
-                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.waDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
-                            </div>
+                        <FormError :errors="errors" field="licence.modes" />
+                    </div>
+
+                    <div>
+                        <span class="label">{{ t('wizard.plan_group') }}</span>
+                        <div class="flex gap-2 mt-1.5 flex-wrap">
+                            <button type="button" @click="planMode = 'existing'" class="btn opt-btn" :class="planMode === 'existing' ? 'btn-dark' : 'btn-ghost'" :aria-pressed="planMode === 'existing'">{{ t('wizard.plan_existing') }}</button>
+                            <button type="button" @click="planMode = 'custom'" class="btn opt-btn" :class="planMode === 'custom' ? 'btn-dark' : 'btn-ghost'" :aria-pressed="planMode === 'custom'">{{ t('wizard.plan_custom') }}</button>
                         </div>
-                        <div v-else-if="customOrdering.channel === 'system'" class="mt-2 ps-3 border-s-2 space-y-2" style="border-color:var(--line)">
-                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.tableOrdering" class="h-4 w-4" />{{ t('plan.ordering_table') }}</label>
-                            <div v-if="customOrdering.tableOrdering" class="ps-6">
-                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.tableBillRequests" class="h-4 w-4" />{{ t('feature.bill_requests') }}</label>
+                    </div>
+
+                    <label v-if="planMode === 'existing'" class="block">
+                        <select v-model="form.subscription_plan" class="input fld">
+                            <option value="">{{ t('wizard.select_plan') }}</option>
+                            <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
+                        </select>
+                        <span class="help">{{ t('wizard.plan_help') }}</span>
+                        <FormError :errors="errors" field="subscription_plan" /></label>
+
+                    <!-- Custom plan builder — mirrors the plan editor; saved as an inactive plan. -->
+                    <div v-else class="custom-box space-y-4">
+                        <p class="help" style="margin-top:0">{{ t('wizard.custom_plan_note') }}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <label class="block sm:col-span-2"><span class="label">{{ t('wizard.custom_plan_name') }}</span>
+                                <input v-model="custom.name" class="input fld" />
+                                <FormError :errors="errors" field="subscription_plan" /></label>
+                            <label class="block"><span class="label">{{ t('plan.price') }}</span>
+                                <input v-model="custom.price" type="number" min="0" step="0.01" class="input fld" data-en-digits :placeholder="t('plan.price_hint')" /></label>
+                        </div>
+
+                        <div class="block">
+                            <span class="label">{{ t('plan.ordering') }}</span>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                <label class="choice" :class="{ 'choice-on': customOrdering.channel === 'whatsapp' }">
+                                    <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'whatsapp'" @change="setCustomChannel('whatsapp')" class="h-4 w-4" />
+                                    <span class="choice-title">{{ t('plan.ordering_whatsapp') }}</span>
+                                </label>
+                                <label class="choice" :class="{ 'choice-on': customOrdering.channel === 'system' }">
+                                    <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'system'" @change="setCustomChannel('system')" class="h-4 w-4" />
+                                    <span class="choice-title">{{ t('plan.ordering_system') }}</span>
+                                </label>
                             </div>
-                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onlineOrdering" class="h-4 w-4" />{{ t('plan.ordering_online') }}</label>
-                            <div v-if="customOrdering.onlineOrdering" class="ps-6">
-                                <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
-                                <div class="flex gap-4 mt-1">
-                                    <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
-                                    <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
+                            <div v-if="customOrdering.channel === 'whatsapp'" class="sub-block mt-2">
+                                <span class="help" style="margin-top:0">{{ t('plan.ordering_fulfillment') }}</span>
+                                <div class="flex flex-wrap gap-2 mt-2">
+                                    <label class="choice"><input type="checkbox" v-model="customOrdering.waPickup" class="h-4 w-4" /><span class="choice-title">{{ t('feature.pickup') }}</span></label>
+                                    <label class="choice"><input type="checkbox" v-model="customOrdering.waDelivery" class="h-4 w-4" /><span class="choice-title">{{ t('feature.delivery') }}</span></label>
                                 </div>
                             </div>
+                            <div v-else-if="customOrdering.channel === 'system'" class="sub-block mt-2 space-y-2">
+                                <label class="choice"><input type="checkbox" v-model="customOrdering.tableOrdering" class="h-4 w-4" /><span class="choice-title">{{ t('plan.ordering_table') }}</span></label>
+                                <div v-if="customOrdering.tableOrdering" class="ps-6">
+                                    <label class="choice"><input type="checkbox" v-model="customOrdering.tableBillRequests" class="h-4 w-4" /><span class="choice-title">{{ t('feature.bill_requests') }}</span></label>
+                                </div>
+                                <label class="choice"><input type="checkbox" v-model="customOrdering.onlineOrdering" class="h-4 w-4" /><span class="choice-title">{{ t('plan.ordering_online') }}</span></label>
+                                <div v-if="customOrdering.onlineOrdering" class="ps-6">
+                                    <span class="help" style="margin-top:0">{{ t('plan.ordering_fulfillment') }}</span>
+                                    <div class="flex flex-wrap gap-2 mt-2">
+                                        <label class="choice"><input type="checkbox" v-model="customOrdering.onPickup" class="h-4 w-4" /><span class="choice-title">{{ t('feature.pickup') }}</span></label>
+                                        <label class="choice"><input type="checkbox" v-model="customOrdering.onDelivery" class="h-4 w-4" /><span class="choice-title">{{ t('feature.delivery') }}</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <FormError :errors="errors" field="feature_keys" />
                         </div>
-                        <FormError :errors="errors" field="feature_keys" />
-                    </div>
 
-                    <div class="block">
-                        <span class="label">{{ t('plan.capabilities') }}</span>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-                            <label v-for="key in customCapabilityKeys" :key="key" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" style="border-color:var(--line)">
-                                <input type="checkbox" :checked="customCapabilities.includes(key)" @change="toggleCustomCapability(key, $event.target.checked)" class="h-4 w-4" />
-                                <span class="text-sm" style="color:var(--ink)">{{ t(`feature.${key}`) }}</span>
-                            </label>
+                        <div class="block">
+                            <span class="label">{{ t('plan.capabilities') }}</span>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                <label v-for="key in customCapabilityKeys" :key="key" class="choice">
+                                    <input type="checkbox" :checked="customCapabilities.includes(key)" @change="toggleCustomCapability(key, $event.target.checked)" class="h-4 w-4" />
+                                    <span class="choice-title">{{ t(`feature.${key}`) }}</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="block">
+                            <span class="label">{{ t('plan.limits') }}</span>
+                            <p class="help mb-2" style="margin-top:2px">{{ t('plan.limits_hint') }}</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+                                <label class="block"><span class="label">{{ t('plan.max_branches') }}</span>
+                                    <input v-model="custom.max_branches" type="number" min="1" step="1" class="input fld" data-en-digits :placeholder="t('plan.unlimited')" />
+                                    <FormError :errors="errors" field="max_branches" /></label>
+                                <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
+                                    <input v-model="custom.max_items" type="number" min="1" step="1" class="input fld" data-en-digits :placeholder="t('plan.unlimited')" />
+                                    <FormError :errors="errors" field="max_items" /></label>
+                                <label class="block"><span class="label">{{ t('plan.max_categories') }}</span>
+                                    <input v-model="custom.max_categories" type="number" min="1" step="1" class="input fld" data-en-digits :placeholder="t('plan.unlimited')" />
+                                    <FormError :errors="errors" field="max_categories" /></label>
+                            </div>
                         </div>
                     </div>
+                </section>
 
-                    <div class="block">
-                        <span class="label">{{ t('plan.limits') }}</span>
-                        <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.limits_hint') }}</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
-                            <label class="block"><span class="label">{{ t('plan.max_branches') }}</span>
-                                <input v-model="custom.max_branches" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
-                                <FormError :errors="errors" field="max_branches" /></label>
-                            <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
-                                <input v-model="custom.max_items" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
-                                <FormError :errors="errors" field="max_items" /></label>
-                            <label class="block"><span class="label">{{ t('plan.max_categories') }}</span>
-                                <input v-model="custom.max_categories" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
-                                <FormError :errors="errors" field="max_categories" /></label>
-                        </div>
+                <section class="card p-6">
+                    <h3 class="h-card">{{ t('wizard.features_derived') }}</h3>
+                    <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-3">
+                        <span v-for="(chip, i) in previewChips" :key="i" class="chip">{{ chip }}</span>
                     </div>
-                </div>
-
-                <div class="pt-2" style="border-top:1px solid var(--line)">
-                    <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
-                    <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
-                        <span v-for="(chip, i) in previewChips" :key="i" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ chip }}</span>
-                    </div>
-                    <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
-                </div>
+                    <p v-else class="help">{{ t('wizard.features_derived_none') }}</p>
+                </section>
             </div>
 
             <!-- Step 6: Review -->
-            <div v-show="currentStep === 6" class="card p-6 space-y-4">
+            <section v-show="currentStep === 6" class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('wizard.review_title') }}</h2>
-                <dl class="space-y-3 text-sm">
-                    <div class="flex justify-between gap-4">
-                        <dt style="color:var(--muted)">{{ t('wizard.review_languages') }}</dt>
-                        <dd class="text-end" style="color:var(--ink)">{{ langConfigLabel }} · {{ t('wizard.review_primary') }}: {{ t(`languages.${primaryLanguage}`) }}
-                            <button type="button" @click="goTo(1)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
+                <dl class="review">
+                    <div class="review-row">
+                        <dt>{{ t('wizard.review_languages') }}</dt>
+                        <dd>{{ langConfigLabel }} · {{ t('wizard.review_primary') }}: {{ t(`languages.${primaryLanguage}`) }}
+                            <button type="button" @click="goTo(1)" class="edit-link">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
-                    <div class="flex justify-between gap-4">
-                        <dt style="color:var(--muted)">{{ t('admin.restaurant') }}</dt>
-                        <dd class="text-end" style="color:var(--ink)">{{ showEn ? form.name_en : '' }}<span v-if="showEn && showAr"> · </span>{{ showAr ? form.name_ar : '' }}
-                            <span class="mono" style="color:var(--muted)"> /{{ form.slug }}</span>
-                            <button type="button" @click="goTo(2)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
+                    <div class="review-row">
+                        <dt>{{ t('admin.restaurant') }}</dt>
+                        <dd>{{ showEn ? form.name_en : '' }}<span v-if="showEn && showAr"> · </span>{{ showAr ? form.name_ar : '' }}
+                            <span class="mono" style="color:var(--body)"> /{{ form.slug }}</span>
+                            <button type="button" @click="goTo(2)" class="edit-link">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
-                    <div class="flex justify-between gap-4">
-                        <dt style="color:var(--muted)">{{ t('wizard.review_features') }}</dt>
-                        <dd class="text-end" style="color:var(--ink)">{{ enabledFeatureLabels.length ? enabledFeatureLabels.join(', ') : t('wizard.review_features_none') }}
-                            <button type="button" @click="goTo(4)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
+                    <div class="review-row">
+                        <dt>{{ t('wizard.review_features') }}</dt>
+                        <dd>{{ enabledFeatureLabels.length ? enabledFeatureLabels.join(', ') : t('wizard.review_features_none') }}
+                            <button type="button" @click="goTo(4)" class="edit-link">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
-                    <div class="flex justify-between gap-4">
-                        <dt style="color:var(--muted)">{{ t('wizard.review_branch') }}</dt>
-                        <dd class="text-end" style="color:var(--ink)">
+                    <div class="review-row">
+                        <dt>{{ t('wizard.review_branch') }}</dt>
+                        <dd>
                             <template v-if="branchEnabled">{{ showEn ? branch.name_en : branch.name_ar }} ({{ branch.supported_order_types.map(x => t(`order_type.${x}`)).join(', ') }})</template>
                             <template v-else>{{ t('wizard.review_no_branch') }}</template>
-                            <button type="button" @click="goTo(5)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
+                            <button type="button" @click="goTo(5)" class="edit-link">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
                 </dl>
-                <div v-if="Object.keys(errors).length" class="rounded-lg p-3 text-sm" style="background:var(--red-soft,rgba(220,38,38,.08));color:var(--red,#dc2626)">
+                <div v-if="Object.keys(errors).length" class="err-box" role="alert">
                     <p v-for="(msgs, field) in errors" :key="field">{{ Array.isArray(msgs) ? msgs[0] : msgs }}</p>
                 </div>
-            </div>
+            </section>
 
             <!-- Wizard nav -->
-            <div class="flex justify-between gap-2 mt-4">
-                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
+            <div class="action-row wizard-nav">
+                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost cta">{{ t('common.cancel') }}</RouterLink>
                 <div class="flex gap-2">
-                    <button v-if="currentStep > 1" type="button" @click="back" class="btn btn-ghost">{{ backArrow }} {{ t('wizard.back') }}</button>
-                    <button v-if="currentStep < totalSteps" type="button" @click="next" :disabled="!stepValid" class="btn btn-dark">{{ t('wizard.next') }} {{ forwardArrow }}</button>
-                    <button v-else type="button" @click="submitCreate" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : t('wizard.create_client') }}</button>
+                    <button v-if="currentStep > 1" type="button" @click="back" class="btn btn-ghost cta">{{ backArrow }} {{ t('wizard.back') }}</button>
+                    <button v-if="currentStep < totalSteps" type="button" @click="next" :disabled="!stepValid" class="btn btn-dark cta">{{ t('wizard.next') }} {{ forwardArrow }}</button>
+                    <button v-else type="button" @click="submitCreate" :disabled="saving" class="btn btn-accent cta">{{ saving ? t('common.saving') : t('wizard.create_client') }}</button>
                 </div>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from theme variables only. */
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; font-weight: 500; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.help { display: block; font-size: 13.5px; margin-top: 5px; color: var(--body); }
+.warn-note { font-size: 13.5px; margin-top: 6px; color: var(--p-primary-800); background: var(--amber-soft); border-radius: 8px; padding: 6px 10px; }
+.cta { min-height: 44px; justify-content: center; }
+.fld { min-height: 44px; }
+.opt-btn { min-height: 44px; }
+.pw-input { flex: 1 1 200px; width: auto; }
+.sep-b { border-bottom: 1px solid var(--line); }
+
+.slug-group { display: flex; align-items: stretch; margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 44px; }
+.slug-group:focus-within { border-color: var(--accent); }
+.slug-input { flex: 1; min-width: 0; padding: 10px 13px; font-size: 14.5px; border: 0; outline: 0; background: var(--card); color: var(--ink); }
+.slug-suffix { display: flex; align-items: center; padding: 0 13px; font-size: 14px; background: var(--page); color: var(--body); white-space: nowrap; }
+.color-input { display: block; width: 100%; height: 44px; margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--card); }
+
+.info-box { font-size: 14px; border-radius: 10px; padding: 12px; background: var(--page); color: var(--body); }
+.err-box { font-size: 14px; border-radius: 10px; padding: 12px; background: var(--red-soft); color: var(--red); }
+.custom-box { border: 1px solid var(--line); background: var(--page); border-radius: 12px; padding: 16px; }
+.chip { font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--page); border: 1px solid var(--line); color: var(--ink); }
+
+/* Selectable option row (radio / checkbox) */
+.choice { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card); transition: border-color .15s, background .15s; }
+.choice:hover { border-color: var(--muted); }
+.choice-on, .choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { flex: none; accent-color: var(--accent); }
+.choice-title { font-size: 14.5px; color: var(--ink); font-weight: 500; }
+.sub-block { padding-inline-start: 14px; border-inline-start: 2px solid var(--line); }
+
+/* Wizard */
+.step-btn { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 44px; background: none; border: 0; padding: 0 4px; }
+.step-dot { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; width: 30px; height: 30px; font-size: 13px; font-weight: 700; }
+.step-now { background: var(--ink); color: var(--card); }
+.step-done { background: var(--green-soft); color: var(--green); }
+.step-todo { background: var(--page); color: var(--body); border: 1px solid var(--line); }
+.lang-card { text-align: start; min-height: 64px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); cursor: pointer;
+    transition: border-color .15s, background .15s; }
+.lang-card:hover { border-color: var(--muted); }
+.lang-on { border-color: var(--accent); background: var(--accent-soft); }
+
+.review { display: flex; flex-direction: column; }
+.review-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14.5px; }
+.review-row:first-child { border-top: 0; padding-top: 0; }
+.review-row dt { color: var(--body); flex: none; }
+.review-row dd { color: var(--ink); text-align: end; min-width: 0; overflow-wrap: anywhere; }
+.edit-link { margin-inline-start: 8px; color: var(--p-primary-700); font-weight: 500; background: none; border: 0; cursor: pointer; min-height: 32px; }
+.edit-link:hover { text-decoration: underline; }
+
+/* Save / wizard navigation stays reachable while the form scrolls */
+.action-row { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0;
+    background: linear-gradient(to top, var(--page) 70%, transparent); }
+.wizard-nav { justify-content: space-between; margin-top: 16px; }
+@media (max-width: 480px) {
+    .review-row { flex-direction: column; gap: 4px; }
+    .review-row dd { text-align: start; }
+}
+</style>
