@@ -84,17 +84,12 @@ class UpdateRestaurantProfileRequest extends FormRequest
             // NOT NULL, so it can be changed but never cleared.
             'brand_color' => ['sometimes', 'required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'menu_layout' => ['sometimes', 'required', Rule::enum(MenuLayout::class)],
-            // Content languages (XORD-005): which languages the restaurant writes
-            // its menu in. Editable here since 2026-10-25; before that only the
-            // Super Admin could change them. The three choices the form offers
-            // are bilingual+primary, Arabic only and English only; a request
-            // that sends neither key leaves them alone.
-            'bilingual' => ['sometimes', 'boolean'],
-            'default_language' => ['sometimes', 'in:ar,en'],
-            // secondary_color and the ordering channel (ordering_mode) stay
-            // Super-Admin-only: the public menu does not use a second colour
-            // yet, and the channel follows the plan. Any such keys in the
-            // payload are ignored (never reach ->update(validated())).
+            // secondary_color, the content languages (bilingual,
+            // default_language) and the ordering channel (ordering_mode) stay
+            // Super-Admin-only (owner decision 2026-11-07 for the languages:
+            // one setting for the whole business, set by the platform). Any
+            // such keys in the payload are ignored (never reach
+            // ->update(validated())).
         ];
     }
 

@@ -34,11 +34,6 @@ function readLanguageChoice() {
 // Read at load and again whenever the stored setting changes underneath us (a
 // colleague saved it, or our own save refreshed the session).
 watch([bilingual, defaultLang], readLanguageChoice, { immediate: true })
-function languagePayload() {
-    return languageChoice.value === 'both'
-        ? { bilingual: true, default_language: defaultLang.value }
-        : { bilingual: false, default_language: languageChoice.value }
-}
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
@@ -131,7 +126,7 @@ async function submit() {
         await ensureCsrf()
         // Blank number inputs arrive as '' — send null so nullable/required_with
         // rules (e.g. latitude↔longitude) see a truly absent value.
-        const payload = { ...form, ...languagePayload() }
+        const payload = { ...form }
         // A half-typed colour would only come back as a 422 on the whole
         // profile; keep the saved one until the hex is complete.
         if (!colorValid.value) delete payload.brand_color
@@ -245,10 +240,13 @@ async function changePassword() {
             <section class="card sec" aria-labelledby="pf-languages">
                 <h2 id="pf-languages" class="h-card">{{ t('profile.sec_languages') }}</h2>
                 <p class="help">{{ t('profile.languages_hint') }}</p>
+                <!-- Shown, not edited: one setting for the whole business, set by
+                     the platform (owner decision 2026-11-07). -->
+                <p class="help">{{ t('profile.languages_platform_set') }}</p>
                 <div class="lang-options" role="radiogroup" :aria-labelledby="'pf-languages'">
                     <label v-for="opt in languageOptions" :key="opt.value" class="lang-opt" :class="{ on: languageChoice === opt.value }">
                         <input type="radio" name="content-language" :value="opt.value" v-model="languageChoice"
-                            :disabled="!canUpdate" :data-test="'lang-' + opt.value" />
+                            disabled :data-test="'lang-' + opt.value" />
                         {{ t(opt.label) }}
                     </label>
                 </div>

@@ -69,8 +69,14 @@ class PosConfigVersion
         // Only the two branding fields the bundle's `branding` block carries.
         // `wasChanged`, not `isDirty`: this runs after the save, and a profile
         // form that posts the same logo back changes nothing and bumps nothing.
+        // The colour compares case-blind: #F89A06 and #f89a06 are one accent,
+        // and re-saving the same colour in other case must not make every till
+        // re-download the bundle.
         Restaurant::updated(function (Restaurant $restaurant): void {
-            if ($restaurant->wasChanged(['logo_url', 'brand_color'])) {
+            $colourChanged = $restaurant->wasChanged('brand_color')
+                && strtolower((string) $restaurant->getOriginal('brand_color'))
+                    !== strtolower((string) $restaurant->brand_color);
+            if ($restaurant->wasChanged('logo_url') || $colourChanged) {
                 self::bump($restaurant);
             }
         });

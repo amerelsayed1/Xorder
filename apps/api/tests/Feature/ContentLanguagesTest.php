@@ -45,56 +45,35 @@ class ContentLanguagesTest extends TestCase
 
     // ------------------------------------------------------------- the setting
 
-    public function test_the_owner_chooses_each_of_the_three_combinations(): void
+    // Owner decision, 2026-11-07: the business's content languages are set by
+    // the Super Admin only. The owner's Profile save ignores them, as it does
+    // the secondary colour and the ordering channel.
+    public function test_the_owner_cannot_change_the_content_languages(): void
     {
-        $owner = $this->owner();
+        $owner = $this->owner('ar', true);
         $restaurant = $owner->restaurant;
+        $before = (int) $restaurant->fresh()->pos_config_version;
 
         foreach ([
             ['bilingual' => false, 'default_language' => 'ar'],
             ['bilingual' => false, 'default_language' => 'en'],
-            ['bilingual' => true, 'default_language' => 'en'],
-        ] as $choice) {
-            $this->actingAs($owner)->putJson('/api/dashboard/restaurant', $choice)->assertOk();
+            ['default_language' => 'fr'],
+        ] as $attempt) {
+            $this->actingAs($owner)->putJson('/api/dashboard/restaurant', $attempt)->assertOk();
             $fresh = $restaurant->fresh();
-            $this->assertSame($choice['default_language'], $fresh->default_language->value);
-            $this->assertSame($choice['bilingual'], (bool) $fresh->bilingual);
+            $this->assertSame('ar', $fresh->default_language->value);
+            $this->assertTrue((bool) $fresh->bilingual);
         }
+        $this->assertSame($before, (int) $restaurant->fresh()->pos_config_version, 'nothing changed, the tills are not told');
     }
 
-    public function test_staff_with_settings_update_may_and_staff_without_it_may_not(): void
+    public function test_staff_without_settings_update_still_cannot_save_the_profile(): void
     {
         $owner = $this->owner();
-        $restaurant = $owner->restaurant;
+        $denied = $this->staffWith($owner->restaurant, ['settings.view']);
 
-        $allowed = $this->staffWith($restaurant, ['settings.view', 'settings.update']);
-        $this->actingAs($allowed)->putJson('/api/dashboard/restaurant', ['bilingual' => false, 'default_language' => 'ar'])->assertOk();
-
-        $denied = $this->staffWith($restaurant, ['settings.view']);
-        $this->actingAs($denied)->putJson('/api/dashboard/restaurant', ['bilingual' => true])->assertForbidden();
-        $this->assertFalse((bool) $restaurant->fresh()->bilingual, 'the refused request changed nothing');
-    }
-
-    public function test_only_arabic_or_english_is_accepted(): void
-    {
-        $owner = $this->owner();
-
-        $this->actingAs($owner)->putJson('/api/dashboard/restaurant', ['default_language' => 'fr'])
-            ->assertUnprocessable()->assertJsonValidationErrors('default_language');
-    }
-
-    public function test_a_language_change_tells_the_tills_and_an_unchanged_one_does_not(): void
-    {
-        $owner = $this->owner('ar', true);
-        $restaurant = $owner->restaurant;
-
-        $before = (int) $restaurant->fresh()->pos_config_version;
-        $this->actingAs($owner)->putJson('/api/dashboard/restaurant', ['bilingual' => false])->assertOk();
-        $afterChange = (int) $restaurant->fresh()->pos_config_version;
-        $this->assertGreaterThan($before, $afterChange);
-
-        $this->actingAs($owner)->putJson('/api/dashboard/restaurant', ['bilingual' => false, 'default_language' => 'ar'])->assertOk();
-        $this->assertSame($afterChange, (int) $restaurant->fresh()->pos_config_version);
+        $this->actingAs($denied)->putJson('/api/dashboard/restaurant', ['bilingual' => false])->assertForbidden();
+        $this->assertTrue((bool) $owner->restaurant->fresh()->bilingual);
     }
 
     // ----------------------------------------------------------- what is required
@@ -194,9 +173,10 @@ class ContentLanguagesTest extends TestCase
         $owner = $this->owner('ar', true);
         $cat = Category::factory()->for($owner->restaurant)->create(['name_ar' => 'مشروبات', 'name_en' => 'Drinks']);
 
-        $this->actingAs($owner)->putJson('/api/dashboard/restaurant', ['bilingual' => false])->assertOk();
+        // Switched by the Super Admin (the owner cannot, see above).
+        $owner->restaurant->update(['bilingual' => false]);
         $this->actingAs($owner)->putJson("/api/dashboard/categories/{$cat->id}", ['name_ar' => 'مشروبات', 'name_en' => null])->assertOk();
-        $this->actingAs($owner)->putJson('/api/dashboard/restaurant', ['bilingual' => true])->assertOk();
+        $owner->restaurant->update(['bilingual' => true]);
 
         $this->assertSame('Drinks', $cat->fresh()->name_en);
     }

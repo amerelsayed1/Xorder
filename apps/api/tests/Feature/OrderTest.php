@@ -426,9 +426,9 @@ class OrderTest extends TestCase
         $admin = User::factory()->restaurantAdmin($r->id)->create();
         $this->enableSystemOrdering($r);
 
-        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload())->assertCreated();
-        $this->postJson("/api/public/restaurants/{$r->slug}/orders", array_merge($this->payload(), ['customer_name' => 'Second Guest']))->assertCreated();
-        $this->postJson("/api/public/restaurants/{$other->slug}/orders", array_merge($this->payload(), ['customer_name' => 'Foreign Guest']))->assertCreated();
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload($r))->assertCreated();
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", array_merge($this->payload($r), ['customer_name' => 'Second Guest']))->assertCreated();
+        $this->postJson("/api/public/restaurants/{$other->slug}/orders", array_merge($this->payload($other), ['customer_name' => 'Foreign Guest']))->assertCreated();
 
         $first = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->orderBy('id')->first();
         $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$first->id}/status", ['status' => 'CANCELLED', 'reason' => 'No answer'])
