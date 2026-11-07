@@ -78,8 +78,43 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
     cloudBacked: ref.read(deploymentProvider).mode == DeploymentMode.cloud,
   );
 
+  /// Look for the platform's number (XORD-058).
+  ///
+  /// A cloud till's slip opens PROVISIONAL and the drain brings the number
+  /// back a second or so later. Asked once now — the drain may already have
+  /// landed — and again after every pass that delivered something, until the
+  /// number is here. The slip keeps its time: only the number and the sync
+  /// note change, so what is printed after that is the numbered invoice.
+  Future<void> _lookForNumber() async {
+    final data = _slip();
+    if (data.invoiceNumber != null || data.syncNote == ReceiptSyncNote.none) {
+      return;
+    }
+    final String? number;
+    try {
+      number = await ref
+          .read(ordersRepositoryProvider)
+          .platformInvoiceNumber(ticket.id);
+    } catch (_) {
+      // The slip already says PROVISIONAL, which stays true. A reprint from
+      // history picks the number up later.
+      return;
+    }
+    if (number == null || !mounted || _data?.invoiceNumber != null) return;
+    setState(() => _data = data.numbered(number!));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      if (mounted) _lookForNumber();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(salesDeliveredProvider, (_, _) => _lookForNumber());
     final session = ref.watch(sessionProvider).valueOrNull;
     final strings = context.strings;
 

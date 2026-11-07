@@ -173,6 +173,35 @@ class ReceiptData {
     );
   }
 
+  /// This slip once the platform has numbered the sale (XORD-058): the same
+  /// paper, time included, carrying [invoice] and saying it reached the
+  /// platform.
+  ReceiptData numbered(String invoice) => ReceiptData(
+    invoiceNumber: invoice,
+    orderType: orderType,
+    tableLabel: tableLabel,
+    occurredAt: occurredAt,
+    lines: lines,
+    subtotal: subtotal,
+    discount: discount,
+    service: service,
+    vat: vat,
+    total: total,
+    paid: paid,
+    change: change,
+    serviceBp: serviceBp,
+    taxLines: taxLines,
+    discountBp: discountBp,
+    payments: payments,
+    taxFromDeviceConfig: taxFromDeviceConfig,
+    syncNote: syncNote == ReceiptSyncNote.none
+        ? ReceiptSyncNote.none
+        : ReceiptSyncNote.synced,
+    refunded: refunded,
+    isReprint: isReprint,
+    etaQrPayload: etaQrPayload,
+  );
+
   /// The same slip, rebuilt from the ledger.
   ///
   /// **The VAT rate comes from `pos_order_taxes`**, the per-rate breakdown

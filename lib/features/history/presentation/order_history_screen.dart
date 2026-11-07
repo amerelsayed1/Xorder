@@ -683,6 +683,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         final order = data[index];
         return _OrderRow(
           order: order,
+          syncsToPlatform: ref
+              .watch(deploymentProvider)
+              .mode
+              .syncsSalesToPlatform,
           preset: _layout,
           selected: order.id == _selectedId,
           onTap: () => setState(() => _selectedId = order.id),
@@ -923,12 +927,17 @@ class _SummaryStrip extends StatelessWidget {
 class _OrderRow extends StatelessWidget {
   const _OrderRow({
     required this.order,
+    required this.syncsToPlatform,
     required this.preset,
     required this.selected,
     required this.onTap,
   });
 
   final OrderRecord order;
+
+  /// A cloud till lists a sale the platform has not numbered as provisional
+  /// (XORD-058).
+  final bool syncsToPlatform;
   final HistoryPreset preset;
   final bool selected;
   final VoidCallback onTap;
@@ -1004,7 +1013,10 @@ class _OrderRow extends StatelessWidget {
         SizedBox(
           width: _Cols.invoice,
           child: MonoCode(
-            order.invoiceNumber,
+            order.shownInvoice(
+              syncsToPlatform: syncsToPlatform,
+              provisional: strings.provisionalInvoice,
+            ),
             size: 12.5,
             color: dead ? pos.muted : pos.ink,
           ),

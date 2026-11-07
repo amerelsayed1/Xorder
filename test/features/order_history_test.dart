@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/excel_export.dart';
 import 'package:xorder_pos/app/labels.dart';
 import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
@@ -67,6 +68,7 @@ void main() {
     String? customer,
     String? customerPhone,
     String? customerEmail,
+    bool platformNumbered = true,
   }) => OrderRecord(
     id: id,
     clientTransactionId: 'txn-$id',
@@ -96,6 +98,7 @@ void main() {
     customerName: customer,
     customerPhone: customerPhone,
     customerEmail: customerEmail,
+    platformNumbered: platformNumbered,
   );
 
   setUp(() {
@@ -128,6 +131,7 @@ void main() {
     List<Refund> refunds = const [],
     DateTime? openedAt,
     HistoryPreset preset = HistoryPreset.all,
+    DeploymentMode? mode,
   }) async {
     final repository = FakeOrderHistoryRepository(
       orders: orders,
@@ -147,6 +151,15 @@ void main() {
           tenderTypesAllProvider.overrideWith((ref) async => tenders),
           businessDayProvider.overrideWith((ref) async => businessDay),
           refundsForOrderProvider.overrideWith((ref, _) async => refunds),
+          if (mode != null)
+            deploymentProvider.overrideWith(
+              () => _FixedDeployment(
+                DeploymentConfig.unconfigured.copyWith(
+                  mode: mode,
+                  baseUrl: 'https://xorder.io',
+                ),
+              ),
+            ),
         ],
         child: MaterialApp(
           locale: Locale(locale),
@@ -716,6 +729,59 @@ void main() {
       expect(find.text('Koshari'), findsOneWidget);
       expect(find.text('Served by: Nour Adel'), findsOneWidget);
       expect(find.text('Cash'), findsOneWidget);
+    });
+
+    testWidgets("a cloud till lists a sale the platform has not numbered as "
+        'provisional (XORD-058)', (tester) async {
+      final waiting = order(
+        id: 1,
+        invoice: 'BR8-000007',
+        occurredAt: at(10),
+        platformNumbered: false,
+      );
+      final sent = order(
+        id: 2,
+        invoice: 'BR8-2026-000013',
+        occurredAt: at(12),
+        platformNumbered: true,
+      );
+      await pump(
+        tester,
+        orders: [waiting, sent],
+        details: {1: detail(waiting)},
+        mode: DeploymentMode.cloud,
+      );
+
+      // The till's own number is not what the dashboard calls this sale.
+      expect(find.text('BR8-000007'), findsNothing);
+      expect(find.text('PROVISIONAL'), findsOneWidget);
+      expect(find.text('BR8-2026-000013'), findsOneWidget);
+
+      await tester.tap(find.text('PROVISIONAL'));
+      await tester.pumpAndSettle();
+      // The list row and the detail header.
+      expect(find.text('PROVISIONAL'), findsNWidgets(2));
+      expect(find.text('Koshari'), findsOneWidget);
+    });
+
+    testWidgets("an offline till lists its own number, as before", (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        orders: [
+          order(
+            id: 1,
+            invoice: 'BR8-000007',
+            occurredAt: at(10),
+            platformNumbered: false,
+          ),
+        ],
+        mode: DeploymentMode.offline,
+      );
+
+      expect(find.text('BR8-000007'), findsOneWidget);
+      expect(find.text('PROVISIONAL'), findsNothing);
     });
 
     testWidgets('a voided line stays on the record and names who', (
@@ -1928,4 +1994,13 @@ class _Viewer extends SignedInStaffController {
 
   @override
   PosStaff? build() => staff;
+}
+
+class _FixedDeployment extends DeploymentController {
+  _FixedDeployment(this.value);
+
+  final DeploymentConfig value;
+
+  @override
+  DeploymentConfig build() => value;
 }

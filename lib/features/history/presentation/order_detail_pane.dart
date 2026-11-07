@@ -91,7 +91,15 @@ class _Detail extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _head(context, strings, order),
+        _head(
+          context,
+          strings,
+          order,
+          syncsToPlatform: ref
+              .watch(deploymentProvider)
+              .mode
+              .syncsSalesToPlatform,
+        ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -145,7 +153,12 @@ class _Detail extends ConsumerWidget {
     );
   }
 
-  Widget _head(BuildContext context, AppStrings strings, OrderRecord order) {
+  Widget _head(
+    BuildContext context,
+    AppStrings strings,
+    OrderRecord order, {
+    required bool syncsToPlatform,
+  }) {
     final pos = context.pos;
     final where = [
       order.orderType.label(strings),
@@ -165,7 +178,13 @@ class _Detail extends ConsumerWidget {
             children: [
               Expanded(
                 child: MonoCode(
-                  order.invoiceNumber,
+                  // XORD-058: the dashboard never shows a cloud till's own
+                  // number, so until the platform numbers the sale it is
+                  // provisional here too.
+                  order.shownInvoice(
+                    syncsToPlatform: syncsToPlatform,
+                    provisional: strings.provisionalInvoice,
+                  ),
                   size: 15,
                   weight: FontWeight.w600,
                   color: pos.ink,

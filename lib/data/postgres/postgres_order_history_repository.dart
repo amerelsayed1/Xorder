@@ -87,7 +87,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         o.served_by, taken.minor, given_back.minor, $paymentStatusSql,
         trading.business_date, o.terminal_id::text, term.name,
         tenders.labels, tenders.type_ids,
-        o.customer_id, cust.name, cust.phone, cust.email''';
+        o.customer_id, cust.name, cust.phone, cust.email,
+        length(coalesce(o.server_invoice_number, '')) > 0''';
 
   /// The joins [_orderColumns] needs.
   ///
@@ -241,6 +242,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       customerName: row[31] as String?,
       customerPhone: row[32] as String?,
       customerEmail: row[33] as String?,
+      platformNumbered: row[34] as bool,
     );
   }
 

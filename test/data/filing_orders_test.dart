@@ -163,6 +163,10 @@ class _Orders implements OrdersRepository {
   Future<int> pendingSyncCount() async => 3;
 
   @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) async =>
+      null;
+
+  @override
   Future<SubmitOrderResult> voidOrder(
     Ticket ticket, {
     required PosStaff by,

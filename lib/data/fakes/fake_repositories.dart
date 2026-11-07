@@ -806,6 +806,13 @@ class FakeOrdersRepository implements OrdersRepository {
   @override
   Future<int> pendingSyncCount() async => submitted.length;
 
+  /// What a test says the platform numbered each sale, by transaction id.
+  final Map<String, String> platformNumbers = {};
+
+  @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) async =>
+      platformNumbers[clientTransactionId];
+
   /// Voided orders, kept apart from [submitted] so a test can assert that a
   /// void was not counted as a sale.
   final List<Ticket> voided = [];

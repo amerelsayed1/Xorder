@@ -194,6 +194,10 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
   @override
   Future<int> pendingSyncCount() async => 0;
 
+  @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) async =>
+      null;
+
   /// Refuses out loud, for the same reason [submit] does. A void that reported
   /// success while writing nowhere would tell a manager the waste was recorded
   /// when it was not.

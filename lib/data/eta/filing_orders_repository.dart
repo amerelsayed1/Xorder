@@ -83,6 +83,10 @@ class FilingOrdersRepository implements OrdersRepository {
   @override
   Future<int> pendingSyncCount() => _inner.pendingSyncCount();
 
+  @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) =>
+      _inner.platformInvoiceNumber(clientTransactionId);
+
   /// Not filed. A void is not a refund: it removes an order that was never
   /// completed, and there is no receipt to undo. A voided order that had
   /// already been filed is a **refund receipt**, which is its own document

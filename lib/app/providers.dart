@@ -1327,6 +1327,12 @@ void applySyncOutcome(ProviderContainer container, SyncOutcome outcome) {
     ..invalidate(heldSyncCountProvider)
     ..invalidate(heldSyncItemsProvider);
 
+  // Something reached the platform, so it may have brought invoice numbers
+  // back: an open receipt that still says PROVISIONAL looks again (XORD-058).
+  if (outcome.drain.delivered > 0) {
+    container.read(salesDeliveredProvider.notifier).state++;
+  }
+
   // Written on every pass, not only on rejection, so a till that gets
   // re-paired clears the banner by itself instead of carrying it until
   // someone restarts the app.
@@ -1351,6 +1357,14 @@ void applySyncOutcome(ProviderContainer container, SyncOutcome outcome) {
     container.invalidate(moneyConfigProvider);
   }
 }
+
+/// Goes up by one after every sync pass that delivered something (XORD-058).
+///
+/// Only a signal: a screen showing a sale the platform has not numbered yet
+/// watches it and asks again, rather than polling the database on a timer.
+final StateProvider<int> salesDeliveredProvider = StateProvider<int>(
+  (ref) => 0,
+);
 
 /// The platform no longer recognises this terminal's device credential.
 ///

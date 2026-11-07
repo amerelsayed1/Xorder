@@ -1323,6 +1323,10 @@ class SyncingOrdersRepository implements OrdersRepository {
   @override
   Future<int> pendingSyncCount() => _inner.pendingSyncCount();
 
+  @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) =>
+      _inner.platformInvoiceNumber(clientTransactionId);
+
   /// Kicks the drain too. A voided order is a row the platform has to hear
   /// about as much as a paid one — arguably more, since it is the one a
   /// business will be asked about.

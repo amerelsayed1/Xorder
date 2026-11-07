@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_order_history_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
@@ -128,5 +129,68 @@ void main() {
 
     expect(result.queued, isFalse);
     expect(result.invoiceNumber, startsWith('BR8-'));
+  });
+
+  // ── XORD-058 follow-up: the open receipt and the history find the number ──
+
+  Future<void> deliver(int orderId, String invoice) => db.query(
+    pg.config,
+    'UPDATE pos_orders SET server_invoice_number = @n WHERE id = @o',
+    parameters: {'o': orderId, 'n': invoice},
+  );
+
+  PostgresOrderHistoryRepository history() => PostgresOrderHistoryRepository(
+    database: db,
+    config: pg.config,
+    businessId: businessId,
+    branchId: branchId,
+  );
+
+  test("the open receipt finds the platform's number once it is back",
+      () async {
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4';
+    final repo = orders(DeploymentMode.cloud);
+    final sale = await repo.submit(paidSale(id));
+
+    expect(await repo.platformInvoiceNumber(id), isNull,
+        reason: 'not delivered yet: the slip stays PROVISIONAL');
+    await deliver(sale.serverId!, 'BR8-2026-000009');
+    expect(await repo.platformInvoiceNumber(id), 'BR8-2026-000009');
+    expect(await repo.platformInvoiceNumber('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'),
+        isNull, reason: 'an unknown sale has no number');
+  });
+
+  test('an offline till never reports a platform number', () async {
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5';
+    final repo = orders(DeploymentMode.offline);
+    await repo.submit(paidSale(id));
+    expect(await repo.platformInvoiceNumber(id), isNull);
+  });
+
+  test('history says whether the platform has numbered a sale', () async {
+    final repo = orders(DeploymentMode.cloud);
+    final waiting = await repo.submit(paidSale('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa6'));
+    final sent = await repo.submit(paidSale('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7'));
+    await deliver(sent.serverId!, 'BR8-2026-000010');
+
+    final before = (await history().detail(waiting.serverId!))!.order;
+    expect(before.platformNumbered, isFalse);
+    expect(
+      before.shownInvoice(syncsToPlatform: true, provisional: 'PROVISIONAL'),
+      'PROVISIONAL',
+    );
+    // An offline till's own number is the invoice, numbered or not.
+    expect(
+      before.shownInvoice(syncsToPlatform: false, provisional: 'PROVISIONAL'),
+      before.invoiceNumber,
+    );
+
+    final after = (await history().detail(sent.serverId!))!.order;
+    expect(after.platformNumbered, isTrue);
+    expect(after.invoiceNumber, 'BR8-2026-000010');
+    expect(
+      after.shownInvoice(syncsToPlatform: true, provisional: 'PROVISIONAL'),
+      'BR8-2026-000010',
+    );
   });
 }

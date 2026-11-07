@@ -232,6 +232,7 @@ class OrderRecord {
     this.customerName,
     this.customerPhone,
     this.customerEmail,
+    this.platformNumbered = true,
   });
 
   /// The day `served_by` became trustworthy.
@@ -246,6 +247,20 @@ class OrderRecord {
   final int id;
   final String clientTransactionId;
   final String invoiceNumber;
+
+  /// False only for a cloud till's sale the platform has not numbered yet
+  /// (XORD-058): [invoiceNumber] is then the till's local sequence, which the
+  /// dashboard never shows, so a cloud till lists it as provisional. True by
+  /// default, so a record built without asking the ledger shows its number as
+  /// it always did; the PostgreSQL history reads it from the row.
+  final bool platformNumbered;
+
+  /// What the history shows as this sale's number: on a till that sends its
+  /// sales to the platform, [provisional] until the platform has numbered it.
+  String shownInvoice({
+    required bool syncsToPlatform,
+    required String provisional,
+  }) => syncsToPlatform && !platformNumbered ? provisional : invoiceNumber;
   final OrderStatus status;
   final OrderType orderType;
   final DateTime occurredAt;
@@ -266,6 +281,7 @@ class OrderRecord {
 
   final DateTime? voidedAt;
   final String? voidedByName;
+
   /// The reason as configured, in both languages. Carried as text rather than
   /// as an id because a reason renamed next year must not rewrite what this
   /// void said when it happened.

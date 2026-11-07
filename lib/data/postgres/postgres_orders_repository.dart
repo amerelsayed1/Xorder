@@ -484,6 +484,21 @@ class PostgresOrdersRepository implements OrdersRepository {
     return rows.first[0] as int;
   }
 
+  @override
+  Future<String?> platformInvoiceNumber(String clientTransactionId) async {
+    if (!_config.mode.syncsSalesToPlatform) return null;
+    final rows = await _db.query(
+      _config,
+      "SELECT nullif(server_invoice_number, '') FROM pos_orders "
+      'WHERE business_id = @business AND client_transaction_id = @txn',
+      parameters: {
+        'business': _context.businessId,
+        'txn': clientTransactionId,
+      },
+    );
+    return rows.isEmpty ? null : rows.first[0] as String?;
+  }
+
   /// Allocate the next number for this branch and period.
   ///
   /// `FOR UPDATE` on the sequence row is what makes two tills settling at the

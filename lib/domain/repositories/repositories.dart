@@ -538,6 +538,14 @@ abstract interface class OrdersRepository {
   /// if this queue went away" wants both.
   Future<int> pendingSyncCount();
 
+  /// The invoice number the platform gave the sale [clientTransactionId], or
+  /// null while it has not given one (XORD-058).
+  ///
+  /// A cloud till's receipt opens PROVISIONAL and the drain brings the number
+  /// back seconds later; this is how the open receipt finds it. Always null on
+  /// an offline till, which has no platform to number anything.
+  Future<String?> platformInvoiceNumber(String clientTransactionId);
+
   /// Record an order that was made and then thrown away.
   ///
   /// **Only for a ticket the kitchen has already seen.** An unsent ticket that
