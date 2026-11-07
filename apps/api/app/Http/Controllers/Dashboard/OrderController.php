@@ -53,7 +53,6 @@ class OrderController extends Controller
         $tz = $restaurant->localTimezone();
 
         $query = $this->withListRelations($this->scopedQuery($request, $restaurant)())
-            ->with('table:id,label')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->latest();
 
@@ -177,6 +176,7 @@ class OrderController extends Controller
                 'canceller:id,name',
                 'completer:id,name',
                 'actingUser:id,name',
+                'table:id,label',
             ])
             ->withSum('payments', 'amount_minor');
     }
@@ -229,6 +229,26 @@ class OrderController extends Controller
         return response()->json([
             'data' => ['new_orders' => Order::where('status', OrderStatus::NEW)->count()],
         ]);
+    }
+
+    /**
+     * XORD-048: one order as its receipt read — invoice number, till, cashier,
+     * table, the money breakdown and each payment. Loaded here and not on the
+     * list, so the list never pays for payments it does not show. Another
+     * restaurant's order is a 404 through the tenant scope on the binding.
+     */
+    public function show(Order $order): JsonResponse
+    {
+        $order = $this->withListRelations(Order::whereKey($order->id))
+            ->with([
+                'posTerminal:id,name',
+                'diningArea:id,name_ar,name_en',
+                'payments' => fn ($q) => $q->orderBy('id'),
+                'payments.tenderType:id,name,kind',
+            ])
+            ->firstOrFail();
+
+        return response()->json(['data' => OrderResource::make($order)]);
     }
 
     public function updateStatus(Request $request, Order $order): JsonResponse

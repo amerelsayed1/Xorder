@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
+import { formatMinor, currencyExponent } from '../../lib/money.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
@@ -59,6 +60,20 @@ const updating = ref(null)
 const newIds = ref(new Set())
 const readAt = ref(null) // when the list was last read from the server
 const receiptOrder = ref(null) // order shown in the bill/receipt sheet, or null
+
+// XORD-048: the sheet opens at once with the list row, then swaps in the
+// details request — invoice number, till, cashier, table, the money breakdown
+// and payments, as the cashier's receipt carried them. If that request fails
+// the row's own fields stay on screen.
+async function openReceipt(order) {
+    receiptOrder.value = order
+    try {
+        const { data } = await api.get(`api/dashboard/orders/${order.id}`)
+        if (receiptOrder.value?.id === order.id) receiptOrder.value = data.data
+    } catch {
+        // Keep the list row; the sheet still shows what it has.
+    }
+}
 let pollTimer, offTick, searchTimer
 
 const filtersActive = computed(() => !!statusFilter.value || !!typeFilter.value || !!query.value.trim()
@@ -295,6 +310,22 @@ function handledLine(order) {
     return parts.join(' · ')
 }
 
+// The sheet's figures: stored minor units with the order's own currency.
+function sheetMoney(order, minor, { negative = false } = {}) {
+    return formatMinor(negative ? -minor : minor, currencyExponent(order.currency), currencyLabel(order.currency, locale.value))
+}
+const hasMinor = (v) => v != null && Number(v) !== 0
+// "T3 · Terrace": the table with its dining area, in the dashboard language.
+function tableLine(order) {
+    const a = order.dining_area
+    const area = a ? (locale.value === 'ar' ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)) : ''
+    return [order.table_label, area].filter(Boolean).join(' · ')
+}
+function fmtDateTime(iso) {
+    if (!iso) return ''
+    return new Date(iso).toLocaleString(locale.value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function fmtClock(iso) {
     if (!iso) return ''
     return new Date(iso).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
@@ -448,6 +479,7 @@ function fmtTime(iso) {
                                          identical in every other column, and they are not
                                          the same thing to a manager reading this list. -->
                                     <span v-if="order.source === 'pos'" class="src-tag">{{ t('order_source.pos') }}</span>
+                                    <span v-if="order.table_label" class="src-tag">{{ order.table_label }}</span>
                                 </td>
                                 <td class="c-cust">
                                     <button v-if="canOpenCustomer(order)" type="button" class="cust-link cell-strong" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
@@ -486,7 +518,7 @@ function fmtTime(iso) {
                                                 <Icon name="close" :size="16" />
                                             </button>
                                         </template>
-                                        <button type="button" class="btn btn-ghost btn-sm act" @click="receiptOrder = order">
+                                        <button type="button" class="btn btn-ghost btn-sm act" @click="openReceipt(order)">
                                             <Icon name="receipt" :size="14" />{{ t('orders.details') }}
                                         </button>
                                     </div>
@@ -536,16 +568,22 @@ function fmtTime(iso) {
         </div>
 
         <!-- Bill / receipt sheet -->
-        <Dialog v-if="receiptOrder" :title="receiptOrder.code" :subtitle="t('orders.receipt')" @close="receiptOrder = null">
+        <Dialog v-if="receiptOrder" :title="receiptOrder.invoice_number || receiptOrder.code"
+            :subtitle="receiptOrder.invoice_number ? `${receiptOrder.code} · ${t('orders.receipt')}` : t('orders.receipt')"
+            @close="receiptOrder = null">
             <div class="receipt">
                 <div class="receipt-meta">
                     <div class="receipt-meta-row">
                         <span style="color:var(--body)">{{ t('orders.time') }}</span>
-                        <span style="color:var(--ink)">{{ fmtTime(receiptOrder.created_at) }}</span>
+                        <span style="color:var(--ink)">{{ fmtDateTime(receiptOrder.created_at) }} · {{ fmtTime(receiptOrder.created_at) }}</span>
                     </div>
                     <div v-if="receiptOrder.order_type" class="receipt-meta-row">
                         <span style="color:var(--body)">{{ t('orders.type') }}</span>
                         <span class="badge badge-type">{{ orderTypeLabel(receiptOrder) }}</span>
+                    </div>
+                    <div v-if="tableLine(receiptOrder)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_table') }}</span>
+                        <span style="color:var(--ink)">{{ tableLine(receiptOrder) }}</span>
                     </div>
                     <div class="receipt-meta-row">
                         <span style="color:var(--body)">{{ t('orders.customer') }}</span>
@@ -558,6 +596,14 @@ function fmtTime(iso) {
                     <div v-if="branchName(receiptOrder)" class="receipt-meta-row">
                         <span style="color:var(--muted)">{{ t('orders.branch') }}</span>
                         <span style="color:var(--ink)">{{ branchName(receiptOrder) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.cashier_name" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.sheet_cashier') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.cashier_name }}</span>
+                    </div>
+                    <div v-if="receiptOrder.terminal_name" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.sheet_till') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.terminal_name }}</span>
                     </div>
                     <div v-if="receiptOrder.payment_status" class="receipt-meta-row">
                         <span style="color:var(--muted)">{{ t('orders.payment_label') }}</span>
@@ -600,9 +646,39 @@ function fmtTime(iso) {
 
                 <div class="receipt-divider"></div>
 
+                <div v-if="receiptOrder.subtotal_minor != null" class="receipt-meta receipt-sums">
+                    <div class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_subtotal') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.subtotal_minor) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.discount_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_discount') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.discount_minor, { negative: true }) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.charges_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_service') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.charges_minor) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.tax_minor != null" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_tax') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.tax_minor) }}</span>
+                    </div>
+                </div>
+
                 <div class="receipt-total">
                     <span>{{ t('orders.total') }}</span>
                     <span>{{ receiptOrder.total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
+                </div>
+
+                <div v-if="receiptOrder.payments?.length || hasMinor(receiptOrder.refunded_minor)" class="receipt-meta receipt-payments">
+                    <div v-for="(p, i) in receiptOrder.payments" :key="i" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ p.tender_name || t('orders.sheet_payment') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, p.amount_minor) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.refunded_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_refunded') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.refunded_minor, { negative: true }) }}</span>
+                    </div>
                 </div>
             </div>
         </Dialog>
@@ -723,6 +799,8 @@ function fmtTime(iso) {
 .receipt-meta { display: flex; flex-direction: column; gap: 8px; }
 .receipt-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14.5px; }
 .receipt-divider { height: 1px; background: var(--line); margin: 16px 0; }
+.receipt-sums { margin-bottom: 12px; }
+.receipt-payments { margin-top: 12px; }
 .receipt-items { display: flex; flex-direction: column; gap: 10px; }
 .receipt-line { display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
 .receipt-line-name { flex: 1 1 auto; color: var(--body); display: flex; flex-direction: column; gap: 2px; min-width: 0; }

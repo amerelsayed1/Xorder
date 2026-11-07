@@ -457,6 +457,8 @@ Route::prefix('dashboard')
                 Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
                 // CSV of everything the current filters match (not just a page).
                 Route::get('orders/export', [DashboardOrderController::class, 'export'])->middleware('throttle:10,1');
+                // XORD-048: one order with what its receipt carried (the sheet).
+                Route::get('orders/{order}', [DashboardOrderController::class, 'show'])->whereNumber('order');
             });
             Route::middleware('can:orders.update')
                 ->patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);

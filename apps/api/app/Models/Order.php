@@ -118,6 +118,12 @@ class Order extends Model
         return $this->belongsTo(User::class, 'completed_by');
     }
 
+    /** POS: the till that rang the sale up (null for QR orders, or once the till is deleted). */
+    public function posTerminal(): BelongsTo
+    {
+        return $this->belongsTo(PosTerminal::class);
+    }
+
     /** POS: the cashier who rang the sale up (null for QR orders). */
     public function actingUser(): BelongsTo
     {
