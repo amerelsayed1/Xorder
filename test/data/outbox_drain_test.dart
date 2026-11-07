@@ -136,6 +136,27 @@ void main() {
       expect(request['acting_user_id'], isNull);
       expect(request['shift_client_id'], isNull);
       expect(request['table_id'], isNull);
+      // A walk-in sends no customer at all, not a null one.
+      expect(request.containsKey('customer_id'), isFalse);
+    });
+
+    test('a sale for a customer names them by the platform id (G2)', () {
+      final request = OutboxDrain.buildOrderRequest(
+        clientTransactionId: 'txn',
+        branchId: 1,
+        orderType: 'takeaway',
+        currency: 'EGP',
+        exponent: 2,
+        occurredAt: DateTime.utc(2026),
+        subtotalMinor: 0,
+        serviceMinor: 0,
+        vatMinor: 0,
+        totalMinor: 0,
+        lines: const [],
+        payments: const [],
+        customerId: 501,
+      );
+      expect(request['customer_id'], 501);
     });
   });
 
@@ -447,16 +468,17 @@ void main() {
 
     /// One settled sale with no payments, queued — the smallest row the drain
     /// will send. Returns the outbox id and the key the platform sees.
-    Future<({int outboxId, String client})> queueSale() async {
+    Future<({int outboxId, String client})> queueSale({int? customerId}) async {
       invoice++;
       final orderId = (await db.query(
         pg.config,
         '''
         INSERT INTO pos_orders (client_transaction_id, business_id, branch_id,
           terminal_id, invoice_number, order_type, currency, exponent,
-          subtotal_minor, service_minor, vat_minor, total_minor, occurred_at)
+          subtotal_minor, service_minor, vat_minor, total_minor, occurred_at,
+          customer_id)
         VALUES (gen_random_uuid(), @r, @b, @t, @invoice, 'takeaway', 'EGP', 2,
-          10000, 0, 1400, 11400, now())
+          10000, 0, 1400, 11400, now(), @customer)
         RETURNING id
         ''',
         parameters: {
@@ -464,6 +486,7 @@ void main() {
           'b': branchId,
           't': terminalId,
           'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
+          'customer': customerId,
         },
       )).first[0]! as int;
       final row = (await db.query(
@@ -494,6 +517,124 @@ void main() {
           ..httpClientAdapter = platform,
       ),
     ).run();
+
+    /// A customer in the till's directory: [platformId] null is one created at
+    /// the counter that has not reached the platform; [queued] puts its record
+    /// in the sync queue the way the customers repository does. Returns the
+    /// local id and the key its upload carries.
+    Future<({int id, String client})> customer({
+      int? platformId,
+      bool queued = false,
+    }) async {
+      final row = (await db.query(
+        pg.config,
+        'INSERT INTO pos_customers (business_id, platform_id, '
+        '  client_transaction_id, name, phone) '
+        "VALUES (@r, @p, gen_random_uuid(), 'عامر السيد', '01001234567') "
+        'RETURNING id, client_transaction_id::text',
+        parameters: {'r': businessId, 'p': platformId},
+      )).first;
+      final id = row[0]! as int;
+      if (queued) {
+        // The sales above never needed the branch row; the sync queue's
+        // foreign key does.
+        await db.query(
+          pg.config,
+          'INSERT INTO pos_branches (id, business_id, code, name) '
+          "VALUES (@b, @r, 'MAADI', 'Maadi') ON CONFLICT (id) DO NOTHING",
+          parameters: {'b': branchId, 'r': businessId},
+        );
+        await db.query(
+          pg.config,
+          'INSERT INTO pos_sync_outbox (business_id, branch_id, event_type, '
+          '  source_id, client_transaction_id) '
+          "SELECT business_id, @b, 'customer', id, client_transaction_id "
+          'FROM pos_customers WHERE id = @id',
+          parameters: {'b': branchId, 'id': id},
+        );
+      }
+      return (id: id, client: row[1]! as String);
+    }
+
+    Map<String, Object?> orderSent(_ScriptedPlatform platform, String client) =>
+        platform.sent.lastWhere(
+          (body) =>
+              body['client_transaction_id'] == client &&
+              body.containsKey('lines'),
+        );
+
+    test('a sale names its customer by the platform id, a walk-in by none '
+        '(G2)', () async {
+      final known = await customer(platformId: 501);
+      final forKnown = await queueSale(customerId: known.id);
+      final walkIn = await queueSale();
+
+      final platform = _ScriptedPlatform({
+        forKnown.client: (accepted, Headers.jsonContentType),
+        walkIn.client: (accepted, Headers.jsonContentType),
+      });
+      final report = await drain(platform);
+
+      expect(report.delivered, 2);
+      expect(orderSent(platform, forKnown.client)['customer_id'], 501,
+          reason: 'the platform id, never the local row ${known.id}');
+      expect(orderSent(platform, walkIn.client).containsKey('customer_id'),
+          isFalse);
+    });
+
+    test('a sale waits behind a customer still on its way up, then names '
+        'them (G2)', () async {
+      final fresh = await customer(queued: true);
+      final sale = await queueSale(customerId: fresh.id);
+
+      // The customer's upload meets a captive portal: still queued, so the
+      // sale must not go — and must not go with the local id either.
+      final first = _ScriptedPlatform({
+        fresh.client: ('<html>Wi-Fi</html>', 'text/html'),
+        sale.client: (accepted, Headers.jsonContentType),
+      });
+      final report = await drain(first);
+      expect(report.delivered, 0);
+      expect(first.sent.where((b) => b.containsKey('lines')), isEmpty);
+      final waiting = await outboxRow(sale.outboxId);
+      expect(waiting[0], isNull, reason: 'not delivered');
+      expect(waiting[1], isNull, reason: 'not held for a person');
+      expect(waiting[2], OutboxDrain.customerNotYetOnPlatform);
+
+      // Next pass the customer lands first, and the sale names them.
+      final second = _ScriptedPlatform({
+        fresh.client: ('{"data":{"id":777}}', Headers.jsonContentType),
+        sale.client: (accepted, Headers.jsonContentType),
+      });
+      final next = await drain(second);
+      expect(next.delivered, 2, reason: 'the customer, then the sale');
+      expect(orderSent(second, sale.client)['customer_id'], 777);
+      final row = await outboxRow(sale.outboxId);
+      expect(row[0], isNotNull);
+      expect(row[2], isNull);
+    });
+
+    test('a customer held for a person does not hold the money: the sale '
+        'goes as a walk-in (G2)', () async {
+      final stuck = await customer(queued: true);
+      await db.query(
+        pg.config,
+        "UPDATE pos_sync_outbox SET quarantined_at = now(), "
+        "quarantine_code = 'VALIDATION_FAILED' WHERE source_id = @id "
+        "AND event_type = 'customer'",
+        parameters: {'id': stuck.id},
+      );
+      final sale = await queueSale(customerId: stuck.id);
+
+      final platform = _ScriptedPlatform({
+        sale.client: (accepted, Headers.jsonContentType),
+      });
+      final report = await drain(platform);
+
+      expect(report.delivered, 1);
+      expect(orderSent(platform, sale.client).containsKey('customer_id'),
+          isFalse);
+    });
 
     test('only the reply that carries the order back marks it delivered',
         () async {
@@ -708,12 +849,18 @@ class _ScriptedPlatform implements HttpClientAdapter {
   final Map<String, (String body, String contentType)> byClient;
   final (String, int, String)? _always;
 
+  /// Every request body this platform was sent, in order.
+  final sent = <Map<String, Object?>>[];
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (options.data case final Map data) {
+      sent.add(Map<String, Object?>.from(data));
+    }
     final (body, status, contentType) =
         _always ??
         switch (byClient[(options.data as Map)['client_transaction_id']]) {

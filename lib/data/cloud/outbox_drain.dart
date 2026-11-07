@@ -113,6 +113,18 @@ class OutboxDrain {
   /// safe even if the platform did write it behind the page.
   static const malformedAck = 'MALFORMED_ACK';
 
+  /// The `last_error` on a sale whose customer is still waiting to reach the
+  /// platform (G2).
+  ///
+  /// The sale names the platform's id for its customer, never the local row
+  /// number — a local id is meaningless there and could match somebody else's
+  /// customer. A customer created at the counter during an outage has no
+  /// platform id until its own record goes up, which the customer phase of
+  /// the same pass normally does first; while it is still queued, the sale
+  /// waits behind it. Deferred, never quarantined: nothing is wrong with
+  /// either record.
+  static const customerNotYetOnPlatform = 'CUSTOMER_NOT_YET_ON_PLATFORM';
+
   /// Whether a reply to `POST /api/pos/orders` proves the order exists there.
   ///
   /// The platform's own id is the proof, because it is the one field §006
@@ -182,11 +194,14 @@ class OutboxDrain {
     String? shiftClientId,
     DateTime? catalogSyncedAt,
     Map<String, Object?>? orderDiscount,
+    int? customerId,
   }) => {
     'client_transaction_id': clientTransactionId,
     'branch_id': branchId,
     'order_type': orderType,
     'table_id': tableId,
+    // The platform's id for the customer (G2); left out for a walk-in.
+    'customer_id': ?customerId,
     'acting_user_id': actingUserId,
     'shift_client_id': shiftClientId,
     'created_at': occurredAt.toUtc().toIso8601String(),
@@ -338,10 +353,17 @@ class OutboxDrain {
              o.table_id, o.currency, o.exponent, o.subtotal_minor,
              o.discount_minor, o.service_minor, o.vat_minor, o.total_minor,
              o.occurred_at, o.served_by, s.client_transaction_id,
-             o.business_id
+             o.business_id, o.customer_id, c.platform_id,
+             EXISTS (
+               SELECT 1 FROM pos_sync_outbox e
+                WHERE e.event_type = 'customer' AND e.source_id = o.customer_id
+                  AND e.business_id = o.business_id
+                  AND e.delivered_at IS NULL AND e.quarantined_at IS NULL
+             )
       FROM pos_outbox ob
       JOIN pos_orders o ON o.id = ob.order_id
       LEFT JOIN pos_shifts s ON s.id = o.shift_id
+      LEFT JOIN pos_customers c ON c.id = o.customer_id
       WHERE ob.delivered_at IS NULL AND ob.quarantined_at IS NULL
       ORDER BY ob.enqueued_at
       LIMIT $passLimit
@@ -365,6 +387,26 @@ class OutboxDrain {
         continue;
       }
 
+      // G2: who the sale was for, by the platform's id. A customer still on
+      // its way up holds the sale back a pass (see [customerNotYetOnPlatform]).
+      // One that will never get there — its record held for a person, or
+      // never queued — does not hold the money hostage: the sale goes without
+      // a customer, as a walk-in would.
+      final customerPlatformId = row[18] as int?;
+      if (row[17] != null && customerPlatformId == null && row[19] == true) {
+        await _db.query(
+          config,
+          '''
+          UPDATE pos_outbox
+             SET last_attempt_at = now(), last_error = @error
+           WHERE id = @id
+          ''',
+          parameters: {'id': outboxId, 'error': customerNotYetOnPlatform},
+        );
+        deferred++;
+        continue;
+      }
+
       final request = buildOrderRequest(
         clientTransactionId: clientTransactionId,
         branchId: row[3] as int,
@@ -383,6 +425,7 @@ class OutboxDrain {
         lines: await _linesFor(orderId),
         orderDiscount: await _orderDiscountFor(orderId),
         payments: payments.sendable,
+        customerId: customerPlatformId,
       );
 
       final reply = await api.submitOrder(request);
