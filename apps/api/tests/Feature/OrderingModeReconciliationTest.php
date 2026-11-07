@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\Feature;
 use App\Enums\OrderingMode;
 use App\Models\Category;
@@ -20,6 +21,8 @@ use Tests\TestCase;
  */
 class OrderingModeReconciliationTest extends TestCase
 {
+    use BuildsDinerOrders;
+
     use RefreshDatabase;
 
     /** Enable exactly the given feature keys on the restaurant. */
@@ -81,7 +84,7 @@ class OrderingModeReconciliationTest extends TestCase
             ->assertOk()->assertJsonPath('data.restaurant.ordering_mode', 'whatsapp');
 
         $this->postJson('/api/public/restaurants/nosys/orders', [
-            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => 10]],
+            'items' => $this->dinerItems([['name' => 'Item', 'qty' => 1, 'line_total' => 10]]),
             'total' => 10,
         ])->assertStatus(422);
 
@@ -92,7 +95,7 @@ class OrderingModeReconciliationTest extends TestCase
         MenuItem::factory()->for($sys)->for($cat2)->create();
 
         $this->postJson('/api/public/restaurants/hassys/orders', [
-            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => 10]],
+            'items' => $this->dinerItems([['name' => 'Item', 'qty' => 1, 'line_total' => 10]]),
             'total' => 10,
         ])->assertCreated();
         $this->assertDatabaseHas('orders', ['restaurant_id' => $sys->id, 'source' => 'system']);

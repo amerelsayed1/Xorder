@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\RestaurantStatus;
 use App\Models\Branch;
 use App\Models\DiningArea;
@@ -22,6 +23,8 @@ use Tests\TestCase;
  */
 class BranchWifiRequirementTest extends TestCase
 {
+    use BuildsDinerOrders;
+
     use RefreshDatabase;
 
     private Restaurant $restaurant;
@@ -77,7 +80,7 @@ class BranchWifiRequirementTest extends TestCase
     {
         return $this->withServerVariables(['REMOTE_ADDR' => $ip])
             ->postJson('/api/public/restaurants/cafe/orders', [
-                'items' => [['name' => 'Latte', 'qty' => 1, 'line_total' => 50]],
+                'items' => $this->dinerItems([['name' => 'Latte', 'qty' => 1, 'line_total' => 50]]),
                 'total' => 50,
                 'session_token' => $sessionToken,
             ]);

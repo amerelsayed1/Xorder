@@ -48,6 +48,9 @@ class MenuItemPublicResource extends JsonResource
                     'is_variant' => $g->is_variant,
                     'max_select' => $g->max_select,
                     'options' => $g->options->where('is_available', true)->map(fn ($o) => [
+                        // What the order names, so the server prices the
+                        // choice (XORD-047). Additive.
+                        'id' => $o->id,
                         'name_en' => $o->name_en,
                         'name_ar' => $o->name_ar,
                         'price' => $o->price,
