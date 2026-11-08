@@ -255,7 +255,8 @@ class DefaultLicenceService implements LicenceService {
 ///
 /// Mints a **self-signed** licence with a keypair generated at runtime, so the
 /// wizard is walkable end to end before a real licence server exists. It is
-/// wired only in debug builds — see `licenceServiceProvider`.
+/// bound only by tests (`fakeRepositoryOverrides`); the app binds the real
+/// verifier in `licenceServiceProvider`.
 class FakeLicenceService implements LicenceService {
   FakeLicenceService({DateTime Function()? clock, this.singleModeOnly = false})
     : _clock = clock ?? DateTime.now;

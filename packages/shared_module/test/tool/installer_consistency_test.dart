@@ -68,8 +68,26 @@ void main() {
 
   test('the upgrade identity never changes', () {
     // Windows knows a later installer is an upgrade by this id alone. A new
-    // one would install a second copy beside the first.
-    expect(iss, contains('AppId={{6B0C8F3E-2B6A-4F43-9C8D-58E4A1B7D9C2}'));
+    // one would install a second copy beside the first. One id per app since
+    // pos-split-apps (D6); the single app's old id is only ever looked for, so
+    // the new installers can refuse to go in beside it (D5).
+    const offline = '541470B8-9655-4C8B-B613-BDE215C517D6';
+    const cloud = 'CFE3951B-E0DC-4C64-908C-5BCAB02681F5';
+    const legacy = '6B0C8F3E-2B6A-4F43-9C8D-58E4A1B7D9C2';
+    expect(iss, contains('#define OfflineGuid "$offline"'));
+    expect(iss, contains('#define CloudGuid "$cloud"'));
+    expect(iss, contains('#define LegacyGuid "$legacy"'));
+    expect(iss, contains('AppId={#AppIdSetup}'));
+    expect(iss, isNot(contains('AppId={{$legacy')));
+
+    // The workflow repeats the three for its refusal check; one changed in
+    // only one of the two files would test the wrong key.
+    final workflow = File(
+      '../../.github/workflows/windows-installer.yml',
+    ).readAsStringSync();
+    expect(workflow, contains("OFFLINE_GUID: '$offline'"));
+    expect(workflow, contains("CLOUD_GUID: '$cloud'"));
+    expect(workflow, contains("LEGACY_GUID: '$legacy'"));
   });
 
   test('passwords reach pos_migrate through the environment, never argv', () {

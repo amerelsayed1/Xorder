@@ -2,13 +2,14 @@ import 'lan_tls.dart';
 
 /// Where this terminal's authoritative server lives.
 ///
-/// On-premises is deliberately **a configuration choice, not a second product**.
-/// Both modes talk to the same Laravel API, over the same contracts, backed by
-/// the same schema — `apps/api` already ships a `docker-compose.yml`
-/// (app + scheduler + web + postgres) and already runs on SQLite or Postgres
-/// interchangeably. A branch box is therefore packaging, not new engineering.
+/// **One mode per app (pos-split-apps, 2026-11-08).** This used to be "a
+/// configuration choice, not a second product"; it is now one codebase and two
+/// apps, "XOrder POS - Cloud" and "XOrder POS - Offline", each fixing its mode
+/// in `main` (`appModeProvider`). What has not changed: both modes talk to the
+/// same Laravel API, over the same contracts, backed by the same schema.
 ///
-/// See `docs/pos/08-deployment-modes.md` for the reasoning and the trade-offs.
+/// See `docs/pos/08-deployment-modes.md` for the original reasoning, and its
+/// superseded note.
 enum DeploymentMode {
   /// Terminals keep a local PostgreSQL of their own and sync it to the hosted
   /// platform. Outages are absorbed by the local database and the outbound

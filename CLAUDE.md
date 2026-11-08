@@ -33,7 +33,7 @@ fails if the shared package imports either app or the apps import each other.
 |---|---|
 | `lib/core/money/` | Integer **minor units**, half-up rounding, currency exponents |
 | `lib/core/ui/` | Design tokens (`tokens.dart`), Material theme, shared widgets |
-| `lib/core/config/` | Deployment mode (cloud/branch/islanded) + sync policy |
+| `lib/core/config/` | Deployment mode (`cloud` · `offline`, one per app) + sync policy |
 | `lib/core/security/` | Terminal fingerprint, PIN hashing |
 | `lib/domain/models/` | Catalog, ticket, table — **plain Dart, no Flutter** |
 | `lib/domain/services/ticket_engine.dart` | **Every ticket mutation and money rule.** Pure, unit-tested |
