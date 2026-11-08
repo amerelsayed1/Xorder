@@ -102,92 +102,81 @@ class TillDriver {
     fail('Ctrl+Shift+S did not open the setup wizard from the welcome screen');
   }
 
-  /// Walk first-run setup for a till on a branch server, end to end.
+  /// Walk first-run setup for a cloud till, end to end, the way an owner
+  /// does (pos-cloud-sign-in-setup): sign in, choose the branch, take the till
+  /// the dashboard made (or name a new one), let the connecting step build,
+  /// and open the till.
   ///
-  /// The database details are typed in rather than pre-seeded, so this covers
-  /// the path an installer actually takes: address, credential, *Test
-  /// connection*, and only then a licence and a pairing code.
+  /// There is no licence step and no platform field on this path: the licence
+  /// arrives in the bootstrap bundle, and the platform is the build's own —
+  /// run the suite with `--dart-define=XORDER_PLATFORM=…` to point it at a
+  /// local API. The database fields appear only on a machine the Windows
+  /// installer never ran on (no `install-credentials.json`), which is what a
+  /// developer's macOS is.
   Future<void> completeSetup({
-    required String databaseHost,
     required String databaseName,
     required int databasePort,
     required String databaseUser,
     required String databasePassword,
-    String pairingCode = 'MAADI-7Q42',
-    required String licenceFile,
-    /// The platform this till syncs to. Phase 1 builds the CLOUD path only —
-    /// the offline tile is dimmed until its phase lands — so the wizard is
-    /// walked as a cloud install talking to a local API.
-    required String platformUrl,
     required String tenantSlug,
+    required String ownerUsername,
+    required String ownerPassword,
   }) async {
     // 0 · The welcome screen. An unconfigured till shows the mark and nothing
-    // else; the wizard opens on a chord an installer knows (phase-1 owner
-    // decision), so a driver that walked straight into "Continue" was
-    // testing a screen that no longer greets anybody.
+    // else; the wizard opens on a chord an installer knows.
     await openSetupFromWelcome();
 
-    // 1 · Setup type. Cloud is preselected and Offline is dimmed until its
-    // phase lands, so this step is a confirmation on both paths today.
+    // 1 · Sign in, as the owner. The step's title says "Sign in" too, so the
+    // button is the last of them on screen.
+    await enterField('Business address', tenantSlug);
+    await enterField('Username', ownerUsername);
+    await enterField('Password', ownerPassword);
+    await show(find.text('Sign in').last);
+    await tester.tap(find.text('Sign in').last);
+    await settle();
+    await waitForTextContaining('Connected to');
     await tapButton('Continue');
 
-    // 2 · Language.
+    // 2 · Branch: the first one listed.
+    final branch = find.byType(InkWell);
+    if (branch.evaluate().isNotEmpty) {
+      await tester.tap(branch.first);
+      await settle();
+    }
     await tapButton('Continue');
 
-    // 3 · Connection. The mode was settled on step 1; this step asks where
-    // the platform is and where the till's own database lives. A cloud till
-    // keeps a local PostgreSQL of its own — the sale is written there first
-    // and drains afterwards — so the database fields matter on both paths.
-    await enterField('Platform address', platformUrl);
+    // 3 · Terminal: the till the dashboard made, when one is waiting (the
+    // wizard picks it), or a new one with the name typed here.
+    if (find.text('Register this terminal').evaluate().isNotEmpty) {
+      await enterField('Terminal name', 'E2E till');
+      await tapButton('Register this terminal');
+    } else {
+      await tapButton('Use this till');
+    }
+    await tapButton('Continue');
 
-    // Only offered when the licence covers more than one terminal — a one-till
-    // plan has no shared database to point at, and the wizard does not ask.
-    if (find.text('Database address').evaluate().isNotEmpty) {
-      await enterField('Database address', databaseHost);
+    // 4 · Connecting. Builds unasked where the installer left its
+    // credentials; asks for the database where it did not.
+    await waitForNoSpinner();
+    if (find.text('Use this database').evaluate().isNotEmpty) {
+      await enterField('Database name', databaseName);
+      await enterField('Port', databasePort.toString());
+      await enterField('Database user', databaseUser);
+      await enterField('Database password', databasePassword);
+      await enterField('Administrator role', databaseUser);
+      await enterField('$databaseUser password', databasePassword);
+      await tapButton('Use this database');
+      await waitForNoSpinner();
+    }
+    await tapButton('Continue');
+
+    // 5 · Hardware, when the printer scan was not conclusive — a till with
+    // nothing attached is a valid till.
+    if (find.text('Open the till').evaluate().isEmpty) {
+      await tapButton('Continue');
     }
 
-    await enterField('Database name', databaseName);
-    await enterField('Port', databasePort.toString());
-    await enterField('Database user', databaseUser);
-    await enterField('Database password', databasePassword);
-
-    // The button an installer leans on. If it lies about a real database the
-    // rest of this walk is worthless, so the suite spends a round trip on it.
-    await tapButton('Test connection');
-    await waitForNoSpinner();
-    await tapButton('Continue');
-
-    // 4 · Sign in, by pairing code — the provisioned path, where the branch and
-    // the till name come back from the platform instead of being typed. On the
-    // cloud path the tenant is typed here (no licence step precedes it: a
-    // cloud licence rides the bootstrap bundle at registration).
-    await enterField('Business', tenantSlug);
-    await tapButton('Setup code');
-    await enterField('Setup code', pairingCode);
-    await tapButton('Claim this terminal');
-    // The branch and the till name come back from the database, so the driver
-    // must not assert what they are — only that the claim landed.
-    await waitForTextContaining('Claimed as');
-    await tapButton('Continue');
-
-    // 5 · Branch and 6 · Terminal are confirmations on this path: the claim
-    // already filled them in.
-    await tapButton('Continue');
-    await tapButton('Continue');
-
-    // 7 · Hardware. Skipped deliberately — a till with nothing attached is a
-    // valid till, and setup must not stall on one.
-    await tapButton('Continue');
-
-    // 8 · Money.
-    await tapButton('Continue');
-
-    // 9 · Catalogue.
-    await tapButton('Download menu');
-    await waitForTextContaining('items cached on this terminal');
-    await tapButton('Continue');
-
-    // 10 · Ready.
+    // 6 · Ready.
     await tapButton('Open the till');
     await settle();
   }

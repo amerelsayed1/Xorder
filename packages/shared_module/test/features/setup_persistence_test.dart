@@ -779,10 +779,12 @@ void main() {
     });
   });
   group('a claim made on an earlier run', () {
-    const terminalId = '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10';
+    // The id the fake platform answers an adoption with.
+    const terminalId = 'fake-terminal-11';
 
-    /// The first launch: a licence activated, a code claimed, and the process
-    /// gone before "Open the till". The store handed in is all that survives.
+    /// The first launch: the owner signed in, the till adopted with the
+    /// licence its bundle carried, and the process gone before "Open the
+    /// till". The store handed in is all that survives.
     Future<void> firstRun(InMemorySetupProgressStore progress) async {
       final container = ProviderContainer(
         overrides: [
@@ -791,10 +793,15 @@ void main() {
         ],
       );
       final controller = container.read(setupProvider.notifier);
-      controller.setLicenceKey('DEV-KEY');
-      await controller.activateLicence();
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await controller.claimTerminal();
+      controller.setTenantSlug('mahsoub');
+      controller.setOperatorUsername(FakeProvisioningRepository.demoUsername);
+      controller.setOperatorPassword(FakeProvisioningRepository.demoPassword);
+      await controller.connectTenant();
+      // What the cloud app's claim hook does with the bundle's licence.
+      await controller.receiveBundleLicence(
+        (jsonDecode(_licenceFor('mahsoub')) as Map).cast<String, Object?>(),
+      );
+      await controller.registerTerminal();
       expect(container.read(setupProvider).claimed, isTrue);
       container.dispose();
     }
@@ -816,7 +823,7 @@ void main() {
       return container;
     }
 
-    test('is written the moment the code is spent', () async {
+    test('is written the moment the till is claimed', () async {
       final progress = InMemorySetupProgressStore();
       await firstRun(progress);
 
@@ -845,17 +852,17 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
-      expect(container.read(setupProvider).step, SetupStep.licence);
+      expect(container.read(setupProvider).step, SetupStep.account);
       await pumpEventQueue();
 
       final draft = container.read(setupProvider);
-      // Past the licence, the mode and the code — the three questions this
+      // Past the sign-in, the branch and the till — the questions this
       // machine already answered — and onto the screen that asks nothing.
       expect(draft.step, SetupStep.connecting);
       expect(draft.claimed, isTrue);
       expect(draft.terminalId, terminalId);
       expect(draft.terminalName, 'Counter 1');
-      expect(draft.branchId, 13);
+      expect(draft.branchId, 1);
       expect(draft.branchCode, 'MAADI');
       expect(draft.deployment.mode, DeploymentMode.cloud);
       // Judged again on the way in, and held for complete() to write.
@@ -1070,7 +1077,10 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          // The licence step is the offline app's: a cloud till has none and
+          // receives its licence in the bootstrap bundle instead
+          // (pos-cloud-sign-in-setup).
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           licenceServiceProvider.overrideWithValue(licences),
         ],
       );

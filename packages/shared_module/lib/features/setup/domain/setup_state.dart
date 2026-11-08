@@ -7,23 +7,11 @@ import '../../licensing/domain/license.dart';
 import '../../licensing/domain/license_verifier.dart' show LicenseFile;
 import '../../../core/security/pin_hash.dart';
 
-/// How this terminal is being set up (POS-BE-023).
-///
-/// Both paths land on the same `pos_terminals` row. The pairing code is the
-/// default because the alternative types a staff password into a machine that
-/// lives in a public room and may be stolen — a code that expires in a day is a
-/// much smaller thing to lose.
-enum SetupMethod { pairingCode, manual }
-
 /// The steps of first-run setup, in order.
 ///
 /// Deliberately one linear path with no branching screens: the person working
 /// through this is often the business owner rather than a technician, and a
 /// wizard that forks is a wizard that strands people.
-///
-/// [SetupMethod] does **not** fork it. A pairing code pre-fills the branch and
-/// terminal steps, so those screens become confirmations rather than questions
-/// — the same path, with the answers already written in.
 enum SetupStep {
   // The licence is step ONE (owner decision, 2026-09-06). It is the gate: a
   // terminal with no licence has nothing to set up, and asking anything else
@@ -40,6 +28,9 @@ enum SetupStep {
   // Activation therefore cannot depend on `base_url`, which does not exist yet.
   // It goes to the hosted platform directly (`PlatformEndpoint.licence`), or the
   // operator imports a signed file — see `licence_service.dart`.
+  //
+  // Offline only. A cloud till has no licence step: the owner signs in and the
+  // licence arrives in the bootstrap bundle (pos-cloud-sign-in-setup).
   licence,
   // Language used to come first, so that the licence refusals — the screens
   // most worth reading closely — would already be in the installer's language.
@@ -121,13 +112,6 @@ class SetupDraft {
     this.appMode,
     this.licenceFile,
     this.licenceKey = '',
-    // The main road on cloud (owner decision, 2026-09-15). The dashboard mints
-    // a code per terminal, and redeeming one is what lets the wizard stop
-    // asking: the branch, the till's name, its id and its sync policy all come
-    // back in the answer. Signing in with a staff password is still reachable —
-    // "sign in instead", on that screen — for a till registered by hand.
-    SetupMethod method = SetupMethod.pairingCode,
-    this.pairingCode = '',
     this.operatorUsername = '',
     this.operatorPassword = '',
     this.connected = false,
@@ -166,7 +150,7 @@ class SetupDraft {
     this.busy = false,
     this.error,
     this.notice,
-  }) : _chosenMethod = method;
+  });
 
   final SetupStep step;
   final String locale;
@@ -256,28 +240,6 @@ class SetupDraft {
   /// the only honest answer is this machine.
   bool get allowsSharedDatabase => maxTerminals > 1;
 
-  final SetupMethod _chosenMethod;
-
-  /// How this terminal is being set up.
-  ///
-  /// **Always [SetupMethod.manual] on anything but a cloud main device**,
-  /// whatever was stored. A pairing code is minted by a dashboard, and an
-  /// offline business has none; a child tablet has one available in principle
-  /// — its main device may well be cloud — but codes are issued per terminal to
-  /// the person installing the till, and a tablet signs in as a manager who
-  /// already exists instead.
-  ///
-  /// Normalised here rather than guarded at each reader, because the readers are
-  /// the wizard's path, its step titles, its panes and its gates. One of them
-  /// forgetting is a terminal with no button to register itself with — which is
-  /// exactly what happened to a child of a cloud main device the moment the
-  /// pairing code became the default.
-  SetupMethod get method =>
-      deployment.mode == DeploymentMode.cloud && !deployment.isChild
-      ? _chosenMethod
-      : SetupMethod.manual;
-
-  final String pairingCode;
   final String operatorUsername;
 
   /// True once the slug + credentials have been verified against the platform
@@ -306,15 +268,11 @@ class SetupDraft {
 
   /// The wizard's steps for the path being walked.
   ///
-  /// Every step is walked, including the licence. This used to hide the licence
-  /// step in cloud mode — a cloud terminal receives one inside the bootstrap
-  /// bundle at registration (POS-BE-015 §5), so there was nothing to type — but
-  /// that rule became circular the moment the licence started deciding the
-  /// mode: it hid the step on the strength of a mode the licence had not yet
-  /// been read to determine. The bundle still delivers a cloud licence; what it
-  /// no longer does is excuse this terminal from holding one before it picks
-  /// how to run. The Super Admin issues the key with the tenant, so an
-  /// installer on either path arrives with one in hand.
+  /// The offline path opens on the licence. The cloud path has none: each app
+  /// fixes its own mode (pos-split-apps), so the licence no longer has a mode
+  /// to decide, and a cloud till receives its licence in the bootstrap bundle
+  /// (POS-BE-015 §5), where it is checked before the till is called ready
+  /// (pos-cloud-sign-in-setup).
   ///
   /// **A child tablet walks a different, shorter path** — see [childSteps].
   /// **A cloud main device walks a shorter one too** — see [cloudSteps].
@@ -335,37 +293,23 @@ class SetupDraft {
     ];
   }
 
-  /// What a cloud main device is asked (owner decision, 2026-09-15: "cloud
-  /// setup should get everything from cloud, no need for asking anything").
+  /// What a cloud main device is asked: the owner signs in, and the platform
+  /// tells the till everything else (pos-cloud-sign-in-setup, D2–D6).
   ///
-  /// Everything struck off is something the platform already knows, so the
-  /// terminal is TOLD it rather than asking: the language, currency and menu
-  /// ride in the bootstrap bundle; the branch, the till's name, its id and its
-  /// sync policy ride in the claim; the database is the one the Windows
-  /// installer built, with the passwords it generated; the printer is whatever
-  /// is plugged in. What survives are the two genuine questions — a licence key
-  /// and a pairing code — because each is a secret nobody can guess on the
-  /// operator's behalf. The mode is not asked either: it is the app's.
+  /// There is no licence step and no pairing code. The owner's sign-in names
+  /// the business and lists its branches and its waiting tills; the claim
+  /// brings the device token; the bootstrap bundle brings the language, money,
+  /// menu and the licence itself, which is checked at [SetupStep.connecting]
+  /// before the till is called ready. The mode is not asked either: it is the
+  /// app's. The database is the one the Windows installer built.
   ///
-  /// Three steps come back when the answer stops being obvious, and only then:
-  ///
-  ///  * [SetupStep.hardware], when the scan found none or more than one printer
-  ///    — which printer prints the receipt is a fact only the person standing
-  ///    at the till holds.
-  ///  * [SetupStep.branch] and [SetupStep.terminal], on the sign-in path behind
-  ///    "sign in instead". A till registered by hand has no claim to read the
-  ///    branch and the name off, so it has to be asked for both.
-  ///
-  /// This does not contradict the "no fork" rule on [SetupStep] any more than
-  /// [childSteps] does: the mode is settled by the licence on screen one, before
-  /// anything has been typed into a screen that could strand somebody.
+  /// [SetupStep.hardware] comes back only when the scan found none or more
+  /// than one printer — which printer prints the receipt is a fact only the
+  /// person standing at the till holds.
   List<SetupStep> get cloudSteps => [
-    SetupStep.licence,
     SetupStep.account,
-    if (method == SetupMethod.manual) ...[
-      SetupStep.branch,
-      SetupStep.terminal,
-    ],
+    SetupStep.branch,
+    SetupStep.terminal,
     SetupStep.connecting,
     if (detectedPrinters != 1) SetupStep.hardware,
     SetupStep.summary,
@@ -478,8 +422,8 @@ class SetupDraft {
   /// must not promise a screen the wizard has not yet decided to skip.
   final int? detectedPrinters;
 
-  /// True once the server has confirmed this terminal. On the pairing path the
-  /// branch, name and id below were filled in by that response.
+  /// True once the server has confirmed this terminal (adopted or registered
+  /// at the terminal step).
   final bool claimed;
 
   final int? branchId;
@@ -562,14 +506,10 @@ class SetupDraft {
       deployment.isConfigured &&
           deployment.hasValidDatabaseName &&
           databasePassword.isNotEmpty,
-    // A pairing code must actually be redeemed before moving on, because
-    // everything after this step is the answer it returned. Manual setup
-    // only needs credentials — it registers at the terminal step, where the
-    // branch and till name it has to send are finally known.
-    // Both paths must have actually spoken to the platform before moving on,
-    // because everything after this step displays what came back. A pairing
-    // code is redeemed; credentials are connected — the owner's phase-1 flow:
-    // slug + admin credentials pull the tenant's configuration.
+    // Cloud: the owner must actually have signed in before moving on, because
+    // everything after this step displays what came back — the business, its
+    // branches and its waiting tills. It registers nothing: that happens at
+    // the terminal step, where the branch and till name are finally known.
     // Offline: the database has to exist and hold its first administrator.
     // This used to demand `connected` in every mode, which an offline till can
     // never satisfy — there is no platform to connect to — so the offline path
@@ -577,11 +517,7 @@ class SetupDraft {
     SetupStep.account when deployment.mode == DeploymentMode.offline =>
       bootstrapped,
     SetupStep.account =>
-      (deployment.tenantSlug?.isNotEmpty ?? false) &&
-          switch (method) {
-            SetupMethod.pairingCode => claimed,
-            SetupMethod.manual => connected,
-          },
+      (deployment.tenantSlug?.isNotEmpty ?? false) && connected,
     SetupStep.branch => branchId != null,
     // Registration is load-bearing in BOTH modes, and pretending otherwise was
     // a live contradiction: this rule used to let an offline terminal walk
@@ -614,8 +550,6 @@ class SetupDraft {
     DeploymentMode? appMode,
     LicenseFile? licenceFile,
     String? licenceKey,
-    SetupMethod? method,
-    String? pairingCode,
     String? operatorUsername,
     String? operatorPassword,
     bool? connected,
@@ -672,11 +606,6 @@ class SetupDraft {
     appMode: appMode ?? this.appMode,
     licenceFile: licenceFile ?? this.licenceFile,
     licenceKey: licenceKey ?? this.licenceKey,
-    // `_method` rather than `method`: the getter normalises, and copying
-    // through it would turn a cloud draft's pairing code into `manual` the
-    // moment it passed through an offline mode on its way somewhere else.
-    method: method ?? _chosenMethod,
-    pairingCode: pairingCode ?? this.pairingCode,
     operatorUsername: operatorUsername ?? this.operatorUsername,
     operatorPassword: operatorPassword ?? this.operatorPassword,
     connected: clearConnection ? false : (connected ?? this.connected),

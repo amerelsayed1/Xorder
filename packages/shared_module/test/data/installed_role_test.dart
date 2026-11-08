@@ -66,7 +66,9 @@ void main() {
       final draft = boot(null).read(setupProvider);
 
       expect(draft.deployment.isChild, isFalse);
-      expect(draft.step, SetupStep.licence);
+      // A main device's first screen, not a child's: on the default (cloud)
+      // mode that is the owner's sign-in (pos-cloud-sign-in-setup).
+      expect(draft.step, SetupStep.account);
     });
   });
 }

@@ -48,18 +48,6 @@ extension SyncPolicyLabel on SyncPolicy {
   };
 }
 
-extension SetupMethodLabel on SetupMethod {
-  String label(AppStrings s) => switch (this) {
-    SetupMethod.pairingCode => s.methodPairingCode,
-    SetupMethod.manual => s.methodManual,
-  };
-
-  String blurb(AppStrings s) => switch (this) {
-    SetupMethod.pairingCode => s.methodPairingCodeBlurb,
-    SetupMethod.manual => s.methodManualBlurb,
-  };
-}
-
 extension SetupStepLabel on SetupStep {
   /// [mode] retitles the one step whose MEANING changes with it.
   ///
@@ -72,22 +60,18 @@ extension SetupStepLabel on SetupStep {
   /// [role] does the same for a child tablet, whose connection step is finding
   /// the main device and whose sign-in is a manager who already exists there —
   /// never the first administrator, whom the main device created.
-  /// [method] retitles the cloud account step, which is no longer a sign-in:
-  /// a cloud main device is asked for a pairing code and nothing else (owner
-  /// decision, 2026-09-15). "Sign in" is still the right word for the path
-  /// behind "sign in instead", and for a child tablet, which really does sign
-  /// in as a manager the main device already has.
+  ///
+  /// On a cloud main device it is the owner's sign-in, the first step of the
+  /// path (pos-cloud-sign-in-setup).
   String title(
     AppStrings s, {
     DeploymentMode? mode,
     TerminalRole role = TerminalRole.main,
-    SetupMethod method = SetupMethod.manual,
   }) => switch (this) {
     SetupStep.deployment when role == TerminalRole.child => s.stepMainDevice,
     SetupStep.account when role == TerminalRole.child => s.stepAccount,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministrator,
-    SetupStep.account when method == SetupMethod.pairingCode => s.stepSetupCode,
     SetupStep.connecting => s.stepConnecting,
     SetupStep.language => s.stepLanguage,
     SetupStep.deployment => s.stepConnection,
@@ -105,7 +89,6 @@ extension SetupStepLabel on SetupStep {
     AppStrings s, {
     DeploymentMode? mode,
     TerminalRole role = TerminalRole.main,
-    SetupMethod method = SetupMethod.manual,
   }) => switch (this) {
     SetupStep.deployment when role == TerminalRole.child =>
       s.stepMainDeviceBlurb,
@@ -113,8 +96,8 @@ extension SetupStepLabel on SetupStep {
       s.stepChildAccountBlurb,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministratorBlurb,
-    SetupStep.account when method == SetupMethod.pairingCode =>
-      s.stepSetupCodeBlurb,
+    SetupStep.account when mode == DeploymentMode.cloud =>
+      s.stepOwnerSignInBlurb,
     SetupStep.connecting => s.stepConnectingBlurb,
     SetupStep.language => s.stepLanguageBlurb,
     SetupStep.deployment => s.stepConnectionBlurb,
@@ -244,6 +227,8 @@ String provisioningRefusal(
   'PAIRING_CODE_SPENT' || 'PAIRING_CODE_USED' => s.refusalPairingCodeSpent,
   'PAIRING_CODE_EXPIRED' => s.refusalPairingCodeExpired,
   'CREDENTIALS_REJECTED' => s.refusalCredentialsRejected,
+  // pos-cloud-sign-in-setup, D3: the till's own rule, not the server's.
+  'NOT_OWNER' => s.refusalNotOwner,
   'NO_BRANCHES' => s.refusalNoBranches,
   'BRANCH_UNKNOWN' => s.refusalBranchUnknown,
   // The variable half comes from the wizard's own state rather than from

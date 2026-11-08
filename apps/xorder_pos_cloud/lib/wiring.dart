@@ -12,7 +12,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,7 +22,6 @@ import 'package:shared_module/app/sales_sync.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/features/licensing/data/file_license_store.dart';
-import 'package:shared_module/features/licensing/data/licence_service.dart';
 import 'package:shared_module/data/unconfigured/unconfigured_repositories.dart';
 import 'package:shared_module/domain/models/branch_sales_source.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
@@ -154,17 +152,10 @@ ProvisioningRepository _provisioning(Ref ref) {
     // four that follow; `SetupController.complete()` is the only place a
     // licence reaches this machine's disk.
     installLicence: (licence) async {
-      final installed = await ref
-          .read(licenceServiceProvider)
-          .activate(
-            deployment: config,
-            key: '',
-            fileContents: jsonEncode(licence),
-            persist: false,
-          );
-      if (installed.file case final file?) {
-        ref.read(setupProvider.notifier).holdLicence(file);
-      }
+      // Verified against the draft — the business the owner signed in to —
+      // and its verdict kept, so the connecting step can refuse to call the
+      // till ready on a licence that cannot sell (pos-cloud-sign-in-setup).
+      await ref.read(setupProvider.notifier).receiveBundleLicence(licence);
       // Where this till takes its verdict from (POS-BE-031). Absent from an
       // older platform, and then nothing is recorded: the till keeps its file.
       if (licence['enforcement'] case final String enforcement) {

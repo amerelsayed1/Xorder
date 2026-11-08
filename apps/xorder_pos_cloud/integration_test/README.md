@@ -2,16 +2,20 @@
 
 ```bash
 POS_PG_HOST=127.0.0.1 POS_PG_USER=pos_till POS_PG_PASSWORD=… \
-POS_LICENCE_KEY=… \
+POS_PLATFORM_URL=http://localhost:8080 \
+POS_TENANT_SLUG=demo POS_TENANT_USER=… POS_TENANT_PASSWORD=… \
   flutter test integration_test -d macos \
+  --dart-define=XORDER_PLATFORM=http://localhost:8080 \
   --dart-define=POS_E2E_REQUIRED=true
 ```
 
-`POS_LICENCE_KEY` is the issuer's seed, so the licence verifies against the
-key compiled into the build as a customer's would. Leave it unset on a
-development machine: the suite then signs with a key minted for the run and
-carries its public half in the file, which a development build trusts (and a
-release build, rightly, does not).
+The wizard is walked the way an owner sets up a cloud till
+(pos-cloud-sign-in-setup): sign in with the business address and the
+**owner's** dashboard account (`POS_TENANT_USER` must be the
+`RESTAURANT_ADMIN`, or the till refuses it), choose the branch, take the till.
+There is no licence key and no platform field: the platform is the build's
+(`XORDER_PLATFORM`), and the licence arrives in the bootstrap bundle, so the
+tenant must hold a live **cloud** licence on that platform.
 
 For local convenience the suite skips itself when the database or the platform
 address is absent. The documented command sets `POS_E2E_REQUIRED`, turning

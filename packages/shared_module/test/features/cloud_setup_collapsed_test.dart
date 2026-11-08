@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -165,6 +166,22 @@ class _PrintersFound implements HardwarePorts {
   }) async => true;
 }
 
+/// [_licence] as the bootstrap bundle carries it: a JSON object.
+Map<String, Object?> _bundled(Set<DeploymentMode> modes) =>
+    (jsonDecode(_licence(modes).serialize()) as Map).cast<String, Object?>();
+
+/// Await [work] inside a widget test. The fakes behind it wait on real
+/// delays, which only elapse when the test clock is pumped — awaiting it bare
+/// would wait for ever.
+Future<void> settle(WidgetTester tester, Future<void> work) async {
+  var done = false;
+  unawaited(work.whenComplete(() => done = true));
+  for (var i = 0; !done && i < 50; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  await work;
+}
+
 void main() {
   /// Pumps the wizard and hands back the container and the config store.
   Future<(ProviderContainer, InMemoryTerminalConfigStore)> open(
@@ -209,8 +226,42 @@ void main() {
     return (container, store);
   }
 
-  /// Walk the wizard the way an installer does — the licence, the code, then
-  /// Continue until it opens — and record every screen that was actually shown.
+  /// Answer the screen the wizard is on the way the owner does, and go on.
+  ///
+  /// The sign-in, the branch and the till are the questions on this path
+  /// (pos-cloud-sign-in-setup). [modes] is the licence the claim's bundle
+  /// carries — handed to the wizard here the way the cloud app's claim hook
+  /// hands it — or none at all when null.
+  Future<void> answer(
+    WidgetTester tester,
+    ProviderContainer container, {
+    Set<DeploymentMode>? modes,
+  }) async {
+    final controller = container.read(setupProvider.notifier);
+    switch (container.read(setupProvider).step) {
+      case SetupStep.account:
+        controller.setTenantSlug('islanded');
+        controller.setOperatorUsername(FakeProvisioningRepository.demoUsername);
+        controller.setOperatorPassword(FakeProvisioningRepository.demoPassword);
+        await settle(tester, controller.connectTenant());
+      case SetupStep.branch:
+        controller.setBranch(1, 'Maadi');
+      case SetupStep.terminal:
+        if (modes != null) {
+          await settle(
+            tester,
+            controller.receiveBundleLicence(_bundled(modes)),
+          );
+        }
+        await settle(tester, controller.registerTerminal());
+      default:
+        break;
+    }
+    await tester.pumpAndSettle();
+  }
+
+  /// Walk the wizard the way an owner does — sign in, the branch, the till,
+  /// then Continue until it opens — and record every screen that was shown.
   ///
   /// Recording the screens rather than reading `visibleSteps` is the point: a
   /// step can be listed and never reached, and the claim here is about what a
@@ -219,31 +270,21 @@ void main() {
     WidgetTester tester,
     ProviderContainer container, {
     required Set<DeploymentMode> modes,
-    String code = FakeProvisioningRepository.demoCode,
   }) async {
-    final controller = container.read(setupProvider.notifier);
     final seen = <SetupStep>[container.read(setupProvider).step];
-
-    await controller.activateLicence(fileContents: _licence(modes).serialize());
-    await tester.pumpAndSettle();
 
     while (!container.read(setupProvider).isLastStep) {
       final at = container.read(setupProvider).step;
-      // The two screens that are genuinely questions, answered where they are
-      // asked. Everything else on this path advances on Continue alone.
-      if (at == SetupStep.account) {
-        controller.setPairingCode(code);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Claim this terminal'));
-        await tester.pumpAndSettle();
-      }
+      await answer(tester, container, modes: modes);
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       final now = container.read(setupProvider).step;
       if (now == at) {
-        fail('the wizard would not leave ${at.name}: '
-            '${container.read(setupProvider).error}');
+        fail(
+          'the wizard would not leave ${at.name}: '
+          '${container.read(setupProvider).error}',
+        );
       }
       seen.add(now);
     }
@@ -305,7 +346,9 @@ void main() {
         progress: progress,
       );
 
-      while (!container.read(setupProvider).isLastStep) {
+      for (var i = 0; !container.read(setupProvider).isLastStep; i++) {
+        // A step that will not advance fails here rather than hanging the run.
+        if (i > 10) fail('stuck on ${container.read(setupProvider).step}');
         await tester.tap(find.text('Continue'));
         await tester.pumpAndSettle();
       }
@@ -344,7 +387,7 @@ void main() {
   });
 
   group('the screens a cloud main device is shown', () {
-    testWidgets('a single-mode licence and one printer: four screens', (
+    testWidgets('a single-mode licence and one printer: five screens', (
       tester,
     ) async {
       final builder = _RecordingDatabaseBuilder();
@@ -354,15 +397,12 @@ void main() {
         printers: _PrintersFound(1),
       );
 
-      final seen = await walk(
-        tester,
-        container,
-        modes: {DeploymentMode.cloud},
-      );
+      final seen = await walk(tester, container, modes: {DeploymentMode.cloud});
 
       expect(seen, [
-        SetupStep.licence,
         SetupStep.account,
+        SetupStep.branch,
+        SetupStep.terminal,
         SetupStep.connecting,
         SetupStep.summary,
       ]);
@@ -380,15 +420,12 @@ void main() {
         printers: _PrintersFound(2),
       );
 
-      final seen = await walk(
-        tester,
-        container,
-        modes: {DeploymentMode.cloud},
-      );
+      final seen = await walk(tester, container, modes: {DeploymentMode.cloud});
 
       expect(seen, [
-        SetupStep.licence,
         SetupStep.account,
+        SetupStep.branch,
+        SetupStep.terminal,
         SetupStep.connecting,
         SetupStep.hardware,
         SetupStep.summary,
@@ -406,11 +443,7 @@ void main() {
         printers: _PrintersFound(0),
       );
 
-      final seen = await walk(
-        tester,
-        container,
-        modes: {DeploymentMode.cloud},
-      );
+      final seen = await walk(tester, container, modes: {DeploymentMode.cloud});
 
       expect(seen, contains(SetupStep.hardware));
     });
@@ -436,7 +469,7 @@ void main() {
       // The terminal, exactly as the claim described it — the same fields
       // `setup_persistence_test.dart` asserts after the long walk.
       expect(saved.terminal.terminalName, 'Counter 1');
-      expect(saved.terminal.branchId, 13);
+      expect(saved.terminal.branchId, 1);
       expect(saved.terminal.branchName, 'Maadi');
       expect(saved.terminal.branchCode, 'MAADI');
       expect(saved.terminal.businessId, 1);
@@ -463,9 +496,10 @@ void main() {
 
       // A password in device config is a password that ends up in a support
       // email — the long path's rule, and the short one does not relax it.
-      expect(saved.deployment.toJson().values, isNot(contains(
-        _InstalledByTheInstaller.credentials.tillPassword,
-      )));
+      expect(
+        saved.deployment.toJson().values,
+        isNot(contains(_InstalledByTheInstaller.credentials.tillPassword)),
+      );
       expect(
         await container.read(posDbCredentialsProvider).password(),
         _InstalledByTheInstaller.credentials.tillPassword,
@@ -500,52 +534,44 @@ void main() {
       expect(builder.config!.databaseUser, 'pos_till');
     });
 
-    testWidgets('keeps the test print, which the hardware screen used to hold', (
-      tester,
-    ) async {
-      final printers = _PrintersFound(1);
-      final builder = _RecordingDatabaseBuilder();
-      final (container, _) = await open(
-        tester,
-        builder: builder,
-        printers: printers,
-      );
+    testWidgets(
+      'keeps the test print, which the hardware screen used to hold',
+      (tester) async {
+        final printers = _PrintersFound(1);
+        final builder = _RecordingDatabaseBuilder();
+        final (container, _) = await open(
+          tester,
+          builder: builder,
+          printers: printers,
+        );
 
-      await walk(tester, container, modes: {DeploymentMode.cloud});
+        await walk(tester, container, modes: {DeploymentMode.cloud});
 
-      // Somebody has to be able to put paper through the thing before the
-      // business opens, and with the hardware screen gone this is the last
-      // place they can.
-      await tester.tap(find.text('Test print'));
-      await tester.pumpAndSettle();
-      expect(printers.prints, 1);
-    });
+        // Somebody has to be able to put paper through the thing before the
+        // business opens, and with the hardware screen gone this is the last
+        // place they can.
+        await tester.tap(find.text('Test print'));
+        await tester.pumpAndSettle();
+        expect(printers.prints, 1);
+      },
+    );
   });
 
   group('a machine the installer never ran on', () {
     const en = EnStrings();
 
-    /// Licence, pairing code, Continue — as far as the connecting step, which
+    /// Sign-in, branch, till, Continue — as far as the connecting step, which
     /// is where this machine's missing credentials file strands it.
     Future<SetupController> upToTheDatabase(
       WidgetTester tester,
       ProviderContainer container,
     ) async {
-      final controller = container.read(setupProvider.notifier);
-      await controller.activateLicence(
-        fileContents: _licence({DeploymentMode.cloud}).serialize(),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Claim this terminal'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      return controller;
+      for (var i = 0; i < 3; i++) {
+        await answer(tester, container, modes: {DeploymentMode.cloud});
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+      }
+      return container.read(setupProvider.notifier);
     }
 
     testWidgets('asks for the database rather than guessing a password', (
@@ -789,53 +815,73 @@ void main() {
     });
   });
 
-  group('a code the platform will not take', () {
-    testWidgets('says the same thing it said before the path got shorter', (
-      tester,
-    ) async {
-      final builder = _RecordingDatabaseBuilder();
+  // pos-cloud-sign-in-setup, BR-5 / AC-5 / AC-6: the licence the platform
+  // sent is checked at the connecting step, before the till is called ready.
+  group('the licence the platform sent', () {
+    /// Through sign-in, branch and till, with [modes] as the bundle's licence
+    /// (none when null), and onto the connecting step.
+    Future<ProviderContainer> toConnecting(
+      WidgetTester tester, {
+      Set<DeploymentMode>? modes,
+    }) async {
       final (container, _) = await open(
         tester,
-        builder: builder,
+        builder: _RecordingDatabaseBuilder(),
         printers: _PrintersFound(1),
       );
+      for (var i = 0; i < 3; i++) {
+        await answer(tester, container, modes: modes);
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+      }
+      expect(container.read(setupProvider).step, SetupStep.connecting);
+      return container;
+    }
 
-      final controller = container.read(setupProvider.notifier);
-      await controller.activateLicence(
-        fileContents: _licence({DeploymentMode.cloud}).serialize(),
+    testWidgets('none at all: the till is not called ready', (tester) async {
+      final container = await toConnecting(tester);
+
+      final draft = container.read(setupProvider);
+      expect(draft.provisioned, isFalse);
+      expect(draft.canAdvance, isFalse);
+      expect(draft.error, const EnStrings().cloudLicenceMissing);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+
+    testWidgets('one for the offline app is refused, by name', (tester) async {
+      final container = await toConnecting(
+        tester,
+        modes: {DeploymentMode.offline},
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      expect(container.read(setupProvider).step, SetupStep.account);
 
-      controller.setPairingCode('NOPE-0000');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Claim this terminal'));
+      final draft = container.read(setupProvider);
+      expect(draft.provisioned, isFalse);
+      expect(draft.canAdvance, isFalse);
+      expect(draft.error, isNotNull);
+      expect(draft.error, isNot(const EnStrings().cloudLicenceMissing));
+    });
+
+    testWidgets('fixed on the dashboard, Try again finishes the step', (
+      tester,
+    ) async {
+      final container = await toConnecting(tester);
+      expect(container.read(setupProvider).provisioned, isFalse);
+
+      // What the next bundle pull brings once XOrder has issued the licence;
+      // this harness has no platform to pull it from, so it is handed over.
+      await settle(
+        tester,
+        container
+            .read(setupProvider.notifier)
+            .receiveBundleLicence(_bundled({DeploymentMode.cloud})),
+      );
+      await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('not recognised'), findsOneWidget);
-      expect(container.read(setupProvider).claimed, isFalse);
-      // And it does not go on: everything after this screen IS the answer the
-      // code returns.
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      expect(container.read(setupProvider).step, SetupStep.account);
-
-      // A spent code is a different problem from a wrong one — the operator
-      // needs a new code, not another attempt at this one.
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Claim this terminal'));
-      await tester.pumpAndSettle();
-      expect(container.read(setupProvider).claimed, isTrue);
-
-      controller.setMethod(SetupMethod.pairingCode);
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Claim this terminal'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('already been used'), findsOneWidget);
+      final draft = container.read(setupProvider);
+      expect(draft.error, isNull);
+      expect(draft.provisioned, isTrue);
+      expect(draft.canAdvance, isTrue);
     });
   });
 
@@ -855,54 +901,8 @@ void main() {
           isNot(s.bootstrapAuthFailed('pos_till')),
         );
         expect(s.catalogueAuthFailed('pos_till'), contains('pos_till'));
-        expect(
-          s.catalogueAuthFailed('pos_till'),
-          isNot(contains('pos_admin')),
-        );
+        expect(s.catalogueAuthFailed('pos_till'), isNot(contains('pos_admin')));
       }
-    });
-  });
-
-  group('signing in instead', () {
-    testWidgets('is off the main road, and brings its two screens with it', (
-      tester,
-    ) async {
-      // A till registered by hand has no claim to read a branch and a name off,
-      // so those two screens come back — for that path only.
-      final builder = _RecordingDatabaseBuilder();
-      final (container, _) = await open(
-        tester,
-        builder: builder,
-        printers: _PrintersFound(1),
-      );
-
-      final controller = container.read(setupProvider.notifier);
-      await controller.activateLicence(
-        fileContents: _licence({DeploymentMode.cloud}).serialize(),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('SETUP CODE'), findsOneWidget);
-      expect(
-        container.read(setupProvider).visibleSteps,
-        isNot(contains(SetupStep.branch)),
-      );
-
-      await tester.tap(find.text('Sign in instead'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('USERNAME'), findsOneWidget);
-      expect(
-        container.read(setupProvider).visibleSteps,
-        containsAllInOrder([
-          SetupStep.account,
-          SetupStep.branch,
-          SetupStep.terminal,
-          SetupStep.connecting,
-        ]),
-      );
     });
   });
 }

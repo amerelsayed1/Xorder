@@ -119,6 +119,7 @@ class _Field extends StatefulWidget {
     this.readOnly = false,
     this.error,
     this.ltr = false,
+    this.suffix,
   });
 
   final String label;
@@ -126,6 +127,10 @@ class _Field extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final String? hint;
   final String? help;
+
+  /// Fixed text after the value, such as `.xorder.io` after a business
+  /// address: shown, never typed.
+  final String? suffix;
 
   /// A technical value (a username, an address) that reads left to right even
   /// in an Arabic screen. Off by default: other fields keep how they looked.
@@ -221,6 +226,8 @@ class _FieldState extends State<_Field> {
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: PosText.ui(size: 14, color: context.pos.muted),
+          suffixText: widget.suffix,
+          suffixStyle: PosText.mono(size: 14, color: context.pos.muted),
         ),
       ),
       if (widget.error != null) ...[
@@ -839,137 +846,35 @@ class _AccountPane extends ConsumerWidget {
     }
 
     final s = context.strings;
-    final pairing = draft.method == SetupMethod.pairingCode;
 
+    // A cloud till: the owner signs in with their dashboard account, and that
+    // is the whole question (pos-cloud-sign-in-setup). The business address is
+    // typed, because there is no licence step to name it any more; it is the
+    // first part of the owner's dashboard address, so only that part is asked.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The business, STATED. The licence names exactly one tenant and it
-        // was installed a screen ago; letting an operator retype it here could
-        // only ever produce a slug that contradicts their own licence, which
-        // the verifier would then reject as a tenant mismatch on a licence that
-        // was perfectly good.
         _Field(
-          label: s.business,
+          label: s.businessAddress,
           value: draft.deployment.tenantSlug ?? '',
           mono: true,
-          hint: 'mahsoub',
-          readOnly: draft.claims != null,
+          ltr: true,
+          hint: 'cafe-nile',
+          suffix: '.xorder.io',
           onChanged: controller.setTenantSlug,
           // Usernames are unique per tenant on the server, so the tenant has
-          // to be known before a cashier can even be looked up.
-          help: draft.claims != null
-              ? s.businessFromLicenceHelp
-              : s.businessHelp,
+          // to be known before anyone can even be looked up.
+          help: s.businessAddressHelp,
         ),
         const SizedBox(height: PosSpace.s28),
-        // One road, not a junction. The two tiles that used to be here asked
-        // the installer to choose between a code and a staff password before
-        // either had been typed — a question with an obvious answer nine times
-        // out of ten, in front of somebody who had not been told which one they
-        // were holding. The code is the road; the other is a link off it.
-        if (pairing)
-          _PairingCodeFields(draft: draft)
-        else
-          _ManualCredentialFields(draft: draft),
-        const SizedBox(height: PosSpace.lg),
-        if (!draft.claimed && !draft.connected)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: PosButton(
-              label: pairing ? s.signInInstead : s.useASetupCodeInstead,
-              background: Colors.transparent,
-              foreground: context.pos.accent,
-              padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-              onPressed: draft.busy
-                  ? null
-                  : () => controller.setMethod(
-                      pairing ? SetupMethod.manual : SetupMethod.pairingCode,
-                    ),
-            ),
-          ),
+        _ManualCredentialFields(draft: draft),
       ],
     );
   }
 }
 
-/// The provisioned path: the dashboard already made this terminal, and the code
-/// fetches what it decided.
-class _PairingCodeFields extends ConsumerWidget {
-  const _PairingCodeFields({required this.draft});
-
-  final SetupDraft draft;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(setupProvider.notifier);
-
-    if (draft.claimed) {
-      return Container(
-        padding: const EdgeInsets.all(PosSpace.lg),
-        decoration: BoxDecoration(
-          color: context.pos.okSoft,
-          border: Border.fromBorderSide(context.pos.resting),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              context.strings.claimedAs(
-                draft.terminalName,
-                draft.branchLabel ?? '',
-              ),
-              style: PosText.ui(
-                size: 14,
-                weight: FontWeight.w600,
-                color: context.pos.ink,
-              ),
-            ),
-            const SizedBox(height: PosSpace.sm),
-            Text(
-              context.strings.claimedFromDashboardHelp,
-              style: PosText.ui(
-                size: 12.5,
-                color: context.pos.muted,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Field(
-          label: context.strings.setupCode,
-          value: draft.pairingCode,
-          mono: true,
-          hint: 'MAADI-7Q42',
-          onChanged: controller.setPairingCode,
-          help: context.strings.setupCodeHelp,
-        ),
-        const SizedBox(height: PosSpace.xl),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: PosButton(
-            label: context.strings.claimThisTerminal,
-            border: Border.fromBorderSide(
-              BorderSide(color: context.pos.inkWarm),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-            onPressed: draft.busy || draft.pairingCode.isEmpty
-                ? null
-                : controller.claimTerminal,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The fallback path, for an installer with no dashboard access.
+/// Sign-in against the platform: the owner, on a cloud till, or a manager the
+/// main device already has, on a child tablet.
 class _ManualCredentialFields extends ConsumerWidget {
   const _ManualCredentialFields({required this.draft});
 
@@ -979,6 +884,9 @@ class _ManualCredentialFields extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
+    // Only the owner may set up a cloud till (D3); a child signs in as a
+    // manager its main device already has.
+    final owner = !draft.deployment.isChild;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -987,19 +895,20 @@ class _ManualCredentialFields extends ConsumerWidget {
           label: s.username,
           value: draft.operatorUsername,
           mono: true,
-          hint: 'manager',
+          ltr: owner,
+          hint: owner ? 'owner' : 'manager',
           onChanged: controller.setOperatorUsername,
         ),
         const SizedBox(height: PosSpace.xl),
         _PasswordField(
           field: 'operator',
-          label: s.managerPassword,
+          label: owner ? s.password : s.managerPassword,
           value: draft.operatorPassword,
           onChanged: controller.setOperatorPassword,
         ),
         const SizedBox(height: PosSpace.lg),
         Text(
-          s.manualCredentialsWarning,
+          owner ? s.ownerSignInHelp : s.manualCredentialsWarning,
           style: PosText.ui(size: 12.5, color: context.pos.warn, height: 1.5),
         ),
         const SizedBox(height: PosSpace.xl),
@@ -1039,7 +948,7 @@ class _ManualCredentialFields extends ConsumerWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: PosButton(
-              label: s.connectAndPullConfiguration,
+              label: owner ? s.signIn : s.connectAndPullConfiguration,
               border: Border.fromBorderSide(
                 BorderSide(color: context.pos.inkWarm),
               ),
@@ -1295,7 +1204,7 @@ class _TerminalPane extends ConsumerWidget {
         // the first question is WHICH till this is — not what to call a new one.
         // Registering another beside them is how a two-seat business ends up
         // with four rows and a seat limit nobody can explain.
-        if (draft.method == SetupMethod.manual && adoptable.isNotEmpty) ...[
+        if (adoptable.isNotEmpty) ...[
           MicroLabel(s.whichTillIsThis),
           const SizedBox(height: PosSpace.md),
           for (final terminal in adoptable) ...[
@@ -1319,15 +1228,13 @@ class _TerminalPane extends ConsumerWidget {
         ],
         // The name is the SERVER's when adopting — showing an editable field
         // would invite an operator to change something this screen cannot save.
-        if (creatingNew || draft.method == SetupMethod.pairingCode)
+        if (creatingNew)
           _Field(
             label: s.terminalName,
             value: draft.terminalName,
             hint: s.terminalNameHint,
             onChanged: controller.setTerminalName,
-            help: draft.method == SetupMethod.pairingCode
-                ? s.terminalNameProvisionedHelp
-                : s.terminalNameManualHelp,
+            help: s.terminalNameManualHelp,
           )
         else
           Column(
@@ -1354,7 +1261,7 @@ class _TerminalPane extends ConsumerWidget {
               ),
             ],
           ),
-        if (draft.method == SetupMethod.manual) ...[
+        ...[
           const SizedBox(height: PosSpace.xl),
           Align(
             alignment: Alignment.centerLeft,

@@ -883,7 +883,7 @@ Map<String, String> _sample(AppStrings s) => {
   'platformAddress': s.platformAddress,
   'platformCaps': s.platformCaps,
   'business': s.business,
-  'setupCode': s.setupCode,
+  'businessAddress': s.businessAddress,
   'username': s.username,
   'password': s.password,
   'terminalName': s.terminalName,

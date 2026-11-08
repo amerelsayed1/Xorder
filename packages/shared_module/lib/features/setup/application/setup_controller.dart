@@ -1,3 +1,4 @@
+import 'dart:convert' show jsonEncode;
 import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
@@ -11,6 +12,7 @@ import '../../../core/config/lan_tls.dart';
 import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../data/config/installer_credentials.dart';
 import '../../../data/config/setup_progress_store.dart';
 import '../../../data/postgres/local_bootstrap.dart';
@@ -104,8 +106,14 @@ class SetupController extends Notifier<SetupDraft> {
       // register, and a registration spends a seat the same way.
       Future.microtask(_restoreProgress);
 
+      // The draft's own mode: the app's, or — in the shared package on its
+      // own — the unconfigured default.
+      final cloudMain =
+          (appMode ?? DeploymentConfig.unconfigured.mode) ==
+              DeploymentMode.cloud &&
+          !child;
       return SetupDraft(
-        step: child ? SetupStep.deployment : SetupStep.licence,
+        step: _firstStep(child: child, cloud: cloudMain),
         appMode: appMode,
         // Blank rather than localhost for a child: its database is never on
         // the tablet, and a pre-filled `localhost` is an answer it must not
@@ -114,6 +122,11 @@ class SetupController extends Notifier<SetupDraft> {
           mode: appMode,
           role: role,
           databaseHost: child ? '' : null,
+          // The platform the owner signs in to. It used to come off the
+          // licence step, which the cloud path no longer has
+          // (pos-cloud-sign-in-setup); there is one hosted platform and the
+          // build names it.
+          baseUrl: cloudMain ? PlatformEndpoint.base : null,
         ),
         // A reset keeps this machine's identity on purpose — the licence is
         // pinned to it — and once the file is gone the profile is the only
@@ -130,7 +143,10 @@ class SetupController extends Notifier<SetupDraft> {
     }
 
     return SetupDraft(
-      step: saved.deployment.isChild ? SetupStep.deployment : SetupStep.licence,
+      step: _firstStep(
+        child: saved.deployment.isChild,
+        cloud: saved.deployment.mode == DeploymentMode.cloud,
+      ),
       appMode: appMode,
       locale: saved.languageCode,
       deployment: saved.deployment,
@@ -146,6 +162,16 @@ class SetupController extends Notifier<SetupDraft> {
       claimed: saved.terminal.provisioned,
     );
   }
+
+  /// Where the wizard opens: a child finds its main device, a cloud till signs
+  /// in (it has no licence step, pos-cloud-sign-in-setup), and an offline till
+  /// starts at its licence.
+  static SetupStep _firstStep({required bool child, required bool cloud}) =>
+      child
+      ? SetupStep.deployment
+      : cloud
+      ? SetupStep.account
+      : SetupStep.licence;
 
   /// True once this controller has been disposed, so the licence restore — the
   /// one thing here that outlives its own build — cannot touch a dead state.
@@ -465,9 +491,26 @@ class SetupController extends Notifier<SetupDraft> {
   }
 
   void setTenantSlug(String slug) {
-    if (state.claims != null) return;
+    final current = state.deployment;
+    final cloud = current.mode == DeploymentMode.cloud && !current.isChild;
+    // Off the cloud path the licence names the tenant, and it is not retyped.
+    // A cloud till has no licence step: the owner types the business address.
+    if (state.claims != null && !cloud) return;
+    final next = slugFrom(slug);
+    // Named after the business, as the licence step used to name it
+    // (`_adopt`): unless somebody else already named it. A name the installer
+    // wrote replaces it at the connecting step, as before.
+    final derived =
+        current.databaseName == DeploymentConfig.defaultDatabaseName ||
+        current.databaseName ==
+            DeploymentConfig.databaseNameFor(current.tenantSlug ?? '');
     state = state.copyWith(
-      deployment: state.deployment.copyWith(tenantSlug: slugFrom(slug)),
+      deployment: current.copyWith(
+        tenantSlug: next,
+        databaseName: cloud && derived && next.isNotEmpty
+            ? DeploymentConfig.databaseNameFor(next)
+            : null,
+      ),
       // A pull that happened under the old slug now describes the wrong
       // business; forgetting it is what keeps the branch step honest.
       clearConnection: true,
@@ -1082,32 +1125,6 @@ class SetupController extends Notifier<SetupDraft> {
     deployment: state.deployment.copyWith(syncPolicy: policy),
   );
 
-  /// Switching path clears the claim: the branch and till name on the draft
-  /// came from the response to the old one, and leaving them behind would show
-  /// an operator settings they never chose.
-  void setMethod(SetupMethod method) {
-    // A pairing code is minted by a dashboard, and an offline deployment has
-    // none. The pane disables the tile; this is the same rule where it
-    // belongs, so a mode switch cannot strand a draft on a method that has no
-    // way to complete.
-    if (method == SetupMethod.pairingCode &&
-        state.deployment.mode != DeploymentMode.cloud) {
-      return;
-    }
-
-    state = state.copyWith(
-      method: method,
-      clearError: true,
-      clearClaim: true,
-      clearConnection: true,
-    );
-  }
-
-  void setPairingCode(String code) => state = state.copyWith(
-    pairingCode: code.trim().toUpperCase(),
-    clearError: true,
-  );
-
   void setOperatorUsername(String username) => state = state.copyWith(
     operatorUsername: username.trim(),
     clearError: true,
@@ -1502,6 +1519,61 @@ class SetupController extends Notifier<SetupDraft> {
   void holdLicence(LicenseFile file) =>
       state = state.copyWith(licenceFile: file);
 
+  /// What the platform's licence for this till said, the last time one came
+  /// in a bootstrap bundle. Null until one has (pos-cloud-sign-in-setup).
+  LicenceActivationResult? _bundleLicence;
+
+  /// Take the licence the platform sent in a bootstrap bundle: verified the
+  /// way a typed key is — signature, tenant (the business the owner signed in
+  /// to), and that it names this app's mode and no other (D9) — and held, not
+  /// written, until `complete()`.
+  ///
+  /// A cloud till has no licence step, so this is the only way it gets one.
+  /// Called with the claim's bundle and again with every bundle the connecting
+  /// step pulls, so a licence fixed on the dashboard is picked up by "Try
+  /// again" without a second claim. [provisionTerminal] refuses to call the
+  /// till ready until what arrived here can sell.
+  Future<void> receiveBundleLicence(Map<String, Object?> licence) async {
+    final result = await ref
+        .read(licenceServiceProvider)
+        .activate(
+          deployment: state.deployment,
+          key: '',
+          fileContents: jsonEncode(licence),
+          persist: false,
+        );
+    if (_disposed) return;
+    _bundleLicence = result;
+    state = state.copyWith(
+      licenceFile: result.file,
+      entitlement: result.entitlement,
+      claims: result.claims,
+    );
+  }
+
+  /// Why a cloud till may not be called ready on the licence the platform
+  /// sent, or null when it may (pos-cloud-sign-in-setup, BR-5). Missing, for
+  /// the other mode or for both, for another business, or not permitting
+  /// trade: each says so in its own words.
+  ///
+  /// Judged on the licence the draft holds — the one a bundle brought on this
+  /// run, or the one restored with a claim made on an earlier run — except
+  /// that the latest bundle's refusal always stands: a licence the platform
+  /// just sent and the verifier refused must not be outvoted by an older one.
+  String? _cloudLicenceRefusal(AppStrings s) {
+    final bundle = _bundleLicence;
+    if (bundle != null && (bundle.file == null || bundle.entitlement == null)) {
+      return bundle.notice?.text(s) ?? s.cloudLicenceMissing;
+    }
+    final entitlement = state.entitlement;
+    if (entitlement == null) return s.cloudLicenceMissing;
+    if (!entitlement.canSell) {
+      return (entitlement.notice ?? bundle?.notice)?.text(s) ??
+          s.cloudLicenceMissing;
+    }
+    return null;
+  }
+
   /// Verify the slug + admin credentials and pull the tenant's configuration
   /// (the owner's phase-1 cloud flow). Everything the following steps show —
   /// the branch list above all — is what this call brought back. Registers
@@ -1551,67 +1623,6 @@ class SetupController extends Notifier<SetupDraft> {
       branchLabel: only?.name ?? state.branchLabel,
       branchCode: only?.code ?? state.branchCode,
     );
-  }
-
-  /// Redeem a pairing code and adopt what the dashboard already decided about
-  /// this till (POS-BE-023).
-  ///
-  /// The branch, the name and the terminal id all arrive from the server here,
-  /// which is the point: the terminal row existed before this machine did, so
-  /// Super Admin was already tracking it.
-  Future<void> claimTerminal() async {
-    state = state.copyWith(busy: true, clearError: true);
-    _publishDeployment();
-
-    final result = await ref
-        .read(provisioningRepositoryProvider)
-        .claimByCode(
-          tenantSlug: state.deployment.tenantSlug ?? '',
-          code: state.pairingCode,
-        );
-
-    final claim = result.claim;
-    if (claim == null) {
-      state = state.copyWith(
-        busy: false,
-        claimed: false,
-        error: _refusal(result.code, result.message),
-      );
-      return;
-    }
-
-    state = state.copyWith(
-      busy: false,
-      claimed: true,
-      branchId: claim.branchId,
-      branchLabel: claim.branchName,
-      businessId: claim.businessId,
-      branchCode: claim.branchCode,
-      terminalName: claim.terminalName,
-      terminalId: claim.terminalId,
-      // The business's own language, from the bundle the claim carried. The
-      // cloud path has no language screen any more: the dashboard was asked
-      // this when the business was created, and asking the installer to
-      // answer it again is how a till ends up in English in an Arabic kitchen.
-      // Whoever is standing here still has the last word — the Settings bar's
-      // switch is on every screen, including this one.
-      locale: claim.defaultLanguage,
-      deployment: state.deployment.copyWith(syncPolicy: claim.syncPolicy),
-      // A message on a SUCCESSFUL claim is information, not failure — the
-      // seat warning and the deferred-seed note arrive here.
-      notice: _claimNotices(result.notices),
-    );
-
-    // On screen as well as on the draft: the rest of this wizard, short as it
-    // now is, should already be in the business's language rather than
-    // switching at the moment the till opens.
-    if (claim.defaultLanguage case final language?) {
-      ref.read(localeProvider.notifier).apply(language);
-    }
-
-    // The code is spent from here on. What it bought has to outlive the
-    // process, or a restart before "Open the till" strands this machine.
-    await _rememberProgress();
   }
 
   /// Everything the cloud path used to ask for, done instead of asked (owner
@@ -1778,6 +1789,28 @@ class SetupController extends Notifier<SetupDraft> {
     }
     final only = printers.length == 1 ? printers.single : null;
     if (only != null) done.add(s.printerDetected(only.name));
+
+    // A cloud till is not ready until the licence the platform sent can sell
+    // (pos-cloud-sign-in-setup, BR-5). It has no licence step, so this is the
+    // first place anything looks at it; leaving it to the start screen would
+    // finish a setup that cannot open a shift. "Try again" runs this whole
+    // step again, and the bundle it pulls brings the licence afresh.
+    final cloudMain =
+        state.deployment.mode == DeploymentMode.cloud &&
+        !state.deployment.isChild;
+    if (cloudMain) {
+      final refusal = _cloudLicenceRefusal(s);
+      if (refusal != null) {
+        state = state.copyWith(
+          busy: false,
+          bootstrapReport: done.join('\n'),
+          catalogueItems: items,
+          error: refusal,
+          notice: notice,
+        );
+        return;
+      }
+    }
 
     state = state.copyWith(
       busy: false,
@@ -1946,6 +1979,25 @@ class SetupController extends Notifier<SetupDraft> {
       notice: claim == null ? null : _claimNotices(result.notices),
     );
 
+    // A cloud till takes the business's own language and sync policy from the
+    // claim, as the pairing-code path did before sign-in replaced it
+    // (pos-cloud-sign-in-setup). The cloud path has no language screen: the
+    // dashboard was asked this when the business was created. Whoever is
+    // standing here still has the last word — the Settings bar's switch is on
+    // every screen.
+    final cloudMain =
+        state.deployment.mode == DeploymentMode.cloud &&
+        !state.deployment.isChild;
+    if (claim != null && cloudMain) {
+      state = state.copyWith(
+        locale: claim.defaultLanguage,
+        deployment: state.deployment.copyWith(syncPolicy: claim.syncPolicy),
+      );
+      if (claim.defaultLanguage case final language?) {
+        ref.read(localeProvider.notifier).apply(language);
+      }
+    }
+
     // A seat spent by hand is as spent as one a code bought; the fallback
     // path resumes for the same reason the default one does.
     if (claim != null) await _rememberProgress();
@@ -2044,6 +2096,14 @@ class SetupController extends Notifier<SetupDraft> {
     final seeded =
         seeding != null &&
         await seeding.seed(reply.body, config: state.deployment, force: true);
+
+    // The bundle carries the platform's current licence for this till; the
+    // same one the claim brought, unless somebody fixed it on the dashboard
+    // since — which is exactly the case "Try again" exists for.
+    if (reply.body['licence'] case final Map licence) {
+      await receiveBundleLicence(licence.cast<String, Object?>());
+    }
+
     if (!seeded) {
       throw _CatalogueBlocked(s.menuShapeNotUnderstood(api.baseUrl));
     }

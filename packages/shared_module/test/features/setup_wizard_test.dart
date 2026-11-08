@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/config/platform_endpoint.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/data/fakes/fake_repositories.dart';
 import 'package:shared_module/data/postgres/pos_database.dart';
@@ -87,11 +88,21 @@ void main() {
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier);
-      // Cloud is the default mode, and its platform address starts empty.
+      // Cloud is the default mode. A fresh cloud draft is addressed to the
+      // build's platform (pos-cloud-sign-in-setup); this one has had it
+      // cleared, which is the state the message is about.
       expect(
         container.read(setupProvider).deployment.mode,
         DeploymentMode.cloud,
       );
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            deployment: container
+                .read(setupProvider)
+                .deployment
+                .copyWith(baseUrl: ''),
+          );
 
       expect(await controller.testConnection(), isFalse);
 
@@ -306,23 +317,6 @@ void main() {
       expect(SetupController.baseUrlFrom(''), '');
     });
 
-    // Rewritten in stage 4 from "switching to offline drops the pairing-code
-    // method": there is no switch, and the rule it ended on is what is left.
-    test('the offline app cannot be put on the pairing-code method', () {
-      // A pairing code is minted by a dashboard, and offline has none. A draft
-      // left on that method would show a disabled tile and a button that can
-      // never succeed.
-      final container = ProviderContainer(
-        overrides: fakeRepositoryOverrides(appMode: DeploymentMode.offline),
-      );
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      expect(container.read(setupProvider).method, SetupMethod.manual);
-      controller.setMethod(SetupMethod.pairingCode);
-      expect(container.read(setupProvider).method, SetupMethod.manual);
-    });
-
     test('an offline terminal cannot advance unregistered', () {
       // This rule used to pass an unregistered offline terminal, and then
       // `complete()` refused it for having no business id and no branch
@@ -346,8 +340,10 @@ void main() {
       );
     });
 
-    test('the licence supplies the tenant, and it cannot then be retyped', () {
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    test('offline, the licence supplies the tenant and it cannot be retyped', () {
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: DeploymentMode.offline),
+      );
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
 
@@ -366,7 +362,7 @@ void main() {
               expiresAt: DateTime.utc(2027, 1, 1),
             ),
             deployment: const DeploymentConfig(
-              mode: DeploymentMode.cloud,
+              mode: DeploymentMode.offline,
               tenantSlug: 'mahsoub',
             ),
           );
@@ -376,6 +372,40 @@ void main() {
       // perfectly good.
       controller.setTenantSlug('somewhere-else');
       expect(container.read(setupProvider).deployment.tenantSlug, 'mahsoub');
+    });
+
+    // pos-cloud-sign-in-setup: a cloud till has no licence step, so the owner
+    // types the business address, and nothing a licence once said locks it.
+    test('on cloud the owner types the business address, and the database '
+        'is named after it', () {
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: DeploymentMode.cloud),
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+
+      final fresh = container.read(setupProvider);
+      expect(fresh.step, SetupStep.account);
+      // Addressed to the build's platform without a licence to name it.
+      expect(fresh.deployment.baseUrl, PlatformEndpoint.base);
+
+      controller.setTenantSlug('Cafe-Nile.xorder.io');
+      var draft = container.read(setupProvider);
+      expect(draft.deployment.tenantSlug, 'cafe-nile');
+      expect(
+        draft.deployment.databaseName,
+        DeploymentConfig.databaseNameFor('cafe-nile'),
+      );
+
+      // A typo corrected follows through to the name it derived.
+      controller.setTenantSlug('cafe-nil');
+      controller.setTenantSlug('cafe-nile2');
+      draft = container.read(setupProvider);
+      expect(draft.deployment.tenantSlug, 'cafe-nile2');
+      expect(
+        draft.deployment.databaseName,
+        DeploymentConfig.databaseNameFor('cafe-nile2'),
+      );
     });
 
     test('activation adopts the licence tenant and a mode it covers', () async {
@@ -417,38 +447,6 @@ void main() {
       container.read(localeProvider.notifier).apply('en');
       expect(container.read(setupProvider).locale, 'en');
       expect(controller.state.locale, 'en');
-    });
-
-    test('a licence activated against a typed platform is claimed there too', () async {
-      // The bug: the licence step said xorder.io, the claim two screens later
-      // went to the build default — on a developer's machine the local stack —
-      // and the dashboard's pairing code came back "not recognised" from a
-      // platform that had never issued it.
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      controller.setLicenceServer('https://xorder.io');
-      controller.setLicenceKey('XORD-TEST');
-      await controller.activateLicence();
-
-      final draft = container.read(setupProvider);
-      expect(draft.deployment.mode, DeploymentMode.cloud);
-      expect(draft.deployment.baseUrl, 'https://xorder.io');
-    });
-
-    test('with no platform typed, a licence falls back to the build default', () async {
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      controller.setLicenceKey('XORD-TEST');
-      await controller.activateLicence();
-
-      final draft = container.read(setupProvider);
-      if (draft.deployment.mode.needsBaseUrl) {
-        expect(draft.deployment.baseUrl, PlatformEndpoint.base);
-      }
     });
 
     test('a pasted domain or URL normalises to its tenant slug', () {
@@ -523,82 +521,93 @@ void main() {
   });
 
   group('wizard UI', () {
-    testWidgets('opens on the licence, which is step one of five', (
+    // pos-cloud-sign-in-setup, AC-1 and AC-10.
+    testWidgets('the cloud app opens on the owner sign-in, and nothing else', (
       tester,
     ) async {
-      await _pump(tester);
+      final container = await _pump(tester, appMode: DeploymentMode.cloud);
+      final steps = container.read(setupProvider).visibleSteps;
 
       expect(find.text('TERMINAL SETUP'), findsOneWidget);
-      // Five, not eleven (owner decision, 2026-09-15). A fresh draft is cloud,
-      // and a cloud main device is asked for a licence and a setup code — the
-      // rest it is told. It was six until pos-split-apps stage 4 took the mode
-      // question away: the app is the mode.
-      expect(find.text('STEP 1 OF 5'), findsOneWidget);
-      // The licence step used to be hidden on the cloud path, then merely
-      // second. It is first now: it supplies the tenant, is judged against the
-      // app's mode, and says whether there is anything to set up at all.
+      expect(find.text('STEP 1 OF ${steps.length}'), findsOneWidget);
+      expect(container.read(setupProvider).step, SetupStep.account);
+
+      // The three questions: the business address (only the part before
+      // `.xorder.io`), the owner's username and password. MicroLabel
+      // uppercases, as every field label on this screen does.
+      expect(find.text('BUSINESS ADDRESS'), findsOneWidget);
+      expect(find.text('.xorder.io'), findsOneWidget);
+      expect(find.text('USERNAME'), findsOneWidget);
+      expect(find.text('PASSWORD'), findsOneWidget);
+      expect(
+        find.text(const EnStrings().ownerSignInHelp),
+        findsOneWidget,
+      );
+
+      // No licence key, no licence server, no pairing code, no other road.
+      expect(find.text('Activate online'), findsNothing);
+      expect(find.text('LICENCE SERVER'), findsNothing);
+      expect(find.text('LICENCE KEY'), findsNothing);
+      expect(find.text('SETUP CODE'), findsNothing);
+      expect(find.text('Sign in instead'), findsNothing);
+    });
+
+    testWidgets('the offline app opens on the licence, as it always has', (
+      tester,
+    ) async {
+      final container = await _pump(tester, appMode: DeploymentMode.offline);
+      final steps = container.read(setupProvider).visibleSteps;
+
+      expect(find.text('STEP 1 OF ${steps.length}'), findsOneWidget);
       expect(find.text('Licence'), findsWidgets);
-      expect(find.text('Ready'), findsWidgets);
-
-      // The licence PANE, not merely its name on the rail: the first thing an
-      // installer sees is the field they have to fill.
+      // The licence PANE, not merely its name on the rail.
       expect(find.text('Activate online'), findsOneWidget);
-      // And nothing else. The `.xlic` file path was removed with the offline
-      // licence delivery it served; a second button here would be one that
-      // no supplier can answer.
       expect(find.text('Activate from file'), findsNothing);
-
-      // And the platform the key will be sent to, stated on the same screen.
-      // Its absence is what made "not recognised" unreadable: a key issued by
-      // one platform and checked against another is refused correctly, and
-      // without the address there is nothing to tell the installer that.
-      // MicroLabel uppercases, as every field label on this screen does.
+      // And the platform the key will be sent to, stated on the same screen
+      // (unchanged by pos-cloud-sign-in-setup, which is cloud only).
       expect(find.text('LICENCE SERVER'), findsOneWidget);
-      // Twice over, and both are wanted: the field's value, and the hint that
-      // shows what blanking it would return to.
       expect(find.text(PlatformEndpoint.base), findsWidgets);
     });
 
-    // Rewritten in stage 4 from "the licence is asked before the mode it
-    // decides": the licence no longer decides a mode, and there is no mode
-    // step to come after it. What stands is the licence going first.
-    testWidgets('the licence is asked first, on either path', (
+    testWidgets('the licence is asked first offline, and not at all on cloud', (
       tester,
     ) async {
-      final container = await _pump(tester);
-      final steps = container.read(setupProvider).visibleSteps;
+      final container = await _pump(tester, appMode: DeploymentMode.offline);
+      final offline = container.read(setupProvider).visibleSteps;
+      expect(offline.first, SetupStep.licence);
+      expect(offline[1], SetupStep.language);
 
-      // The licence is first of all (owner decision, 2026-09-06). The
-      // language step that used to hold this place is second on the OFFLINE
-      // path and gone from the cloud one, which is what a fresh draft walks:
-      // the business already told the dashboard which language it works in.
-      // The property the old order protected — being able to READ a licence
-      // refusal — is held by the language switch the Settings bar carries on
-      // every screen, including this one.
-      expect(steps.first, SetupStep.licence);
-      expect(steps[1], SetupStep.account);
-      expect(steps, isNot(contains(SetupStep.language)));
-
-      final offline = container
+      final cloud = container
           .read(setupProvider)
           .copyWith(
-            deployment: const DeploymentConfig(mode: DeploymentMode.offline),
-          );
-      expect(offline.visibleSteps[1], SetupStep.language);
+            // Off the licence: the step being stood on is always listed.
+            step: SetupStep.account,
+            deployment: const DeploymentConfig(mode: DeploymentMode.cloud),
+          )
+          .visibleSteps;
+      expect(cloud.first, SetupStep.account);
+      expect(cloud, isNot(contains(SetupStep.licence)));
+      expect(cloud, isNot(contains(SetupStep.language)));
     });
 
-    testWidgets('the wizard opens on the licence and stops there unlicensed', (
-      tester,
-    ) async {
-      final container = await _pump(tester);
+    testWidgets('the offline wizard opens on the licence and stops there '
+        'unlicensed', (tester) async {
+      final container = await _pump(tester, appMode: DeploymentMode.offline);
       expect(container.read(setupProvider).step, SetupStep.licence);
 
-      // Nothing is installed, so there is nothing to go on with: a till that
-      // cannot say what it is licensed for has not earned the right to pick
-      // how it runs — or to be asked anything else.
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       expect(container.read(setupProvider).step, SetupStep.licence);
+    });
+
+    testWidgets('the cloud wizard will not leave the sign-in unsigned', (
+      tester,
+    ) async {
+      final container = await _pump(tester, appMode: DeploymentMode.cloud);
+
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(container.read(setupProvider).step, SetupStep.account);
     });
 
     test('an offline till may not leave the account step unbuilt', () {
@@ -932,96 +941,52 @@ void main() {
   });
 
   group('provisioning', () {
-    test('a pairing code fills in what the dashboard already decided', () async {
+    test('the owner signs in and adopts the till the dashboard made', () async {
       final container = ProviderContainer(overrides: fakeRepositoryOverrides());
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
 
       controller.setTenantSlug('mahsoub');
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await controller.claimTerminal();
+      controller.setOperatorUsername(FakeProvisioningRepository.demoUsername);
+      controller.setOperatorPassword(FakeProvisioningRepository.demoPassword);
+      await controller.connectTenant();
+      // The waiting till is offered first; the one in service is not.
+      expect(container.read(setupProvider).adoptTerminalId, 11);
+      await controller.registerTerminal();
 
       final draft = container.read(setupProvider);
       expect(draft.claimed, isTrue);
-      // The branch and till name arrived from the server. That inversion is the
-      // whole point: the terminal row existed before this machine did.
+      // The branch and till name arrived from the server: the terminal row
+      // existed before this machine did.
       expect(draft.branchLabel, 'Maadi');
       expect(draft.terminalName, 'Counter 1');
       expect(draft.terminalId, isNotNull);
       expect(draft.error, isNull);
     });
 
-    test('the account step will not advance on an unredeemed code', () {
-      const typed = SetupDraft(
-        step: SetupStep.account,
-        deployment: DeploymentConfig(
-          mode: DeploymentMode.cloud,
-          tenantSlug: 'mahsoub',
-        ),
-        pairingCode: 'MAADI-7Q42',
-      );
-      expect(
-        typed.canAdvance,
-        isFalse,
-        reason: 'everything after this step is the answer the code returns',
-      );
-    });
-
-    test('a wrong code and a spent code are different problems', () async {
+    // pos-cloud-sign-in-setup, AC-7: only the owner sets up a cloud till.
+    test('an account that is not the owner\'s is refused and pulls nothing',
+        () async {
       final container = ProviderContainer(overrides: fakeRepositoryOverrides());
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
+
       controller.setTenantSlug('mahsoub');
+      controller.setOperatorUsername(FakeProvisioningRepository.staffUsername);
+      controller.setOperatorPassword(FakeProvisioningRepository.demoPassword);
+      await controller.connectTenant();
 
-      controller.setPairingCode('NOPE-0000');
-      await controller.claimTerminal();
-      expect(container.read(setupProvider).claimed, isFalse);
-      expect(container.read(setupProvider).error, contains('not recognised'));
-
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await controller.claimTerminal();
-      expect(container.read(setupProvider).claimed, isTrue);
-
-      // Redeeming it a second time must not read as a typo — the operator needs
-      // a new code, not another attempt at this one.
-      controller.setMethod(SetupMethod.pairingCode);
-      controller.setPairingCode(FakeProvisioningRepository.demoCode);
-      await controller.claimTerminal();
-      expect(
-        container.read(setupProvider).error,
-        contains('already been used'),
-      );
+      final draft = container.read(setupProvider);
+      expect(draft.connected, isFalse);
+      expect(draft.pulledBranches, isNull);
+      expect(draft.pulledTerminals, isNull);
+      expect(draft.error, contains('Only the business owner'));
+      expect(draft.canAdvance, isFalse);
     });
-
-    test(
-      'switching path forgets the claim rather than leaving it behind',
-      () async {
-        final container = ProviderContainer(
-          overrides: fakeRepositoryOverrides(),
-        );
-        addTearDown(container.dispose);
-        final controller = container.read(setupProvider.notifier);
-
-        controller.setTenantSlug('mahsoub');
-        controller.setPairingCode(FakeProvisioningRepository.demoCode);
-        await controller.claimTerminal();
-        expect(container.read(setupProvider).branchLabel, 'Maadi');
-
-        controller.setMethod(SetupMethod.manual);
-
-        final draft = container.read(setupProvider);
-        expect(draft.claimed, isFalse);
-        expect(draft.branchId, isNull);
-        expect(draft.branchLabel, isNull);
-        expect(draft.terminalName, isEmpty);
-        expect(draft.terminalId, isNull);
-      },
-    );
 
     test('manual setup needs credentials before it can go on', () {
       const noCredentials = SetupDraft(
         step: SetupStep.account,
-        method: SetupMethod.manual,
         deployment: DeploymentConfig(
           mode: DeploymentMode.cloud,
           tenantSlug: 'mahsoub',
@@ -1031,7 +996,6 @@ void main() {
 
       const withCredentials = SetupDraft(
         step: SetupStep.account,
-        method: SetupMethod.manual,
         deployment: DeploymentConfig(
           mode: DeploymentMode.cloud,
           tenantSlug: 'mahsoub',
@@ -1126,7 +1090,6 @@ void main() {
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
 
-      controller.setMethod(SetupMethod.manual);
       controller.setTenantSlug('mahsoub');
       controller.setBranch(13, 'Maadi');
       controller.setTerminalName('Counter 1');

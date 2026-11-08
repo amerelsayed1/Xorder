@@ -210,7 +210,6 @@ class _RailRow extends StatelessWidget {
                 context.strings,
                 mode: draft.deployment.mode,
                 role: draft.deployment.role,
-                method: draft.method,
               ),
               overflow: TextOverflow.ellipsis,
               style: PosText.ui(
@@ -253,7 +252,6 @@ class _Header extends StatelessWidget {
             context.strings,
             mode: draft.deployment.mode,
             role: draft.deployment.role,
-            method: draft.method,
           ),
           style: PosText.screenTitle(color: context.pos.ink),
         ),
@@ -263,7 +261,6 @@ class _Header extends StatelessWidget {
             context.strings,
             mode: draft.deployment.mode,
             role: draft.deployment.role,
-            method: draft.method,
           ),
           style: PosText.ui(size: 13.5, color: context.pos.muted),
         ),

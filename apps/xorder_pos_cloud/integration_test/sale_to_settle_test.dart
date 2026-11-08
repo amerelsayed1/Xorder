@@ -8,7 +8,6 @@ import 'package:shared_module/data/postgres/migrations.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 import 'support/e2e_app_files.dart';
-import 'support/e2e_licence.dart';
 import 'support/e2e_platform.dart';
 import 'support/e2e_seed.dart';
 import 'support/till_driver.dart';
@@ -30,9 +29,9 @@ import 'support/till_driver.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // A licence key is no longer a precondition: without one the suite signs
-  // with a key minted for the run, which a development build trusts — see
-  // E2eLicence.issue. A release-build run still sets POS_LICENCE_KEY.
+  // No licence is issued here: a cloud till receives its licence in the
+  // bootstrap bundle (pos-cloud-sign-in-setup), so the platform's tenant must
+  // hold a live cloud licence.
   if (PgFixture.host == null || E2ePlatform.baseUrl == null) {
     const required = bool.fromEnvironment('POS_E2E_REQUIRED');
     if (required) {
@@ -48,8 +47,6 @@ void main() {
     return;
   }
 
-  late String licence;
-
   late PgFixture pg;
 
   final invoicePeriod = DateTime.now().year;
@@ -63,11 +60,6 @@ void main() {
     // `bin/pos_migrate.dart` is that act in production. The till itself only
     // ever reads and writes rows, so it cannot create the tables it needs and
     // the test must not pretend otherwise.
-    licence = await E2eLicence.issue(
-      tenantSlug: E2eSeed.slug,
-      tenantName: E2eSeed.businessName,
-    );
-
     pg = await PgFixture.open('e2e');
     await PosMigrator(pg.database).migrate(pg.config);
     await E2eSeed.apply(pg.database, pg.config);
@@ -130,28 +122,17 @@ void main() {
   }
 
   /// Walk the wizard with this run's real database and real platform behind
-  /// it. Phase 1 ships the cloud path, so the terminal is provisioned on the
-  /// platform first and claimed with a single-use code — the same order a
-  /// manager and an installer follow.
-  /// The pairing code the most recent [install] redeemed — the spent-code
-  /// test needs to present exactly that one again.
-  String? lastPairingCode;
-
+  /// it: the owner signs in, and the till adopts the terminal the dashboard
+  /// made or registers a new one (pos-cloud-sign-in-setup).
   Future<void> install(TillDriver till) async {
-    final code = await E2ePlatform.provisionTerminal(
-      name: 'E2E ${DateTime.now().millisecondsSinceEpoch}',
-    );
-    lastPairingCode = code;
     await till.completeSetup(
-      databaseHost: PgFixture.host!,
       databaseName: pg.config.databaseName,
       databasePort: PgFixture.port,
       databaseUser: PgFixture.user,
       databasePassword: PgFixture.password,
-      pairingCode: code,
-      licenceFile: licence,
-      platformUrl: E2ePlatform.baseUrl!,
       tenantSlug: E2ePlatform.slug,
+      ownerUsername: E2ePlatform.username,
+      ownerPassword: E2ePlatform.password,
     );
   }
 
@@ -484,49 +465,5 @@ void main() {
 
     await restarted.waitForTextContaining('Start shift');
     expect(find.text('This terminal has not been set up.'), findsNothing);
-  });
-
-  testWidgets('a spent pairing code is refused the second time it is used', (
-    tester,
-  ) async {
-    // The seed resets `claimed_at` between tests, so this is the only place the
-    // single-use rule can be observed: claim it, then try again in the same run.
-    final till = TillDriver(tester);
-    await till.boot();
-    await install(till);
-
-    // A second machine, walked to the same step. It cannot reuse
-    // `completeSetup`, which expects the claim to succeed — this test is about
-    // the claim being refused.
-    final second = TillDriver(tester);
-    await second.boot(freshInstallation: true);
-    await second.openSetupFromWelcome();
-
-    // Setup type (cloud is preselected) and language are confirmations.
-    await second.tapButton('Continue');
-    await second.tapButton('Continue');
-
-    // Connection: the platform, and this till's own local database.
-    await second.enterField('Platform address', E2ePlatform.baseUrl!);
-    if (find.text('Database address').evaluate().isNotEmpty) {
-      await second.enterField('Database address', PgFixture.host!);
-    }
-    await second.enterField('Database name', pg.config.databaseName);
-    await second.enterField('Port', PgFixture.port.toString());
-    await second.enterField('Database user', PgFixture.user);
-    await second.enterField('Database password', PgFixture.password);
-    await second.tapButton('Test connection');
-    await second.waitForNoSpinner();
-    await second.tapButton('Continue');
-
-    // Sign in with the code the FIRST machine already redeemed.
-    await second.enterField('Business', E2ePlatform.slug);
-    await second.tapButton('Setup code');
-    await second.enterField('Setup code', lastPairingCode!);
-    await second.tapButton('Claim this terminal');
-
-    // "Already used" and "not recognised" are different problems: one needs a
-    // new code from the dashboard, the other needs the operator to retype.
-    await second.waitForTextContaining('already been used');
   });
 }

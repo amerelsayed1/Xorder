@@ -894,6 +894,10 @@ class FakeProvisioningRepository implements ProvisioningRepository {
   static const demoUsername = 'manager';
   static const demoPassword = 'secret';
 
+  /// A real account that is not the owner's — signs in, and is refused
+  /// setting up a till (pos-cloud-sign-in-setup, D3).
+  static const staffUsername = 'cashier';
+
   @override
   Future<TenantConnection> connect({
     required String tenantSlug,
@@ -901,6 +905,12 @@ class FakeProvisioningRepository implements ProvisioningRepository {
     required String password,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (username.trim() == staffUsername && password == demoPassword) {
+      return const TenantConnection(
+        code: 'NOT_OWNER',
+        message: 'Only the business owner can set up a till.',
+      );
+    }
     if (username.trim() != demoUsername || password != demoPassword) {
       return const TenantConnection(
         code: 'CREDENTIALS_REJECTED',
@@ -958,8 +968,7 @@ class FakeProvisioningRepository implements ProvisioningRepository {
       return const ClaimResult(
         code: 'CREDENTIALS_REJECTED',
         message:
-            'That username and password were not accepted. Check them '
-            'with a manager, or use a setup code instead.',
+            'That username and password were not accepted.',
       );
     }
 

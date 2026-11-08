@@ -71,6 +71,17 @@ class CloudProvisioningRepository implements ProvisioningRepository {
     return _finishClaim(reply);
   }
 
+  /// The owner's account, as the login reply names it: `data.role` is
+  /// `RESTAURANT_ADMIN` for the owner and `RESTAURANT_STAFF` for everyone else
+  /// (`UserResource`, xorder-cloud).
+  static bool _isOwner(CloudReply login) =>
+      login.data['role'] == 'RESTAURANT_ADMIN';
+
+  static const _notOwner = ClaimResult(
+    code: 'NOT_OWNER',
+    message: 'Only the business owner can set up a till.',
+  );
+
   @override
   Future<TenantConnection> connect({
     required String tenantSlug,
@@ -117,6 +128,17 @@ class CloudProvisioningRepository implements ProvisioningRepository {
         message:
             'That username and password were not accepted for this '
             'restaurant. Check all three with a manager.',
+      );
+    }
+
+    // Only the owner sets up a cloud till (pos-cloud-sign-in-setup, D3). The
+    // server would let any account holding `pos.provision` through; the till
+    // is stricter, and stops here — before a branch or terminal is read — and
+    // the token is dropped with this frame.
+    if (!_isOwner(login)) {
+      return const TenantConnection(
+        code: 'NOT_OWNER',
+        message: 'Only the business owner can set up a till.',
       );
     }
 
@@ -232,11 +254,10 @@ class CloudProvisioningRepository implements ProvisioningRepository {
     if (!login.ok || jwt == null || jwt.isEmpty) {
       return const ClaimResult(
         code: 'CREDENTIALS_REJECTED',
-        message:
-            'That username and password were not accepted. Check them '
-            'with a manager, or use a setup code instead.',
+        message: 'That username and password were not accepted.',
       );
     }
+    if (!_isOwner(login)) return _notOwner;
 
     final issued = await api.issuePairingCode(jwt: jwt, terminalId: terminalId);
     if (issued.offline) return _offline();
@@ -309,11 +330,10 @@ class CloudProvisioningRepository implements ProvisioningRepository {
       // learn which usernames exist (the server is equally careful).
       return const ClaimResult(
         code: 'CREDENTIALS_REJECTED',
-        message:
-            'That username and password were not accepted. Check them '
-            'with a manager, or use a setup code instead.',
+        message: 'That username and password were not accepted.',
       );
     }
+    if (!_isOwner(login)) return _notOwner;
 
     final reply = await api.registerTerminal(
       jwt: jwt,

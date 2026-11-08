@@ -543,19 +543,12 @@ sealed class AppStrings {
   String get stepReady;
   String get stepReadyBlurb;
 
-  /// The cloud path's two collapsed steps (owner decision, 2026-09-15). The
-  /// account step is not a sign-in there — it asks for a code and nothing else
-  /// — and the step after it asks for nothing at all.
-  String get stepSetupCode;
-  String get stepSetupCodeBlurb;
   String get stepConnecting;
   String get stepConnectingBlurb;
   String get settingUpThisTill;
   String get tillIsReady;
   String get connectingPaneHelp;
   String printerDetected(String printer);
-  String get signInInstead;
-  String get useASetupCodeInstead;
   String get tryAgain;
 
   // The till cannot open its database (start screen). Plain sentences for the
@@ -886,18 +879,12 @@ sealed class AppStrings {
 
   // ── Setup: account ────────────────────────────────────────────────────────
   String get business;
-  String get businessHelp;
-  String get businessFromLicenceHelp;
-  String get methodPairingCode;
-  String get methodPairingCodeBlurb;
-  String get methodManual;
-  String get methodManualBlurb;
-  String claimedAs(String terminal, String branch);
-  String get claimedHelp;
-  String get claimedFromDashboardHelp;
-  String get setupCode;
-  String get setupCodeHelp;
-  String get claimThisTerminal;
+  String get businessAddress;
+  String get businessAddressHelp;
+  String get ownerSignInHelp;
+  String get stepOwnerSignInBlurb;
+  String get cloudLicenceMissing;
+  String get refusalNotOwner;
   String get username;
   String get password;
   String get managerPassword;
@@ -4535,12 +4522,6 @@ final class EnStrings extends AppStrings {
   @override
   String get stepReadyBlurb => 'Check everything, then open the till.';
   @override
-  String get stepSetupCode => 'Setup code';
-  @override
-  String get stepSetupCodeBlurb =>
-      'The code the dashboard issued for this till. Everything else comes with '
-      'it.';
-  @override
   String get stepConnecting => 'Connecting';
   @override
   String get stepConnectingBlurb =>
@@ -4557,10 +4538,6 @@ final class EnStrings extends AppStrings {
       'typed, so there is nothing here to get wrong.';
   @override
   String printerDetected(String printer) => 'Printer found: $printer.';
-  @override
-  String get signInInstead => 'Sign in instead';
-  @override
-  String get useASetupCodeInstead => 'Use a setup code instead';
   @override
   String get tryAgain => 'Try again';
   @override
@@ -5176,43 +5153,25 @@ final class EnStrings extends AppStrings {
   @override
   String get business => 'Business';
   @override
-  String get businessHelp =>
-      'The business’s short name, as in mahsoub.xorder.io. Staff usernames '
-      'are unique within a business, so this has to be set before anyone can '
-      'sign in.';
+  String get businessAddress => 'Business address';
   @override
-  String get businessFromLicenceHelp =>
-      'From your licence. Staff usernames are unique within a business, so '
-      'this is what a cashier signs in against.';
+  String get businessAddressHelp =>
+      'The first part of your dashboard address, as in cafe-nile.xorder.io.';
   @override
-  String get methodPairingCode => 'Setup code';
+  String get ownerSignInHelp =>
+      'Only the business owner can set up a till. The password is used once, '
+      'to set up this till, and is never saved on it.';
   @override
-  String get methodPairingCodeBlurb =>
-      'This till was added in the dashboard and given a code.';
+  String get stepOwnerSignInBlurb =>
+      'Sign in with the business owner’s dashboard account.';
   @override
-  String get methodManual => 'Set up manually';
+  String get cloudLicenceMissing =>
+      'The platform sent no licence for this business, so this till cannot '
+      'sell yet. Ask XOrder to issue a cloud licence, then press Try again.';
   @override
-  String get methodManualBlurb =>
-      'No dashboard access — sign in and configure by hand.';
-  @override
-  String claimedAs(String terminal, String branch) =>
-      'Claimed as $terminal · $branch';
-  @override
-  String get claimedHelp =>
-      'The branch, the till name and the terminal id all came from the '
-      'dashboard. The next two steps just confirm them.';
-  @override
-  String get claimedFromDashboardHelp =>
-      'The branch, the till name and the terminal id all came from the '
-      'dashboard. The next two steps just confirm them.';
-  @override
-  String get setupCode => 'Setup code';
-  @override
-  String get setupCodeHelp =>
-      'From the dashboard, under Settings → Terminals. Codes are single-use and '
-      'expire, so ask for a fresh one rather than reusing an old note.';
-  @override
-  String get claimThisTerminal => 'Claim this terminal';
+  String get refusalNotOwner =>
+      'Only the business owner can set up a till. Sign in with the owner’s '
+      'dashboard account.';
   @override
   String get username => 'Username';
   @override
@@ -10098,11 +10057,6 @@ final class ArStrings extends AppStrings {
   @override
   String get stepReadyBlurb => 'راجع كل شيء، ثم افتح الكاشير.';
   @override
-  String get stepSetupCode => 'كود الإعداد';
-  @override
-  String get stepSetupCodeBlurb =>
-      'الكود الذي أصدرته لوحة التحكم لهذا الكاشير. وكل ما عداه يأتي معه.';
-  @override
   String get stepConnecting => 'جارٍ التجهيز';
   @override
   String get stepConnectingBlurb =>
@@ -10118,10 +10072,6 @@ final class ArStrings extends AppStrings {
       'يُكتب خطأ.';
   @override
   String printerDetected(String printer) => 'تم العثور على طابعة: $printer.';
-  @override
-  String get signInInstead => 'سجّل الدخول بدلاً من ذلك';
-  @override
-  String get useASetupCodeInstead => 'استخدم كود إعداد بدلاً من ذلك';
   @override
   String get tryAgain => 'حاول مرة أخرى';
   @override
@@ -10710,42 +10660,25 @@ final class ArStrings extends AppStrings {
   @override
   String get business => 'المنشأة';
   @override
-  String get businessHelp =>
-      'الاسم المختصر للمنشأة، كما في mahsoub.xorder.io. أسماء مستخدمي الموظفين '
-      'فريدة داخل المنشأة الواحدة، فيجب ضبط هذا قبل أن يسجّل أحد دخوله.';
+  String get businessAddress => 'عنوان المنشأة';
   @override
-  String get businessFromLicenceHelp =>
-      'من ترخيصك. أسماء المستخدمين لا تتكرر داخل المنشأة الواحدة، فهذا ما '
-      'يسجّل به الكاشير دخوله.';
+  String get businessAddressHelp =>
+      'الجزء الأول من عنوان لوحة التحكم، مثل cafe-nile.xorder.io.';
   @override
-  String get methodPairingCode => 'كود الإعداد';
+  String get ownerSignInHelp =>
+      'يمكن لمالك المنشأة فقط إعداد جهاز البيع. تُستخدم كلمة المرور مرة واحدة '
+      'لإعداد هذا الجهاز، ولا تُحفظ عليه أبدًا.';
   @override
-  String get methodPairingCodeBlurb =>
-      'أُضيف هذا الكاشير من لوحة التحكم وأُعطي كوداً.';
+  String get stepOwnerSignInBlurb =>
+      'سجّل الدخول بحساب مالك المنشأة في لوحة التحكم.';
   @override
-  String get methodManual => 'إعداد يدوي';
+  String get cloudLicenceMissing =>
+      'لم ترسل المنصة ترخيصًا لهذه المنشأة، لذلك لا يمكن لهذا الجهاز البيع بعد. '
+      'اطلب من XOrder إصدار ترخيص سحابي، ثم اضغط «حاول مرة أخرى».';
   @override
-  String get methodManualBlurb =>
-      'لا يوجد وصول للوحة التحكم — سجّل الدخول واضبط الإعدادات يدوياً.';
-  @override
-  String claimedAs(String terminal, String branch) =>
-      'مسجَّل باسم $terminal · $branch';
-  @override
-  String get claimedHelp =>
-      'الفرع واسم الكاشير ورقم الجهاز جاءت كلها من لوحة التحكم. الخطوتان '
-      'التاليتان للتأكيد فقط.';
-  @override
-  String get claimedFromDashboardHelp =>
-      'الفرع واسم الكاشير ورقم الجهاز كلها جاءت من لوحة التحكم. الخطوتان '
-      'التاليتان للتأكيد فقط.';
-  @override
-  String get setupCode => 'كود الإعداد';
-  @override
-  String get setupCodeHelp =>
-      'من لوحة التحكم، في الإعدادات ← الأجهزة. الأكواد تُستخدم مرة واحدة '
-      'وتنتهي، فاطلب كوداً جديداً بدل إعادة استخدام ورقة قديمة.';
-  @override
-  String get claimThisTerminal => 'تسجيل هذا الجهاز';
+  String get refusalNotOwner =>
+      'يمكن لمالك المنشأة فقط إعداد جهاز البيع. سجّل الدخول بحساب المالك في '
+      'لوحة التحكم.';
   @override
   String get username => 'اسم المستخدم';
   @override
