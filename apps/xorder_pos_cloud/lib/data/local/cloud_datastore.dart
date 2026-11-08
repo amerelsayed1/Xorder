@@ -24,9 +24,13 @@ import 'package:shared_module/data/sqlite/sqlite_database.dart';
 /// The file's name inside the app's support folder.
 const cloudDataFileName = 'xorder_pos_cloud.db';
 
+/// The secret store key the data file's key is kept under. Its presence is
+/// also what tells a launch this till is set up (`runPos(embeddedDataKey:)`).
+const cloudDataKeyName = 'pos_cloud_data_key';
+
 /// Where the key for this till's data file is kept.
 final cloudDataKeyStoreProvider = Provider<PosDbSecretStore>(
-  (ref) => KeyedSecretStore(ref.watch(secretStoreProvider), 'pos_cloud_data_key'),
+  (ref) => KeyedSecretStore(ref.watch(secretStoreProvider), cloudDataKeyName),
 );
 
 /// The data file, as the till's database.

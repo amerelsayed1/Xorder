@@ -33,6 +33,60 @@ void main() {
     languageCode: 'ar',
   );
 
+  // pos-cloud-single-till-sqlite: a cloud till's data is a file of its own,
+  // keyed from the secret store, with no database password. Found running the
+  // app: without this, every launch read a set-up cloud till as never set up
+  // and reopened the wizard.
+  group('the credential a till boots with', () {
+    test('a stored database password is one (PostgreSQL)', () async {
+      expect(
+        await tillCredentialPresent(
+          passwordSet: true,
+          secrets: InMemorySecretStore(),
+        ),
+        isTrue,
+      );
+    });
+
+    test('so is the data file\'s key, for a till that names one', () async {
+      final secrets = InMemorySecretStore({'pos_cloud_data_key': 'a' * 64});
+      expect(
+        await tillCredentialPresent(
+          passwordSet: false,
+          secrets: secrets,
+          embeddedDataKey: 'pos_cloud_data_key',
+        ),
+        isTrue,
+      );
+      final boot = bootFor(
+        saved: saved(DeploymentMode.cloud),
+        appMode: DeploymentMode.cloud,
+        hasDatabaseCredential: true,
+        credentialStoreUnavailable: false,
+      );
+      expect(boot.hasDatabaseCredential, isTrue);
+    });
+
+    test('neither, and the till is not set up', () async {
+      expect(
+        await tillCredentialPresent(
+          passwordSet: false,
+          secrets: InMemorySecretStore(),
+          embeddedDataKey: 'pos_cloud_data_key',
+        ),
+        isFalse,
+      );
+      // An offline till never counts a key it does not name.
+      expect(
+        await tillCredentialPresent(
+          passwordSet: false,
+          secrets: InMemorySecretStore({'pos_cloud_data_key': 'a' * 64}),
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('bootFor', () {
     for (final mode in DeploymentMode.values) {
       test('${mode.productName} opens its own configuration', () {

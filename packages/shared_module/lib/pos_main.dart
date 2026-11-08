@@ -38,9 +38,15 @@ const _initialWindow = Size(1440, 900);
 /// app binds its sync, provisioning, seeding and branch-sales client; the
 /// offline app binds its back office. They are added after the shared
 /// bindings below, so an app may replace any of them.
+///
+/// [embeddedDataKey] names the secret that is this till's database credential
+/// when its data is a file of its own (the cloud app's encrypted SQLite,
+/// pos-cloud-single-till-sqlite): such a till has no database password, and
+/// without this every launch would read it as never set up.
 Future<void> runPos({
   required DeploymentMode mode,
   List<Override> overrides = const [],
+  String? embeddedDataKey,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -102,7 +108,11 @@ Future<void> runPos({
           bootFor(
             saved: saved,
             appMode: mode,
-            hasDatabaseCredential: credentials.isSet,
+            hasDatabaseCredential: await tillCredentialPresent(
+              passwordSet: credentials.isSet,
+              secrets: secrets,
+              embeddedDataKey: embeddedDataKey,
+            ),
             // Asked after `restore()`, because that read is what makes a broken
             // keystore visible at all. A migration the store refused counts
             // too: the passwords it could not take are not where the till
@@ -120,6 +130,25 @@ Future<void> runPos({
       child: const XorderPosApp(),
     ),
   );
+}
+
+/// Whether this till holds the credential its database needs: a stored
+/// database password (PostgreSQL), or — for a till whose data is a file of
+/// its own — that file's key, under [embeddedDataKey].
+Future<bool> tillCredentialPresent({
+  required bool passwordSet,
+  required SecretStore secrets,
+  String? embeddedDataKey,
+}) async {
+  if (passwordSet) return true;
+  if (embeddedDataKey == null) return false;
+  try {
+    return (await secrets.read(embeddedDataKey))?.isNotEmpty ?? false;
+  } on Object {
+    // A store that cannot be read is reported by the credential check above
+    // (`storeUnavailable`); here it is simply "no key".
+    return false;
+  }
 }
 
 /// What this app boots from, given what is on disk.
