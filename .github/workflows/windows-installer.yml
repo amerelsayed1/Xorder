@@ -21,6 +21,10 @@ name: Windows installer
 on:
   workflow_dispatch:
 
+# The app is the workspace member packages/xorder_pos (pos-split-apps stage 1).
+# Its own build output stays in that folder; what the installer gathers
+# (PostgreSQL, tools, the runtime) goes to build/installer at the root.
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
@@ -57,7 +61,7 @@ jobs:
       - name: Version from pubspec
         id: version
         run: |
-          $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $v = (Select-String -Path packages/xorder_pos/pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           "value=$v" >> $env:GITHUB_OUTPUT
 
       - name: The tag is the pubspec version
@@ -73,20 +77,25 @@ jobs:
             throw 'XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID repository variables are required for a release build.'
           }
           flutter pub get
+          Push-Location packages/xorder_pos
           flutter build windows --release "--dart-define=XORDER_LICENSE_PUBLIC_KEY_B64=$env:XORDER_LICENSE_PUBLIC_KEY_B64" "--dart-define=XORDER_LICENSE_KEY_ID=$env:XORDER_LICENSE_KEY_ID"
+          if ($LASTEXITCODE -ne 0) { throw "flutter build exited with $LASTEXITCODE" }
+          Pop-Location
 
       - name: Build pos_migrate.exe
         run: |
           # `dart compile exe` refuses a package graph with build hooks
           # (objective_c, via file_picker); `dart build cli` is its replacement.
           New-Item -ItemType Directory -Force build/installer/tools | Out-Null
+          Push-Location packages/xorder_pos
           dart build cli --target bin/pos_migrate.dart --output build/pos_migrate
           if ($LASTEXITCODE -ne 0) { throw "dart build cli exited with $LASTEXITCODE" }
+          Pop-Location
           # The installer ships the executable alone. A native library beside it
           # would be left behind, so a new one has to be added to the .iss first.
-          $libs = Get-ChildItem build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
+          $libs = Get-ChildItem packages/xorder_pos/build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
           if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
-          Copy-Item build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
+          Copy-Item packages/xorder_pos/build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
 
       # Keyed on the pinned hash, and the hash is still checked after a restore,
       # so a cached archive is held to the same bar as a fresh download.
@@ -127,7 +136,7 @@ jobs:
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           $args = @(
             "/DAppVersion=${{ steps.version.outputs.value }}",
-            '/DAppDir=..\build\windows\x64\runner\Release',
+            '/DAppDir=..\packages\xorder_pos\build\windows\x64\runner\Release',
             '/DPgDir=..\build\installer\pgsql',
             '/DToolsDir=..\build\installer\tools'
           )
@@ -137,7 +146,7 @@ jobs:
             $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
             $sign = "`"$signtool`" sign /f `"$pfx`" /p `"$env:WINDOWS_CERT_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256"
             # The app and the tool first, so what the installer carries is signed too.
-            & cmd /c "$sign build\windows\x64\runner\Release\xorder_pos.exe build\installer\tools\pos_migrate.exe"
+            & cmd /c "$sign packages\xorder_pos\build\windows\x64\runner\Release\xorder_pos.exe build\installer\tools\pos_migrate.exe"
             if ($LASTEXITCODE -ne 0) { throw 'signing the app failed' }
             $args += @('/DSIGN', "/Ssigntool=$sign `$f")
           } else {

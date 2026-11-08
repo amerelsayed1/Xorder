@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// against each other: the one kind of break that would otherwise only show up
 /// on a business's machine.
 void main() {
-  final ps1 = File('installer/provision.ps1').readAsStringSync();
+  final ps1 = File('../../installer/provision.ps1').readAsStringSync();
 
   /// The script with its comments taken out: what it RUNS. The comments say
   /// why "Administrators" and `trust` are avoided, and must not count as uses.
@@ -17,7 +17,7 @@ void main() {
       .where((line) => !line.trimLeft().startsWith('#'))
       .map((line) => line.replaceFirst(RegExp(r'\s#\s.*$'), ''))
       .join('\n');
-  final iss = File('installer/xorder-pos.iss').readAsStringSync();
+  final iss = File('../../installer/xorder-pos.iss').readAsStringSync();
   final migrate = File('bin/pos_migrate.dart').readAsStringSync();
   final pgTools = File('lib/data/backup/pg_tools.dart').readAsStringSync();
 

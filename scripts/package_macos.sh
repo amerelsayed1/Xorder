@@ -37,13 +37,15 @@
 #
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# The app is the workspace member packages/xorder_pos; the disk image still
+# lands in the repository's dist/.
+cd "$(dirname "$0")/../packages/xorder_pos"
 
 APP_NAME="XOrder POS"
 BUILD_DIR="build/macos/Build/Products/Release"
 APP_PATH="$BUILD_DIR/$APP_NAME.app"
 ENTITLEMENTS="macos/Runner/Release.entitlements"
-DIST_DIR="dist"
+DIST_DIR="../../dist"
 
 VERSION="$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)"
 BUILD_NUMBER="$(sed -n 's/^version: *[0-9.]*+\(.*\)/\1/p' pubspec.yaml)"
