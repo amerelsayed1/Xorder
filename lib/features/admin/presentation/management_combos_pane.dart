@@ -573,9 +573,8 @@ class _ComboDialogState extends State<_ComboDialog> {
                   const SizedBox(height: PosSpace.md),
                   MicroLabel(strings.comboCategory),
                   const SizedBox(height: PosSpace.xs),
-                  DropdownButton<int>(
-                    key: const Key('combo-category'),
-                    isExpanded: true,
+                  PosDropdownField<int>(
+                    dropKey: const Key('combo-category'),
                     value: widget.categories.any((c) => c.id == _categoryId)
                         ? _categoryId
                         : null,
@@ -783,9 +782,8 @@ class _ComboDialogState extends State<_ComboDialog> {
               key: Key('combo-option-$index-$o'),
               children: [
                 Expanded(
-                  child: DropdownButton<int>(
-                    key: Key('combo-option-product-$index-$o'),
-                    isExpanded: true,
+                  child: PosDropdownField<int>(
+                    dropKey: Key('combo-option-product-$index-$o'),
                     hint: Text(strings.comboOptionProduct),
                     value:
                         widget.products.any(

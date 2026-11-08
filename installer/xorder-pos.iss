@@ -202,7 +202,7 @@ begin
       SuppressibleMsgBox(FmtMessage(CustomMessage('LanTlsFailed'), [LogFile]),
         mbError, MB_OK, IDOK);
   else
-    SuppressibleMsgBox(FmtMessage(CustomMessage('DatabaseFailed'),
-      [IntToStr(ResultCode), LogFile]), mbError, MB_OK, IDOK);
+    SuppressibleMsgBox(FmtMessage(CustomMessage('DatabaseFailed'), [IntToStr(ResultCode),
+      LogFile]), mbError, MB_OK, IDOK);
   end;
 end;

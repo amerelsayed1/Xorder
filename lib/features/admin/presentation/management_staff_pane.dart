@@ -1061,7 +1061,8 @@ class _FilterBar extends StatelessWidget {
               selected: filter.status == status,
               onTap: () => onChanged(filter.copyWith(status: status)),
             ),
-          _RoleFilter(
+          FilterDropdown<int>(
+            dropKey: const Key('users-role-filter'),
             everyone: strings.usersAllRoles,
             options: [
               for (final role in roles)
@@ -1156,56 +1157,6 @@ class _FilterChip extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One role, or all of them — the history screen's pick filter, for roles.
-class _RoleFilter extends StatelessWidget {
-  const _RoleFilter({
-    required this.everyone,
-    required this.options,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final String everyone;
-  final List<(int, String)> options;
-  final int? selected;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    // A role no longer offered is shown as "all roles" rather than handed to
-    // the dropdown, which asserts when its value is not among its items.
-    final value = options.any((option) => option.$1 == selected)
-        ? selected
-        : null;
-    return Container(
-      height: PosSize.filterChip,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-      decoration: BoxDecoration(
-        border: Border.fromBorderSide(
-          value == null ? pos.resting : pos.accentBorder,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
-          key: const Key('users-role-filter'),
-          value: value,
-          isDense: true,
-          focusColor: Colors.transparent,
-          borderRadius: BorderRadius.zero,
-          style: PosText.ui(size: 12.5, color: pos.body),
-          items: [
-            DropdownMenuItem<int?>(value: null, child: Text(everyone)),
-            for (final (id, label) in options)
-              DropdownMenuItem<int?>(value: id, child: Text(label)),
-          ],
-          onChanged: onChanged,
         ),
       ),
     );
@@ -1494,10 +1445,9 @@ class _StaffEditorDialogState extends State<StaffEditorDialog> {
               const SizedBox(height: PosSpace.lg),
               MicroLabel(strings.fieldRole),
               const SizedBox(height: PosSpace.xs),
-              DropdownButton<int>(
-                key: const Key('staff-editor-role'),
+              PosDropdownField<int>(
+                dropKey: const Key('staff-editor-role'),
                 value: _roleId,
-                isExpanded: true,
                 style: PosText.ui(color: context.pos.inkWarm, size: 14),
                 items: [
                   for (final role in widget.roles)

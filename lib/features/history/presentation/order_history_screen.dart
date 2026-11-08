@@ -525,7 +525,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           // control that lies.
           if (seesEveryone && staff.isNotEmpty) ...[
             const HistoryFilterDivider(),
-            _PickFilter<int>(
+            FilterDropdown<int>(
               key: OrderHistoryScreen.staffFilterKey,
               everyone: strings.orderHistoryEveryone,
               options: [for (final person in staff) (person.id, person.name)],
@@ -534,7 +534,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             ),
           ],
           if (tenders.isNotEmpty)
-            _PickFilter<int>(
+            FilterDropdown<int>(
               key: OrderHistoryScreen.tenderFilterKey,
               everyone: strings.orderHistoryEveryMethod,
               options: [
@@ -546,7 +546,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           // Only with a second till to tell apart. A branch with one terminal
           // would get a picker whose every answer is the same list.
           if (terminals.length > 1)
-            _PickFilter<String>(
+            FilterDropdown<String>(
               key: OrderHistoryScreen.terminalFilterKey,
               everyone: strings.orderHistoryEveryTerminal,
               options: [
@@ -1081,59 +1081,3 @@ class _OrderRow extends StatelessWidget {
   }
 }
 
-/// One of several values, or all of them — the cashier, the payment method and
-/// the till are the same control over different lists.
-///
-/// Generic rather than three near-copies: the staff picker was the only one
-/// when it was written, and the second copy is where the borders of the three
-/// would have started to disagree.
-class _PickFilter<T extends Object> extends StatelessWidget {
-  const _PickFilter({
-    super.key,
-    required this.everyone,
-    required this.options,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  /// The label for "no filter".
-  final String everyone;
-  final List<(T, String)> options;
-  final T? selected;
-  final ValueChanged<T?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    // A selection that is no longer offered — a till deleted while the screen
-    // was open — is shown as "everyone" rather than handed to the dropdown,
-    // which asserts when its value is not among its items.
-    final value = options.any((option) => option.$1 == selected)
-        ? selected
-        : null;
-    return Container(
-      height: PosSize.filterChip,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-      decoration: BoxDecoration(
-        border: Border.fromBorderSide(
-          value == null ? pos.resting : pos.accentBorder,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T?>(
-          value: value,
-          isDense: true,
-          focusColor: Colors.transparent,
-          borderRadius: BorderRadius.zero,
-          style: PosText.ui(size: 12.5, color: pos.body),
-          items: [
-            DropdownMenuItem<T?>(value: null, child: Text(everyone)),
-            for (final (id, label) in options)
-              DropdownMenuItem<T?>(value: id, child: Text(label)),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}

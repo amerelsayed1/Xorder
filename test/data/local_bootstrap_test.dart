@@ -6,6 +6,7 @@ import 'package:postgres/postgres.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/domain/models/content_languages.dart';
 
 import 'pg_fixture.dart';
 
@@ -107,6 +108,50 @@ void main() {
         'SELECT name FROM pos_users WHERE restaurant_id = @r',
         parameters: {'r': restaurantId});
     expect(staff.first[0], 'Amer', reason: 'the first name survived the re-run');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('XORD-035: a new restaurant stores the wizard language; a re-run keeps a later choice', () async {
+    final credentials = MutablePosDbCredentials()..set(PgFixture.password);
+    final database = PosDatabase(credentials: credentials);
+    final bootstrap = LocalBootstrap(database);
+    addTearDown(database.close);
+
+    await LocalBootstrap.createDatabase(admin, PgFixture.password, admin.databaseName);
+    await bootstrap.migrate(admin);
+
+    Future<String?> stored(int id) async {
+      final rows = await database.query(
+        admin,
+        'SELECT content_languages FROM pos_restaurants WHERE id = @id',
+        parameters: {'id': id},
+      );
+      return rows.first[0] as String?;
+    }
+
+    final arabic = await bootstrap.seedRestaurant(admin,
+        slug: 'ar-cafe', name: 'Cafe', contentLanguages: ContentLanguages.arabic);
+    final english = await bootstrap.seedRestaurant(admin,
+        slug: 'en-cafe', name: 'Cafe', contentLanguages: ContentLanguages.english);
+    final unspecified =
+        await bootstrap.seedRestaurant(admin, slug: 'old-cafe', name: 'Cafe');
+
+    expect(await stored(arabic), 'ar', reason: 'the wizard was Arabic');
+    expect(await stored(english), 'en', reason: 'the wizard was English');
+    expect(await stored(unspecified), 'both',
+        reason: 'no language given: the column default, read by the till as its own language');
+
+    // A manager chooses English later; adopting the row again (a re-run of the
+    // wizard) must not put the wizard's language back over it.
+    await database.query(
+      admin,
+      "UPDATE pos_restaurants SET content_languages = 'en' WHERE id = @id",
+      parameters: {'id': arabic},
+    );
+    final again = await bootstrap.seedRestaurant(admin,
+        slug: 'ar-cafe', name: 'Cafe', contentLanguages: ContentLanguages.arabic);
+
+    expect(again, arabic, reason: 'the same row is adopted');
+    expect(await stored(arabic), 'en', reason: 'the manager\'s choice survives');
   }, timeout: const Timeout(Duration(minutes: 2)));
 
   /// The machine the wizard's own help text invites: a PostgreSQL somebody
