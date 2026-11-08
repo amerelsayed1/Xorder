@@ -15,6 +15,7 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'postgres_cash_movements_repository.dart' show CashMovementWrite;
 import 'postgres_order_history_repository.dart';
+import '../sql/row_reads.dart';
 
 /// Reads and writes `pos_supplier_invoices` and `pos_supplier_payments`.
 ///
@@ -82,10 +83,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       number: row[5]! as String,
       total: money(row[6]! as int),
       tax: money(row[7]! as int),
-      issuedAt: row[8]! as DateTime,
-      dueAt: row[9]! as DateTime,
+      issuedAt: row.dateTime(8),
+      dueAt: row.dateTime(9),
       note: _text(row[10]),
-      voidedAt: row[11] as DateTime?,
+      voidedAt: row.dateTimeOrNull(11),
       voidReasonId: row[12] as int?,
       paid: money(_bigint(row[15])),
       voidNote: _text(row[16]),
@@ -104,10 +105,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       method: SupplierPaymentMethod.fromWire(row[4]! as String),
       amount: Money(row[5]! as int, currency: currency, exponent: exponent),
       reference: _text(row[6]),
-      paidAt: row[7]! as DateTime,
+      paidAt: row.dateTime(7),
       note: _text(row[8]),
       cashMovementId: row[9] as int?,
-      voidedAt: row[10] as DateTime?,
+      voidedAt: row.dateTimeOrNull(10),
       voidReasonId: row[11] as int?,
       invoiceNumber: _text(row[14]),
       voidNote: _text(row[15]),

@@ -5,11 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/domain/models/order_type_config.dart';
 import 'package:shared_module/domain/models/reason_code.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// What a cloud till seeds for itself after the bundle lands.
 ///
@@ -24,7 +24,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
 
   setUp(() async {

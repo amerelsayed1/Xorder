@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
@@ -21,6 +20,7 @@ import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:shared_module/domain/services/refund_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// A cloud till uploads its refunds (POS-BE-010).
 ///
@@ -39,7 +39,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late DeploymentConfig cloud;
   late int businessId;
   late int branchId;
@@ -121,7 +121,21 @@ void main() {
     // bundle because what the seeder does with a bundle is
     // `cloud_tenders_test`'s claim, not this file's — here it is only the
     // starting condition.
-    await db.query(pg.config, "SELECT setval('pos_tender_types_id_seq', 4)");
+    // Past the compiled-in fallback's ids, as the seeder's sequence bump
+    // leaves it: PostgreSQL's serial, or SQLite's sqlite_sequence row.
+    if (PgFixture.onSqlite) {
+      await db.query(
+        pg.config,
+        "INSERT INTO sqlite_sequence (name, seq) SELECT 'pos_tender_types', 4 "
+        "WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'pos_tender_types')",
+      );
+      await db.query(
+        pg.config,
+        "UPDATE sqlite_sequence SET seq = max(seq, 4) WHERE name = 'pos_tender_types'",
+      );
+    } else {
+      await db.query(pg.config, "SELECT setval('pos_tender_types_id_seq', 4)");
+    }
     platformCash =
         (await db.query(
               pg.config,
@@ -204,7 +218,7 @@ void main() {
   }
 
   PostgresRefundsRepository repositoryOn({
-    PosDatabase? database,
+    SqlDatabase? database,
     DeploymentConfig? config,
   }) => PostgresRefundsRepository(
     database: database ?? db,
@@ -275,7 +289,7 @@ void main() {
 
   Future<(DrainReport, _RecordingApi)> drain({
     _RecordingApi? api,
-    PosDatabase? database,
+    SqlDatabase? database,
     DeploymentConfig? config,
   }) async {
     final client = api ?? _RecordingApi();
@@ -439,8 +453,12 @@ void main() {
         );
         final id = rows.first[0] as int;
         await tx.execute(
-          _insertRefundPartsSql,
-          parameters: {'refund': id, 'line': lineId, 'type': platformCash},
+          _insertRefundLineSql,
+          parameters: {'refund': id, 'line': lineId},
+        );
+        await tx.execute(
+          _insertRefundPaymentSql,
+          parameters: {'refund': id, 'type': platformCash},
         );
         await tx.execute(_insertRefundClaimSql, parameters: {
           'r': businessId,
@@ -773,7 +791,7 @@ void main() {
     });
   });
 
-  group('the till\'s own credential', () {
+  group('the till\'s own credential', skip: PgFixture.onSqlite ? 'creates PostgreSQL login roles' : false, () {
     test('writes the claim and stores the credit note number', () async {
       // Every other test here runs as the superuser, who needs no grant, so
       // every other test would pass on an install where this is refused. The
@@ -879,13 +897,17 @@ final _insertRefundSql = Sql.named(
   '  @total, @by, @approver) RETURNING id',
 );
 
-final _insertRefundPartsSql = Sql.named(
-  'WITH line AS ('
-  '  INSERT INTO pos_refund_lines (refund_id, order_line_id, quantity, '
-  '    unit_price_minor, line_total_minor, name_snapshot) '
-  "  VALUES (@refund, @line, 1, 5000, 5000, 'Mixed Grill') RETURNING 1) "
+/// The refund's line and its tender, as two statements — a writing CTE is
+/// PostgreSQL's alone, and both run in the caller's one transaction.
+final _insertRefundLineSql = Sql.named(
+  'INSERT INTO pos_refund_lines (refund_id, order_line_id, quantity, '
+  '  unit_price_minor, line_total_minor, name_snapshot) '
+  "VALUES (@refund, @line, 1, 5000, 5000, 'Mixed Grill')",
+);
+
+final _insertRefundPaymentSql = Sql.named(
   'INSERT INTO pos_refund_payments (refund_id, tender_type_id, label, '
-  "  amount_minor) SELECT @refund, @type, 'Cash', 5000 FROM line",
+  "  amount_minor) VALUES (@refund, @type, 'Cash', 5000)",
 );
 
 final _insertRefundClaimSql = Sql.named(
@@ -937,7 +959,7 @@ class _RecordingApi extends PosCloudApi {
 }
 
 /// Same as the grant suites': grants must go before the role can.
-Future<void> _dropRole(PosDatabase db, PgFixture pg, String role) async {
+Future<void> _dropRole(SqlDatabase db, PgFixture pg, String role) async {
   for (final statement in [
     'DROP OWNED BY "$role"',
     'DROP ROLE IF EXISTS "$role"',

@@ -6,7 +6,6 @@ import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/core/security/pin_hash.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_shift_repository.dart';
 import 'package:shared_module/data/postgres/postgres_supplier_invoices_repository.dart';
 import 'package:shared_module/domain/models/permissions.dart';
@@ -15,6 +14,7 @@ import 'package:shared_module/domain/models/supplier_invoice.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// What is owed and what has been paid, stored.
 ///
@@ -34,7 +34,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresSupplierInvoicesRepository ledger;
   late int businessId;
   late int branchId;

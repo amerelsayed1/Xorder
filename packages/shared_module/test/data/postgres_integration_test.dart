@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
 import 'package:shared_module/data/postgres/pos_database.dart';
@@ -16,6 +15,8 @@ import 'package:shared_module/domain/services/authorization.dart';
 import 'package:shared_module/domain/services/ticket_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// Exercises the real SQL against a real PostgreSQL.
 ///
@@ -40,7 +41,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
 
   /// A real person to attribute a void to.
   ///
@@ -235,7 +236,7 @@ void main() {
       expect(rows.first[3], 0);
       expect(rows.first[4], 'Dropped by the runner');
       // The line still exists, so the event points at it as well as naming it.
-      expect(rows.first[5], true);
+      expect(readBool(rows.first[5]), true);
     });
 
     test('the discount points at the line it came off', () async {

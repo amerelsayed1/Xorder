@@ -20,6 +20,8 @@ import 'package:shared_module/domain/services/authorization.dart';
 import 'package:shared_module/domain/services/ticket_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// Shifts, and the money they are answerable for.
 ///
@@ -35,7 +37,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late String terminalId;
@@ -472,7 +474,7 @@ void main() {
       'SELECT max(opened_at) FROM pos_shifts '
       'WHERE branch_id = @b AND opened_by = @s',
       parameters: {'b': branchId, 's': who.id},
-    )).first[0] as DateTime;
+    )).first.dateTime(0);
 
     test('"current shifts" is the open pos_shifts rows for the branch — every '
         'till, and no other branch', () async {

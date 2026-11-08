@@ -184,7 +184,7 @@ void main() {
     test('an administrator role that is not there is a SENTENCE, not a driver',
         () async {
       // Verbatim what a Mac did on 26 Sep 2026: the wizard's first build step
-      // opens its own connection, outside `PosDatabase`, so nothing used to
+      // opens its own connection, outside `SqlDatabase`, so nothing used to
       // translate the driver's answer and `Severity.fatal 28000: role
       // "pos_admin" does not exist` went straight into the error bar of a
       // wizard being read in Arabic.

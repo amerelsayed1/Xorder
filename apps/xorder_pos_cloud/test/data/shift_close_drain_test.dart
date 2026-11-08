@@ -8,12 +8,12 @@ import 'package:shared_module/core/security/pin_hash.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:xorder_pos_cloud/data/cloud/outbox_drain.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_shift_repository.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/models/shift.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// What a shift's close looks like on the wire.
 ///
@@ -31,7 +31,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late DeploymentConfig cloud;
   late int businessId;
   late int branchId;

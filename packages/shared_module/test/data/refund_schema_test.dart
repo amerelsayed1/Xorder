@@ -2,10 +2,8 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
 import 'package:shared_module/data/postgres/postgres_refunds_repository.dart';
@@ -18,6 +16,7 @@ import 'package:shared_module/domain/services/authorization.dart';
 import 'package:shared_module/domain/services/refund_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// Migration 12 — the rules a refund must not be able to break.
 ///
@@ -32,7 +31,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;
@@ -488,7 +487,7 @@ void main() {
     });
   });
 
-  group('the tender has to add up', () {
+  group('the tender has to add up', skip: PgFixture.onSqlite ? 'a commit-time constraint trigger; on SQLite the refunds repository checks it' : false, () {
     test('a refund with no tender at all is refused at commit', () async {
       final orderId = await insertOrder();
       await expectLater(

@@ -1,6 +1,6 @@
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/security/pin_hash.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// A whole business, in one function.
 ///
@@ -53,7 +53,7 @@ class E2eSeed {
   /// Idempotent because the suite migrates and seeds in `setUp`: only the
   /// ledger is truncated between tests, since re-inserting a menu before each
   /// one would make a fast suite slow for no benefit.
-  static Future<E2eSeed> apply(PosDatabase db, DeploymentConfig config) async {
+  static Future<E2eSeed> apply(SqlDatabase db, DeploymentConfig config) async {
     final business = await db.query(
       config,
       'INSERT INTO pos_businesses (slug, name) VALUES (@slug, @name) '
@@ -127,7 +127,7 @@ class E2eSeed {
     );
   }
 
-  static Future<void> _menu(PosDatabase db, DeploymentConfig config, int businessId) async {
+  static Future<void> _menu(SqlDatabase db, DeploymentConfig config, int businessId) async {
     final existing = await db.query(
       config,
       'SELECT count(*) FROM pos_products WHERE business_id = @business',

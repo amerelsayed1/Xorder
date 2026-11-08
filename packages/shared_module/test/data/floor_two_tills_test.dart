@@ -12,6 +12,7 @@ import 'package:shared_module/domain/models/dining_table.dart';
 import 'package:shared_module/domain/models/ticket.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// XORD-044, through the real provider graph: two tills on one branch database.
 ///
@@ -28,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late DiningTable t3;

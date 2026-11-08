@@ -2,14 +2,13 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_branch_sales_repository.dart';
 import 'package:shared_module/domain/models/branch_sales.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// §3a against PostgreSQL — the shared-database branch view.
 ///
@@ -38,7 +37,7 @@ void main() {
   final businessDay = DateTime(2026, 9, 10);
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

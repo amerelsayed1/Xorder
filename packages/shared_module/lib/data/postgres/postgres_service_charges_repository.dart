@@ -7,6 +7,7 @@ import '../../domain/models/service_charge.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
+import '../sql/row_reads.dart';
 
 /// Reads and writes `pos_service_charges` (§38).
 class PostgresServiceChargesRepository implements ServiceChargesRepository {
@@ -61,10 +62,10 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
         // an older till from selling.
         ?OrderType.fromWire('$value'),
     },
-    isTaxable: row[6]! as bool,
-    isAutomatic: row[7]! as bool,
-    isOptional: row[8]! as bool,
-    isActive: row[9]! as bool,
+    isTaxable: row.boolean(6),
+    isAutomatic: row.boolean(7),
+    isOptional: row.boolean(8),
+    isActive: row.boolean(9),
     sortOrder: row[10]! as int,
   );
 

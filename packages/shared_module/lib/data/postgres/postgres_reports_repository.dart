@@ -12,6 +12,7 @@ import '../../domain/repositories/repositories.dart';
 import 'postgres_branch_sales_repository.dart';
 import 'postgres_order_history_repository.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Wave G's figures, over the rows every till at the branch already writes.
 ///
@@ -271,7 +272,7 @@ class PostgresReportsRepository implements ReportsRepository {
     final byDay = <String, _Tally>{};
     for (final raw in cells) {
       final row = raw.toList();
-      final filed = row[0] as DateTime?;
+      final filed = row.dateTimeOrNull(0);
       // Both would mean the filing rule and the range disagree — a row the
       // WHERE let in that no date of the range owns. Thrown rather than
       // skipped: skipping it would leave the terminal table and the trend
@@ -821,13 +822,13 @@ class PostgresReportsRepository implements ReportsRepository {
           paymentId: raw[0]! as int,
           orderId: raw[1]! as int,
           invoiceNumber: raw[2]! as String,
-          occurredAt: (raw[3]! as DateTime).toLocal(),
+          occurredAt: (raw.dateTime(3)).toLocal(),
           terminalId: raw[4]! as String,
           terminalName: raw[5] as String?,
           tenderTypeId: raw[6] as int?,
           label: raw[7]! as String,
           kind: TenderKind.fromWire(raw[8] as String?),
-          countsAsCash: raw[9] as bool? ?? false,
+          countsAsCash: raw.booleanOrNull(9) ?? false,
           amount: _money(raw[10]),
         ),
     ];

@@ -5,6 +5,7 @@ import '../../domain/models/customer.dart';
 import '../../domain/models/customer_summary.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// The directory with what each customer has bought (`pos_customers`,
 /// `pos_orders.customer_id`).
@@ -95,7 +96,7 @@ class PostgresCustomerDirectoryRepository
             orders: row[7]! as int,
             spent: _money(row[8]),
             refunded: _money(row[9]),
-            lastOrderAt: (row[10] as DateTime?)?.toLocal(),
+            lastOrderAt: (row.dateTimeOrNull(10))?.toLocal(),
           );
         }(),
     ];
@@ -137,7 +138,7 @@ class PostgresCustomerDirectoryRepository
           return CustomerOrder(
             orderId: row[0]! as int,
             invoiceNumber: row[1] as String? ?? '',
-            occurredAt: (row[2]! as DateTime).toLocal(),
+            occurredAt: (row.dateTime(2)).toLocal(),
             total: _money(row[3]),
             refunded: _money(row[4]),
           );

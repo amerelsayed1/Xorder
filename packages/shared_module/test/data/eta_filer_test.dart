@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/eta/eta_filer.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
@@ -13,6 +12,7 @@ import 'package:shared_module/domain/services/eta_filing.dart';
 import 'package:shared_module/domain/services/eta_receipt.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// Blockers 3 and 4: every sale and every refund this till recorded owes a
 /// receipt, and nothing but a query decides which ones still do.
@@ -47,7 +47,7 @@ void main() {
   const halfTyped = ReceiptProfile(branchId: 1, tradeName: 'Koshari');
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int staffId;

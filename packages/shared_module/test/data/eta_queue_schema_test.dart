@@ -4,7 +4,6 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_eta_queue_repository.dart';
 import 'package:shared_module/domain/models/eta_submission.dart';
 import 'package:shared_module/domain/models/receipt_profile.dart';
@@ -14,6 +13,7 @@ import 'package:shared_module/domain/services/eta_receipt.dart';
 import 'package:shared_module/domain/services/eta_serialization.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The queue of receipts owed to Egypt's tax authority.
 ///
@@ -29,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresEtaQueueRepository queue;
   late int branchId;
   late int orderId;

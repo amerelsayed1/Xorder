@@ -3,12 +3,12 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_order_history_repository.dart';
 import 'package:shared_module/domain/models/order_record.dart';
 import 'package:shared_module/domain/models/ticket.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Reading orders back out — migration 11 and the history repository.
 ///
@@ -24,7 +24,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

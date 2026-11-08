@@ -4,6 +4,7 @@ import '../../core/money/quantity.dart';
 import '../../domain/models/stock_level.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// What each counted item stands at in this branch (`pos_stock_levels`).
 ///
@@ -52,7 +53,7 @@ class PostgresStockLevelsRepository implements StockLevelsRepository {
           productId: row[0]! as int,
           nameEn: row[1]! as String,
           nameAr: row[2] as String?,
-          onMenu: row[3]! as bool,
+          onMenu: row.boolean(3),
           onHand: Quantity(
             row[4]! as int,
             unit: QuantityUnit.fromWire(row[5] as String?),

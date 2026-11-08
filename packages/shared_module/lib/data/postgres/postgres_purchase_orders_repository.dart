@@ -8,6 +8,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/purchase_order.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
+import '../sql/row_reads.dart';
 
 /// Reads and writes purchase orders.
 ///
@@ -117,8 +118,8 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     status: PurchaseStatus.fromWire(row[4]! as String),
     currency: row[5]! as String,
     exponent: row[6]! as int,
-    orderedAt: (row[7] as DateTime?)?.toUtc(),
-    expectedAt: (row[8] as DateTime?)?.toUtc(),
+    orderedAt: (row.dateTimeOrNull(7))?.toUtc(),
+    expectedAt: (row.dateTimeOrNull(8))?.toUtc(),
     notes: row[9] as String?,
     lines: lines,
   );

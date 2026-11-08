@@ -3,13 +3,13 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_order_history_repository.dart';
 import 'package:shared_module/domain/models/order_record.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:shared_module/domain/services/payment_status.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// The sales list and sale details, against PostgreSQL (plan 17 S1).
 ///
@@ -25,7 +25,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;
@@ -86,28 +86,38 @@ void main() {
     },
   );
 
-  /// A refund and the tender it went back in, in one statement — the tender
-  /// check is deferred to commit, and a refund with no tender row is refused.
-  Future<void> refund(int orderId, int amount, {DateTime? at}) => db.query(
-    pg.config,
-    'WITH given AS ( '
-    '  INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
-    '    terminal_id, order_id, kind, subtotal_minor, service_minor, '
-    '    vat_minor, total_minor, refunded_by, occurred_at) '
-    "  VALUES (gen_random_uuid(), @r, @b, @terminal::uuid, @o, 'partial', "
-    '    @amount, 0, 0, @amount, @by, @at::timestamptz) RETURNING id) '
-    'INSERT INTO pos_refund_payments (refund_id, tender_type_id, label, '
-    "  amount_minor) SELECT id, 1, 'Cash', @amount FROM given",
-    parameters: {
-      'r': businessId,
-      'b': branchId,
-      'terminal': counter,
-      'o': orderId,
-      'amount': amount,
-      'by': nourId,
-      'at': (at ?? DateTime(2026, 9, 10, 14)).toUtc(),
-    },
-  );
+  /// A refund and the tender it went back in, in one transaction — the
+  /// tender check is deferred to commit on PostgreSQL, so both rows must land
+  /// before it. Two statements rather than a writing CTE, which SQLite (the
+  /// cloud till's engine) does not have.
+  Future<void> refund(int orderId, int amount, {DateTime? at}) =>
+      db.runTx(pg.config, (tx) async {
+        final given = await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_refunds (client_refund_id, business_id, branch_id, '
+            '  terminal_id, order_id, kind, subtotal_minor, service_minor, '
+            '  vat_minor, total_minor, refunded_by, occurred_at) '
+            "VALUES (gen_random_uuid(), @r, @b, @terminal::uuid, @o, 'partial', "
+            '  @amount, 0, 0, @amount, @by, @at::timestamptz) RETURNING id',
+          ),
+          parameters: {
+            'r': businessId,
+            'b': branchId,
+            'terminal': counter,
+            'o': orderId,
+            'amount': amount,
+            'by': nourId,
+            'at': (at ?? DateTime(2026, 9, 10, 14)).toUtc(),
+          },
+        );
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_refund_payments (refund_id, tender_type_id, '
+            "  label, amount_minor) VALUES (@refund, 1, 'Cash', @amount)",
+          ),
+          parameters: {'refund': given.first[0], 'amount': amount},
+        );
+      });
 
   Future<int> businessDay(
     DateTime date, {

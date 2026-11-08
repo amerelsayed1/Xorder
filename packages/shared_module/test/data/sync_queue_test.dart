@@ -16,6 +16,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Held sync records: listed, counted apart, and released (D1/D2/D13).
 ///
@@ -32,7 +33,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late DeploymentConfig cloud;
   late int businessId;
   late int branchId;
@@ -89,7 +90,7 @@ void main() {
   tearDown(() => pg.close());
 
   PostgresSyncQueueRepository queue({
-    PosDatabase? database,
+    SqlDatabase? database,
     DeploymentConfig? config,
     int? branch,
   }) => PostgresSyncQueueRepository(
@@ -372,7 +373,7 @@ void main() {
     expect(await offline.heldSyncCount(), 0);
   });
 
-  test('release works on the till credential, not only the superuser',
+  test('release works on the till credential, not only the superuser', skip: PgFixture.onSqlite ? 'PostgreSQL login roles: SQLite has none' : false,
       () async {
     // Every other test here runs as the superuser, who needs no grant at all.
     // A cloud till releases on its own credential, so ask PostgreSQL.

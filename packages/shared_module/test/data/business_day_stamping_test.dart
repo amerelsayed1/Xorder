@@ -3,9 +3,9 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// Every sale, refund and shift is filed under the trading day it happened in.
 ///
@@ -35,7 +35,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;
@@ -49,6 +49,13 @@ void main() {
     Map<String, Object?> parameters = const {},
   ]) async =>
       (await db.query(pg.config, sql, parameters: parameters)).first[0];
+
+  /// The day [table] row [id] was filed under, read after the insert: SQLite
+  /// (the cloud till) stamps it in an AFTER trigger, which RETURNING does not
+  /// see; PostgreSQL stamps it BEFORE. Either way this is what was stored.
+  Future<int?> dayOf(String table, Object? id) async =>
+      await one('SELECT business_day_id FROM $table WHERE id = @id', {'id': id})
+          as int?;
 
   /// A trading day at [branch], opened [hoursAgo] hours ago.
   Future<int> openDay({
@@ -99,7 +106,7 @@ void main() {
       "  'INV-' || gen_random_uuid()::text, 'takeaway', 'EGP', 2, "
       '  @total, 0, 0, @total, now() - make_interval(hours => @h::int), '
       '  @status, @day::bigint) '
-      'RETURNING id, business_day_id',
+      'RETURNING id',
       parameters: {
         'r': businessId,
         'b': branch ?? branchId,
@@ -110,47 +117,55 @@ void main() {
         'day': day,
       },
     )).first;
-    return (row[0] as int, row[1] as int?);
+    return (row[0] as int, await dayOf('pos_orders', row[0]));
   }
 
-  /// A refund of 500 and the 500 tendered back, in ONE statement. The
+  /// A refund of 500 and the 500 tendered back, in one transaction. The
   /// database refuses a refund that does not foot against what went back
   /// across the counter — checked at commit (`pos_refunds_tendered_in_full`),
   /// so both rows have to arrive together.
-  Future<int?> refundOf(int orderId, {int hoursAgo = 0}) async =>
-      await one(
-            'WITH r AS ('
-            '  INSERT INTO pos_refunds (client_refund_id, business_id, '
-            '    branch_id, terminal_id, order_id, kind, subtotal_minor, '
-            '    service_minor, vat_minor, total_minor, refunded_by, '
-            '    occurred_at) '
-            "  VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, 'partial', "
-            '    500, 0, 0, 500, @by, now() - make_interval(hours => @h::int)) '
-            '  RETURNING id, business_day_id'
-            '), tendered AS ('
-            '  INSERT INTO pos_refund_payments (refund_id, tender_type_id, '
-            '    label, amount_minor, counts_as_cash) '
-            "  SELECT id, @tt, 'Cash', 500, true FROM r"
-            ') SELECT business_day_id FROM r',
-            {
-              'r': businessId,
-              'b': branchId,
-              't': terminal,
-              'o': orderId,
-              'by': staffId,
-              'h': hoursAgo,
-              'tt': cashTender,
-            },
-          )
-          as int?;
+  Future<int?> refundOf(int orderId, {int hoursAgo = 0}) async {
+    final id = await db.runTx(pg.config, (tx) async {
+      final refund = (await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_refunds (client_refund_id, business_id, '
+          '  branch_id, terminal_id, order_id, kind, subtotal_minor, '
+          '  service_minor, vat_minor, total_minor, refunded_by, '
+          '  occurred_at) '
+          "VALUES (gen_random_uuid(), @r, @b, @t::uuid, @o, 'partial', "
+          '  500, 0, 0, 500, @by, now() - make_interval(hours => @h::int)) '
+          'RETURNING id',
+        ),
+        parameters: {
+          'r': businessId,
+          'b': branchId,
+          't': terminal,
+          'o': orderId,
+          'by': staffId,
+          'h': hoursAgo,
+        },
+      )).first[0];
+      await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_refund_payments (refund_id, tender_type_id, '
+          "  label, amount_minor, counts_as_cash) VALUES (@id, @tt, 'Cash', "
+          '  500, true)',
+        ),
+        parameters: {'id': refund, 'tt': cashTender},
+      );
+      return refund;
+    });
+    return dayOf('pos_refunds', id);
+  }
 
-  Future<int?> shift({int hoursAgo = 0}) async =>
-      await one(
+  Future<int?> shift({int hoursAgo = 0}) async => dayOf(
+    'pos_shifts',
+    await one(
             'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, '
             '  opened_by, opened_at) '
             'VALUES (@r, @b, @t::uuid, @by, '
             '  now() - make_interval(hours => @h::int)) '
-            'RETURNING business_day_id',
+            'RETURNING id',
             {
               'r': businessId,
               'b': branchId,
@@ -158,8 +173,8 @@ void main() {
               'by': staffId,
               'h': hoursAgo,
             },
-          )
-          as int?;
+          ),
+  );
 
   /// The day close's own formula — `postgres_business_day_repository.dart`.
   Future<int> takingsOf(int day) async =>
@@ -313,7 +328,7 @@ void main() {
   });
 
   test('rows written before the trigger are filed, and the closed day '
-      'recounted', () async {
+      'recounted', skip: PgFixture.onSqlite ? 'disables a PostgreSQL trigger to stage old rows' : false, () async {
     // A row from before 35 — the trigger switched off to write it the way the
     // old code did — inside a day that was then closed with the bug's 0.
     final day = await openDay(date: '2026-09-09', hoursAgo: 30);

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_catalog_repository.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart';
 import 'package:shared_module/domain/models/catalog.dart';
@@ -15,6 +14,7 @@ import 'package:shared_module/domain/models/ticket.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Migration 16 — the tax breakdown a filing needs.
 ///
@@ -29,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   const terminal = '66666666-6666-4666-8666-666666666666';

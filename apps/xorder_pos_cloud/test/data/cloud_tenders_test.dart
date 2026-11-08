@@ -14,6 +14,8 @@ import 'package:shared_module/data/postgres/postgres_tender_types_repository.dar
 import 'package:shared_module/domain/models/tender_method.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// Payment methods on a cloud till: the platform's, sent by the platform's id.
 ///
@@ -31,7 +33,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late DeploymentConfig cloud;
   late int businessId;
   var invoice = 0;
@@ -77,7 +79,7 @@ void main() {
     money: {'tax_rules': const [], 'charges': const [], 'tender_types': ?tenders},
   );
 
-  Future<void> seed(BootstrapBundle b, {PosDatabase? on, DeploymentConfig? as}) =>
+  Future<void> seed(BootstrapBundle b, {SqlDatabase? on, DeploymentConfig? as}) =>
       BootstrapSeeder(database: on ?? db, config: as ?? cloud).seed(b);
 
   /// Every tender row for the business, keyed by what matters here.
@@ -97,11 +99,11 @@ void main() {
         'name_en': row[3],
         'name_ar': row[4],
         'kind': row[5],
-        'counts_as_cash': row[6],
-        'opens_drawer': row[7],
-        'requires_reference': row[8],
-        'refund_allowed': row[9],
-        'is_active': row[10],
+        'counts_as_cash': readBool(row[6]),
+        'opens_drawer': readBool(row[7]),
+        'requires_reference': readBool(row[8]),
+        'refund_allowed': readBool(row[9]),
+        'is_active': readBool(row[10]),
         'sort_order': row[11],
       },
   ];
@@ -284,7 +286,7 @@ void main() {
       expect(offered.map((t) => t.code), ['cash', 'card', 'wallet', 'account']);
     });
 
-    test('runs on the till\'s own cloud credential', () async {
+    test('runs on the till\'s own cloud credential', skip: PgFixture.onSqlite ? 'creates PostgreSQL login roles' : false, () async {
       // The superuser needs no grant, so every other test here would pass on
       // an install where the seeder is refused. This one is refused if the
       // cloud grant list is missing anything the tenders need.
@@ -529,7 +531,7 @@ class _RecordingApi extends PosCloudApi {
 }
 
 /// Same as the grant suites': grants must go before the role can.
-Future<void> _dropRole(PosDatabase db, PgFixture pg, String role) async {
+Future<void> _dropRole(SqlDatabase db, PgFixture pg, String role) async {
   for (final statement in [
     'DROP OWNED BY "$role"',
     'DROP ROLE IF EXISTS "$role"',

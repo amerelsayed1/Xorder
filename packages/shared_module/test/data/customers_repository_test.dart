@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_customers_repository.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Migration 51 — who the food is for (POS-BE-014).
 ///
@@ -47,7 +47,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late PostgresCustomersRepository customers;
   late int branchId;

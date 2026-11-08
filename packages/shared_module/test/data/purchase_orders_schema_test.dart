@@ -14,6 +14,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Purchase orders, stored.
 void main() {
@@ -24,7 +25,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresPurchaseOrdersRepository orders;
   late int businessId;
   late int branchId;

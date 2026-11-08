@@ -4,7 +4,6 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_branch_sales_repository.dart';
 import 'package:shared_module/data/postgres/postgres_business_day_repository.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart'
@@ -13,6 +12,7 @@ import 'package:shared_module/domain/models/home_sales.dart';
 import 'package:xorder_pos_offline/features/admin/application/back_office_home.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Home's tiles against PostgreSQL (BO-4, plan 19 §2.1).
 ///
@@ -41,7 +41,7 @@ void main() {
   final now = DateTime.utc(2026, 9, 10, 10);
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int quietBranchId;

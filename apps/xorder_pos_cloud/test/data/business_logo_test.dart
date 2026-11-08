@@ -9,7 +9,6 @@ import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_seeder.dart';
 import 'package:xorder_pos_cloud/data/cloud/logo_sync.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_business_logo_repository.dart';
 import 'package:shared_module/domain/models/business_logo.dart';
 import 'package:shared_module/domain/models/permissions.dart';
@@ -17,6 +16,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// XORD-021 — the business logo, on the branch server.
 ///
@@ -30,7 +30,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
 
   PosStaff holder(Set<String> capabilities) => PosStaff(
@@ -113,7 +113,7 @@ void main() {
     });
   });
 
-  group('migration 59', () {
+  group('migration 59', skip: PgFixture.onSqlite ? 'replays a PostgreSQL migration' : false, () {
     Future<List<String>> held(String code) async => ((await db.query(
       pg.config,
       'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @c',

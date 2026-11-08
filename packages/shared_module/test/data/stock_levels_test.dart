@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/core/money/quantity.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_stock_levels_repository.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// What each counted item stands at in one branch.
 void main() {
@@ -18,7 +18,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

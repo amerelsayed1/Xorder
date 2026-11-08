@@ -9,6 +9,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
+import '../sql/row_reads.dart';
 
 /// Authoring the business logo on the till (XORD-021), offline installs only.
 ///
@@ -110,7 +111,7 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
           bytes: bytes,
           mime: image.mime,
           source: LogoSource.local,
-          updatedAt: saved.first[0] as DateTime?,
+          updatedAt: saved.first.dateTimeOrNull(0),
         ),
       );
     });

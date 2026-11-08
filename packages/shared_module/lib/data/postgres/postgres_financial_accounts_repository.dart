@@ -2,6 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/financial_account.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Reads `pos_financial_accounts` and `pos_tender_account_defaults`.
 ///
@@ -47,7 +48,7 @@ class PostgresFinancialAccountsRepository
             branchId: row[3] as int?,
             currency: row[4] as String?,
             referenceLabel: row[5] as String?,
-            isActive: row[6]! as bool,
+            isActive: row.boolean(6),
             sortOrder: row[7]! as int,
           ),
     ];

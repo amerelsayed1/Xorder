@@ -3,7 +3,6 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_business_day_repository.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
@@ -13,6 +12,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/services/business_day_service.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Opening the trading day against the real database (report 2026-10-24,
 /// Part 4): the one-open-day index, the closed-date refusal and the trigger that
@@ -30,7 +30,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late PostgresBusinessDayRepository days;
@@ -105,18 +105,26 @@ void main() {
 
   tearDown(() => pg.close());
 
-  Future<Object?> shiftDay() async => (await db.query(
-    pg.config,
-    'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by, '
-    '  opening_float_minor) VALUES (@r, @b, @t::uuid, @by, 0) '
-    'RETURNING business_day_id',
-    parameters: {
-      'r': businessId,
-      'b': branchId,
-      't': terminal,
-      'by': nour.id,
-    },
-  )).first[0];
+  // Read back after the insert rather than from RETURNING: SQLite stamps the
+  // day in an AFTER trigger, which RETURNING does not see.
+  Future<Object?> shiftDay() async {
+    final id = (await db.query(
+      pg.config,
+      'INSERT INTO pos_shifts (business_id, branch_id, terminal_id, opened_by, '
+      '  opening_float_minor) VALUES (@r, @b, @t::uuid, @by, 0) RETURNING id',
+      parameters: {
+        'r': businessId,
+        'b': branchId,
+        't': terminal,
+        'by': nour.id,
+      },
+    )).first[0];
+    return (await db.query(
+      pg.config,
+      'SELECT business_day_id FROM pos_shifts WHERE id = @id',
+      parameters: {'id': id},
+    )).first[0];
+  }
 
   test('opens a day, and a shift written after it is filed under it', () async {
     final result = await ensureBusinessDay(

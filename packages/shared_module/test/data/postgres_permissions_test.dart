@@ -8,6 +8,7 @@ import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Migration 5, against a database that already had staff on it.
 ///
@@ -23,7 +24,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
 
   /// The schema as it stood before roles existed. Dropped and rebuilt rather
   /// than truncated: this suite is about a migration, and a migration only runs

@@ -4,7 +4,6 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_catalog_admin_repository.dart';
 import 'package:shared_module/data/postgres/postgres_tender_types_repository.dart';
 import 'package:shared_module/domain/models/permissions.dart';
@@ -13,6 +12,7 @@ import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:shared_module/domain/models/tender_method.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Payment methods, as data (§40).
 ///
@@ -27,7 +27,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresTenderTypesRepository tenders;
   late int businessId;
 
@@ -247,7 +247,7 @@ void main() {
     expect((await tenders.all()).map((t) => t.code), ['cash', 'card', 'wallet', 'account']);
   });
 
-  group('authoring them', () {
+  group('authoring them', skip: PgFixture.onSqlite ? "the offline back office's writer; a cloud till never binds it" : false, () {
     late PostgresCatalogAdminRepository admin;
 
     const owner = PosStaff(

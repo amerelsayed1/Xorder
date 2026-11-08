@@ -6,6 +6,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/supplier.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
+import '../sql/row_reads.dart';
 
 /// Reads and writes `pos_suppliers`.
 ///
@@ -51,7 +52,7 @@ class PostgresSuppliersRepository implements SuppliersRepository {
       taxNumber: at(8),
       paymentTermDays: row[9]! as int,
       notes: at(10),
-      isActive: row[11]! as bool,
+      isActive: row.boolean(11),
     );
   }
 

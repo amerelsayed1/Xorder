@@ -4,7 +4,6 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_receiving_repository.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/models/shift.dart';
@@ -12,6 +11,7 @@ import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:shared_module/domain/services/stock_costing.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The first cost of an item nothing has costed, against the ledger it writes.
 ///
@@ -27,7 +27,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresReceivingRepository stock;
   late int businessId;
   late int branchId;

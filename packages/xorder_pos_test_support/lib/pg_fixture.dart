@@ -4,6 +4,8 @@ import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
 import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/sql/sql.dart' as seam;
+import 'package:shared_module/data/sqlite/sqlite_database.dart';
 
 /// Shared setup for the suites that need a real PostgreSQL.
 ///
@@ -39,10 +41,19 @@ import 'package:shared_module/data/postgres/pos_database.dart';
 class PgFixture {
   PgFixture._(this.database, this.config);
 
-  final PosDatabase database;
+  final seam.SqlDatabase database;
   final DeploymentConfig config;
 
-  static String? get host => Platform.environment['POS_PG_HOST'];
+  /// `POS_TEST_ENGINE=sqlite` runs the same suites on the cloud till's engine:
+  /// an encrypted SQLite file per test file, no server
+  /// (pos-cloud-single-till-sqlite, stage 4). Anything else is PostgreSQL.
+  static bool get onSqlite =>
+      Platform.environment['POS_TEST_ENGINE'] == 'sqlite';
+
+  /// The server, or — on SQLite, where there is none — a stand-in so the
+  /// suites that skip without a server run.
+  static String? get host =>
+      Platform.environment['POS_PG_HOST'] ?? (onSqlite ? 'sqlite' : null);
   static int get port => int.tryParse(Platform.environment['POS_PG_PORT'] ?? '5432') ?? 5432;
   static String get password => Platform.environment['POS_PG_PASSWORD'] ?? 'postgres';
   static String get user => Platform.environment['POS_PG_USER'] ?? 'pos_till';
@@ -53,6 +64,7 @@ class PgFixture {
   /// longer names a database; see the class comment for why that is safe only
   /// when the suites run one at a time.
   static Future<PgFixture> open(String suite) async {
+    if (onSqlite) return _openSqlite();
     final address = host;
     if (address == null) throw StateError('POS_PG_HOST is not set');
 
@@ -163,6 +175,26 @@ class PgFixture {
   /// its own isolate. See [_resetSchema].
   static bool _freshForThisFile = false;
 
+  /// One file per test file (each runs in its own isolate), shared by every
+  /// fixture that file opens — as the PostgreSQL database is.
+  static SqliteDatabase? _sqlite;
+
+  static Future<PgFixture> _openSqlite() async {
+    final db = _sqlite ??= await () async {
+      final dir = await Directory.systemTemp.createTemp('pos_sqlite_suite_');
+      final key = newSqliteKey();
+      return SqliteDatabase(path: '${dir.path}/till.db', key: () async => key);
+    }();
+    return PgFixture._(
+      db,
+      const DeploymentConfig(
+        mode: DeploymentMode.offline,
+        databaseHost: 'sqlite',
+        databaseName: 'xorder_pos',
+      ),
+    );
+  }
+
   /// Start each test FILE on an empty schema (XORD-029).
   ///
   /// Sharing one database meant one suite's leftovers broke every suite after
@@ -236,6 +268,9 @@ class PgFixture {
   /// runs the same statements with those renames applied, and records the
   /// version, in one transaction. Returns `[version]`, as the migrator would.
   Future<List<int>> replay(int version) async {
+    if (onSqlite) {
+      throw UnsupportedError('replay replays PostgreSQL migration text');
+    }
     final migration = posMigrations.singleWhere((m) => m.version == version);
     await database.runTx(config, (tx) async {
       for (final statement in migration.statements) {
@@ -260,10 +295,48 @@ class PgFixture {
       .replaceAll('restaurant_id', 'business_id');
 
   /// Empty ledger, same schema. Run between tests.
-  Future<void> truncate() => database.runTx(
-        config,
-        (tx) => tx.execute('TRUNCATE pos_orders, pos_invoice_sequences RESTART IDENTITY CASCADE'),
-      );
+  Future<void> truncate() => onSqlite
+      ? _truncateSqlite()
+      : database.runTx(
+          config,
+          (tx) => tx.execute('TRUNCATE pos_orders, pos_invoice_sequences RESTART IDENTITY CASCADE'),
+        );
+
+  /// PostgreSQL's `TRUNCATE … CASCADE` on SQLite: every table that refers,
+  /// however indirectly, to an order or an invoice counter is emptied first,
+  /// then those two, and their ids start again from 1.
+  Future<void> _truncateSqlite() => database.runTx(config, (tx) async {
+    final tables = [
+      for (final r in await tx.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name LIKE 'pos_%'",
+      ))
+        r[0]! as String,
+    ];
+    final refersTo = <String, Set<String>>{};
+    for (final table in tables) {
+      for (final r in await tx.execute(
+        "SELECT \"table\" FROM pragma_foreign_key_list('$table')",
+      )) {
+        refersTo.putIfAbsent(r[0]! as String, () => {}).add(table);
+      }
+    }
+    final doomed = <String>[];
+    void visit(String table) {
+      if (doomed.contains(table)) return;
+      for (final child in refersTo[table] ?? const <String>{}) {
+        visit(child);
+      }
+      doomed.add(table);
+    }
+
+    visit('pos_orders');
+    visit('pos_invoice_sequences');
+    for (final table in doomed) {
+      await tx.execute('DELETE FROM "$table"');
+      await tx.execute("DELETE FROM sqlite_sequence WHERE name = '$table'");
+    }
+  });
 
   Future<void> close() => database.close();
 }

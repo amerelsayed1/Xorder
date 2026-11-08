@@ -11,6 +11,7 @@ import '../../domain/services/eta_filing.dart';
 import '../../domain/services/eta_receipt.dart';
 import '../postgres/pos_database.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// What one pass of [EtaFiler.reconcile] did.
 class EtaReconcileReport {
@@ -201,7 +202,7 @@ class EtaFiler implements EtaFilingPort {
 
     final sale = FilingSale(
       receiptNumber: row[0]! as String,
-      issuedAt: (row[1]! as DateTime).toUtc(),
+      issuedAt: (row.dateTime(1)).toUtc(),
       currency: currency,
       subtotal: money(row[4]),
       discount: money(row[5]),
@@ -280,7 +281,7 @@ class EtaFiler implements EtaFilingPort {
 
     final refund = FilingSale(
       receiptNumber: '${row[6]! as String}-R$refundId',
-      issuedAt: (row[1]! as DateTime).toUtc(),
+      issuedAt: (row.dateTime(1)).toUtc(),
       currency: currency,
       subtotal: refundSubtotal,
       discount: money(row[3]),
@@ -420,7 +421,7 @@ class EtaFiler implements EtaFilingPort {
 
   Future<List<bool>> _cash(String sql, int id) async {
     final rows = await _db.query(config, sql, parameters: {'id': id});
-    return [for (final row in rows) row[0] as bool? ?? false];
+    return [for (final row in rows) row.booleanOrNull(0) ?? false];
   }
 
   Future<(bool, EtaFilingSkipped?)> _enqueue({

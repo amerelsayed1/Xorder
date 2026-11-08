@@ -8,6 +8,7 @@ import '../../domain/models/pos_unit.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
+import '../sql/row_reads.dart';
 
 /// Reads and writes `pos_units` (migration 39).
 ///
@@ -56,8 +57,8 @@ class PostgresUnitsRepository implements UnitsRepository {
     nameEn: row[2]! as String,
     nameAr: row[3] as String?,
     etaUnitType: row[4]! as String,
-    allowsFraction: row[5]! as bool,
-    isActive: row[6]! as bool,
+    allowsFraction: row.boolean(5),
+    isActive: row.boolean(6),
     sortOrder: row[7]! as int,
   );
 

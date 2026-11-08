@@ -12,6 +12,7 @@ import 'package:shared_module/data/postgres/migrations.dart';
 import 'package:shared_module/data/postgres/pos_database.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// A backup is only a backup once something has been restored from it.
 ///
@@ -73,7 +74,7 @@ void main() {
   final target = PgFixture.nameFor('pg_archive_restore_target');
 
   late PgFixture pg;
-  late PosDatabase targetDb;
+  late SqlDatabase targetDb;
   late DeploymentConfig targetConfig;
   late Directory folder;
   late File backup;
@@ -109,7 +110,7 @@ void main() {
 
   /// Everything a restore has to bring back, as one comparable value.
   Future<Map<String, Object?>> fingerprint(
-    PosDatabase db,
+    SqlDatabase db,
     DeploymentConfig config,
   ) async {
     final tables = await db.query(

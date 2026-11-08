@@ -11,6 +11,7 @@ import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/domain/services/syncing_orders_repository.dart';
 import 'package:xorder_pos_cloud/wiring.dart';
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The cloud app's half of `postgres_wiring_test.dart` (pos-split-apps stage 3).
 ///
@@ -28,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase database;
+  late SqlDatabase database;
   late DeploymentConfig branchConfig;
 
   setUp(() async {

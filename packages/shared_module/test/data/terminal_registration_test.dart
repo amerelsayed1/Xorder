@@ -11,6 +11,7 @@ import 'package:shared_module/data/postgres/postgres_directory_repositories.dart
 import 'package:shared_module/data/postgres/postgres_site_licence.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Registering a till by hand is an upsert on the machine, not an insert per
 /// attempt (P0-4).
@@ -40,7 +41,7 @@ void main() {
   const rolePassword = 'probe-only';
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

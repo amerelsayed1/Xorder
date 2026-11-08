@@ -2,16 +2,16 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_admin_repositories.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/row_reads.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// One owner per business, and the owner's own access is not editable.
 ///
@@ -32,7 +32,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresStaffDirectoryRepository staff;
   late Map<String, PosRole> seeded;
   late int businessId;
@@ -129,7 +129,7 @@ void main() {
       "WHERE s.business_id = @r AND r.code = 'owner' ORDER BY s.id",
       parameters: {'r': businessId},
     );
-    return {for (final row in rows) row[0]! as String: row[1]! as bool};
+    return {for (final row in rows) row[0]! as String: row.boolean(1)};
   }
 
   Future<String?> storedRole(int staffId) async => (await db.query(
@@ -608,7 +608,7 @@ void main() {
     });
   });
 
-  group('what was already there', () {
+  group('what was already there', skip: PgFixture.onSqlite ? 'disables a PostgreSQL trigger to stage old data' : false, () {
     test('a business with two owners already can still rename and disable them',
         () async {
       // A branch server that ran an earlier build may have two. Migration 42

@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
 import 'package:shared_module/data/postgres/money_config_codec.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_catalog_admin_repository.dart';
 import 'package:shared_module/data/postgres/postgres_catalog_repository.dart';
 import 'package:shared_module/domain/models/catalog.dart';
@@ -19,6 +18,7 @@ import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:shared_module/domain/services/menu_import.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// `jsonb` comes back decoded on some driver paths and as text on others.
 Map<String, Object?> _payload(Object? raw) => switch (raw) {
@@ -42,7 +42,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresCatalogAdminRepository repository;
   late int businessId;
   late int categoryId;

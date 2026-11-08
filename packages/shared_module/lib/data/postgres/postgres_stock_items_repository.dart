@@ -12,6 +12,7 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 import 'stock_unit_guard.dart';
+import '../sql/row_reads.dart';
 
 /// What the business buys and counts: the stocked rows of `pos_products`.
 ///
@@ -61,8 +62,8 @@ class PostgresStockItemsRepository implements StockItemsRepository {
     nameAr: row[2] as String?,
     sku: row[3] as String?,
     unit: QuantityUnit.fromWire(row[4] as String?),
-    onMenu: row[5]! as bool,
-    isActive: row[6]! as bool,
+    onMenu: row.boolean(5),
+    isActive: row.boolean(6),
   );
 
   @override

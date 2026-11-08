@@ -38,6 +38,7 @@ import '../data/hardware/network_printer_ports.dart';
 import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/sql/row_reads.dart';
+import '../data/sql/sql.dart' show SqlDatabase;
 import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
@@ -2748,7 +2749,7 @@ final posDbCredentialsProvider = Provider<PosDbCredentials>(
 );
 
 /// The connection pool to the branch server. One per app.
-final posDatabaseProvider = Provider<PosDatabase>((ref) {
+final posDatabaseProvider = Provider<SqlDatabase>((ref) {
   final database = PosDatabase(
     credentials: ref.watch(posDbCredentialsProvider),
   );

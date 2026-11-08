@@ -1,7 +1,7 @@
 import '../sql/sql.dart';
+import '../sqlite/sqlite_migrator.dart';
 
 import '../../core/config/deployment.dart';
-import 'pos_database.dart';
 
 /// One schema step. Ordered, hand-written, never generated.
 ///
@@ -5060,11 +5060,22 @@ const posMigrations = <PosMigration>[
 class PosMigrator {
   const PosMigrator(this._db, {this.migrations = posMigrations});
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final List<PosMigration> migrations;
 
   /// Returns the versions actually applied by *this* call.
-  Future<List<int>> migrate(
+  ///
+  /// On a cloud till's SQLite file this is [SqliteMigrator]: the same
+  /// schema, generated from these migrations, with the same versions
+  /// recorded (pos-cloud-single-till-sqlite).
+  Future<List<int>> migrate(DeploymentConfig config) async {
+    if (_db.dialect == SqlDialect.sqlite) {
+      return SqliteMigrator(_db, migrations: migrations).migrate(config);
+    }
+    return _migratePostgres(config);
+  }
+
+  Future<List<int>> _migratePostgres(
     DeploymentConfig config,
   ) async => _db.runTx(config, (tx) async {
     // Held for the length of the transaction and released on commit, so a

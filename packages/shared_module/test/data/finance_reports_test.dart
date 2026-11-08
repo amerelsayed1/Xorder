@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:postgres/postgres.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
@@ -15,6 +14,7 @@ import 'package:shared_module/domain/models/sales_report.dart';
 import 'package:shared_module/domain/models/tax.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// Finance's taxes and payments against PostgreSQL (plan 19 BO-9).
 ///
@@ -54,7 +54,7 @@ void main() {
   );
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

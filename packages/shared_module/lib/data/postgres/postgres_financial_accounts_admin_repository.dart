@@ -9,6 +9,7 @@ import '../../domain/models/shift.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
+import '../sql/row_reads.dart';
 
 /// Authoring financial accounts, on the till, against the branch database.
 ///
@@ -66,7 +67,7 @@ class PostgresFinancialAccountsAdminRepository
     branchId: row[3] as int?,
     currency: row[4] as String?,
     referenceLabel: row[5] as String?,
-    isActive: row[6]! as bool,
+    isActive: row.boolean(6),
     sortOrder: row[7]! as int,
   );
 

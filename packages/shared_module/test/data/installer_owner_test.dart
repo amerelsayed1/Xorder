@@ -11,7 +11,6 @@ import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/features/licensing/domain/license.dart';
 import 'package:shared_module/features/setup/application/setup_controller.dart';
@@ -20,6 +19,7 @@ import 'package:shared_module/features/setup/presentation/setup_wizard.dart';
 
 import 'package:xorder_pos_test_support/fakes.dart';
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The two installers, pointed at a business that already has an owner.
 ///
@@ -45,7 +45,7 @@ void main() {
   final databaseName = PgFixture.sharedName;
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late LocalBootstrap bootstrap;
   late int businessId;
   late int branchId;

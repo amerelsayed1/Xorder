@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_order_history_repository.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart';
 import 'package:shared_module/domain/models/catalog.dart';
@@ -13,6 +12,7 @@ import 'package:shared_module/domain/models/ticket.dart';
 import 'package:shared_module/domain/services/ticket_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// XORD-058: which number a receipt may print.
 ///
@@ -29,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   const terminal = '7f8c3a52-0000-4000-8000-0000000000c3';

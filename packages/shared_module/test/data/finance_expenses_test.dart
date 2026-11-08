@@ -21,6 +21,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/models/supplier_invoice.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Finance's expenses, bills due and drawers against PostgreSQL (plan 19
 /// BO-10). Local times throughout, so the dates hold in any zone.
@@ -92,7 +93,7 @@ void main() {
   const rolePassword = 'probe-only';
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;
@@ -754,7 +755,7 @@ void main() {
   });
 
   group('credentials', () {
-    PosDatabase connectAs(String role) {
+    SqlDatabase connectAs(String role) {
       final database = PosDatabase(
         credentials: InMemoryPosDbCredentials(rolePassword),
       );

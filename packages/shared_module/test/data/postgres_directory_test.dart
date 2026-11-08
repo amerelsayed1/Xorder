@@ -4,13 +4,13 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/security/pin_hash.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_catalog_repository.dart';
 import 'package:shared_module/data/postgres/postgres_directory_repositories.dart';
 import 'package:shared_module/data/postgres/postgres_floor_repository.dart';
 import 'package:shared_module/data/postgres/postgres_tenant.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The reads that replaced the fakes.
 ///
@@ -26,7 +26,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int otherBranchId;

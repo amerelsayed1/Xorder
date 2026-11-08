@@ -6,12 +6,12 @@ import 'package:uuid/uuid.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'bootstrap_bundle.dart';
 import 'bootstrap_seeder.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:shared_module/core/config/app_version.dart';
 import 'package:shared_module/data/cloud/device_token_vault.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 const _uuid = Uuid();
 
@@ -34,7 +34,7 @@ class CloudProvisioningRepository implements ProvisioningRepository {
   const CloudProvisioningRepository({
     required this.api,
     required this.vault,
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.fingerprint,
     this.installLicence,
@@ -42,7 +42,7 @@ class CloudProvisioningRepository implements ProvisioningRepository {
 
   final PosCloudApi api;
   final DeviceTokenVault vault;
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
 
   /// The hashed installation identity, from the licensing feature — the same

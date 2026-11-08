@@ -16,6 +16,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// `jsonb` comes back decoded on some driver paths and as text on others.
 Map<String, Object?> _payload(Object? raw) => switch (raw) {
@@ -40,7 +41,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresCatalogAdminRepository admin;
   late int businessId;
   late int burgers;

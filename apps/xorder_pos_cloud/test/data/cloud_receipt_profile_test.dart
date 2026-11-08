@@ -6,11 +6,12 @@ import 'package:shared_module/core/config/deployment.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_seeder.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_receipt_profile_repository.dart';
 import 'package:shared_module/domain/models/receipt_profile.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// Who the receipt says sold the food, on a cloud till.
 ///
@@ -38,7 +39,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late DeploymentConfig cloud;
   late int businessId;
 
@@ -344,7 +345,7 @@ void main() {
         pg.config,
         'SELECT is_active FROM pos_branches WHERE id = @b',
         parameters: {'b': zamalek},
-      )).first[0],
+      )).first.boolean(0),
       isFalse,
     );
 

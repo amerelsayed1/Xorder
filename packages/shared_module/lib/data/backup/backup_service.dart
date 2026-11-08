@@ -9,9 +9,10 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
-import '../postgres/pos_database.dart';
 import 'pg_archive.dart';
 import 'pg_tools.dart';
+import '../sql/sql.dart' show SqlDatabase;
+import '../sql/row_reads.dart';
 
 /// Taking a copy of the branch database, proving it, and putting one back.
 ///
@@ -33,7 +34,7 @@ import 'pg_tools.dart';
 /// and here, is not.
 class BackupService {
   BackupService({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -51,7 +52,7 @@ class BackupService {
   }) : _db = database,
        _runner = run;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
 
   /// Where the attempt is written down, whichever way it went.
   final BackupRepository backups;
@@ -443,7 +444,7 @@ class BackupService {
         currency: currency,
         exponent: exponent,
       ),
-      lastOrderAt: (counts[4] as DateTime?)?.toLocal(),
+      lastOrderAt: (counts.dateTimeOrNull(4))?.toLocal(),
       pendingSync: pendingSync,
       heldSync: heldSync,
     );

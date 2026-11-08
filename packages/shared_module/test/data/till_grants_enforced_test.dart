@@ -5,9 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shared_module/data/postgres/local_bootstrap.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// The offline grant set, applied to a real role on a real server, and then
 /// tried.
@@ -31,7 +31,7 @@ void main() {
   const password = 'probe-only';
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
 
   setUpAll(() async {
     pg = await PgFixture.open('till_grants');
@@ -552,7 +552,7 @@ void main() {
 /// A role with grants on it cannot be dropped until they are revoked, and
 /// `DROP OWNED BY` throws when the role does not exist yet — which is the
 /// normal case on the first run.
-Future<void> _dropRole(PosDatabase db, PgFixture pg, String role) async {
+Future<void> _dropRole(SqlDatabase db, PgFixture pg, String role) async {
   for (final statement in [
     'DROP OWNED BY "$role"',
     'DROP ROLE IF EXISTS "$role"',

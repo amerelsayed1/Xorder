@@ -3,9 +3,10 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// Migration 10 — the schema a discount needs.
 ///
@@ -20,7 +21,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int staffId;
@@ -32,7 +33,7 @@ void main() {
     int? valueMinor,
     String scope = 'order',
     int? maxDiscountMinor,
-    String? daysOfWeek,
+    List<int>? daysOfWeek,
   }) => db.query(
     pg.config,
     'INSERT INTO pos_discounts (business_id, code, name_en, kind, value_bp, '
@@ -204,21 +205,21 @@ void main() {
         pg.config,
         "SELECT days_of_week FROM pos_discounts WHERE code = 'everyday'",
       );
-      expect(rows.first[0], isEmpty);
+      expect(rows.first.list(0), isEmpty);
     });
 
     test('ISO day numbers are accepted', () async {
-      await insertDiscount(code: 'weekend', daysOfWeek: '{5,6,7}');
+      await insertDiscount(code: 'weekend', daysOfWeek: [5, 6, 7]);
     });
 
     test('a day that is not a day is refused', () async {
       // 0 and 8 are the two an off-by-one produces.
       await expectLater(
-        insertDiscount(code: 'zero', daysOfWeek: '{0,1}'),
+        insertDiscount(code: 'zero', daysOfWeek: [0, 1]),
         throwsA(isA<Exception>()),
       );
       await expectLater(
-        insertDiscount(code: 'eight', daysOfWeek: '{8}'),
+        insertDiscount(code: 'eight', daysOfWeek: [8]),
         throwsA(isA<Exception>()),
       );
     });

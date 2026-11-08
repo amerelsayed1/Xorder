@@ -24,3 +24,13 @@ workspace:
   - packages/xorder_pos_test_support
   - apps/xorder_pos_offline
   - apps/xorder_pos_cloud
+
+# The cloud app's data file is encrypted: package:sqlite3 bundles
+# SQLite3MultipleCiphers instead of plain SQLite (pos-cloud-single-till-sqlite,
+# owner decision 2026-11-08). Its build hook downloads the prebuilt library
+# from the sqlite3.dart GitHub release, checked against sha256 sums pinned in
+# the package.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc

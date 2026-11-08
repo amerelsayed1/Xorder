@@ -4,6 +4,7 @@ import '../../domain/models/branch_sales.dart';
 import '../../domain/models/branch_sales_source.dart';
 import '../../domain/models/tender_method.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// The branch view (§3a) where every terminal of the branch writes to this
 /// database — the shared-LAN shape, and any offline install with more than one
@@ -76,7 +77,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
     tenderTypeId: row[at] as int?,
     label: row[at + 1] as String,
     kind: TenderKind.fromWire(row[at + 2] as String?),
-    countsAsCash: row[at + 3] as bool? ?? false,
+    countsAsCash: row.booleanOrNull(at + 3) ?? false,
     count: row[at + 4] as int,
     amount: money(row[at + 5]),
   );

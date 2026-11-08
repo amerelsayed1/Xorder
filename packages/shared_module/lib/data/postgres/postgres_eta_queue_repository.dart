@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/eta_submission.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/eta_serialization.dart';
+import '../sql/row_reads.dart';
 
 /// The queue of receipts owed to Egypt's tax authority.
 ///
@@ -110,11 +111,11 @@ class PostgresEtaQueueRepository implements EtaQueueRepository {
     refundId: row[2] as int?,
     uuid: row[3]! as String,
     receiptNumber: row[4]! as String,
-    issuedAt: (row[5]! as DateTime).toUtc(),
+    issuedAt: (row.dateTime(5)).toUtc(),
     status: EtaStatus.fromWire(row[6]! as String),
     deviceSerial: row[7]! as String,
     attempts: row[8]! as int,
-    submittedAt: (row[9] as DateTime?)?.toUtc(),
+    submittedAt: (row.dateTimeOrNull(9))?.toUtc(),
     errorMessage: row[10] as String?,
     longId: row[11] as String?,
   );
@@ -160,7 +161,7 @@ class PostgresEtaQueueRepository implements EtaQueueRepository {
       outstanding: (row[0] as int?) ?? 0,
       rejected: (row[1] as int?) ?? 0,
       late: (row[2] as int?) ?? 0,
-      oldest: (row[3] as DateTime?)?.toUtc(),
+      oldest: (row.dateTimeOrNull(3))?.toUtc(),
     );
   }
 

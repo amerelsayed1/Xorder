@@ -6,7 +6,6 @@ import 'package:shared_module/core/config/deployment.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_seeder.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_financial_accounts_admin_repository.dart';
 import 'package:shared_module/data/postgres/postgres_financial_accounts_repository.dart';
 import 'package:shared_module/domain/models/financial_account.dart';
@@ -15,6 +14,7 @@ import 'package:shared_module/domain/models/shift.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Financial accounts, stage 1 (XORD-015), against a real PostgreSQL.
 ///
@@ -29,7 +29,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late int businessId;
   late int branchId;
   late int cashId;
@@ -201,7 +201,7 @@ void main() {
     });
   });
 
-  group('migration 60', () {
+  group('migration 60', skip: PgFixture.onSqlite ? 'replays a PostgreSQL migration' : false, () {
     Future<List<String>> held(String code) async => ((await db.query(
       pg.config,
       'SELECT capabilities FROM pos_roles WHERE business_id = @r AND code = @c',

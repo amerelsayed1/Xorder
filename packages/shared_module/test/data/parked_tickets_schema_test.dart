@@ -4,7 +4,6 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_business_day_repository.dart';
 import 'package:shared_module/data/postgres/postgres_orders_repository.dart';
 import 'package:shared_module/data/postgres/postgres_parked_tickets.dart';
@@ -16,6 +15,7 @@ import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:shared_module/domain/services/ticket_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 const _burger = Product(
   id: 101,
@@ -54,7 +54,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresParkedTickets store;
   late int businessId;
   late int branchId;
@@ -573,7 +573,7 @@ void main() {
     expect(check.blockers.single.count, 1);
   });
 
-  test('the upgrade keeps the tables that were already parked', () async {
+  test('the upgrade keeps the tables that were already parked', skip: PgFixture.onSqlite ? 'upgrades a PostgreSQL schema in place' : false, () async {
     // A business with a seated table when the update installs. The migration
     // has to loosen the key **and** backfill the branch off the table, or that
     // table's ticket stops being counted by the day close it used to block.

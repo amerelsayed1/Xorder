@@ -376,7 +376,7 @@ class OutboxDrain {
       // never queued — does not hold the money hostage: the sale goes without
       // a customer, as a walk-in would.
       final customerPlatformId = row[18] as int?;
-      if (row[17] != null && customerPlatformId == null && row[19] == true) {
+      if (row[17] != null && customerPlatformId == null && readBool(row[19]) == true) {
         await _db.query(
           config,
           '''

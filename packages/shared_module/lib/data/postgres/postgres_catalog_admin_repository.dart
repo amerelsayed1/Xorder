@@ -22,6 +22,7 @@ import '../../domain/services/table_batch.dart';
 import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
 import 'stock_unit_guard.dart';
+import '../sql/row_reads.dart';
 
 /// A group as stored, and which side of the library line it is on — which
 /// the draft does not carry, because the editor knows it from where it
@@ -845,7 +846,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         if (wasDefault.isEmpty) {
           return const AdminResult<TaxGroup>.refused(EditedElsewhere(0));
         }
-        if (wasDefault.first[0] == true && !group.isDefault) {
+        if (readBool(wasDefault.first[0]) == true && !group.isDefault) {
           return const AdminResult<TaxGroup>.refused(
             CatalogInvalid(
               'Something has to be the fallback rate. Make another group the '
@@ -853,7 +854,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             ),
           );
         }
-        if (wasDefault.first[0] == true && !group.isActive) {
+        if (readBool(wasDefault.first[0]) == true && !group.isActive) {
           return const AdminResult<TaxGroup>.refused(
             CatalogInvalid(
               'The fallback rate cannot be retired. Make another group the '
@@ -919,7 +920,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           nameEn: row[1]! as String,
           nameAr: row[2] as String?,
           rateBp: row[3]! as int,
-          isDefault: row[4]! as bool,
+          isDefault: row.boolean(4),
         ),
       );
     });
@@ -955,7 +956,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           ),
           parameters: {'r': businessId, 'code': orderType.type.wire},
         );
-        final wasOn = already.isNotEmpty && already.first[0] == true;
+        final wasOn = already.isNotEmpty && readBool(already.first[0]) == true;
         if (!wasOn) {
           return const AdminResult<OrderTypeConfig>.refused(
             CatalogInvalid('This order type is not included in the licence.'),
@@ -1153,11 +1154,11 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           nameEn: row[2]! as String,
           nameAr: row[3] as String?,
           kind: TenderKind.fromWire(row[4] as String?),
-          countsAsCash: row[5]! as bool,
-          opensDrawer: row[6]! as bool,
-          requiresReference: row[7]! as bool,
-          refundAllowed: row[8]! as bool,
-          isActive: row[9]! as bool,
+          countsAsCash: row.boolean(5),
+          opensDrawer: row.boolean(6),
+          requiresReference: row.boolean(7),
+          refundAllowed: row.boolean(8),
+          isActive: row.boolean(9),
           sortOrder: row[10]! as int,
         ),
       );
@@ -1699,7 +1700,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             );
           }
           final name = row[1]! as String;
-          if (row[2] != true) {
+          if (readBool(row[2]) != true) {
             return AdminResult<List<OptionGroupRef>>.refused(
               OptionGroupRefused(
                 OptionGroupProblem.notInLibrary,
@@ -1715,7 +1716,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
               ),
             );
           }
-          if (row[4] == true) sizes.add(name);
+          if (readBool(row[4]) == true) sizes.add(name);
         }
       }
 
@@ -2045,7 +2046,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     if (locked.isEmpty) return (null, const EditedElsewhere(0));
 
     final current = locked.first[0]! as int;
-    final isGlobal = locked.first[1]! as bool;
+    final isGlobal = locked.first.boolean(1);
     if (isGlobal != global) {
       return (
         null,
@@ -2096,7 +2097,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       parameters: {'c': product.categoryId, 'r': businessId},
     );
     if (category.isEmpty) return refusal;
-    if (category.first[0]! as bool) return null;
+    if (category.first.boolean(0)) return null;
 
     if (product.id == 0) return refusal;
     final unchanged = await tx.execute(
@@ -2186,7 +2187,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     );
     final ownIds = [
       for (final row in links)
-        if (row[1] != true) row[0]! as int,
+        if (readBool(row[1]) != true) row[0]! as int,
     ];
     final own = <int, OptionGroupDraft>{
       if (ownIds.isNotEmpty)
@@ -2199,7 +2200,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     };
     return [
       for (final row in links)
-        if (row[1] == true)
+        if (readBool(row[1]) == true)
           OptionGroupRef.shared(row[0]! as int)
         else if (own[row[0]! as int] case final group?)
           OptionGroupRef.inline(group),
@@ -2253,7 +2254,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
               nameAr: row[3] as String?,
               price: Money(row[4]! as int),
               salePrice: row[5] == null ? null : Money(row[5]! as int),
-              isAvailable: row[6]! as bool,
+              isAvailable: row.boolean(6),
             ),
           );
     }
@@ -2268,8 +2269,8 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             nameAr: row[3] as String?,
             displayNameEn: row[4] as String?,
             displayNameAr: row[5] as String?,
-            isVariant: row[6]! as bool,
-            isRequired: row[7]! as bool,
+            isVariant: row.boolean(6),
+            isRequired: row.boolean(7),
             maxSelect: row[8]! as int,
             minSelect: row[9]! as int,
             freeOptions: row[10]! as int,
@@ -2277,7 +2278,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
             categoryIds: (row[13]! as List).whereType<int>().toSet(),
             options: options[row[0]! as int] ?? const [],
           ),
-          isGlobal: row[12]! as bool,
+          isGlobal: row.boolean(12),
         ),
     ];
   }
@@ -2390,7 +2391,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     nameAr: row[2] as String?,
     slug: row[3] as String?,
     sortOrder: row[4]! as int,
-    isActive: row[5]! as bool,
+    isActive: row.boolean(5),
   );
 
   Product _productFrom(ResultRow row) => Product(
@@ -2402,10 +2403,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     discountedPrice: row[5] == null ? null : Money(row[5]! as int),
     sku: row[6] as String?,
     barcode: row[7] as String?,
-    isAvailable: row[8]! as bool,
+    isAvailable: row.boolean(8),
     sortOrder: row[9]! as int,
     taxGroupId: row[11] as int?,
-    isStocked: row[12]! as bool,
+    isStocked: row.boolean(12),
     stockUnit: row[13] == null ? null : QuantityUnit.fromWire(row[13] as String),
   );
 
@@ -2491,7 +2492,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           price: Money(row[4]! as int),
           taxGroupId: row[5] as int?,
           sku: row[6] as String?,
-          isAvailable: row[7]! as bool,
+          isAvailable: row.boolean(7),
           groups: groupsByCombo[row[0]! as int] ?? const [],
         ),
     ];

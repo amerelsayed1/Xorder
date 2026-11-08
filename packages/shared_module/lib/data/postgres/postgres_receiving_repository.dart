@@ -9,6 +9,7 @@ import '../../domain/models/purchase_order.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/stock_costing.dart';
+import '../sql/row_reads.dart';
 
 /// Booking goods in against a purchase order.
 ///
@@ -336,7 +337,7 @@ class PostgresReceivingRepository implements ReceivingRepository {
       );
       // Not counted at all — neither stocked nor holding a position — means
       // there is no stock here to give a cost to.
-      if (held.isEmpty && product.first[1] != true) {
+      if (held.isEmpty && readBool(product.first[1]) != true) {
         return refuse(OpeningCostProblem.itemUnknown);
       }
 

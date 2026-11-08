@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import 'package:postgres/postgres.dart' as pg;
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/content_languages.dart';
@@ -8,6 +8,8 @@ import '../../core/security/pin_hash.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/reason_code.dart';
 import 'migrations.dart';
+import '../sql/row_reads.dart';
+import '../sql/sql.dart';
 import 'pos_database.dart';
 import 'pos_tls.dart';
 
@@ -80,7 +82,7 @@ class TillRoleRefused implements Exception {
 class LocalBootstrap {
   const LocalBootstrap(this.database);
 
-  final PosDatabase database;
+  final SqlDatabase database;
 
   /// `CREATE DATABASE` cannot run inside a transaction and has no
   /// `IF NOT EXISTS`, so it needs its own connection to the maintenance
@@ -108,7 +110,7 @@ class LocalBootstrap {
 
     try {
       final existing = await connection.execute(
-        Sql.named('SELECT 1 FROM pg_database WHERE datname = @name'),
+        pg.Sql.named('SELECT 1 FROM pg_database WHERE datname = @name'),
         parameters: {'name': name},
       );
       if (existing.isNotEmpty) return false;
@@ -142,13 +144,13 @@ class LocalBootstrap {
   /// as `Severity.fatal 28000: role "pos_admin" does not exist`: a driver's
   /// words, in English, in front of an installer reading Arabic. It is the
   /// FIRST step of the build, so it was also the likeliest thing to fail.
-  static Future<Connection> _openMaintenance(
+  static Future<pg.Connection> _openMaintenance(
     DeploymentConfig admin,
     String adminPassword,
   ) async {
     try {
-      return await Connection.open(
-        Endpoint(
+      return await pg.Connection.open(
+        pg.Endpoint(
           host: admin.databaseHost,
           port: admin.databasePort,
           database: 'postgres',
@@ -160,7 +162,7 @@ class LocalBootstrap {
         // accepts any certificate at all, so the administrator's password
         // for building the database was the one credential sent to whoever
         // answered. A pinned or verified certificate, or nothing.
-        settings: ConnectionSettings(
+        settings: pg.ConnectionSettings(
           sslMode: PosTlsSettings.sslModeFor(admin.lanTls),
           securityContext: PosTlsSettings.securityContextFor(admin.lanTls),
         ),
@@ -261,13 +263,13 @@ class LocalBootstrap {
   /// One role, on an open connection: look first, and leave an existing one
   /// exactly as it is. Returns true when it created one.
   static Future<bool> _createRole(
-    Connection connection,
+    pg.Connection connection,
     InstallRole role,
     String name,
     String? password,
   ) async {
     final existing = await connection.execute(
-      Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
+      pg.Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
       parameters: {'name': name},
     );
     if (existing.isNotEmpty) return false;
@@ -412,22 +414,47 @@ class LocalBootstrap {
     var created = 0;
 
     for (final entry in SystemRoles.seeded.entries) {
+      final parameters = {
+        'business': businessId,
+        'code': entry.key,
+        'nameEn': entry.value.nameEn,
+        'nameAr': entry.value.nameAr,
+        'capabilities': entry.value.capabilities.toList(),
+      };
+      // SQLite has no `xmax` to tell an insert from an update: there, a row
+      // comes back only when it was inserted, and an existing one is read.
+      if (database.dialect == SqlDialect.sqlite) {
+        final inserted = await database.query(
+          admin,
+          'INSERT INTO pos_roles (business_id, code, name_en, name_ar, capabilities, is_system) '
+          'VALUES (@business, @code, @nameEn, @nameAr, @capabilities, true) '
+          'ON CONFLICT (business_id, code) DO NOTHING '
+          'RETURNING id',
+          parameters: parameters,
+        );
+        if (inserted.isNotEmpty) {
+          ids[entry.key] = inserted.first[0]! as int;
+          created++;
+        } else {
+          final existing = await database.query(
+            admin,
+            'SELECT id FROM pos_roles WHERE business_id = @business AND code = @code',
+            parameters: {'business': businessId, 'code': entry.key},
+          );
+          ids[entry.key] = existing.first[0]! as int;
+        }
+        continue;
+      }
       final rows = await database.query(
         admin,
         'INSERT INTO pos_roles (business_id, code, name_en, name_ar, capabilities, is_system) '
         'VALUES (@business, @code, @nameEn, @nameAr, @capabilities, true) '
         'ON CONFLICT (business_id, code) DO UPDATE SET code = EXCLUDED.code '
         'RETURNING id, (xmax = 0) AS inserted',
-        parameters: {
-          'business': businessId,
-          'code': entry.key,
-          'nameEn': entry.value.nameEn,
-          'nameAr': entry.value.nameAr,
-          'capabilities': entry.value.capabilities.toList(),
-        },
+        parameters: parameters,
       );
       ids[entry.key] = rows.first[0]! as int;
-      if (rows.first[1] == true) created++;
+      if (readBool(rows.first[1]) == true) created++;
     }
 
     return (ids: ids, created: created);
@@ -454,13 +481,17 @@ class LocalBootstrap {
       final reasons = SystemReasons.seededFor(scope);
       for (var i = 0; i < reasons.length; i++) {
         final reason = reasons[i];
+        // On SQLite, which has no `xmax`, a row comes back only when it was
+        // inserted; on PostgreSQL the flag says so. Same count either way.
+        final sqlite = database.dialect == SqlDialect.sqlite;
         final rows = await database.query(
           admin,
           'INSERT INTO pos_reason_codes (business_id, scope, code, name_en, '
           '  name_ar, requires_note, sort_order) '
           'VALUES (@business, @scope, @code, @nameEn, @nameAr, @note, @sort) '
-          'ON CONFLICT (business_id, scope, code) DO UPDATE SET code = EXCLUDED.code '
-          'RETURNING (xmax = 0) AS inserted',
+          '${sqlite ? 'ON CONFLICT (business_id, scope, code) DO NOTHING '
+                  'RETURNING 1 = 1 AS inserted' : 'ON CONFLICT (business_id, scope, code) DO UPDATE SET code = EXCLUDED.code '
+                  'RETURNING (xmax = 0) AS inserted'}',
           parameters: {
             'business': businessId,
             'scope': scope.wire,
@@ -471,7 +502,7 @@ class LocalBootstrap {
             'sort': i + 1,
           },
         );
-        if (rows.first[0] == true) created++;
+        if (rows.isNotEmpty && readBool(rows.first[0]) == true) created++;
       }
     }
 

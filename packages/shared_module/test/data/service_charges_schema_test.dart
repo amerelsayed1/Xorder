@@ -3,7 +3,6 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/data/postgres/migrations.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/postgres/postgres_service_charges_repository.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/models/service_charge.dart';
@@ -12,6 +11,7 @@ import 'package:shared_module/domain/models/ticket.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// Service charges, stored (§38).
 ///
@@ -26,7 +26,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase db;
+  late SqlDatabase db;
   late PostgresServiceChargesRepository charges;
   late int businessId;
 

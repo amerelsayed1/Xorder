@@ -15,6 +15,7 @@ import 'package:shared_module/features/setup/application/setup_controller.dart';
 
 import 'package:xorder_pos_test_support/fakes.dart';
 import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
 
 /// End-to-end through the **real provider graph**.
 ///
@@ -30,7 +31,7 @@ void main() {
   }
 
   late PgFixture pg;
-  late PosDatabase database;
+  late SqlDatabase database;
   late DeploymentConfig branchConfig;
 
   setUp(() async {
