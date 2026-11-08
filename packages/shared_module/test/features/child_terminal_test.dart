@@ -98,7 +98,6 @@ void main() {
       draft.visibleSteps,
       isNot(anyOf(
         contains(SetupStep.licence),
-        contains(SetupStep.setupType),
         contains(SetupStep.money),
       )),
     );

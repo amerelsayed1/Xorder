@@ -304,7 +304,14 @@ class FakeLicenceService implements LicenceService {
       expiresAt: expiresAt,
       maxTerminals: 4,
       features: const {'pos', 'dine_in', 'delivery'},
-      modes: DeploymentMode.values.toSet(),
+      // One mode when standing in for an app, as the platform issues them
+      // since D9: a typed key minting both would be refused `modeAmbiguous`
+      // by the very rule the app applies, and no test could walk an app's
+      // wizard on a key (pos-split-apps, stage 4). Both, for the shared
+      // package on its own, which has no one mode to mint for.
+      modes: singleModeOnly
+          ? {deployment.mode}
+          : DeploymentMode.values.toSet(),
       plan: 'Business Pro',
     );
 

@@ -54,9 +54,7 @@ final homeSalesProvider = FutureProvider.autoDispose<HomeSales?>((ref) async {
   );
 });
 
-/// When the platform's bundle last reached this till — Home's "last sync"
-/// card on a cloud till. Null offline, where there is no platform and the card
-/// shows the last backup instead.
-final lastPlatformSyncProvider = FutureProvider.autoDispose<DateTime?>(
-  (ref) async => ref.watch(cloudSyncProvider)?.lastSyncedAt(),
-);
+// No "last platform sync" here (pos-split-apps, stage 4). It read
+// `cloudSyncProvider`, which the offline app never binds, for a Home card that
+// had already been taken away; the offline Home has no platform to have heard
+// from.

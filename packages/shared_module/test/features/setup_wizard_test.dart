@@ -19,13 +19,16 @@ const _desktop = Size(1440, 900);
 Future<ProviderContainer> _pump(
   WidgetTester tester, {
   VoidCallback? onFinished,
+  DeploymentMode? appMode,
 }) async {
   tester.view
     ..physicalSize = _desktop
     ..devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+  final container = ProviderContainer(
+    overrides: fakeRepositoryOverrides(appMode: appMode),
+  );
   addTearDown(container.dispose);
 
   await tester.pumpWidget(
@@ -106,7 +109,7 @@ void main() {
     test('a database that is not there yet is a notice, not a refusal', () async {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           posDatabaseProvider.overrideWithValue(
             _ProbesAs(PosDbFailure.missingDatabase),
           ),
@@ -115,7 +118,6 @@ void main() {
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabaseName('kashri_altahrir');
       controller.setDatabasePassword('s3cret');
 
@@ -139,7 +141,7 @@ void main() {
     test('an empty database password is named, not blamed on PostgreSQL', () async {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           // What the real pool does with no credential: an auth failure.
           posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.auth)),
         ],
@@ -147,7 +149,6 @@ void main() {
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabasePassword('');
 
       expect(await controller.testConnection(), isFalse);
@@ -161,14 +162,13 @@ void main() {
     test('a login that is refused is still a refusal', () async {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.auth)),
         ],
       );
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabasePassword('wrong');
 
       expect(await controller.testConnection(), isFalse);
@@ -240,23 +240,6 @@ void main() {
       },
     );
 
-    test('an empty modes claim licenses everything rather than nothing', () {
-      // Parsing an absent claim into an empty set and then refusing every mode
-      // reads to the operator as a till that will not set up, with no way to
-      // tell why.
-      final draft = const SetupDraft().copyWith(
-        claims: LicenseClaims(
-          licenseId: 'lic',
-          tenantSlug: 'mahsoub',
-          tenantName: 'Mahsoub Grill',
-          issuedAt: DateTime.utc(2026, 1, 1),
-          expiresAt: DateTime.utc(2027, 1, 1),
-          modes: const {},
-        ),
-      );
-      expect(draft.licensedModes, DeploymentMode.values.toSet());
-    });
-
     test(
       'hardware never blocks — a till with no printer still finishes setup',
       () {
@@ -323,42 +306,19 @@ void main() {
       expect(SetupController.baseUrlFrom(''), '');
     });
 
-    test('re-selecting the current mode keeps every typed detail', () {
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      controller.setBaseUrl('http://127.0.0.1:8100');
-      controller.setDatabaseName('xorder-test-pos');
-      controller.setDatabaseUser('pos_till');
-      controller.setDatabasePort('5433');
-
-      // Tapping the already-selected Cloud tile on the way past must be a
-      // no-op — what is entered in an input stays entered.
-      controller.setMode(DeploymentMode.cloud);
-
-      final config = container.read(setupProvider).deployment;
-      expect(config.databaseName, 'xorder-test-pos');
-      expect(config.databaseUser, 'pos_till');
-      expect(config.databasePort, 5433);
-      expect(config.baseUrl, 'http://127.0.0.1:8100');
-    });
-
-    test('switching to offline drops the pairing-code method', () {
+    // Rewritten in stage 4 from "switching to offline drops the pairing-code
+    // method": there is no switch, and the rule it ended on is what is left.
+    test('the offline app cannot be put on the pairing-code method', () {
       // A pairing code is minted by a dashboard, and offline has none. A draft
       // left on that method would show a disabled tile and a button that can
       // never succeed.
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: DeploymentMode.offline),
+      );
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
 
-      controller.setMethod(SetupMethod.pairingCode);
-      expect(container.read(setupProvider).method, SetupMethod.pairingCode);
-
-      controller.setMode(DeploymentMode.offline);
       expect(container.read(setupProvider).method, SetupMethod.manual);
-
-      // And it cannot be chosen again while offline.
       controller.setMethod(SetupMethod.pairingCode);
       expect(container.read(setupProvider).method, SetupMethod.manual);
     });
@@ -368,11 +328,12 @@ void main() {
       // `complete()` refused it for having no business id and no branch
       // code — which only registration supplies. The operator reached the last
       // screen before being told the sixth was wrong.
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: DeploymentMode.offline),
+      );
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
 
-      controller.setMode(DeploymentMode.offline);
       controller.setTerminalName('Counter 1');
       controller.state = container
           .read(setupProvider)
@@ -382,38 +343,6 @@ void main() {
         container.read(setupProvider).canAdvance,
         isFalse,
         reason: 'a name alone is not a registered terminal',
-      );
-    });
-
-    test('a mode the licence does not cover is refused', () {
-      // The phase-1 block on offline is gone; the LICENCE is the only rule
-      // left. A cloud-only licence must still refuse the switch, and must not
-      // clear what the operator already typed while refusing it.
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      controller.setBaseUrl('https://xorder.io');
-      controller.state = container
-          .read(setupProvider)
-          .copyWith(
-            claims: LicenseClaims(
-              licenseId: 'LIC-CLOUD-ONLY',
-              tenantSlug: 'mahsoub',
-              tenantName: 'Mahsoub',
-              issuedAt: DateTime.utc(2026),
-              expiresAt: DateTime.utc(2027),
-              modes: const {DeploymentMode.cloud},
-            ),
-          );
-      controller.setMode(DeploymentMode.offline);
-
-      final draft = container.read(setupProvider);
-      expect(draft.deployment.mode, DeploymentMode.cloud);
-      expect(
-        draft.deployment.baseUrl,
-        'https://xorder.io',
-        reason: 'a refused switch must not clear what was already typed',
       );
     });
 
@@ -464,7 +393,6 @@ void main() {
         draft.claims!.tenantSlug,
         reason: 'the licence names its tenant; the operator should not have to',
       );
-      expect(draft.licensedModes, contains(draft.deployment.mode));
       // And names the database after the business: the wizard builds it,
       // and `mahsoub_db` says whose it is where `xorder_pos` said nothing.
       expect(draft.deployment.databaseName, 'mahsoub_db');
@@ -507,11 +435,6 @@ void main() {
       final draft = container.read(setupProvider);
       expect(draft.deployment.mode, DeploymentMode.cloud);
       expect(draft.deployment.baseUrl, 'https://xorder.io');
-
-      // And the same when the mode is re-chosen later.
-      controller.setMode(DeploymentMode.offline);
-      controller.setMode(DeploymentMode.cloud);
-      expect(container.read(setupProvider).deployment.baseUrl, 'https://xorder.io');
     });
 
     test('with no platform typed, a licence falls back to the build default', () async {
@@ -526,31 +449,6 @@ void main() {
       if (draft.deployment.mode.needsBaseUrl) {
         expect(draft.deployment.baseUrl, PlatformEndpoint.base);
       }
-    });
-
-    test('a mode the licence does not cover cannot be selected', () {
-      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-      addTearDown(container.dispose);
-      final controller = container.read(setupProvider.notifier);
-
-      controller.state = container
-          .read(setupProvider)
-          .copyWith(
-            claims: LicenseClaims(
-              licenseId: 'lic',
-              tenantSlug: 'mahsoub',
-              tenantName: 'Mahsoub Grill',
-              issuedAt: DateTime.utc(2026, 1, 1),
-              expiresAt: DateTime.utc(2027, 1, 1),
-              modes: const {DeploymentMode.cloud},
-            ),
-          );
-
-      controller.setMode(DeploymentMode.offline);
-      expect(
-        container.read(setupProvider).deployment.mode,
-        DeploymentMode.cloud,
-      );
     });
 
     test('a pasted domain or URL normalises to its tenant slug', () {
@@ -625,19 +523,20 @@ void main() {
   });
 
   group('wizard UI', () {
-    testWidgets('opens on the licence, which is step one of six', (
+    testWidgets('opens on the licence, which is step one of five', (
       tester,
     ) async {
       await _pump(tester);
 
       expect(find.text('TERMINAL SETUP'), findsOneWidget);
-      // Six, not eleven (owner decision, 2026-09-15). A fresh draft is cloud,
-      // and a cloud main device is asked for a licence, a mode it may not even
-      // have a choice about, and a setup code — the rest it is told.
-      expect(find.text('STEP 1 OF 6'), findsOneWidget);
+      // Five, not eleven (owner decision, 2026-09-15). A fresh draft is cloud,
+      // and a cloud main device is asked for a licence and a setup code — the
+      // rest it is told. It was six until pos-split-apps stage 4 took the mode
+      // question away: the app is the mode.
+      expect(find.text('STEP 1 OF 5'), findsOneWidget);
       // The licence step used to be hidden on the cloud path, then merely
-      // second. It is first now: it decides the mode, supplies the tenant, and
-      // says whether there is anything to set up at all.
+      // second. It is first now: it supplies the tenant, is judged against the
+      // app's mode, and says whether there is anything to set up at all.
       expect(find.text('Licence'), findsWidgets);
       expect(find.text('Ready'), findsWidgets);
 
@@ -660,21 +559,16 @@ void main() {
       expect(find.text(PlatformEndpoint.base), findsWidgets);
     });
 
-    testWidgets('the licence is asked before the mode it decides', (
+    // Rewritten in stage 4 from "the licence is asked before the mode it
+    // decides": the licence no longer decides a mode, and there is no mode
+    // step to come after it. What stands is the licence going first.
+    testWidgets('the licence is asked first, on either path', (
       tester,
     ) async {
       final container = await _pump(tester);
       final steps = container.read(setupProvider).visibleSteps;
 
-      // The whole point of the reorder. A tenant is sold cloud, offline or
-      // both when the Super Admin creates it; the modes claim carries that to
-      // the till, so the mode screen can offer only what was bought instead of
-      // accepting a choice and refusing it two screens later.
-      expect(
-        steps.indexOf(SetupStep.licence),
-        lessThan(steps.indexOf(SetupStep.setupType)),
-      );
-      // And the licence is first of all (owner decision, 2026-09-06). The
+      // The licence is first of all (owner decision, 2026-09-06). The
       // language step that used to hold this place is second on the OFFLINE
       // path and gone from the cloud one, which is what a fresh draft walks:
       // the business already told the dashboard which language it works in.
@@ -682,7 +576,7 @@ void main() {
       // refusal — is held by the language switch the Settings bar carries on
       // every screen, including this one.
       expect(steps.first, SetupStep.licence);
-      expect(steps[1], SetupStep.setupType);
+      expect(steps[1], SetupStep.account);
       expect(steps, isNot(contains(SetupStep.language)));
 
       final offline = container
@@ -943,9 +837,8 @@ void main() {
     testWidgets('the database password never reaches the persisted config', (
       tester,
     ) async {
-      final container = await _pump(tester);
+      final container = await _pump(tester, appMode: DeploymentMode.offline);
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabasePassword('s3cret');
 
       // A password in device config is a password that ends up in a support
@@ -959,12 +852,11 @@ void main() {
     testWidgets('finishing setup hands the password to the credential store', (
       tester,
     ) async {
-      final container = await _pump(tester);
+      final container = await _pump(tester, appMode: DeploymentMode.offline);
       final controller = container.read(setupProvider.notifier);
 
       expect(container.read(posDbCredentialsStoreProvider).isSet, isFalse);
 
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabaseHost('192.168.1.20');
       controller.setDatabasePassword('s3cret');
       controller.setTenantSlug('mahsoub');

@@ -173,7 +173,7 @@ void main() {
         () async {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.tls)),
           serverCertificateProbeProvider.overrideWithValue(
             _FakeProbe(CertificateFetched(presentedA)),
@@ -183,7 +183,6 @@ void main() {
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier)
-        ..setMode(DeploymentMode.offline)
         ..setDatabaseHost('192.168.1.20')
         ..setDatabasePassword('s3cret');
 
@@ -198,7 +197,7 @@ void main() {
     test('the pinned certificate refused for its name says so', () async {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.tls)),
           serverCertificateProbeProvider.overrideWithValue(
             _FakeProbe(CertificateFetched(presentedA)),
@@ -208,7 +207,6 @@ void main() {
       addTearDown(container.dispose);
 
       final controller = container.read(setupProvider.notifier)
-        ..setMode(DeploymentMode.offline)
         ..setDatabaseHost('192.168.1.20')
         ..setDatabasePassword('s3cret');
       controller.state = container.read(setupProvider).copyWith(

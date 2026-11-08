@@ -129,11 +129,14 @@ SalesSync? _cloudSync(Ref ref) {
 /// its main device's PostgreSQL whatever mode that main device runs in: the
 /// platform has never heard of it, and it holds no device token to claim with
 /// — so for a child this falls through to the shared binding.
+///
+/// No mode check (pos-split-apps, stage 4): this app's mode is cloud from the
+/// first frame (`appModeProvider`), and a child that found an offline main
+/// device was refused before its config reached here (BR-8). The check that
+/// stood here could only ever have been false.
 ProvisioningRepository _provisioning(Ref ref) {
   final config = ref.watch(deploymentProvider);
-  if (config.mode != DeploymentMode.cloud || config.isChild) {
-    return branchProvisioningRepository(ref, config);
-  }
+  if (config.isChild) return branchProvisioningRepository(ref, config);
   final api = ref.watch(posCloudApiProvider);
   if (api == null) return const UnconfiguredProvisioningRepository();
   return CloudProvisioningRepository(
@@ -184,9 +187,8 @@ BranchSalesSource? _platformBranchSales(Ref ref) {
   final base = config.baseUrl;
   final local = ref.watch(postgresBranchSalesProvider);
   final context = ref.watch(posWriteContextProvider);
-  if (!config.mode.syncsSalesToPlatform || base == null || base.isEmpty) {
-    return null;
-  }
+  // No "does this mode sync" check: in this app it always does (stage 4).
+  if (base == null || base.isEmpty) return null;
   if (local == null || context == null) return null;
 
   final vault = ref.watch(deviceTokenVaultProvider);

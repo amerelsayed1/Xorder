@@ -204,14 +204,19 @@ void main() {
       // English refusals. An override rather than `apply('en')`, because apply
       // writes the choice to the terminal's config file, and this is a
       // pure-Dart test with no platform to find that file on.
+      //
+      // The offline app (pos-split-apps, stage 4): the wizard has no mode
+      // switch to tap any more, so the container says which app it is.
       final container = ProviderContainer(
-        overrides: [localeProvider.overrideWith(EnglishTerminal.new)],
+        overrides: [
+          localeProvider.overrideWith(EnglishTerminal.new),
+          appModeProvider.overrideWithValue(DeploymentMode.offline),
+        ],
       );
       // `posDatabaseProvider` closes its own pool via ref.onDispose, so
       // disposing the container is enough.
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabaseHost(branchConfig.databaseHost);
       controller.setDatabaseName(branchConfig.databaseName);
       controller.setDatabaseUser(branchConfig.databaseUser);

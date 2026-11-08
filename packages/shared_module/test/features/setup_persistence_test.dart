@@ -311,7 +311,7 @@ void main() {
       final store = InMemoryTerminalConfigStore();
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           terminalConfigStoreProvider.overrideWithValue(store),
         ],
       );
@@ -329,7 +329,6 @@ void main() {
       await tester.pumpAndSettle();
 
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabaseHost('192.168.1.20');
       controller.setDatabasePassword('s3cret');
       controller.setBranch(13, 'Maadi');
@@ -365,7 +364,7 @@ void main() {
         var finished = false;
         final container = ProviderContainer(
           overrides: [
-            ...fakeRepositoryOverrides(),
+            ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
             terminalConfigStoreProvider.overrideWithValue(
               _UnwritableConfigStore(),
             ),
@@ -385,7 +384,6 @@ void main() {
         await tester.pumpAndSettle();
 
         final controller = container.read(setupProvider.notifier);
-        controller.setMode(DeploymentMode.offline);
         controller.setDatabaseHost('192.168.1.20');
         controller.setDatabasePassword('s3cret');
         controller.setBranch(13, 'Maadi');
@@ -914,7 +912,7 @@ void main() {
     }) {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.offline),
           setupProgressStoreProvider.overrideWithValue(progress),
           provisioningRepositoryProvider.overrideWithValue(provisioning),
           if (config != null)
@@ -931,7 +929,6 @@ void main() {
       final controller = container.read(setupProvider.notifier);
       controller.setLicenceKey('DEV-KEY');
       await controller.activateLicence();
-      controller.setMode(DeploymentMode.offline);
       controller.setDatabaseHost('192.168.1.20');
       controller.setDatabasePassword('s3cret');
       controller.setOwnerName('Amer');

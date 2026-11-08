@@ -523,9 +523,12 @@ void main() {
       ),
     );
 
-    /// Cloud by DEPLOYMENT, not by an override: the provider the rule reads is
-    /// derived from the mode, and this is where that is proved. [offline]
-    /// binds a catalogue administrator instead, as an offline till has.
+    /// A till with no catalogue administrator bound, and a cloud deployment to
+    /// match. Until pos-split-apps stage 4 the provider was derived from the
+    /// mode and this proved it; since then the offline app's wiring binds the
+    /// administrator and the shared default is null, so what is left to hold
+    /// here is the screen's rule — no administrator, no purchasing — whatever
+    /// app would one day show it. [offline] binds one, as an offline till has.
     Future<ProviderContainer> open(
       WidgetTester tester, {
       required ManagementPane pane,

@@ -237,10 +237,6 @@ void main() {
         await tester.tap(find.text('Claim this terminal'));
         await tester.pumpAndSettle();
       }
-      if (at == SetupStep.setupType) {
-        controller.setMode(DeploymentMode.cloud);
-        await tester.pumpAndSettle();
-      }
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
@@ -366,31 +362,6 @@ void main() {
 
       expect(seen, [
         SetupStep.licence,
-        SetupStep.account,
-        SetupStep.connecting,
-        SetupStep.summary,
-      ]);
-    });
-
-    testWidgets('a dual-mode licence adds the mode question, and only it', (
-      tester,
-    ) async {
-      final builder = _RecordingDatabaseBuilder();
-      final (container, _) = await open(
-        tester,
-        builder: builder,
-        printers: _PrintersFound(1),
-      );
-
-      final seen = await walk(
-        tester,
-        container,
-        modes: {DeploymentMode.cloud, DeploymentMode.offline},
-      );
-
-      expect(seen, [
-        SetupStep.licence,
-        SetupStep.setupType,
         SetupStep.account,
         SetupStep.connecting,
         SetupStep.summary,

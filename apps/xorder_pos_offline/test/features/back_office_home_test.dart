@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
 import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
-import 'package:shared_module/app/sales_sync.dart';
 import 'package:shared_module/data/fakes/fake_repositories.dart';
 import 'package:shared_module/domain/models/branch_sales.dart';
 import 'package:shared_module/domain/models/business_day.dart';
@@ -40,8 +38,6 @@ const _doorOnly = PosStaff(
     capabilities: {PosCapability.adminEnter},
   ),
 );
-
-class _Sync extends Mock implements SalesSync {}
 
 Money _egp(int minor) => Money(minor, currency: 'EGP', exponent: 2);
 
@@ -92,7 +88,6 @@ Future<void> _pump(
   PosStaff admin = _owner,
   HomeSales? home,
   bool noDay = false,
-  bool cloud = false,
   String language = 'en',
   List<Override> overrides = const [],
 }) async {
@@ -117,10 +112,6 @@ Future<void> _pump(
           previous: _cutYesterday,
         )),
       ),
-      if (cloud) ...[
-        cloudSyncProvider.overrideWithValue(_Sync()),
-        pendingSyncCountProvider.overrideWith((ref) async => 3),
-      ],
       ...overrides,
     ],
   );
@@ -245,44 +236,45 @@ void main() {
   // copy was; the window's bar holds every page. Home said all of it again,
   // and the owner took it away. Asserted by what a person would read — the
   // names, the pills, the old headings — not only by the keys that are gone.
-  for (final cloud in [false, true]) {
-    final where = cloud ? 'cloud' : 'offline';
-    testWidgets('$where: no status cards and no quick actions — the greeting '
-        'and the day, and nothing else', (tester) async {
-      await _pump(tester, cloud: cloud);
+  //
+  // Once for the offline till only: the cloud variant, which bound a sync loop
+  // and three unsent sales, left in pos-split-apps stage 4 — this Home is the
+  // offline app's, which never binds one.
+  testWidgets('offline: no status cards and no quick actions — the greeting '
+      'and the day, and nothing else', (tester) async {
+    await _pump(tester);
 
-      for (final key in [
-        'home-card-branch',
-        'home-card-device',
-        'home-card-connection',
-        'home-card-last-backup',
-        'home-card-last-sync',
-        'home-action-salesReports',
-        'home-action-products',
-        'home-action-employees',
-      ]) {
-        expect(find.byKey(Key(key)), findsNothing, reason: key);
-      }
-      // The terminal profile says Maadi and POS-02; Home says neither.
-      expect(find.text('Maadi'), findsNothing);
-      expect(find.text('POS-02'), findsNothing);
-      expect(find.byType(BranchServerPill), findsNothing);
-      expect(find.byType(SyncPill), findsNothing);
-      for (final heading in [
-        'Connection',
-        'Last backup',
-        'Last sync',
-        'Quick actions',
-        'Product management',
-      ]) {
-        expect(find.text(heading), findsNothing, reason: heading);
-      }
-      // What is left: the greeting, and the tiles.
-      expect(find.text(s.homeWelcome('Amer M.')), findsOneWidget);
-      expect(find.byKey(const Key('home-tiles')), findsOneWidget);
-      expect(find.byType(GestureDetector), findsNothing, reason: 'no links');
-    });
-  }
+    for (final key in [
+      'home-card-branch',
+      'home-card-device',
+      'home-card-connection',
+      'home-card-last-backup',
+      'home-card-last-sync',
+      'home-action-salesReports',
+      'home-action-products',
+      'home-action-employees',
+    ]) {
+      expect(find.byKey(Key(key)), findsNothing, reason: key);
+    }
+    // The terminal profile says Maadi and POS-02; Home says neither.
+    expect(find.text('Maadi'), findsNothing);
+    expect(find.text('POS-02'), findsNothing);
+    expect(find.byType(BranchServerPill), findsNothing);
+    expect(find.byType(SyncPill), findsNothing);
+    for (final heading in [
+      'Connection',
+      'Last backup',
+      'Last sync',
+      'Quick actions',
+      'Product management',
+    ]) {
+      expect(find.text(heading), findsNothing, reason: heading);
+    }
+    // What is left: the greeting, and the tiles.
+    expect(find.text(s.homeWelcome('Amer M.')), findsOneWidget);
+    expect(find.byKey(const Key('home-tiles')), findsOneWidget);
+    expect(find.byType(GestureDetector), findsNothing, reason: 'no links');
+  });
 
   testWidgets('the subtitle promises no way onward: the links are gone', (
     tester,

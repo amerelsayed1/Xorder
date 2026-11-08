@@ -502,9 +502,6 @@ sealed class AppStrings {
   String get openTheTill;
 
   String get stepSetupType;
-  String get stepSetupTypeBlurb;
-  String get setupTypeOfflineHelp;
-  String get setupTypeCloudHelp;
   String get stepLanguage;
   String get stepLanguageBlurb;
   String get stepConnection;
@@ -582,14 +579,9 @@ sealed class AppStrings {
 
   // ── Setup: connection ─────────────────────────────────────────────────────
   String get modeCloud;
-  String get modeCloudBlurb;
   String get modeOffline;
-  String get modeOfflineBlurb;
   String get modeNotLicensed;
 
-  /// The badge on a mode tile the licence does not cover. Short, because it
-  /// sits inside the tile — the sentence is [modeNotLicensed].
-  String get notLicensedBadge;
   String get syncAutomatic;
   String get syncAutomaticBlurb;
   String get syncManual;
@@ -1017,9 +1009,6 @@ sealed class AppStrings {
   /// arrives when somebody types it into Management, and never otherwise.
   String get menuEmptyHelpOffline;
 
-  /// Said when adopting a licence moved the terminal off the mode the operator
-  /// picked, onto one the licence actually covers.
-  String licenceModeChanged(Object chosen, Object landed);
   String catalogueDownloadFailed(Object error);
   String get summaryLanguage;
   String get summaryConnection;
@@ -1258,7 +1247,6 @@ sealed class AppStrings {
     String heldUnit,
     String askedUnit,
   );
-  String get staffComesFromPlatform;
 
   // §107 — risk levels, on the role editor's badges.
   String get riskLow;
@@ -2010,9 +1998,6 @@ sealed class AppStrings {
   String get syncUnsent;
   String get syncLastProblem;
   String get syncNoProblem;
-  String get syncPassFailed;
-  String get syncPlatformSilent;
-  String syncHeld(int count);
   String syncPassSent(int count);
   String get syncOfflineTill;
   String get syncBranchServer;
@@ -4464,20 +4449,6 @@ final class EnStrings extends AppStrings {
   @override
   String get stepSetupType => 'Setup type';
 
-  @override
-  String get stepSetupTypeBlurb =>
-      'Choose how this terminal runs. A cloud terminal syncs every sale to the '
-      'platform; an offline one keeps its sales in the business. Which of '
-      'the two you may pick is decided by the licence, not by this screen.';
-  @override
-  String get setupTypeOfflineHelp =>
-      'This terminal keeps its own menu, staff and money rules, and no sale '
-      'ever leaves the business. It still reaches the platform to activate '
-      'and renew its licence — or you can install a licence file by hand.';
-  @override
-  String get setupTypeCloudHelp =>
-      'The platform is the source of the menu, the staff and the money '
-      'rules, and every sale syncs to it.';
 
   @override
   String get stepLanguage => 'Language';
@@ -4637,17 +4608,9 @@ final class EnStrings extends AppStrings {
   @override
   String get modeCloud => 'Cloud';
   @override
-  String get modeCloudBlurb =>
-      'Sales sync to the XOrder platform when a connection allows.';
-  @override
   String get modeOffline => 'Offline';
   @override
-  String get modeOfflineBlurb =>
-      'Sales stay in the business. Only the licence goes out.';
-  @override
   String get modeNotLicensed => 'Not covered by this licence.';
-  @override
-  String get notLicensedBadge => 'NOT LICENSED';
   @override
   String get syncAutomatic => 'Automatic';
   @override
@@ -5492,10 +5455,6 @@ final class EnStrings extends AppStrings {
       'An empty menu is normal on a new till: build it in Management once '
       'setup is finished.';
   @override
-  String licenceModeChanged(Object chosen, Object landed) =>
-      'This licence does not cover $chosen, so the terminal was set to '
-      '$landed. Ask for a licence covering $chosen if that is what you need.';
-  @override
   String catalogueDownloadFailed(Object error) =>
       'Catalogue download failed: $error';
   @override
@@ -6068,10 +6027,6 @@ final class EnStrings extends AppStrings {
       'one unit to another, so while any is held it is counted and booked in '
       'as $heldUnit only, not $askedUnit.';
 
-  @override
-  String get staffComesFromPlatform =>
-      'Who works here comes from XOrder. You can still set what each person '
-      'may do — roles and permissions live on this till.';
 
   @override
   String get riskLow => 'Low';
@@ -7670,17 +7625,6 @@ final class EnStrings extends AppStrings {
   String get syncLastProblem => 'Last problem';
   @override
   String get syncNoProblem => 'None';
-  @override
-  String get syncPassFailed =>
-      'The sync could not run. The sales are still here, and it will try '
-      'again.';
-  @override
-  String get syncPlatformSilent =>
-      'The platform did not answer. Nothing is lost — the sales wait here '
-      'until it does.';
-  @override
-  String syncHeld(int count) =>
-      'Refused by the platform and held for a person: $count';
   @override
   String syncPassSent(int count) => 'Sent just now: $count';
   @override
@@ -10070,20 +10014,6 @@ final class ArStrings extends AppStrings {
   @override
   String get stepSetupType => 'نوع التشغيل';
 
-  @override
-  String get stepSetupTypeBlurb =>
-      'اختر طريقة تشغيل هذا الجهاز. جهاز السحابة يُزامن كل عملية بيع مع '
-      'المنصة، والجهاز غير المتصل يُبقي مبيعاته داخل المنشأة. وأيُّهما متاح '
-      'يُحدده الترخيص، لا هذه الشاشة.';
-  @override
-  String get setupTypeOfflineHelp =>
-      'يحتفظ هذا الجهاز بمنيوه وموظفيه وقواعد أمواله، ولا تخرج أي مبيعة من '
-      'المنشأة. ويبقى يتصل بالمنصة لتفعيل الترخيص وتجديده — أو يمكنك تثبيت '
-      'ملف ترخيص يدوياً.';
-  @override
-  String get setupTypeCloudHelp =>
-      'المنصة هي مصدر المنيو والموظفين وقواعد الأموال، وكل مبيعة تُزامَن '
-      'إليها.';
 
   @override
   String get stepLanguage => 'اللغة';
@@ -10238,17 +10168,9 @@ final class ArStrings extends AppStrings {
   @override
   String get modeCloud => 'سحابي';
   @override
-  String get modeCloudBlurb =>
-      'تُرفع المبيعات إلى منصّة XOrder عند توفر الاتصال.';
-  @override
   String get modeOffline => 'بدون إنترنت';
   @override
-  String get modeOfflineBlurb =>
-      'المبيعات تبقى داخل المنشأة. لا يخرج سوى الترخيص.';
-  @override
   String get modeNotLicensed => 'غير مشمول بهذا الترخيص.';
-  @override
-  String get notLicensedBadge => 'غير مرخّص';
   @override
   String get syncAutomatic => 'تلقائي';
   @override
@@ -11056,10 +10978,6 @@ final class ArStrings extends AppStrings {
       'الفارغ أمر طبيعي على جهاز جديد: يمكنك بناؤه من الإدارة بعد انتهاء '
       'الإعداد.';
   @override
-  String licenceModeChanged(Object chosen, Object landed) =>
-      'هذا الترخيص لا يغطي $chosen، لذا تم ضبط الجهاز على $landed. اطلب '
-      'ترخيصًا يغطي $chosen إذا كان هذا ما تحتاجه.';
-  @override
   String catalogueDownloadFailed(Object error) => 'فشل تحميل المنيو: $error';
   @override
   String get summaryLanguage => 'اللغة';
@@ -11617,10 +11535,6 @@ final class ArStrings extends AppStrings {
       'أخرى، فما دام منه شيء فلا يُعدّ ولا يُستلم إلا بوحدة $heldUnit، لا '
       'بوحدة $askedUnit.';
 
-  @override
-  String get staffComesFromPlatform =>
-      'من يعمل هنا يأتي من XOrder. ويمكنك مع ذلك ضبط ما يفعله كلٌّ منهم — '
-      'الأدوار والصلاحيات تعيش على هذه النقطة.';
 
   @override
   String get riskLow => 'منخفض';
@@ -13176,14 +13090,6 @@ final class ArStrings extends AppStrings {
   String get syncLastProblem => 'آخر مشكلة';
   @override
   String get syncNoProblem => 'لا شيء';
-  @override
-  String get syncPassFailed =>
-      'تعذّر تشغيل المزامنة. المبيعات ما زالت محفوظة هنا، وستُعاد المحاولة.';
-  @override
-  String get syncPlatformSilent =>
-      'لم تردّ المنصة. لم يُفقد شيء — تنتظر المبيعات هنا حتى تردّ.';
-  @override
-  String syncHeld(int count) => 'رفضتها المنصة وهي محتجزة لمراجعة شخص: $count';
   @override
   String syncPassSent(int count) => 'أُرسل الآن: $count';
   @override

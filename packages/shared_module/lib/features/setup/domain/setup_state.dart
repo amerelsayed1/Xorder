@@ -33,7 +33,9 @@ enum SetupStep {
   // `tenant_slug`, so it *supplies* the tenant the account step signs into
   // rather than being checked against one the terminal guessed. It carries
   // `max_terminals`, which decides whether the database may live on another
-  // machine. And it carries `modes` — which is why it precedes [setupType].
+  // machine. And it carries `modes`, which must name this app's mode and no
+  // other (pos-split-apps, D9) — a licence for the other app is refused here,
+  // on screen one, rather than after a database has been built for it.
   //
   // Activation therefore cannot depend on `base_url`, which does not exist yet.
   // It goes to the hosted platform directly (`PlatformEndpoint.licence`), or the
@@ -47,13 +49,15 @@ enum SetupStep {
   // it. What the old order cost was making everybody answer a question before
   // the one that decides whether the rest of the wizard happens at all.
   language,
-  // Which product this terminal is — asked **after** the licence, because the
-  // licence is what answers it. A tenant is sold cloud, offline, or both when
-  // the Super Admin creates it, and the modes claim carries that to the till.
-  // Asking first, as this wizard used to, meant accepting a choice and then
-  // refusing it two screens later; asking second means the unbought mode is
-  // simply not offered, and a single-mode licence leaves nothing to ask at all.
-  setupType,
+  // There is no "which product is this terminal" step any more, and none is
+  // missing here (pos-split-apps, stage 4). Cloud and offline are two apps,
+  // "XOrder POS - Cloud" and "XOrder POS - Offline", and the one the installer
+  // launched IS the answer: each fixes `appModeProvider` before the first
+  // frame. The step that used to sit here offered a choice nothing on a real
+  // till could make — keeping it for the shared package's own tests would
+  // have kept a mode switch, its strings and its licence-moves-the-mode rule
+  // alive for a build nobody installs. Those tests now say which app they are
+  // (`fakeRepositoryOverrides(appMode: …)`) instead.
   deployment,
   account,
   branch,
@@ -177,10 +181,12 @@ class SetupDraft {
 
   /// The one mode this app runs, or null in the shared package on its own.
   ///
-  /// Seeded from `appModeProvider` (pos-split-apps). With it set there is no
-  /// mode question: the draft is in this mode from the first screen, `setMode`
-  /// refuses any other, and a licence is judged against it — see
-  /// [asksSetupType].
+  /// Seeded from `appModeProvider` (pos-split-apps). With it set the draft is
+  /// in this mode from the first screen and a licence is judged against it;
+  /// nothing in the wizard moves it. Null — the shared package on its own —
+  /// leaves the draft in whatever mode it was opened in
+  /// ([DeploymentConfig.unconfigured]'s, or the saved terminal's): there is no
+  /// longer a mode step, nor a licence that moves the draft to another mode.
   final DeploymentMode? appMode;
 
   /// The licence itself, held here until the terminal is finished.
@@ -196,17 +202,6 @@ class SetupDraft {
   /// risks a disk error.
   final LicenseFile? licenceFile;
   final String licenceKey;
-
-  /// The deployments this licence covers.
-  ///
-  /// An empty `modes[]` is treated as *everything*, not as *nothing*. The
-  /// difference matters: parsing an absent claim into an empty set and then
-  /// refusing every mode reads to the operator as a till that will not set up,
-  /// with no way to tell why.
-  Set<DeploymentMode> get licensedModes {
-    final modes = claims?.modes ?? const <DeploymentMode>{};
-    return modes.isEmpty ? DeploymentMode.values.toSet() : modes;
-  }
 
   /// Whether the first person's PIN is one the till could actually accept.
   bool get hasUsablePin => PinRules.isWellFormed(ownerPin);
@@ -309,25 +304,6 @@ class SetupDraft {
   /// adoptable came back.
   final int? adoptTerminalId;
 
-  /// Whether the licence leaves a mode question worth asking.
-  ///
-  /// A tenant is sold cloud, offline, or both, and the `modes` claim carries
-  /// that to the till. When it names ONE, the setup-type screen has a single
-  /// choosable option — already chosen, because adopting the licence moves the
-  /// draft onto a covered mode the moment it is read — sitting beside one
-  /// greyed NOT LICENSED. That is not a question. It is a screen the installer
-  /// presses Continue on to be told what the business was already sold, on a
-  /// wizard that is ten screens long before it adds any.
-  ///
-  /// Null claims mean no licence has been read yet, which is the licence step
-  /// itself: both modes are notionally open, so the step stays visible until
-  /// the licence says otherwise.
-  ///
-  /// Never on an app with a fixed [appMode] (pos-split-apps, BR-1): the
-  /// product the installer launched is the answer, and a licence that would
-  /// leave two to choose from is refused at the licence step (D9), not asked.
-  bool get asksSetupType => appMode == null && licensedModes.length > 1;
-
   /// The wizard's steps for the path being walked.
   ///
   /// Every step is walked, including the licence. This used to hide the licence
@@ -339,9 +315,6 @@ class SetupDraft {
   /// no longer does is excuse this terminal from holding one before it picks
   /// how to run. The Super Admin issues the key with the tenant, so an
   /// installer on either path arrives with one in hand.
-  ///
-  /// [SetupStep.setupType] is the one step that can drop out, and only because
-  /// the licence has answered it — see [asksSetupType].
   ///
   /// **A child tablet walks a different, shorter path** — see [childSteps].
   /// **A cloud main device walks a shorter one too** — see [cloudSteps].
@@ -372,7 +345,7 @@ class SetupDraft {
   /// installer built, with the passwords it generated; the printer is whatever
   /// is plugged in. What survives are the two genuine questions — a licence key
   /// and a pairing code — because each is a secret nobody can guess on the
-  /// operator's behalf, and the mode, on the one licence that covers both.
+  /// operator's behalf. The mode is not asked either: it is the app's.
   ///
   /// Three steps come back when the answer stops being obvious, and only then:
   ///
@@ -388,7 +361,6 @@ class SetupDraft {
   /// anything has been typed into a screen that could strand somebody.
   List<SetupStep> get cloudSteps => [
     SetupStep.licence,
-    if (asksSetupType) SetupStep.setupType,
     SetupStep.account,
     if (method == SetupMethod.manual) ...[
       SetupStep.branch,
@@ -404,7 +376,6 @@ class SetupDraft {
   List<SetupStep> get offlineSteps => [
     SetupStep.licence,
     SetupStep.language,
-    if (asksSetupType) SetupStep.setupType,
     SetupStep.deployment,
     SetupStep.account,
     SetupStep.branch,
@@ -576,10 +547,6 @@ class SetupDraft {
     // Signed in as a manager the main device already has. Never the offline
     // rule below — a child builds no database, so it is never `bootstrapped`.
     SetupStep.account when deployment.isChild => connected,
-    // Either mode may go on, provided the licence covers it. `setMode` refuses
-    // anything unlicensed, so a draft can only be sitting on a covered mode —
-    // this re-states the rule rather than trusting that.
-    SetupStep.setupType => licensedModes.contains(deployment.mode),
     SetupStep.language => true,
     // `canSell` rather than `state == valid`: a licence in its grace window
     // still permits trade, and refusing to finish setup on one would be its
