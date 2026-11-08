@@ -99,31 +99,33 @@ void main() {
     );
   });
 
-  test('a licence covering both leaves the choice with the operator', () async {
-    final container = _container();
-    final controller = container.read(setupProvider.notifier);
+  /// Rewritten for pos-split-apps (D9). This used to show a dual-mode licence
+  /// leaving the choice with the operator; an app runs one mode, so a licence
+  /// that would leave two is refused and reissued for one. The rule itself,
+  /// per app, is in `fixed_app_mode_test.dart`; this keeps the contrast with
+  /// the shared package, where nothing fixes the mode.
+  test('a licence covering both is refused by an app, not offered as a choice',
+      () async {
+    for (final mode in DeploymentMode.values) {
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: mode),
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
 
-    await controller.activateLicence(
-      fileContents: _licence(
-        modes: {DeploymentMode.cloud, DeploymentMode.offline},
-      ).serialize(),
-    );
+      await controller.activateLicence(
+        fileContents: _licence(
+          modes: {DeploymentMode.cloud, DeploymentMode.offline},
+        ).serialize(),
+      );
 
-    expect(
-      container.read(setupProvider).licensedModes,
-      {DeploymentMode.cloud, DeploymentMode.offline},
-    );
-
-    controller.setMode(DeploymentMode.offline);
-    expect(
-      container.read(setupProvider).deployment.mode,
-      DeploymentMode.offline,
-    );
-    controller.setMode(DeploymentMode.cloud);
-    expect(
-      container.read(setupProvider).deployment.mode,
-      DeploymentMode.cloud,
-    );
+      final draft = container.read(setupProvider);
+      expect(draft.entitlement?.state, LicenseState.modeAmbiguous);
+      expect(draft.deployment.mode, mode);
+      // And the other tile is not a way round it.
+      controller.setMode(mode.other);
+      expect(container.read(setupProvider).deployment.mode, mode);
+    }
   });
 
   /// A screen with one choosable option is not a question.
@@ -170,30 +172,39 @@ void main() {
     expect(container.read(setupProvider).step, SetupStep.language);
   });
 
-  test('a licence covering both keeps it, because it is a question', () async {
-    final container = _container();
-    final controller = container.read(setupProvider.notifier);
+  /// Rewritten for pos-split-apps (BR-1). The mode screen used to stay on a
+  /// dual-mode licence "because it is a question"; in an app there is no
+  /// question, and the licence that would have asked it is refused (above).
+  test('an app never shows the mode screen, whatever the licence says', () async {
+    for (final mode in DeploymentMode.values) {
+      final container = ProviderContainer(
+        overrides: fakeRepositoryOverrides(appMode: mode),
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
 
-    await controller.activateLicence(
-      fileContents: _licence(
-        modes: {DeploymentMode.cloud, DeploymentMode.offline},
-      ).serialize(),
-    );
+      // Before the licence.
+      expect(
+        container.read(setupProvider).visibleSteps,
+        isNot(contains(SetupStep.setupType)),
+      );
 
-    final draft = container.read(setupProvider);
-    expect(draft.asksSetupType, isTrue);
-    expect(draft.visibleSteps, contains(SetupStep.setupType));
+      await controller.activateLicence(
+        fileContents: _licence(modes: {mode}).serialize(),
+      );
 
-    // A dual-mode licence leaves the draft on cloud, which since 2026-09-15 is
-    // the short path: licence, setup type, setup code, connecting, hardware,
-    // ready. The mode screen is the only one of the six that is on it *because*
-    // the licence could not answer it.
-    expect(draft.stepCount, draft.cloudSteps.length);
-    expect(draft.visibleSteps, isNot(contains(SetupStep.language)));
-    expect(draft.visibleSteps, isNot(contains(SetupStep.deployment)));
-
-    controller.next();
-    expect(container.read(setupProvider).step, SetupStep.setupType);
+      final draft = container.read(setupProvider);
+      expect(draft.asksSetupType, isFalse);
+      expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
+      expect(
+        draft.stepCount,
+        mode == DeploymentMode.cloud
+            ? draft.cloudSteps.length
+            : draft.offlineSteps.length,
+      );
+      controller.next();
+      expect(container.read(setupProvider).step, isNot(SetupStep.setupType));
+    }
   });
 
   test('re-judging the mode does not rescue an expired licence', () async {

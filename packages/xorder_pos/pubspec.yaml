@@ -65,9 +65,9 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  # Regenerates the launcher icons for every platform from the master PNGs in
-  # assets/icons/. Config lives in flutter_launcher_icons.yaml at the repo root:
-  #   dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
+  # Regenerates the Windows and macOS launcher icons from the master PNGs in
+  # assets/icons/. The config sits beside each app's platform folders:
+  #   cd apps/xorder_pos_offline && dart run flutter_launcher_icons
   flutter_launcher_icons: ^0.14.4
   mocktail: ^1.0.5
 

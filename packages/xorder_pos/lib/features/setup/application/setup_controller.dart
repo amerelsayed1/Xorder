@@ -88,6 +88,10 @@ class SetupController extends Notifier<SetupDraft> {
     // was just cleared. Seeding from the dead config is what made a till refuse
     // the next business's licence for belonging to the wrong tenant.
     final saved = ref.watch(terminalSeedProvider).config;
+    // The app's one mode, or null in the shared package (pos-split-apps). A
+    // fresh draft opens in it; a saved one is already in it, because the boot
+    // refused a configuration the other app wrote (BR-8, `TerminalBoot`).
+    final appMode = ref.read(appModeProvider);
     if (saved == null) {
       final profile = ref.read(terminalProfileProvider);
       // Decided by the device, before the first screen — a tablet is a child
@@ -104,10 +108,12 @@ class SetupController extends Notifier<SetupDraft> {
 
       return SetupDraft(
         step: child ? SetupStep.deployment : SetupStep.licence,
+        appMode: appMode,
         // Blank rather than localhost for a child: its database is never on
         // the tablet, and a pre-filled `localhost` is an answer it must not
         // be able to accept by pressing on.
         deployment: DeploymentConfig.unconfigured.copyWith(
+          mode: appMode,
           role: role,
           databaseHost: child ? '' : null,
         ),
@@ -127,6 +133,7 @@ class SetupController extends Notifier<SetupDraft> {
 
     return SetupDraft(
       step: saved.deployment.isChild ? SetupStep.deployment : SetupStep.licence,
+      appMode: appMode,
       locale: saved.languageCode,
       deployment: saved.deployment,
       branchId: saved.terminal.branchId,
@@ -394,6 +401,10 @@ class SetupController extends Notifier<SetupDraft> {
     // `LicenseVerifier.evaluateClaims` — refusing here just means an operator
     // finds out on the tile rather than two screens later.
     if (!state.licensedModes.contains(mode)) return;
+
+    // An app runs one mode and nothing on the till changes it (pos-split-apps,
+    // BR-1). The other mode is the other app, which is an install, not a tap.
+    if (state.appMode != null && mode != state.appMode) return;
 
     // A child runs in its main device's mode, and has no mode screen to change
     // it from. The DeploymentConfig built below would also drop its role.
@@ -1524,6 +1535,11 @@ class SetupController extends Notifier<SetupDraft> {
   /// in SILENCE, so an operator who picked Offline could reach the summary
   /// screen still believing they had. [_modeChangedNotice] is what says so.
   DeploymentMode _coveredMode(LicenseClaims claims, DeploymentMode chosen) {
+    // An app's mode is not a choice to be moved off (pos-split-apps). A licence
+    // that does not cover it stays refused — `modeNotLicensed`, naming the
+    // other app — rather than quietly turning this app into that one.
+    if (state.appMode case final fixed?) return fixed;
+
     final covered = claims.modes.isEmpty
         ? DeploymentMode.values.toSet()
         : claims.modes;
@@ -1588,6 +1604,18 @@ class SetupController extends Notifier<SetupDraft> {
     final claims = site == null ? null : LicenseVerifier.claimsOf(site.file);
     if (site == null || claims == null) {
       state = state.copyWith(busy: false, error: s.mainDeviceHasNoLicence);
+      return;
+    }
+
+    // One app per machine, and so per branch database (pos-split-apps, BR-8):
+    // the main device published its mode with the licence, and a child of the
+    // other app does not join it. Said before the mode below is copied in,
+    // which would otherwise turn this app into the other one.
+    if (state.appMode case final fixed? when site.mode != fixed) {
+      state = state.copyWith(
+        busy: false,
+        error: s.databaseSetUpByOtherApp(site.mode.productName),
+      );
       return;
     }
 

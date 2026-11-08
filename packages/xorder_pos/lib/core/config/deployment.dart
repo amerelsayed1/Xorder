@@ -74,6 +74,23 @@ enum DeploymentMode {
   /// there. An offline terminal is visible only when it renews, which is why its
   /// licence carries a maximum offline window (POS-BE-022).
   bool get requiresPeriodicCheckIn => this == DeploymentMode.offline;
+
+  /// The name of the app that runs this mode (pos-split-apps, D4).
+  ///
+  /// One app per mode since 2026-11-08: "XOrder POS - Cloud" and "XOrder POS -
+  /// Offline". English only, in the Arabic interface too (D8), which is why
+  /// this sits on the enum beside [wire] and not in `AppStrings`: it is the
+  /// product's name, not a translation of the mode.
+  String get productName => switch (this) {
+    DeploymentMode.cloud => 'XOrder POS - Cloud',
+    DeploymentMode.offline => 'XOrder POS - Offline',
+  };
+
+  /// The mode the *other* app runs, for a message that has to name it.
+  DeploymentMode get other => switch (this) {
+    DeploymentMode.cloud => DeploymentMode.offline,
+    DeploymentMode.offline => DeploymentMode.cloud,
+  };
 }
 
 /// When a terminal drains its outbound queue to the platform.

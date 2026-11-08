@@ -21,7 +21,8 @@ name: Windows installer
 on:
   workflow_dispatch:
 
-# The app is the workspace member packages/xorder_pos (pos-split-apps stage 1).
+# The shared code is packages/xorder_pos; the app built here is apps/xorder_pos_offline
+# (pos-split-apps stage 2: one app per mode; stage 5 builds both as a matrix).
 # Its own build output stays in that folder; what the installer gathers
 # (PostgreSQL, tools, the runtime) goes to build/installer at the root.
 
@@ -77,7 +78,7 @@ jobs:
             throw 'XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID repository variables are required for a release build.'
           }
           flutter pub get
-          Push-Location packages/xorder_pos
+          Push-Location apps/xorder_pos_offline
           flutter build windows --release "--dart-define=XORDER_LICENSE_PUBLIC_KEY_B64=$env:XORDER_LICENSE_PUBLIC_KEY_B64" "--dart-define=XORDER_LICENSE_KEY_ID=$env:XORDER_LICENSE_KEY_ID"
           if ($LASTEXITCODE -ne 0) { throw "flutter build exited with $LASTEXITCODE" }
           Pop-Location
@@ -146,7 +147,7 @@ jobs:
             $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
             $sign = "`"$signtool`" sign /f `"$pfx`" /p `"$env:WINDOWS_CERT_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256"
             # The app and the tool first, so what the installer carries is signed too.
-            & cmd /c "$sign packages\xorder_pos\build\windows\x64\runner\Release\xorder_pos.exe build\installer\tools\pos_migrate.exe"
+            & cmd /c "$sign apps\xorder_pos_offline\build\windows\x64\runner\Release\xorder_pos_offline.exe build\installer\tools\pos_migrate.exe"
             if ($LASTEXITCODE -ne 0) { throw 'signing the app failed' }
             $args += @('/DSIGN', "/Ssigntool=$sign `$f")
           } else {

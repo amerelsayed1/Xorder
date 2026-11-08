@@ -28,7 +28,7 @@
   #define AppVersion "0.0.0"
 #endif
 #ifndef AppDir
-  #define AppDir "..\packages\xorder_pos\build\windows\x64\runner\Release"
+  #define AppDir "..\apps\xorder_pos_offline\build\windows\x64\runner\Release"
 #endif
 #ifndef PgDir
   #define PgDir "..\build\installer\pgsql"
@@ -38,7 +38,7 @@
 #endif
 
 #define AppName "XOrder POS"
-#define AppExe "xorder_pos.exe"
+#define AppExe "xorder_pos_offline.exe"
 #define DbService "XOrderPOS-PostgreSQL"
 
 [Setup]
@@ -53,7 +53,7 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=XOrder-POS-Setup-{#AppVersion}
-SetupIconFile=..\packages\xorder_pos\windows\runner\resources\app_icon.ico
+SetupIconFile=..\apps\xorder_pos_offline\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

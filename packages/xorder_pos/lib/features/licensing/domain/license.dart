@@ -32,6 +32,12 @@ enum LicenseState {
   /// cloud-only licence installed on a branch server.
   modeNotLicensed,
 
+  /// Correctly signed for BOTH modes, on an app that runs exactly one
+  /// (pos-split-apps, D9). Nothing on the till can choose for the business,
+  /// so the Super Admin reissues it for one mode. Only raised by an app with a
+  /// fixed mode; the shared package without one accepts such a licence.
+  modeAmbiguous,
+
   /// Correctly signed and bound to specific machines, none of which is this one.
   terminalNotLicensed,
 
@@ -289,8 +295,21 @@ final class LicenceTenantMismatch extends LicenceNotice {
 }
 
 final class LicenceModeNotCovered extends LicenceNotice {
-  const LicenceModeNotCovered(this.mode);
+  const LicenceModeNotCovered(this.mode, {this.fixedApp = false});
+
+  /// The mode this terminal runs and the licence does not cover.
   final DeploymentMode mode;
+
+  /// True when the mode is the app's, not a choice (pos-split-apps, BR-2).
+  /// The sentence then names the app the licence IS for, because the fix is
+  /// to install that one rather than to ask for another licence.
+  final bool fixedApp;
+}
+
+/// Signed for both modes on an app that runs one — see
+/// [LicenseState.modeAmbiguous].
+final class LicenceCoversBothModes extends LicenceNotice {
+  const LicenceCoversBothModes();
 }
 
 final class LicenceOtherTerminal extends LicenceNotice {

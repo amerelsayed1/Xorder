@@ -443,6 +443,20 @@ sealed class AppStrings {
   String get licenceExpiredNewShiftBlocked;
   String licenceTenantMismatch(String licenceTenant, String terminalTenant);
   String licenceModeNotCovered(String mode);
+
+  /// On an app with a fixed mode (pos-split-apps, BR-2): the licence is for
+  /// the other app, named in English as the product is (D8).
+  String licenceForOtherApp(String app);
+
+  /// A licence signed for both modes, on an app that runs one (D9).
+  String get licenceCoversBothModes;
+
+  /// The whole screen an app shows on a machine the other app set up (BR-8).
+  String get wrongAppTitle;
+  String wrongAppBody(String installedApp, String thisApp);
+
+  /// The branch database was set up by the other app (BR-8).
+  String databaseSetUpByOtherApp(String app);
   String get licenceOtherTerminal;
   String licenceNotYetValid(String date);
   String licenceSuspended(String? reason);
@@ -4335,6 +4349,25 @@ final class EnStrings extends AppStrings {
   @override
   String licenceModeNotCovered(String mode) =>
       'This licence does not cover ${mode.toLowerCase()} installations.';
+  @override
+  String licenceForOtherApp(String app) =>
+      'This licence is for $app. Install that app on this machine, or ask '
+      'for a licence for this one.';
+  @override
+  String get licenceCoversBothModes =>
+      'This licence covers both cloud and offline. Ask the XOrder team to '
+      'reissue it for one of them.';
+  @override
+  String get wrongAppTitle => 'This machine runs the other XOrder POS app';
+  @override
+  String wrongAppBody(String installedApp, String thisApp) =>
+      'This machine was set up with $installedApp. Open that app to keep '
+      'selling. To use $thisApp here instead, uninstall $installedApp and '
+      'remove its configuration first.';
+  @override
+  String databaseSetUpByOtherApp(String app) =>
+      'This database was set up by $app. Use that app, or set up a new '
+      'database for this one.';
   @override
   String get licenceOtherTerminal =>
       'This licence is registered to a different terminal.';
@@ -9930,6 +9963,25 @@ final class ArStrings extends AppStrings {
   @override
   String licenceModeNotCovered(String mode) =>
       'هذا الترخيص لا يغطي التركيبات من نوع «$mode».';
+  @override
+  String licenceForOtherApp(String app) =>
+      'هذا الترخيص خاص بتطبيق $app. ثبّت ذلك التطبيق على هذا الجهاز، أو اطلب '
+      'ترخيصًا لهذا التطبيق.';
+  @override
+  String get licenceCoversBothModes =>
+      'هذا الترخيص يغطي الوضعين السحابي وغير المتصل معًا. اطلب من فريق XOrder '
+      'إعادة إصداره لأحدهما.';
+  @override
+  String get wrongAppTitle => 'هذا الجهاز يعمل بتطبيق XOrder POS الآخر';
+  @override
+  String wrongAppBody(String installedApp, String thisApp) =>
+      'تم إعداد هذا الجهاز باستخدام $installedApp. افتح ذلك التطبيق لمتابعة '
+      'البيع. لاستخدام $thisApp هنا بدلًا منه، أزل $installedApp واحذف إعداداته '
+      'أولًا.';
+  @override
+  String databaseSetUpByOtherApp(String app) =>
+      'تم إعداد قاعدة البيانات هذه بواسطة $app. استخدم ذلك التطبيق، أو أنشئ '
+      'قاعدة بيانات جديدة لهذا التطبيق.';
   @override
   String get licenceOtherTerminal => 'هذا الترخيص مسجَّل على جهاز آخر.';
   @override

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/main.dart' as app;
+import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/pos_main.dart' as app;
 
 import 'e2e_app_files.dart';
 
@@ -62,10 +63,12 @@ class TillDriver {
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    // Unmount the previous installation before main() creates the production
+    // Unmount the previous installation before runPos() creates the production
     // ProviderScope and restores configuration and credentials from disk.
+    // The suite walks a cloud install (see [walkWizard]), so it boots as
+    // "XOrder POS - Cloud" (pos-split-apps, stage 2).
     await tester.pumpWidget(const SizedBox.shrink());
-    await app.main();
+    await app.runPos(mode: DeploymentMode.cloud);
     await tester.pump();
     await settle();
   }
