@@ -119,7 +119,10 @@ jobs:
           $exe = "apps/xorder_pos_$env:APP/build/windows/x64/runner/Release/xorder_pos_$env:APP.exe"
           if (-not (Test-Path $exe)) { throw "the build produced no $exe" }
 
+      # The Cloud app keeps its data in an encrypted SQLite file it makes
+      # itself (pos-cloud-single-till-sqlite): no PostgreSQL, no pos_migrate.
       - name: Build pos_migrate.exe
+        if: matrix.flavor == 'Offline'
         run: |
           # `dart compile exe` refuses a package graph with build hooks
           # (objective_c, via file_picker); `dart build cli` is its replacement.
@@ -137,12 +140,14 @@ jobs:
       # Keyed on the pinned hash, and the hash is still checked after a restore,
       # so a cached archive is held to the same bar as a fresh download.
       - name: Cache the PostgreSQL archive
+        if: matrix.flavor == 'Offline'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/pg-download
           key: pgsql-${{ env.PG_VERSION }}-${{ env.PG_SHA256 }}
 
       - name: PostgreSQL binaries
+        if: matrix.flavor == 'Offline'
         run: |
           if ([string]::IsNullOrWhiteSpace($env:PG_SHA256)) { throw 'XORDER_PG_SHA256 repository variable is required.' }
           New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pg-download') | Out-Null
@@ -161,7 +166,9 @@ jobs:
           }
 
       - name: Visual C++ runtime
-        run: Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile build/installer/tools/vc_redist.x64.exe
+        run: |
+          New-Item -ItemType Directory -Force build/installer/tools | Out-Null
+          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile build/installer/tools/vc_redist.x64.exe
 
       - name: Inno Setup
         run: |
@@ -185,7 +192,9 @@ jobs:
             $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
             $sign = "`"$signtool`" sign /f `"$pfx`" /p `"$env:WINDOWS_CERT_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256"
             # The app and the tool first, so what the installer carries is signed too.
-            & cmd /c "$sign apps\xorder_pos_$env:APP\build\windows\x64\runner\Release\xorder_pos_$env:APP.exe build\installer\tools\pos_migrate.exe"
+            # The Cloud installer carries no tool.
+            $tool = if ($env:FLAVOR -eq 'Offline') { ' build\installer\tools\pos_migrate.exe' } else { '' }
+            & cmd /c "$sign apps\xorder_pos_$env:APP\build\windows\x64\runner\Release\xorder_pos_$env:APP.exe$tool"
             if ($LASTEXITCODE -ne 0) { throw 'signing the app failed' }
             $args += @('/DSIGN', "/Ssigntool=$sign `$f")
           } else {
@@ -208,6 +217,8 @@ jobs:
           $app = Join-Path $env:ProgramFiles $env:PRODUCT
           $root = Join-Path $env:ProgramData 'XOrder POS'
           $uninstall = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+          # Only Offline has install types; the Cloud installer has none to pick.
+          $type = if ($env:FLAVOR -eq 'Offline') { @('/TYPE=server') } else { @() }
           $others = @(
             @{ guid = (Get-Item "Env:$env:OTHER_GUID_VAR").Value; what = 'the other app' },
             @{ guid = $env:LEGACY_GUID; what = 'the single XOrder POS' }
@@ -216,9 +227,9 @@ jobs:
             $key = Join-Path $uninstall ('{' + $other.guid + '}_is1')
             New-Item -Path $key -Force | Out-Null
             try {
-              $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
-                '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TYPE=server',
-                "/LOG=$env:RUNNER_TEMP\setup-refused-$($other.guid).log")
+              $p = Start-Process $setup -Wait -PassThru -ArgumentList (@(
+                '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') + $type + @(
+                "/LOG=$env:RUNNER_TEMP\setup-refused-$($other.guid).log"))
               if ($p.ExitCode -ne 1) { throw "beside $($other.what): setup exited with $($p.ExitCode), expected 1 (refused)" }
               if (Test-Path $app) { throw "beside $($other.what): setup refused but still created $app" }
               if (Test-Path $root) { throw "beside $($other.what): setup refused but still created $root" }
@@ -230,6 +241,7 @@ jobs:
           Write-Host 'Refused beside the other app and beside the single XOrder POS; nothing was changed.'
 
       - name: Install, check, upgrade, check again
+        if: matrix.flavor == 'Offline'
         run: |
           $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
           $root = Join-Path $env:ProgramData 'XOrder POS'
@@ -275,6 +287,28 @@ jobs:
             throw 'the upgrade lost data'
           }
           Write-Host "$env:PRODUCT installed, upgraded in place, nothing lost."
+
+      # The Cloud app: installed and upgraded in place, and nothing of a
+      # database anywhere — no pgsql or tools folder, no service. Its data file
+      # is made by the app on first run, under the user's AppData, so the
+      # installer neither writes nor removes it.
+      - name: Install, check, upgrade, check again (Cloud)
+        if: matrix.flavor == 'Cloud'
+        run: |
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $exe = "xorder_pos_$env:APP.exe"
+          foreach ($when in 'install', 'upgrade') {
+            $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+              "/LOG=$env:RUNNER_TEMP\setup-$when.log")
+            if ($p.ExitCode -ne 0) { throw "setup ($when) exited with $($p.ExitCode)" }
+            if (-not (Test-Path (Join-Path $app $exe))) { throw "after ${when}: $exe is not installed in $app" }
+            if (Test-Path (Join-Path $app 'pgsql')) { throw "after ${when}: the Cloud app shipped PostgreSQL" }
+            if (Test-Path (Join-Path $app 'tools')) { throw "after ${when}: the Cloud app shipped database tools" }
+            if (Get-Service XOrderPOS-PostgreSQL -ErrorAction SilentlyContinue) { throw "after ${when}: a database service exists" }
+          }
+          Write-Host "$env:PRODUCT installed and upgraded in place, with no database of its own to install."
 
       - uses: actions/upload-artifact@v4
         if: always()

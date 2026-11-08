@@ -90,6 +90,77 @@ void main() {
     expect(workflow, contains("LEGACY_GUID: '$legacy'"));
   });
 
+  // pos-cloud-single-till-sqlite: the Cloud app keeps its data in an
+  // encrypted SQLite file it makes itself. Its installer must carry no
+  // PostgreSQL, no pos_migrate, no provisioning, and no "till only" type.
+  group('the Cloud installer has no database to install', () {
+    /// The `#if` that [needle]'s first line sits inside, or null.
+    String? enclosingIf(String text, String needle) {
+      final at = text.indexOf(needle);
+      expect(at, greaterThanOrEqualTo(0), reason: 'not found: $needle');
+      var depth = 0;
+      final before = text.substring(0, at).split('\n').reversed;
+      for (final line in before) {
+        final l = line.trim();
+        if (l.startsWith('#endif')) depth++;
+        if (l.startsWith('#if') && !l.startsWith('#ifdef') &&
+            !l.startsWith('#ifndef')) {
+          if (depth == 0) return l;
+          depth--;
+        }
+      }
+      return null;
+    }
+
+    test('every database part of the script is Offline only', () {
+      for (final part in [
+        r'Source: "{#PgDir}',
+        r'pos_migrate.exe"; DestDir',
+        r'Source: "provision.ps1"',
+        'Name: "database"',
+        'Name: "till"',
+        'Name: "lan"',
+        '[UninstallRun]',
+        'function PrepareToInstall',
+        'procedure CurStepChanged',
+      ]) {
+        expect(
+          enclosingIf(iss, part),
+          '#if Flavor == "Offline"',
+          reason: '$part must not reach the Cloud installer',
+        );
+      }
+      // The app itself is in both, outside any flavor block.
+      expect(enclosingIf(iss, r'Source: "{#AppDir}'), isNull);
+    });
+
+    test('the workflow fetches and checks PostgreSQL for Offline only', () {
+      final workflow = File(
+        '../../.github/workflows/windows-installer.yml',
+      ).readAsStringSync();
+      for (final step in [
+        '- name: Build pos_migrate.exe',
+        '- name: Cache the PostgreSQL archive',
+        '- name: PostgreSQL binaries',
+        '- name: Install, check, upgrade, check again\n',
+      ]) {
+        final at = workflow.indexOf(step);
+        expect(at, greaterThanOrEqualTo(0), reason: step);
+        final next = workflow.indexOf('- name:', at + step.length);
+        expect(
+          workflow.substring(at, next),
+          contains("if: matrix.flavor == 'Offline'"),
+          reason: step,
+        );
+      }
+      expect(
+        workflow,
+        contains("if (Test-Path (Join-Path \$app 'pgsql')) { throw"),
+        reason: 'the Cloud leg proves it shipped no PostgreSQL',
+      );
+    });
+  });
+
   test('passwords reach pos_migrate through the environment, never argv', () {
     expect(ps1, isNot(contains("'--password'")));
     for (final name in [

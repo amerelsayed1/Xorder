@@ -91,6 +91,16 @@
 #define AppIdSetup "{{" + AppGuid + "}"
 #define DbService "XOrderPOS-PostgreSQL"
 
+; The Cloud app keeps its data in an encrypted SQLite file it makes itself
+; (pos-cloud-single-till-sqlite): it ships no PostgreSQL, no pos_migrate, no
+; provisioning script, and has no "till only" type — every cloud till stands
+; alone. Everything below that installs or drives a database is Offline's.
+#if Flavor == "Offline"
+  #define AppComponent "Components: app; "
+#else
+  #define AppComponent ""
+#endif
+
 [Setup]
 AppId={#AppIdSetup}
 AppName={#AppName}
@@ -151,6 +161,7 @@ arabic.LanCarriedOver=أجهزة الكاشير التي أُعدّت قبل ه�
 english.OtherAppInstalled=%1 is installed on this computer, and only one XOrder POS app can be installed on a computer.%n%nUninstall %1 first (Settings › Apps), then run this installer again. Uninstalling it keeps its database.%n%nNothing has been changed.
 arabic.OtherAppInstalled=التطبيق %1 مثبّت على هذا الجهاز، ولا يُثبَّت على الجهاز الواحد إلا تطبيق واحد من XOrder POS.%n%nأزل تثبيت %1 أولاً (الإعدادات › التطبيقات)، ثم شغّل هذا المثبّت مرة أخرى. إزالة التثبيت تُبقي قاعدة بياناته.%n%nلم يُغيَّر شيء على هذا الجهاز.
 
+#if Flavor == "Offline"
 [Types]
 Name: "server"; Description: "{cm:TypeServer}"
 Name: "till"; Description: "{cm:TypeTill}"
@@ -158,18 +169,23 @@ Name: "till"; Description: "{cm:TypeTill}"
 [Components]
 Name: "app"; Description: "{cm:CompApp}"; Types: server till; Flags: fixed
 Name: "database"; Description: "{cm:CompDatabase}"; Types: server
+#endif
 
 [Tasks]
+#if Flavor == "Offline"
 Name: "lan"; Description: "{cm:TaskLan}"; Components: database; Flags: unchecked
+#endif
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#AppDir}\*"; DestDir: "{app}"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AppDir}\*"; DestDir: "{app}"; {#AppComponent}Flags: ignoreversion recursesubdirs createallsubdirs
+#if Flavor == "Offline"
 ; Beside the app, where PgTools looks first — so the Backup screen finds the
 ; pg_dump that matches this server without anybody configuring anything.
 Source: "{#PgDir}\*"; DestDir: "{app}\pgsql"; Components: database; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ToolsDir}\pos_migrate.exe"; DestDir: "{app}\tools"; Components: database; Flags: ignoreversion
 Source: "provision.ps1"; DestDir: "{app}\tools"; Components: database; Flags: ignoreversion
+#endif
 Source: "{#ToolsDir}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
@@ -182,8 +198,10 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Visual C++ runtime…"; Flags: waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
+#if Flavor == "Offline"
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\provision.ps1"" -AppDir ""{app}"" -Uninstall"; Components: database; Flags: runhidden waituntilterminated; RunOnceId: "RemoveDbService"
+#endif
 
 [Code]
 // The uninstall key Inno writes for an AppId, wherever one can be: an admin
@@ -228,6 +246,7 @@ begin
       mbCriticalError, MB_OK, IDOK);
 end;
 
+#if Flavor == "Offline"
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
@@ -301,3 +320,5 @@ begin
       LogFile]), mbError, MB_OK, IDOK);
   end;
 end;
+#endif
+
