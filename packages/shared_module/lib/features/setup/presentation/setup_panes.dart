@@ -25,7 +25,6 @@ class SetupPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => switch (draft.step) {
-    SetupStep.setupType => _SetupTypePane(draft: draft),
     SetupStep.language => _LanguagePane(draft: draft),
     SetupStep.deployment => _DeploymentPane(draft: draft),
     SetupStep.licence => _LicencePane(draft: draft),
@@ -279,52 +278,6 @@ class _LanguagePane extends ConsumerWidget {
   }
 }
 
-/// The first question: which product is this terminal (owner's phase-1 notes).
-///
-/// Both modes are selectable, each dimmed only when the LICENCE does not cover
-/// it. Dimmed rather than hidden for the same reason the deployment pane greys
-/// unlicensed modes — a missing tile reads as a broken build, a dimmed one
-/// reads as something the customer did not buy.
-class _SetupTypePane extends ConsumerWidget {
-  const _SetupTypePane({required this.draft});
-
-  final SetupDraft draft;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = context.strings;
-    final controller = ref.read(setupProvider.notifier);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final mode in DeploymentMode.values) ...[
-          _ChoiceTile(
-            title: mode.label(s),
-            blurb: mode.blurb(s),
-            selected: draft.deployment.mode == mode,
-            // The licence decides. A tile the customer did not buy stays
-            // visible so the operator can see what exists and ask for it.
-            enabled: draft.licensedModes.contains(mode),
-            onTap: () => controller.setMode(mode),
-            trailing: draft.licensedModes.contains(mode)
-                ? null
-                : MicroLabel(s.notLicensedBadge),
-          ),
-          const SizedBox(height: PosSpace.md),
-        ],
-        const SizedBox(height: PosSpace.sm),
-        Text(
-          draft.deployment.mode == DeploymentMode.offline
-              ? s.setupTypeOfflineHelp
-              : s.setupTypeCloudHelp,
-          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
-        ),
-      ],
-    );
-  }
-}
-
 class _DeploymentPane extends ConsumerWidget {
   const _DeploymentPane({required this.draft});
 
@@ -343,8 +296,9 @@ class _DeploymentPane extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The mode was chosen on the first step; restating it here as a fact
-        // rather than a second question keeps the wizard linear.
+        // The mode is the app's (pos-split-apps) and is never asked; stating
+        // it here as a fact lets an installer who launched the wrong app see
+        // so before a database is built for it.
         Row(
           children: [
             MicroLabel(s.stepSetupType.toUpperCase()),

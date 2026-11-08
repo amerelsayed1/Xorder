@@ -295,6 +295,10 @@ class OutboxDrain {
   /// documented batch ordering and keeps one rejected record from holding
   /// money that follows it hostage.
   Future<DrainReport> run() async {
+    // Kept as a cheap guard (pos-split-apps, stage 4), though in this app the
+    // mode is always cloud: the drain is the one thing that sends money, and a
+    // config built by hand — a tool, a test, a future caller — that says
+    // offline must still drain nothing rather than trust its caller.
     if (!config.mode.syncsSalesToPlatform) return const DrainReport();
 
     final reports = <DrainReport>[];

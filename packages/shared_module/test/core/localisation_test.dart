@@ -876,7 +876,6 @@ Map<String, String> _sample(AppStrings s) => {
   'arabicBlurb': s.arabicBlurb,
   'modeCloud': s.modeCloud,
   'modeOffline': s.modeOffline,
-  'notLicensedBadge': s.notLicensedBadge,
   'theDatabase': s.theDatabase,
   'databaseHost': s.databaseHost,
   'databasePassword': s.databasePassword,

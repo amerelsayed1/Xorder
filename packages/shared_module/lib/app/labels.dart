@@ -34,11 +34,6 @@ extension DeploymentModeLabel on DeploymentMode {
     DeploymentMode.cloud => s.modeCloud,
     DeploymentMode.offline => s.modeOffline,
   };
-
-  String blurb(AppStrings s) => switch (this) {
-    DeploymentMode.cloud => s.modeCloudBlurb,
-    DeploymentMode.offline => s.modeOfflineBlurb,
-  };
 }
 
 extension SyncPolicyLabel on SyncPolicy {
@@ -94,7 +89,6 @@ extension SetupStepLabel on SetupStep {
       s.stepFirstAdministrator,
     SetupStep.account when method == SetupMethod.pairingCode => s.stepSetupCode,
     SetupStep.connecting => s.stepConnecting,
-    SetupStep.setupType => s.stepSetupType,
     SetupStep.language => s.stepLanguage,
     SetupStep.deployment => s.stepConnection,
     SetupStep.account => s.stepAccount,
@@ -122,7 +116,6 @@ extension SetupStepLabel on SetupStep {
     SetupStep.account when method == SetupMethod.pairingCode =>
       s.stepSetupCodeBlurb,
     SetupStep.connecting => s.stepConnectingBlurb,
-    SetupStep.setupType => s.stepSetupTypeBlurb,
     SetupStep.language => s.stepLanguageBlurb,
     SetupStep.deployment => s.stepConnectionBlurb,
     SetupStep.account => s.stepAccountBlurb,

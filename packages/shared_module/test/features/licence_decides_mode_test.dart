@@ -10,17 +10,19 @@ import 'package:shared_module/features/setup/domain/setup_state.dart';
 
 import 'package:xorder_pos_test_support/fakes.dart';
 
-/// The licence decides the mode, so the wizard must ask for it first.
+/// The licence is read first, and is judged against the app's mode.
 ///
-/// A tenant is sold cloud, offline, or both when the Super Admin creates it,
-/// and the `modes` claim is how that reaches the till. The wizard used to ask
-/// the opposite way round — pick a mode, then read the licence — which had two
-/// costs. An operator could pick a mode they had not bought and be refused two
-/// screens later, and, once the licence step moved to the front, a
-/// single-mode licence could not be read at all: `DeploymentConfig.unconfigured`
-/// is cloud, so an **offline-only** licence was judged against cloud, came back
-/// `modeNotLicensed`, and stopped the wizard on a screen whose whole purpose
-/// was to tell it otherwise.
+/// **Rewritten in pos-split-apps stage 4.** This file used to be "the licence
+/// decides the mode": a tenant sold one mode had the draft moved onto it, a
+/// tenant sold both was offered a mode screen, and `setMode` refused a tile the
+/// tenant had not bought. Cloud and offline are two apps now; the app is the
+/// mode, the mode step and `setMode` are gone, and a licence either covers the
+/// app's mode or is refused naming the other app (`fixed_app_mode_test.dart`).
+/// What is left here is the part of the old rule that still holds: the licence
+/// is the first step, a licence for this app's mode is not refused for a mode
+/// nobody chose, and nothing about the mode rescues a licence refused for
+/// something else.
+
 LicenseFile _licence({
   required Set<DeploymentMode> modes,
   Duration expiresIn = const Duration(days: 365),
@@ -47,22 +49,29 @@ LicenseFile _licence({
   );
 }
 
-ProviderContainer _container() {
-  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+/// The offline app, unless [mode] says which. Every test here but one is an
+/// app's: with the mode fixed by the app there is nothing left for a licence
+/// to decide but whether it covers it.
+ProviderContainer _container({DeploymentMode mode = DeploymentMode.offline}) {
+  final container = ProviderContainer(
+    overrides: fakeRepositoryOverrides(appMode: mode),
+  );
   addTearDown(container.dispose);
   return container;
 }
 
 void main() {
-  test('an offline-only licence is not refused for a mode nobody chose', () async {
+  test('an offline licence on the offline app is not refused for a mode '
+      'nobody chose', () async {
     final container = _container();
     final controller = container.read(setupProvider.notifier);
 
-    // The trap, stated: the draft is sitting on cloud because that is what
-    // `unconfigured` is, not because anyone picked it.
+    // The trap this file was written for, stated: `unconfigured` is cloud, and
+    // an offline-only licence judged against it came back `modeNotLicensed`.
+    // The app's mode is what the draft opens in now, not `unconfigured`'s.
     expect(
       container.read(setupProvider).deployment.mode,
-      DeploymentMode.cloud,
+      DeploymentMode.offline,
     );
 
     await controller.activateLicence(
@@ -73,44 +82,44 @@ void main() {
     expect(draft.entitlement, isNotNull);
     expect(draft.entitlement!.state, isNot(LicenseState.modeNotLicensed));
     expect(draft.entitlement!.canSell, isTrue);
-    // And the terminal has been moved to the mode it actually holds.
     expect(draft.deployment.mode, DeploymentMode.offline);
     // Asked *of the licence step*: `canAdvance` is a property of the step the
     // draft is on, and every step answers it differently.
     expect(draft.copyWith(step: SetupStep.licence).canAdvance, isTrue);
   });
 
-  test('the mode step then offers only what the tenant bought', () async {
-    final container = _container();
+  /// Added in stage 4, in place of "the mode step then offers only what the
+  /// tenant bought". The licence used to MOVE a draft onto the mode it
+  /// covered, and with no app to fix the mode that is where the shared
+  /// package's draft would still have gone. It no longer moves: a licence that
+  /// does not cover the draft's mode is refused, here as in either app.
+  test('a licence never moves the draft to another mode', () async {
+    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    addTearDown(container.dispose);
     final controller = container.read(setupProvider.notifier);
+    expect(
+      container.read(setupProvider).deployment.mode,
+      DeploymentMode.cloud,
+    );
 
     await controller.activateLicence(
       fileContents: _licence(modes: {DeploymentMode.offline}).serialize(),
     );
 
-    expect(container.read(setupProvider).licensedModes, {DeploymentMode.offline});
-
-    // Not merely dimmed in the UI — the controller refuses it, so no route
-    // through the wizard can land on a mode this tenant did not buy.
-    controller.setMode(DeploymentMode.cloud);
-    expect(
-      container.read(setupProvider).deployment.mode,
-      DeploymentMode.offline,
-    );
+    final draft = container.read(setupProvider);
+    expect(draft.deployment.mode, DeploymentMode.cloud);
+    expect(draft.entitlement?.state, LicenseState.modeNotLicensed);
+    expect(draft.copyWith(step: SetupStep.licence).canAdvance, isFalse);
   });
 
   /// Rewritten for pos-split-apps (D9). This used to show a dual-mode licence
   /// leaving the choice with the operator; an app runs one mode, so a licence
   /// that would leave two is refused and reissued for one. The rule itself,
-  /// per app, is in `fixed_app_mode_test.dart`; this keeps the contrast with
-  /// the shared package, where nothing fixes the mode.
+  /// per app, is in `fixed_app_mode_test.dart`.
   test('a licence covering both is refused by an app, not offered as a choice',
       () async {
     for (final mode in DeploymentMode.values) {
-      final container = ProviderContainer(
-        overrides: fakeRepositoryOverrides(appMode: mode),
-      );
-      addTearDown(container.dispose);
+      final container = _container(mode: mode);
       final controller = container.read(setupProvider.notifier);
 
       await controller.activateLicence(
@@ -122,47 +131,28 @@ void main() {
       final draft = container.read(setupProvider);
       expect(draft.entitlement?.state, LicenseState.modeAmbiguous);
       expect(draft.deployment.mode, mode);
-      // And the other tile is not a way round it.
-      controller.setMode(mode.other);
-      expect(container.read(setupProvider).deployment.mode, mode);
     }
   });
 
-  /// A screen with one choosable option is not a question.
-  ///
-  /// The mode screen offers what the tenant bought and greys out what it did
-  /// not. On a single-mode licence — which is most of them — that leaves the
-  /// answer already filled in, since adoption moves the draft onto a covered
-  /// mode the moment the licence is read. The installer's only move is Continue.
-  test('a single-mode licence takes the mode screen away entirely', () async {
+  /// The offline path, walked. Rewritten in stage 4 from "a single-mode
+  /// licence takes the mode screen away entirely": there is no mode screen to
+  /// take away, and the path is the same before and after the licence.
+  test('the offline app walks licence, language, connection — and back', () async {
     final container = _container();
     final controller = container.read(setupProvider.notifier);
-
-    // Before a licence is read, nothing has answered it, so it is asked.
-    expect(
-      container.read(setupProvider).visibleSteps,
-      contains(SetupStep.setupType),
-    );
+    final before = container.read(setupProvider).visibleSteps;
 
     await controller.activateLicence(
       fileContents: _licence(modes: {DeploymentMode.offline}).serialize(),
     );
 
     final draft = container.read(setupProvider);
-    expect(draft.asksSetupType, isFalse);
-    expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
-    // The offline path, one step shorter. Counted against the path rather than
-    // against `SetupStep.values`, which now also carries the cloud-only
-    // `connecting` step and would make this assertion read as a failure the
-    // day a step is added for anybody else.
+    expect(draft.visibleSteps, before);
+    // Counted against the path rather than against `SetupStep.values`, which
+    // also carries the cloud-only `connecting` step.
     expect(draft.stepCount, draft.offlineSteps.length);
     expect(draft.visibleSteps, isNot(contains(SetupStep.connecting)));
-    // Taken away, not skipped past: the mode is set, and the summary screen is
-    // where it is read back.
-    expect(draft.deployment.mode, DeploymentMode.offline);
 
-    // And the wizard walks straight by it, in both directions, so nobody lands
-    // on a screen the rail no longer lists.
     expect(draft.step, SetupStep.licence);
     controller.next();
     expect(container.read(setupProvider).step, SetupStep.language);
@@ -172,48 +162,33 @@ void main() {
     expect(container.read(setupProvider).step, SetupStep.language);
   });
 
-  /// Rewritten for pos-split-apps (BR-1). The mode screen used to stay on a
-  /// dual-mode licence "because it is a question"; in an app there is no
-  /// question, and the licence that would have asked it is refused (above).
-  test('an app never shows the mode screen, whatever the licence says', () async {
+  /// Rewritten in stage 4 from "an app never shows the mode screen, whatever
+  /// the licence says": the step is gone, so what is left to hold is the path.
+  test('each app walks its own path', () async {
     for (final mode in DeploymentMode.values) {
-      final container = ProviderContainer(
-        overrides: fakeRepositoryOverrides(appMode: mode),
-      );
-      addTearDown(container.dispose);
+      final container = _container(mode: mode);
       final controller = container.read(setupProvider.notifier);
-
-      // Before the licence.
-      expect(
-        container.read(setupProvider).visibleSteps,
-        isNot(contains(SetupStep.setupType)),
-      );
 
       await controller.activateLicence(
         fileContents: _licence(modes: {mode}).serialize(),
       );
 
       final draft = container.read(setupProvider);
-      expect(draft.asksSetupType, isFalse);
-      expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
       expect(
         draft.stepCount,
         mode == DeploymentMode.cloud
             ? draft.cloudSteps.length
             : draft.offlineSteps.length,
       );
-      controller.next();
-      expect(container.read(setupProvider).step, isNot(SetupStep.setupType));
     }
   });
 
-  test('re-judging the mode does not rescue an expired licence', () async {
+  test('covering the mode does not rescue an expired licence', () async {
     final container = _container();
     final controller = container.read(setupProvider.notifier);
 
-    // Past expiry and past the 14-day grace. Only the *mode* verdict is ever
-    // revisited; a refusal of the licence itself has to stand, or the fix
-    // would have quietly become a way past every other gate.
+    // Past expiry and past the 14-day grace. A licence that covers the app's
+    // mode is still refused for everything else it can be refused for.
     await controller.activateLicence(
       fileContents: _licence(
         modes: {DeploymentMode.offline},
@@ -226,24 +201,23 @@ void main() {
     // `canSell` deliberately stays true past grace — an open shift is never cut
     // off and cash-up is never gated — and the licence step advances on it, so
     // an expired licence does not strand an installer mid-wizard. What expiry
-    // takes away is the next shift, and re-judging the mode must not give that
-    // back.
+    // takes away is the next shift.
     expect(draft.entitlement!.canOpenShift, isFalse);
     expect(draft.entitlement!.canChangeConfiguration, isFalse);
   });
 
-  test('the wizard asks for the licence first, and before the mode', () {
-    final steps = const SetupDraft().visibleSteps;
+  test('the wizard asks for the licence first, on either path', () {
+    for (final mode in DeploymentMode.values) {
+      final steps = SetupDraft(
+        deployment: DeploymentConfig.unconfigured.copyWith(mode: mode),
+        appMode: mode,
+      ).visibleSteps;
 
-    // The gate. A terminal with no licence has nothing to set up, so every
-    // other question would be collecting answers that may prove worthless.
-    expect(steps.first, SetupStep.licence);
-    expect(
-      steps.indexOf(SetupStep.licence),
-      lessThan(steps.indexOf(SetupStep.setupType)),
-    );
-    // The licence step is on every path now. Hiding it for cloud terminals
-    // decided the mode question using its own answer.
-    expect(steps, contains(SetupStep.licence));
+      // The gate. A terminal with no licence has nothing to set up, so every
+      // other question would be collecting answers that may prove worthless.
+      // Hiding it for cloud terminals once decided the mode question using its
+      // own answer.
+      expect(steps.first, SetupStep.licence, reason: mode.name);
+    }
   });
 }

@@ -18,8 +18,8 @@ import 'package:xorder_pos_test_support/fakes.dart';
 ///
 /// "XOrder POS - Cloud" and "XOrder POS - Offline" each fix `appModeProvider`
 /// in their `main`. From then on the mode is not a question: the wizard has no
-/// mode step (BR-1), `setMode` refuses the other mode, a licence for the other
-/// mode is refused and names the other app (BR-2), and a licence signed for
+/// mode step (BR-1; since stage 4 no such step, and no `setMode`, exists to
+/// be reached at all), a licence for the other mode is refused and names the other app (BR-2), and a licence signed for
 /// both modes is refused and sent back to the Super Admin (D9). Every rule is
 /// run once per app, because each app is the other one's "other".
 LicenseFile _licence({required Set<DeploymentMode> modes}) {
@@ -66,10 +66,10 @@ void main() {
         final container = _app(mode);
         final draft = container.read(setupProvider);
 
-        // Before any licence is read — the shared package would still be
-        // asking here, since nothing has answered it.
-        expect(draft.asksSetupType, isFalse);
-        expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
+        // Not a hidden step: there is no such step to hide (stage 4). Said by
+        // name, so a mode question added back to the enum fails here.
+        expect(SetupStep.values.map((s) => s.name), isNot(contains('setupType')));
+        expect(draft.deployment.mode, mode);
 
         // And a licence covering this mode changes nothing about that.
         await container
@@ -78,13 +78,6 @@ void main() {
         final after = container.read(setupProvider);
         expect(after.entitlement?.canSell, isTrue);
         expect(after.deployment.mode, mode);
-        expect(after.visibleSteps, isNot(contains(SetupStep.setupType)));
-      });
-
-      test('the other mode cannot be chosen on the till', () {
-        final container = _app(mode);
-        container.read(setupProvider.notifier).setMode(other);
-        expect(container.read(setupProvider).deployment.mode, mode);
       });
 
       test('a licence for the other mode is refused and names the other app '
@@ -205,13 +198,18 @@ void main() {
     });
   });
 
-  test('the shared package without an app keeps the old rule', () {
+  // Rewritten in stage 4. It used to assert that the shared package with no
+  // app still asked the mode question; nothing asks it now, app or not.
+  test('the shared package without an app asks no mode question either', () {
     final container = ProviderContainer(overrides: fakeRepositoryOverrides());
     addTearDown(container.dispose);
     expect(container.read(appModeProvider), isNull);
     expect(container.read(appTitleProvider), 'XOrder POS');
     expect(container.read(setupProvider).appMode, isNull);
-    // Nothing has answered the mode question, so it is still asked.
-    expect(container.read(setupProvider).asksSetupType, isTrue);
+    // It opens in `DeploymentConfig.unconfigured`'s mode and stays there.
+    expect(
+      container.read(setupProvider).deployment.mode,
+      DeploymentConfig.unconfigured.mode,
+    );
   });
 }

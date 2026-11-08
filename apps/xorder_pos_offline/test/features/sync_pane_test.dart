@@ -6,7 +6,6 @@ import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
-import 'package:shared_module/domain/models/sync_outcome.dart';
 import 'package:shared_module/data/fakes/fake_repositories.dart';
 import 'package:shared_module/domain/models/backup.dart';
 import 'package:shared_module/domain/models/shift.dart';
@@ -148,61 +147,6 @@ void main() {
       );
       expect(address.textDirection, TextDirection.ltr);
       expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('syncProblemOf', () {
-    test('nothing wrong is null', () {
-      expect(
-        syncProblemOf(
-          terminalRejected: false,
-          online: true,
-          countUnreadable: false,
-        ),
-        isNull,
-      );
-    });
-
-    test('worst first: a rejected credential over a silent platform', () {
-      expect(
-        syncProblemOf(
-          terminalRejected: true,
-          online: false,
-          countUnreadable: true,
-        ),
-        SyncProblem.terminalRejected,
-      );
-    });
-
-    test('held records are named from the queue, not only by a pass', () {
-      expect(
-        syncProblemOf(
-          terminalRejected: false,
-          online: true,
-          countUnreadable: false,
-          heldCount: 1,
-        ),
-        SyncProblem.held,
-      );
-    });
-
-    test('held sales are named by the pass that held them', () {
-      expect(
-        syncProblemOf(
-          terminalRejected: false,
-          online: true,
-          countUnreadable: false,
-          lastPass: const SyncOutcome(drain: DrainReport(quarantined: 2)),
-        ),
-        SyncProblem.held,
-      );
-    });
-
-    test('every problem has words in both languages', () {
-      for (final problem in SyncProblem.values) {
-        expect(syncProblemLabel(s, problem, held: 2), isNotEmpty);
-        expect(syncProblemLabel(ar, problem, held: 2), isNotEmpty);
-      }
     });
   });
 }

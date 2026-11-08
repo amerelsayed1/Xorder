@@ -181,32 +181,20 @@ class SetupController extends Notifier<SetupDraft> {
     if (_disposed || first == null || state.entitlement != null) return;
 
     final claims = result.claims;
-    // Same correction as the activation path: a licence restored from disk is
-    // read before the operator has picked anything, so it must be judged on the
-    // mode it grants rather than on the draft's default.
-    final entitlement = await _judgeOnCoveredMode(
-      first,
-      claims == null ? state.deployment : _adopt(claims),
-    );
-    if (_disposed || state.entitlement != null) return;
-
-    // A NOTICE, not an error. "This licence does not cover Cloud, so the
-    // terminal was set to Offline" is the wizard reporting that it did the
-    // right thing on a perfectly healthy install — and it was arriving in red,
-    // on the first screen, as the only coloured thing on it. The very next step
-    // already says the same in a NOT LICENSED chip.
-    final modeNotice = claims == null ? null : _modeChangedNotice(claims);
-
+    // Judged on the draft's own mode, which is the app's (pos-split-apps). It
+    // used to be re-judged on whichever mode the licence covered, and the
+    // draft moved there with a notice saying so; with the mode fixed by the
+    // app, a licence for the other mode is a refusal naming that app, not a
+    // move.
     state = state.copyWith(
-      entitlement: entitlement,
+      entitlement: first,
       claims: claims,
-      // Same adoption as a fresh activation: the tenant, the modes and the
-      // terminal count come off the licence, not off anything typed.
+      // Same adoption as a fresh activation: the tenant and the terminal count
+      // come off the licence, not off anything typed.
       deployment: claims == null ? null : _adopt(claims),
       // `copyWith` reads a null notice as "leave it alone", so clearing needs
       // the flag — otherwise a stale notice outlives what raised it.
-      notice: modeNotice,
-      clearNotice: modeNotice == null,
+      clearNotice: true,
     );
   }
 
@@ -384,66 +372,10 @@ class SetupController extends Notifier<SetupDraft> {
 
   void setLocale(String locale) => state = state.copyWith(locale: locale);
 
-  /// Choose cloud or offline.
-  ///
-  /// The licence is **kept**. It was installed before this step and is what
-  /// decided which modes are on offer at all, so switching between two modes it
-  /// already covers cannot invalidate it. What is discarded is the endpoint
-  /// configuration, which does not survive the switch: an offline terminal has
-  /// no platform address, and a cloud one has no reason to keep a LAN database
-  /// address the operator typed for the other mode.
-  void setMode(DeploymentMode mode) {
-    // Both modes are buildable now. The only rule left is the LICENCE's: a
-    // terminal may run in a mode the customer actually bought and no other,
-    // which is the same check the till re-applies at every boot through
-    // `LicenseVerifier.evaluateClaims` — refusing here just means an operator
-    // finds out on the tile rather than two screens later.
-    if (!state.licensedModes.contains(mode)) return;
-
-    // An app runs one mode and nothing on the till changes it (pos-split-apps,
-    // BR-1). The other mode is the other app, which is an install, not a tap.
-    if (state.appMode != null && mode != state.appMode) return;
-
-    // A child runs in its main device's mode, and has no mode screen to change
-    // it from. The DeploymentConfig built below would also drop its role.
-    if (state.deployment.isChild) return;
-
-    // Re-choosing the mode already in force is a no-op, full stop. The reset
-    // below exists for a genuine *switch*, where the old endpoint cannot
-    // survive — but an operator tapping the already-selected tile on their way
-    // past must not lose a database name and platform address they typed two
-    // steps later. What is entered in an input stays entered.
-    if (mode == state.deployment.mode) return;
-
-    state = state.copyWith(
-      deployment: DeploymentConfig(
-        mode: mode,
-        tenantSlug: state.deployment.tenantSlug,
-        // Supplied, never asked — see [_adopt]. An offline terminal keeps none.
-        baseUrl: mode.needsBaseUrl ? _platformFor(state.deployment) : null,
-        // The business's own name for its database, as [_adopt] gives it.
-        databaseName: DeploymentConfig.databaseNameFor(
-          state.deployment.tenantSlug,
-        ),
-        // A one-terminal plan has no shared database to point at, so the host
-        // stays on this machine and the wizard never asks.
-        databaseHost: state.allowsSharedDatabase
-            ? state.deployment.databaseHost
-            : DeploymentConfig.localhost,
-        // Where the licence came from survives the switch in both directions:
-        // an offline till renews against it, and a cloud till is claimed
-        // there — see [_platformFor]. It used to be dropped here, so a mode
-        // tapped twice sent the claim to the build default.
-        licenceServerUrl: state.deployment.licenceServerUrl,
-      ),
-      // Switching to offline takes the pairing-code path away with it: no
-      // dashboard exists to have minted a code. Reset rather than leave the
-      // draft on a method whose screen is now disabled and whose button can
-      // never succeed.
-      method: mode == DeploymentMode.cloud ? state.method : SetupMethod.manual,
-      clearError: true,
-    );
-  }
+  // There is no `setMode` (pos-split-apps, stage 4). Cloud and offline are two
+  // apps, and the mode is the one the installer launched; a switch here could
+  // only ever have been reached by the shared package's own tests, which now
+  // say which app they are instead.
 
   /// A platform address typed without a scheme still means what the operator
   /// meant: `localhost:8100` is `http://localhost:8100`, `xorder.io` is
@@ -1338,9 +1270,8 @@ class SetupController extends Notifier<SetupDraft> {
   ///
   /// **This is the first step, so what it installs configures the rest of the
   /// wizard.** The licence names its tenant, so the account step no longer asks
-  /// for one; and it names the modes it covers, so the connection step starts on
-  /// one the customer actually bought rather than on whatever the enum lists
-  /// first.
+  /// for one. It does not choose the mode: that is the app's, and a licence
+  /// that does not cover it is refused here, naming the other app (BR-2).
   Future<void> activateLicence({String? fileContents}) async {
     // A child activates nothing; see [connectToMainDevice].
     if (state.deployment.isChild) return;
@@ -1392,30 +1323,12 @@ class SetupController extends Notifier<SetupDraft> {
 
     final claims = result.claims;
     final adopted = claims == null ? state.deployment : _adopt(claims);
-    final entitlement = await _judgeOnCoveredMode(
-      result.entitlement,
-      adopted,
-      file: result.file,
-    );
+    final entitlement = result.entitlement;
 
-    // `result.notice` speaks for the first verdict, and it is the only thing
-    // that speaks at all when there was no verdict to give — an unrecognised
-    // key or a file that is not a licence never reach the verifier. Only when
-    // _judgeOnCoveredMode actually replaced the verdict does its notice
-    // replace that one, so a mode refusal it has just overturned stops being
-    // reported.
-    final notice =
-        entitlement == null || identical(entitlement, result.entitlement)
-        ? result.notice
-        : (entitlement.canOpenShift ? null : entitlement.notice);
-
-    // The licence's own notice wins — an expiry warning outranks a mode change
-    // — and it is the only one of the two that is a problem. A mode the licence
-    // did not cover is the wizard doing its job, so it goes in the notice bar;
-    // a silent flip must still not be the outcome.
-    final modeChanged = notice != null || claims == null
-        ? null
-        : _modeChangedNotice(claims);
+    // `result.notice` speaks for the verdict, and it is the only thing that
+    // speaks at all when there was no verdict to give — an unrecognised key or
+    // a file that is not a licence never reach the verifier.
+    final notice = result.notice;
 
     state = state.copyWith(
       busy: false,
@@ -1434,43 +1347,8 @@ class SetupController extends Notifier<SetupDraft> {
       error: entitlement != null && identical(entitlement.notice, notice)
           ? null
           : notice?.text(ref.read(stringsProvider)),
-      notice: modeChanged,
-      clearNotice: modeChanged == null,
+      clearNotice: true,
     );
-  }
-
-  /// Re-judge a licence against the mode it actually puts this terminal in.
-  ///
-  /// The mode gate is the same class of problem as the tenant gate above, and
-  /// the answer is the same: a licence *supplies* the mode, so judging it
-  /// against whatever the draft happened to be sitting on asks the licence to
-  /// justify a choice it was never shown. `DeploymentConfig.unconfigured` is
-  /// cloud, so before this an offline-only licence — read on a machine whose
-  /// operator had not reached the mode screen, and now cannot, because the
-  /// licence step comes first — came back `modeNotLicensed` and stopped the
-  /// wizard on step 2 with no way forward. [_adopt] would then quietly move the
-  /// draft to `offline` anyway, leaving a refusal on screen that no longer
-  /// described the terminal.
-  ///
-  /// Only the mode verdict is revisited. Expiry, tenant, signature and
-  /// fingerprint stand exactly as given — those are refusals of the licence
-  /// itself, not of a question the wizard had not asked yet.
-  Future<LicenseEntitlement?> _judgeOnCoveredMode(
-    LicenseEntitlement? verdict,
-    DeploymentConfig adopted, {
-    LicenseFile? file,
-  }) async {
-    if (verdict?.state != LicenseState.modeNotLicensed) return verdict;
-
-    final service = ref.read(licenceServiceProvider);
-    // The file this verdict was given on. Activation hands it over directly,
-    // because the wizard no longer writes it at step one and there is nothing
-    // on disk to go back for; the restore path passes none, and is reading the
-    // installed one by definition.
-    final backing = file ?? await service.installed();
-    if (backing == null) return verdict;
-
-    return service.evaluate(backing, adopted);
   }
 
   /// Fold what the licence knows into the deployment config.
@@ -1478,13 +1356,18 @@ class SetupController extends Notifier<SetupDraft> {
   /// The tenant is taken from the licence rather than typed, because a licence
   /// is issued to exactly one tenant and asking the operator to name it again
   /// only creates a mismatch to diagnose later.
+  ///
+  /// The mode is NOT taken from it (pos-split-apps, stage 4). It used to be:
+  /// a licence that did not cover the draft's mode moved the draft to one it
+  /// did, with a notice saying so. The mode is the app's now, and moving off it
+  /// would turn this app into the other one; a licence that does not cover it
+  /// is refused at this step instead (`modeNotLicensed`, naming that app).
   DeploymentConfig _adopt(LicenseClaims claims) {
     final current = state.deployment;
-    final mode = _coveredMode(claims, current.mode);
+    final mode = current.mode;
 
     return current.copyWith(
       tenantSlug: claims.tenantSlug,
-      mode: mode,
       // The platform address, supplied rather than typed (owner decision,
       // 2026-09-15). There is exactly one hosted platform and the build already
       // names it; the field on the old connection screen could only ever be
@@ -1523,39 +1406,6 @@ class SetupController extends Notifier<SetupDraft> {
     return licenceServer != null && licenceServer.isNotEmpty
         ? licenceServer
         : PlatformEndpoint.base;
-  }
-
-  /// The mode this licence permits, nearest to the one already chosen.
-  ///
-  /// A licence that does not cover the chosen mode moves the terminal to one
-  /// it does. That is correct — the alternative is a setup that completes and
-  /// then reports `modeNotLicensed` at the first boot — but it used to happen
-  /// in SILENCE, so an operator who picked Offline could reach the summary
-  /// screen still believing they had. [_modeChangedNotice] is what says so.
-  DeploymentMode _coveredMode(LicenseClaims claims, DeploymentMode chosen) {
-    // An app's mode is not a choice to be moved off (pos-split-apps). A licence
-    // that does not cover it stays refused — `modeNotLicensed`, naming the
-    // other app — rather than quietly turning this app into that one.
-    if (state.appMode case final fixed?) return fixed;
-
-    final covered = claims.modes.isEmpty
-        ? DeploymentMode.values.toSet()
-        : claims.modes;
-
-    return covered.contains(chosen) ? chosen : covered.first;
-  }
-
-  /// Say so when adopting a licence moved the terminal to another mode.
-  ///
-  /// Null when nothing moved, which is the ordinary case.
-  String? _modeChangedNotice(LicenseClaims claims) {
-    final chosen = state.deployment.mode;
-    final landed = _coveredMode(claims, chosen);
-    if (landed == chosen) return null;
-
-    final s = ref.read(stringsProvider);
-
-    return s.licenceModeChanged(chosen.label(s), landed.label(s));
   }
 
   /// A child tablet's whole connection step: reach the main device's database

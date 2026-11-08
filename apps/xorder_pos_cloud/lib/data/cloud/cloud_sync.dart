@@ -146,6 +146,9 @@ class CloudSync implements SalesSync {
   });
 
   Future<SyncOutcome> _pass() async {
+    // The mode half is a guard kept on purpose (pos-split-apps, stage 4): in
+    // this app it is always cloud, but a pass is the one place a heartbeat and
+    // a drain start, and an offline config must stop it here whoever built it.
     if (!config.mode.syncsSalesToPlatform || !vault.isSet) {
       return const SyncOutcome(drain: DrainReport());
     }

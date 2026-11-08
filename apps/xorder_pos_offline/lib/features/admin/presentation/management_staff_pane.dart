@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:shared_module/app/providers.dart';
-import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/core/ui/tokens.dart';
@@ -145,24 +144,12 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // On a cloud till the bundle owns who works here — see
-        // `PostgresStaffDirectoryRepository.offline`. Said once at the top
-        // rather than as four identical refusals: a manager who reads this
-        // knows where to go, and the half that still works (roles and
-        // permissions) is named in the same sentence.
-        if (ref.watch(deploymentProvider).mode != DeploymentMode.offline)
-          Container(
-            padding: const EdgeInsets.all(PosSpace.lg),
-            color: context.pos.warnSoft,
-            child: Text(
-              context.strings.staffComesFromPlatform,
-              style: PosText.ui(
-                size: 12.5,
-                color: context.pos.warn,
-                height: 1.5,
-              ),
-            ),
-          ),
+        // No "staff comes from the platform" banner and no cloud gate on Add
+        // (pos-split-apps, stage 4). Both were for a cloud till, where the
+        // bundle owns who works there; this pane is the offline app's, whose
+        // till is its own author of staff, so neither could ever show.
+        // `PostgresStaffDirectoryRepository.offline` still refuses a cloud
+        // write on its own, which is where that rule has to live anyway.
         Container(
           padding: const EdgeInsets.all(PosSpace.xl),
           decoration: BoxDecoration(
@@ -190,10 +177,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
                 background: context.pos.accent,
                 foreground: Colors.white,
                 fontWeight: FontWeight.w700,
-                onPressed:
-                    roles == null ||
-                        ref.watch(deploymentProvider).mode !=
-                            DeploymentMode.offline
+                onPressed: roles == null
                     ? null
                     : () => _add(context, ref, roles, people),
               ),

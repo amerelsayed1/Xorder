@@ -41,8 +41,6 @@ import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
-import '../data/postgres/postgres_business_logo_repository.dart';
-import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
 import '../data/postgres/postgres_customers_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
@@ -72,7 +70,6 @@ import '../data/postgres/postgres_supplier_invoices_repository.dart';
 import '../data/postgres/postgres_purchase_orders_repository.dart';
 import '../data/postgres/postgres_receiving_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
-import '../data/postgres/postgres_financial_accounts_admin_repository.dart';
 import '../data/postgres/postgres_financial_accounts_repository.dart';
 import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
@@ -666,21 +663,16 @@ final branchRepositoryProvider = Provider<BranchRepository>((ref) {
 final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
   final config = ref.watch(deploymentProvider);
 
-  // A cloud terminal claims against the hosted platform (POS-BE-023), gets its
-  // device token (POS-BE-011 Option C), and seeds its local database from the
-  // bootstrap bundle the claim carries. Offline terminals keep claiming
-  // against the branch server's own PostgreSQL, as before.
+  // Claiming against the branch's own PostgreSQL: an offline till, and a
+  // child tablet of either app, which registers against its main device's
+  // database whatever that device runs — the platform has never heard of it.
   //
-  // A child tablet registers against its main device's PostgreSQL whatever
-  // mode that main device runs in: the platform has never heard of it, and it
-  // holds no device token to claim with.
   // A cloud main device claims against the hosted platform (POS-BE-023) and
-  // seeds from the bundle the claim carries: that implementation is cloud
-  // code, bound over this provider by `apps/xorder_pos_cloud` (pos-split-apps,
-  // stage 3). Without that binding a cloud main device is unconfigured here.
-  if (config.mode == DeploymentMode.cloud && !config.isChild) {
-    return const UnconfiguredProvisioningRepository();
-  }
+  // seeds from the bundle the claim carries: that is cloud code, bound over
+  // this provider by `apps/xorder_pos_cloud` (pos-split-apps, stage 3), which
+  // falls back to this for a child. Stage 4 took away the `mode == cloud`
+  // check that stood here and returned an unconfigured binding: it only ever
+  // chose between the two apps, and the cloud app overrides this provider.
   return branchProvisioningRepository(ref, config);
 });
 
@@ -1479,23 +1471,15 @@ final receiptLogoProvider = FutureProvider<Uint8List?>((ref) async {
 /// Where the owner changes the logo: offline installs only, on the
 /// administrator connection like every other authoring repository. Null on a
 /// cloud till, whose logo is the platform's.
-final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>((ref) {
-  final config = ref.watch(deploymentProvider);
-  final context = ref.watch(posWriteContextProvider);
-
-  if (config.mode != DeploymentMode.offline) return null;
-  if (context == null || PosDatabase.hostFor(config) == null) return null;
-
-  return PostgresBusinessLogoRepository(
-    database: ref.watch(adminPosDatabaseProvider),
-    config: ref.watch(adminDeploymentProvider),
-    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    offline: true,
-    businessId: context.businessId,
-    branchId: context.branchId,
-    terminalId: context.terminalId,
-  );
-});
+///
+/// **Bound by the offline app** (`apps/xorder_pos_offline/lib/wiring.dart`,
+/// pos-split-apps stage 4). It used to be built here behind
+/// `mode != offline → null`, a check that only ever chose between the two
+/// apps; the shared default is the cloud answer, and the app that authors its
+/// own logo says so by binding one.
+final businessLogoRepositoryProvider = Provider<BusinessLogoRepository?>(
+  (ref) => null,
+);
 
 /// The one language a form writes names in (XORD-035), synchronously, for a
 /// form that cannot wait on a future.
@@ -3122,26 +3106,15 @@ final schemaUpgradeFailureProvider =
 /// Returns null rather than an Unconfigured double, because "this terminal
 /// does not author its menu" is a different statement from "this terminal has
 /// no database", and the Menu pane should not appear at all in the first case.
-final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
-  final config = ref.watch(deploymentProvider);
-  final context = ref.watch(posWriteContextProvider);
-
-  if (config.mode != DeploymentMode.offline) return null;
-  if (context == null || PosDatabase.hostFor(config) == null) return null;
-
-  return PostgresCatalogAdminRepository(
-    // Writes only, so there is no read context here: the catalogue is READ
-    // through `catalogRepositoryProvider` on the till's credential, which is
-    // what the sale screen already uses.
-    database: ref.watch(adminPosDatabaseProvider),
-    config: ref.watch(adminDeploymentProvider),
-    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-    offline: true,
-    businessId: context.businessId,
-    branchId: context.branchId,
-    terminalId: context.terminalId,
-  );
-});
+///
+/// **Bound by the offline app** (pos-split-apps, stage 4), as
+/// [businessLogoRepositoryProvider] is and for the same reason. Shared code
+/// still reads it — `authorsItsOwnCatalogue`, `supplierFiguresProvider` — as
+/// the question "does this till author its catalogue", which is now answered
+/// by which app is running rather than by a mode check in here.
+final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>(
+  (ref) => null,
+);
 
 /// The categories turned off. The till's grid never sees these
 /// (`catalogProvider` is active-only); the Menu and Sections panes list them so
@@ -3443,24 +3416,11 @@ final tenderAccountDefaultsProvider =
 /// there and `BootstrapSeeder` replaces these rows from the bundle, so an
 /// account made here would last until the next sync. Null is also "no
 /// database", and the pane reads both as "read, do not offer to write".
+///
+/// **Bound by the offline app** (pos-split-apps, stage 4), as
+/// [catalogAdminRepositoryProvider] is.
 final financialAccountsAdminRepositoryProvider =
-    Provider<FinancialAccountsAdminRepository?>((ref) {
-      final config = ref.watch(deploymentProvider);
-      final context = ref.watch(posWriteContextProvider);
-
-      if (config.mode != DeploymentMode.offline) return null;
-      if (context == null || PosDatabase.hostFor(config) == null) return null;
-
-      return PostgresFinancialAccountsAdminRepository(
-        database: ref.watch(adminPosDatabaseProvider),
-        config: ref.watch(adminDeploymentProvider),
-        adminAvailable: ref.watch(adminDbCredentialProvider) != null,
-        offline: true,
-        businessId: context.businessId,
-        branchId: context.branchId,
-        terminalId: context.terminalId,
-      );
-    });
+    Provider<FinancialAccountsAdminRepository?>((ref) => null);
 
 /// Whether e-receipts are filed on this build. See [etaFilingEnabled].
 ///
