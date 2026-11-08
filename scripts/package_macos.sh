@@ -2,10 +2,12 @@
 #
 # Build and package XOrder POS for macOS distribution.
 #
-# Produces  dist/XOrder-POS-<version>.dmg  containing the release app and a
-# drag-to-Applications shortcut.
+# Produces  dist/XOrder-POS-Offline-<version>.dmg  (or -Cloud-) containing the
+# release app and a drag-to-Applications shortcut. Windows has the matching
+# pair, XOrder-POS-Offline-Setup-<version>.exe and XOrder-POS-Cloud-Setup-…,
+# from .github/workflows/windows-installer.yml.
 #
-#   ./scripts/package_macos.sh
+#   ./scripts/package_macos.sh [offline|cloud]
 #
 # Signing. Flutter ad-hoc signs the release build and Xcode injects
 # `com.apple.security.get-task-allow` while doing it — a debugger-attach

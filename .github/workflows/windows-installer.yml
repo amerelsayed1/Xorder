@@ -3,11 +3,17 @@ name: Windows installer
 # Readiness item 10, run by a machine rather than remembered: build the
 # installer, install it on a clean Windows runner, check the app, the database
 # and its accounts, then run the SAME installer again as an upgrade and check
-# nothing was lost. On a tag, the installer is attached to a release.
+# nothing was lost. On a tag, the installers are attached to a release.
+#
+# One installer per app (pos-split-apps stage 5): "XOrder POS - Offline" and
+# "XOrder POS - Cloud", each built, installed and upgraded on its own runner
+# by one leg of the matrix below. Before installing, each leg also proves the
+# installer refuses to go in beside the other app or today's single
+# "XOrder POS" (D5) — the only check of the .iss [Code] section a machine runs.
 #
 # A tag is a restaurant release: it must be signed, built with the release
 # licence key, and use an integrity-pinned PostgreSQL archive. A run on a branch
-# exercises the installer (unsigned unless the certificate secrets are set) but
+# exercises the installers (unsigned unless the certificate secrets are set) but
 # can never publish a release.
 #
 # Analyse and the tests are not run here: they run on your own machine with
@@ -21,10 +27,10 @@ name: Windows installer
 on:
   workflow_dispatch:
 
-# The shared code is packages/shared_module; the app built here is apps/xorder_pos_offline
-# (pos-split-apps stage 2: one app per mode; stage 5 builds both as a matrix).
-# Its own build output stays in that folder; what the installer gathers
-# (PostgreSQL, tools, the runtime) goes to build/installer at the root.
+# Each app's build output stays in its own folder (apps/xorder_pos_<app>);
+# what the installer gathers (PostgreSQL, tools, the runtime) goes to
+# build/installer at the root. pos_migrate is shared code and is built from
+# packages/shared_module.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,16 +43,42 @@ env:
   PG_SHA256: ${{ vars.XORDER_PG_SHA256 }}
   XORDER_LICENSE_PUBLIC_KEY_B64: ${{ vars.XORDER_LICENSE_PUBLIC_KEY_B64 }}
   XORDER_LICENSE_KEY_ID: ${{ vars.XORDER_LICENSE_KEY_ID }}
+  # The uninstall keys the refusal looks for. The two app ids repeat
+  # installer/xorder-pos.iss (OfflineGuid, CloudGuid) and must never change
+  # there or here alone; the last is today's single "XOrder POS".
+  OFFLINE_GUID: '541470B8-9655-4C8B-B613-BDE215C517D6'
+  CLOUD_GUID: 'CFE3951B-E0DC-4C64-908C-5BCAB02681F5'
+  LEGACY_GUID: '6B0C8F3E-2B6A-4F43-9C8D-58E4A1B7D9C2'
 
 jobs:
   installer:
+    name: installer (${{ matrix.app }})
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
-      contents: write
+      contents: read
+    strategy:
+      # One app's failure says nothing about the other's installer; let both
+      # finish so a run shows every problem at once. The release job still
+      # needs both.
+      fail-fast: false
+      matrix:
+        include:
+          - app: offline
+            flavor: Offline
+            product: 'XOrder POS - Offline'
+            other_guid_var: CLOUD_GUID
+          - app: cloud
+            flavor: Cloud
+            product: 'XOrder POS - Cloud'
+            other_guid_var: OFFLINE_GUID
     env:
       WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
       WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      APP: ${{ matrix.app }}
+      FLAVOR: ${{ matrix.flavor }}
+      PRODUCT: ${{ matrix.product }}
+      OTHER_GUID_VAR: ${{ matrix.other_guid_var }}
     defaults:
       run:
         shell: pwsh
@@ -59,17 +91,19 @@ jobs:
           channel: stable
           cache: true
 
+      # The app's own pubspec: it is what `flutter build windows` stamps into
+      # the exe's version resource, so the setup file and the exe agree.
       - name: Version from pubspec
         id: version
         run: |
-          $v = (Select-String -Path packages/shared_module/pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $v = (Select-String -Path "apps/xorder_pos_$env:APP/pubspec.yaml" -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           "value=$v" >> $env:GITHUB_OUTPUT
 
       - name: The tag is the pubspec version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           if ("v${{ steps.version.outputs.value }}" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match pubspec ${{ steps.version.outputs.value }}"
+            throw "Tag ${{ github.ref_name }} does not match apps/xorder_pos_$env:APP/pubspec.yaml ${{ steps.version.outputs.value }}"
           }
 
       - name: Build the app
@@ -78,10 +112,12 @@ jobs:
             throw 'XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID repository variables are required for a release build.'
           }
           flutter pub get
-          Push-Location apps/xorder_pos_offline
+          Push-Location "apps/xorder_pos_$env:APP"
           flutter build windows --release "--dart-define=XORDER_LICENSE_PUBLIC_KEY_B64=$env:XORDER_LICENSE_PUBLIC_KEY_B64" "--dart-define=XORDER_LICENSE_KEY_ID=$env:XORDER_LICENSE_KEY_ID"
           if ($LASTEXITCODE -ne 0) { throw "flutter build exited with $LASTEXITCODE" }
           Pop-Location
+          $exe = "apps/xorder_pos_$env:APP/build/windows/x64/runner/Release/xorder_pos_$env:APP.exe"
+          if (-not (Test-Path $exe)) { throw "the build produced no $exe" }
 
       - name: Build pos_migrate.exe
         run: |
@@ -135,9 +171,11 @@ jobs:
       - name: Build the installer
         run: |
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          # No /DAppDir: the .iss derives the build folder from the flavor,
+          # so the folder and the exe can never name two different apps.
           $args = @(
+            "/DFlavor=$env:FLAVOR",
             "/DAppVersion=${{ steps.version.outputs.value }}",
-            '/DAppDir=..\packages\shared_module\build\windows\x64\runner\Release',
             '/DPgDir=..\build\installer\pgsql',
             '/DToolsDir=..\build\installer\tools'
           )
@@ -147,7 +185,7 @@ jobs:
             $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
             $sign = "`"$signtool`" sign /f `"$pfx`" /p `"$env:WINDOWS_CERT_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256"
             # The app and the tool first, so what the installer carries is signed too.
-            & cmd /c "$sign apps\xorder_pos_offline\build\windows\x64\runner\Release\xorder_pos_offline.exe build\installer\tools\pos_migrate.exe"
+            & cmd /c "$sign apps\xorder_pos_$env:APP\build\windows\x64\runner\Release\xorder_pos_$env:APP.exe build\installer\tools\pos_migrate.exe"
             if ($LASTEXITCODE -ne 0) { throw 'signing the app failed' }
             $args += @('/DSIGN', "/Ssigntool=$sign `$f")
           } else {
@@ -159,11 +197,44 @@ jobs:
           & $iscc @args installer\xorder-pos.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC exited with $LASTEXITCODE" }
 
+      # D5, on a clean runner: plant the uninstall key the other app (and then
+      # today's single app) would have left, run the installer, and expect it
+      # to refuse with exit code 1 and leave no trace — no app folder, no
+      # service, no data folder. Planted keys only, not real installs: what is
+      # under test is what InitializeSetup looks for, and a key is all it reads.
+      - name: Refuses beside the other app
+        run: |
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $root = Join-Path $env:ProgramData 'XOrder POS'
+          $uninstall = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+          $others = @(
+            @{ guid = (Get-Item "Env:$env:OTHER_GUID_VAR").Value; what = 'the other app' },
+            @{ guid = $env:LEGACY_GUID; what = 'the single XOrder POS' }
+          )
+          foreach ($other in $others) {
+            $key = Join-Path $uninstall ('{' + $other.guid + '}_is1')
+            New-Item -Path $key -Force | Out-Null
+            try {
+              $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
+                '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TYPE=server',
+                "/LOG=$env:RUNNER_TEMP\setup-refused-$($other.guid).log")
+              if ($p.ExitCode -ne 1) { throw "beside $($other.what): setup exited with $($p.ExitCode), expected 1 (refused)" }
+              if (Test-Path $app) { throw "beside $($other.what): setup refused but still created $app" }
+              if (Test-Path $root) { throw "beside $($other.what): setup refused but still created $root" }
+              if (Get-Service XOrderPOS-PostgreSQL -ErrorAction SilentlyContinue) { throw "beside $($other.what): setup refused but a database service exists" }
+            } finally {
+              Remove-Item -Path $key -Recurse -Force
+            }
+          }
+          Write-Host 'Refused beside the other app and beside the single XOrder POS; nothing was changed.'
+
       - name: Install, check, upgrade, check again
         run: |
-          $setup = (Get-ChildItem dist\XOrder-POS-Setup-*.exe | Select-Object -First 1).FullName
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
           $root = Join-Path $env:ProgramData 'XOrder POS'
-          $app = Join-Path $env:ProgramFiles 'XOrder POS'
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $exe = "xorder_pos_$env:APP.exe"
 
           function Install([string] $name) {
             $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
@@ -175,7 +246,7 @@ jobs:
 
           function Check([string] $when) {
             if ((Get-Service XOrderPOS-PostgreSQL).Status -ne 'Running') { throw "${when}: the database service is not running" }
-            if (-not (Test-Path (Join-Path $app 'xorder_pos_offline.exe'))) { throw "${when}: the app is not installed" }
+            if (-not (Test-Path (Join-Path $app $exe))) { throw "${when}: $exe is not installed in $app" }
             $script:creds = Get-Content (Join-Path $root 'install-credentials.json') -Raw | ConvertFrom-Json
             $env:POS_PG_PASSWORD = $creds.admin.password
             $status = & (Join-Path $app 'tools\pos_migrate.exe') --host 127.0.0.1 --port $creds.port `
@@ -203,17 +274,45 @@ jobs:
           if ((Sql 'pos_till' $creds.till.password "SELECT count(*) FROM pos_restaurants WHERE slug = 'ci-marker'") -ne '1') {
             throw 'the upgrade lost data'
           }
-          Write-Host 'Installed, upgraded in place, nothing lost.'
+          Write-Host "$env:PRODUCT installed, upgraded in place, nothing lost."
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: xorder-pos-windows-${{ steps.version.outputs.value }}
+          name: xorder-pos-${{ matrix.app }}-windows-${{ steps.version.outputs.value }}
           path: |
-            dist/XOrder-POS-Setup-*.exe
+            dist/XOrder-POS-${{ matrix.flavor }}-Setup-*.exe
             ${{ runner.temp }}/setup-*.log
 
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/v')
+  # One job publishes both installers, and only when both legs are green: two
+  # legs each creating the same release would race, and a release with one
+  # app's installer is not a release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # One folder per artifact, not merged: both legs' logs share names, and
+      # an artifact of two paths keeps their common parent, so the setup file
+      # is not at the top of it. Picked out by name below instead.
+      - uses: actions/download-artifact@v4
         with:
-          files: dist/XOrder-POS-Setup-*.exe
+          pattern: xorder-pos-*-windows-*
+          path: artifacts
+
+      - name: Both installers, and only those
+        run: |
+          mkdir -p release
+          find artifacts -name 'XOrder-POS-*-Setup-*.exe' -exec mv {} release/ \;
+          ls -l release
+          for app in Offline Cloud; do
+            ls release/XOrder-POS-$app-Setup-*.exe > /dev/null || { echo "no $app installer to release" >&2; exit 1; }
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/XOrder-POS-Offline-Setup-*.exe
+            release/XOrder-POS-Cloud-Setup-*.exe
