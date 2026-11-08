@@ -257,10 +257,14 @@ class DefaultLicenceService implements LicenceService {
 /// wizard is walkable end to end before a real licence server exists. It is
 /// wired only in debug builds — see `licenceServiceProvider`.
 class FakeLicenceService implements LicenceService {
-  FakeLicenceService({DateTime Function()? clock})
+  FakeLicenceService({DateTime Function()? clock, this.singleModeOnly = false})
     : _clock = clock ?? DateTime.now;
 
   final DateTime Function() _clock;
+
+  /// Mirrors `LicenseVerifier.singleModeOnly` (pos-split-apps, D9): true
+  /// when the test stands in for an app with one fixed mode.
+  final bool singleModeOnly;
   LicenseFile? _stored;
 
   @override
@@ -336,6 +340,7 @@ class FakeLicenceService implements LicenceService {
       claims: claims,
       deployment: deployment,
       now: _clock(),
+      singleModeOnly: singleModeOnly,
     );
   }
 

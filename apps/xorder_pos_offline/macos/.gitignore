@@ -1,0 +1,10 @@
+# Flutter-related
+**/Flutter/ephemeral/
+**/Pods/
+
+# Xcode-related
+**/dgph
+**/xcuserdata/
+
+# Per-machine signing identity (macos/Runner/Configs/Local.xcconfig.example)
+**/Runner/Configs/Local.xcconfig

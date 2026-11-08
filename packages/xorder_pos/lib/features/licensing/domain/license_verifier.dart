@@ -80,10 +80,20 @@ class LicenseVerifier {
     required this.publicKeyBytes,
     this.keyId,
     this.trustIssuerKey = !_release,
+    this.singleModeOnly = false,
     Ed25519? algorithm,
   }) : _algorithm = algorithm ?? Ed25519();
 
   static const _release = bool.fromEnvironment('dart.vm.product');
+
+  /// Whether this build runs exactly one mode (pos-split-apps, D9).
+  ///
+  /// True in "XOrder POS - Cloud" and "XOrder POS - Offline", where a licence
+  /// signed for both modes is refused ([LicenseState.modeAmbiguous]) and a
+  /// licence for the other mode names the other app. False in the shared
+  /// package on its own, which has no app to be, and where the old rule — the
+  /// licence decides, the operator picks among what it covers — still holds.
+  final bool singleModeOnly;
 
   /// The licence-server public key. The private half never leaves the issuer.
   ///
@@ -190,6 +200,7 @@ class LicenseVerifier {
       now: now,
       terminalFingerprint: terminalFingerprint,
       viaMainDevice: viaMainDevice,
+      singleModeOnly: singleModeOnly,
     );
   }
 
@@ -210,6 +221,7 @@ class LicenseVerifier {
     required DateTime now,
     String? terminalFingerprint,
     bool viaMainDevice = false,
+    bool singleModeOnly = false,
   }) {
     final tenant = deployment.tenantSlug;
     if (tenant != null && tenant.isNotEmpty && tenant != claims.tenantSlug) {
@@ -224,10 +236,20 @@ class LicenseVerifier {
       );
     }
 
+    // Judged before coverage: a licence for both modes *does* cover this one,
+    // and the point is that it covers the other one too. An app that runs one
+    // mode has nobody to pick for the business (D9), so the Super Admin does.
+    if (singleModeOnly && claims.modes.length > 1) {
+      return _deny(
+        LicenseState.modeAmbiguous,
+        const LicenceCoversBothModes(),
+      );
+    }
+
     if (claims.modes.isNotEmpty && !claims.modes.contains(deployment.mode)) {
       return _deny(
         LicenseState.modeNotLicensed,
-        LicenceModeNotCovered(deployment.mode),
+        LicenceModeNotCovered(deployment.mode, fixedApp: singleModeOnly),
       );
     }
 

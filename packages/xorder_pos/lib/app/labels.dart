@@ -173,9 +173,12 @@ extension LicenceNoticeText on LicenceNotice {
     LicenceExpired() => s.licenceExpiredNewShiftBlocked,
     LicenceTenantMismatch(:final licenceTenant, :final terminalTenant) =>
       s.licenceTenantMismatch(licenceTenant, terminalTenant),
+    LicenceModeNotCovered(:final mode, fixedApp: true) =>
+      s.licenceForOtherApp(mode.other.productName),
     LicenceModeNotCovered(:final mode) => s.licenceModeNotCovered(
       mode.label(s),
     ),
+    LicenceCoversBothModes() => s.licenceCoversBothModes,
     LicenceOtherTerminal() => s.licenceOtherTerminal,
     LicenceNotYetValid(:final startsOn) => s.licenceNotYetValid(
       _shortDate(startsOn),

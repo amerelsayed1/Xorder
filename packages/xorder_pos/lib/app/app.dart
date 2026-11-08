@@ -36,7 +36,9 @@ class XorderPosApp extends ConsumerWidget {
     final adminShortcut = ref.watch(adminModeSettingsProvider).shortcut;
 
     return MaterialApp.router(
-      title: 'XOrder POS',
+      // "XOrder POS - Cloud" or "- Offline": the app's name, from its `main`
+      // (pos-split-apps, D4). The bare product only in the shared package.
+      title: ref.watch(appTitleProvider),
       // Text direction follows from this. Flutter reads the locale and
       // wraps the tree in the right `Directionality`, so there is no
       // separate RTL switch to forget to set.
@@ -76,6 +78,7 @@ class XorderPosApp extends ConsumerWidget {
       builder: (context, child) => TillIdleLock(
         child: _menuBar(
           AppStrings.of(ref.watch(localeProvider)),
+          ref.watch(appTitleProvider),
           CallbackShortcuts(
             bindings: {
               for (final activator in adminShortcutActivators(adminShortcut))
@@ -135,15 +138,15 @@ class XorderPosApp extends ConsumerWidget {
   /// The app and window menus are re-declared because `PlatformMenuBar` owns
   /// the whole bar once it exists: omitting them would take away Quit, Hide,
   /// Services and Minimise.
-  Widget _menuBar(AppStrings strings, Widget child) =>
+  Widget _menuBar(AppStrings strings, String appTitle, Widget child) =>
       defaultTargetPlatform != TargetPlatform.macOS
       ? child
       : PlatformMenuBar(
           menus: [
             // The product's own name, and so never translated.
-            const PlatformMenu(
-              label: 'XOrder POS',
-              menus: [
+            PlatformMenu(
+              label: appTitle,
+              menus: const [
                 PlatformProvidedMenuItem(
                   type: PlatformProvidedMenuItemType.about,
                 ),

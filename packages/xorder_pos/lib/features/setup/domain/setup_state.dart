@@ -114,6 +114,7 @@ class SetupDraft {
     this.deployment = DeploymentConfig.unconfigured,
     this.entitlement,
     this.claims,
+    this.appMode,
     this.licenceFile,
     this.licenceKey = '',
     // The main road on cloud (owner decision, 2026-09-15). The dashboard mints
@@ -173,6 +174,14 @@ class SetupDraft {
   /// The claims of the licence just activated. Null until the licence step has
   /// run, which is why that step now comes first — see [SetupStep].
   final LicenseClaims? claims;
+
+  /// The one mode this app runs, or null in the shared package on its own.
+  ///
+  /// Seeded from `appModeProvider` (pos-split-apps). With it set there is no
+  /// mode question: the draft is in this mode from the first screen, `setMode`
+  /// refuses any other, and a licence is judged against it — see
+  /// [asksSetupType].
+  final DeploymentMode? appMode;
 
   /// The licence itself, held here until the terminal is finished.
   ///
@@ -313,7 +322,11 @@ class SetupDraft {
   /// Null claims mean no licence has been read yet, which is the licence step
   /// itself: both modes are notionally open, so the step stays visible until
   /// the licence says otherwise.
-  bool get asksSetupType => licensedModes.length > 1;
+  ///
+  /// Never on an app with a fixed [appMode] (pos-split-apps, BR-1): the
+  /// product the installer launched is the answer, and a licence that would
+  /// leave two to choose from is refused at the licence step (D9), not asked.
+  bool get asksSetupType => appMode == null && licensedModes.length > 1;
 
   /// The wizard's steps for the path being walked.
   ///
@@ -631,6 +644,7 @@ class SetupDraft {
     DeploymentConfig? deployment,
     LicenseEntitlement? entitlement,
     LicenseClaims? claims,
+    DeploymentMode? appMode,
     LicenseFile? licenceFile,
     String? licenceKey,
     SetupMethod? method,
@@ -688,6 +702,7 @@ class SetupDraft {
     deployment: deployment ?? this.deployment,
     entitlement: entitlement ?? this.entitlement,
     claims: claims ?? this.claims,
+    appMode: appMode ?? this.appMode,
     licenceFile: licenceFile ?? this.licenceFile,
     licenceKey: licenceKey ?? this.licenceKey,
     // `_method` rather than `method`: the getter normalises, and copying

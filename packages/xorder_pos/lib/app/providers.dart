@@ -2207,6 +2207,9 @@ final licenceServiceProvider = Provider<LicenceService>((ref) {
   final verifier = LicenseVerifier(
     publicKeyBytes: LicenseKeys.current,
     keyId: LicenseKeys.currentId,
+    // An app with a fixed mode refuses a licence for both (D9) and names the
+    // other app for a licence it cannot use (BR-2).
+    singleModeOnly: ref.watch(appModeProvider) != null,
   );
   if (ref.watch(deploymentProvider).isChild) {
     return SiteLicenceService(
@@ -2594,17 +2597,45 @@ final setupProgressStoreProvider = Provider<SetupProgressStore>(
   (ref) => FileSetupProgressStore(),
 );
 
+/// The one mode this build runs, or null for a build that runs either.
+///
+/// **pos-split-apps (owner, 2026-11-08).** The repository builds two apps,
+/// "XOrder POS - Cloud" and "XOrder POS - Offline", and each overrides this
+/// in its `main` (`runPos`). Everything that used to ask "which mode did the
+/// operator pick" reads the fixed answer from here instead: the deployment
+/// default, the wizard (no mode step, D9's licence rule), and the boot check
+/// that refuses a machine the other app set up (BR-8).
+///
+/// Null is the shared package on its own — its tests, and nothing a customer
+/// installs. There the wizard still offers whatever the licence covers, so the
+/// suites written against that behaviour keep their meaning.
+final appModeProvider = Provider<DeploymentMode?>((ref) => null);
+
+/// What the window, the macOS app menu and the About box call this app.
+///
+/// `DeploymentMode.productName` for an app; the bare product for the shared
+/// package. English only (D8).
+final appTitleProvider = Provider<String>(
+  (ref) => ref.watch(appModeProvider)?.productName ?? 'XOrder POS',
+);
+
 /// How this terminal is deployed. Written once by the setup wizard, then read
 /// by everything that needs to know whether a server exists to talk to.
 class DeploymentController extends Notifier<DeploymentConfig> {
   @override
   DeploymentConfig build() =>
-      ref.watch(terminalSeedProvider).config?.deployment ??
-      DeploymentConfig.unconfigured;
+      ref.watch(terminalSeedProvider).config?.deployment ?? _unconfigured;
 
   void apply(DeploymentConfig config) => state = config;
 
-  void reset() => state = DeploymentConfig.unconfigured;
+  void reset() => state = _unconfigured;
+
+  /// A till with no configuration yet is already in its app's mode. The
+  /// shared package has no app, so it stays on the historical default.
+  DeploymentConfig get _unconfigured => switch (ref.read(appModeProvider)) {
+    null => DeploymentConfig.unconfigured,
+    final mode => DeploymentConfig.unconfigured.copyWith(mode: mode),
+  };
 }
 
 final deploymentProvider =

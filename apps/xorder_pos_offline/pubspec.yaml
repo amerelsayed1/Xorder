@@ -1,0 +1,53 @@
+# "XOrder POS - Offline" (pos-split-apps, D4). Sales stay in the building on a
+# branch PostgreSQL, and the back office is on the till. The code is the shared
+# member packages/xorder_pos; this package is the entry point, the platform
+# folders and, from stage 3, the offline-only code (lib/features/admin).
+name: xorder_pos_offline
+description: "XOrder POS - Offline: the desktop till whose sales never leave the building."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  xorder_pos: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # The mark, a copy of the shared package's: shared code asks for it as
+  # `Image.asset('assets/icons/…')`, and Flutter keys an asset declared with a
+  # `../` path by that path, not by the bare one, so the file has to be here.
+  # The fonts are different: a `../` path is fine because the shared code asks
+  # by family name, which is what the FontManifest records.
+  assets:
+    - assets/icons/xorder_logo_official.png
+  fonts:
+    - family: IBM Plex Sans Arabic
+      fonts:
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Regular.ttf
+          weight: 400
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
+    - family: IBM Plex Mono
+      fonts:
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-Regular.ttf
+          weight: 400
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-Medium.ttf
+          weight: 500
+        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-SemiBold.ttf
+          weight: 600

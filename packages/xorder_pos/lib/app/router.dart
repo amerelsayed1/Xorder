@@ -12,6 +12,7 @@ import '../features/home/home_screen.dart';
 import '../features/licensing/presentation/licence_screen.dart';
 import '../features/setup/presentation/setup_wizard.dart';
 import '../features/setup/presentation/welcome_screen.dart';
+import '../features/setup/presentation/wrong_app_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/sale/sale_screen.dart';
 import '../features/start/start_screen.dart';
@@ -20,6 +21,9 @@ import 'providers.dart';
 
 abstract final class PosRoutes {
   static const welcome = '/welcome';
+
+  /// The only screen on a machine the other app set up (pos-split-apps, BR-8).
+  static const wrongApp = '/wrong-app';
   static const setup = '/setup';
   static const licence = '/licence';
   static const start = '/';
@@ -205,8 +209,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     // opens the wizard. Setup is still not skippable — the only two places an
     // unconfigured till may be are the welcome screen and the wizard itself.
     redirect: (context, state) {
-      final configured = ref.read(setupCompleteProvider);
       final at = state.matchedLocation;
+      // One app per machine (pos-split-apps, BR-8). A `config.json` the other
+      // app wrote parks this one on a screen that names it, and nothing else —
+      // not the wizard, whose chord would otherwise open a setup seeded from
+      // a configuration this app must not touch.
+      if (ref.read(terminalSeedProvider).otherAppMode != null) {
+        return at == PosRoutes.wrongApp ? null : PosRoutes.wrongApp;
+      }
+      final configured = ref.read(setupCompleteProvider);
       if (!configured && at != PosRoutes.setup && at != PosRoutes.welcome) {
         return PosRoutes.welcome;
       }
@@ -239,6 +250,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: PosRoutes.welcome,
         builder: (context, state) =>
             WelcomeScreen(onOpenSetup: () => context.go(PosRoutes.setup)),
+      ),
+      GoRoute(
+        path: PosRoutes.wrongApp,
+        builder: (context, state) => const WrongAppScreen(),
       ),
       GoRoute(
         path: PosRoutes.setup,

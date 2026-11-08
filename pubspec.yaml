@@ -1,10 +1,15 @@
 # The xorder-pos workspace (Dart pub workspace). No code lives here: the
 # packages do. One lockfile, this folder's pubspec.lock, resolves them all.
 #
-#   packages/xorder_pos   the shared till: money rules, screens, the branch
-#                         database, the wiring (docs/features/pos-split-apps)
+#   packages/xorder_pos        the shared till: money rules, screens, the branch
+#                              database, the wiring (docs/features/pos-split-apps)
+#   apps/xorder_pos_offline    "XOrder POS - Offline": entry point + platforms;
+#                              from stage 3 also the back office
+#   apps/xorder_pos_cloud      "XOrder POS - Cloud": entry point + platforms;
+#                              from stage 3 also the cloud sync code
 #
-# Run `flutter pub get` here once; every member then shares the resolution.
+# Run `flutter pub get` in any member once; every member then shares the
+# resolution.
 name: xorder_pos_workspace
 publish_to: 'none'
 
@@ -13,3 +18,5 @@ environment:
 
 workspace:
   - packages/xorder_pos
+  - apps/xorder_pos_offline
+  - apps/xorder_pos_cloud

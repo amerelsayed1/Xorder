@@ -179,6 +179,7 @@ class TerminalBoot {
     this.config,
     this.hasDatabaseCredential = false,
     this.credentialStoreUnavailable = false,
+    this.otherAppMode,
   });
 
   /// A fresh install, or one whose configuration would not parse.
@@ -201,6 +202,15 @@ class TerminalBoot {
   /// where typing a password again will not help: it will be accepted, setup
   /// will appear to finish, and the wizard will be back tomorrow morning.
   final bool credentialStoreUnavailable;
+
+  /// The mode of a saved configuration that belongs to the *other* app.
+  ///
+  /// One app per machine (pos-split-apps, BR-8): a `config.json` written by
+  /// "XOrder POS - Cloud" is not opened by "XOrder POS - Offline", and the
+  /// other way round. When it is set, [config] is null — the till is neither
+  /// configured nor a fresh install, and the only screen it may show names the
+  /// app that owns this machine. Null on every ordinary boot.
+  final DeploymentMode? otherAppMode;
 
   /// True when this terminal can actually open: it knows where its database is,
   /// which branch and till it is, **and** holds the credential to connect.

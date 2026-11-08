@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
 import 'package:xorder_pos/data/config/secret_store.dart';
@@ -48,11 +49,16 @@ class EnglishTerminal extends TerminalLocaleController {
 /// Absent by default: there is no database in a widget test, and the real
 /// upgrader would wait on a connection that never comes, so the door would
 /// never open.
+/// [appMode] stands the harness up as one of the two apps (pos-split-apps):
+/// the mode is fixed, the wizard has no mode step, and the licence service
+/// applies the one-mode rules. Null is the shared package on its own.
 List<Override> fakeRepositoryOverrides({
   bool english = true,
   Future<List<int>> Function()? schemaUpgrader,
+  DeploymentMode? appMode,
 }) => [
       if (english) localeProvider.overrideWith(EnglishTerminal.new),
+      if (appMode != null) appModeProvider.overrideWithValue(appMode),
       schemaUpgraderProvider.overrideWithValue(schemaUpgrader),
       catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       tablesRepositoryProvider.overrideWithValue(FakeTablesRepository()),
@@ -108,7 +114,9 @@ List<Override> fakeRepositoryOverrides({
       // The development issuer, which self-signs. The app binds
       // `DefaultLicenceService` against the real embedded key, so a widget
       // test that wanted a working licence would otherwise have to sign one.
-      licenceServiceProvider.overrideWithValue(FakeLicenceService()),
+      licenceServiceProvider.overrideWithValue(
+        FakeLicenceService(singleModeOnly: appMode != null),
+      ),
       // Setup persistence, in memory. The real store writes to the operator's
       // Application Support directory, which a widget test must never touch —
       // and could not anyway, since `path_provider` has no implementation in

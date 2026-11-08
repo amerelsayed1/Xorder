@@ -77,4 +77,15 @@ flutter test --tags integration --concurrency=1 "$@"
 status=$?
 set -e
 if [ "$status" -ne 0 ] && [ "$status" -ne 79 ]; then exit "$status"; fi
+
+# The two apps (pos-split-apps stage 2). Each is an entry point plus platform
+# folders over the shared package, so there is nothing to test in them yet —
+# analysing proves they still compile against it. Skipped when a path argument
+# narrows the run to part of the shared suite.
+if [ "$#" -eq 0 ]; then
+  for app in xorder_pos_offline xorder_pos_cloud; do
+    echo "Analysing apps/$app"
+    (cd "../../apps/$app" && flutter analyze)
+  done
+fi
 echo "All checks passed."

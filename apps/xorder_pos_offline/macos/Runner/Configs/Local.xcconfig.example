@@ -1,0 +1,7 @@
+// Copy to Local.xcconfig (git-ignored) and put your own values in.
+//
+// Signs Debug builds with a stable identity, so the macOS Keychain recognises
+// the app across rebuilds and "Always Allow" on its prompt sticks. Find yours
+// with:  security find-identity -v -p codesigning
+CODE_SIGN_IDENTITY[config=Debug] = Apple Development
+DEVELOPMENT_TEAM[config=Debug] = YOURTEAMID
