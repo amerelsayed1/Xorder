@@ -164,13 +164,13 @@ jobs:
           }
 
           function Check([string] $when) {
-            if ((Get-Service XOrderPOS-PostgreSQL).Status -ne 'Running') { throw "$when: the database service is not running" }
-            if (-not (Test-Path (Join-Path $app 'xorder_pos.exe'))) { throw "$when: the app is not installed" }
+            if ((Get-Service XOrderPOS-PostgreSQL).Status -ne 'Running') { throw "${when}: the database service is not running" }
+            if (-not (Test-Path (Join-Path $app 'xorder_pos.exe'))) { throw "${when}: the app is not installed" }
             $script:creds = Get-Content (Join-Path $root 'install-credentials.json') -Raw | ConvertFrom-Json
             $env:POS_PG_PASSWORD = $creds.admin.password
             $status = & (Join-Path $app 'tools\pos_migrate.exe') --host 127.0.0.1 --port $creds.port `
               --database xorder_pos --user pos_admin --no-verify-tls --status
-            if ($status -match 'PENDING') { throw "$when: migrations still pending`n$status" }
+            if ($status -match 'PENDING') { throw "${when}: migrations still pending`n$status" }
           }
 
           function Sql([string] $user, [string] $password, [string] $query) {
