@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/domain/models/content_languages.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/domain/models/content_languages.dart';
 
 /// How a name box looks in the one language it is written in (XORD-035).
 extension ContentLanguagesUi on ContentLanguages {

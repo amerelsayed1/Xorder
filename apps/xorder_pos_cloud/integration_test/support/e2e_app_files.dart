@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:xorder_pos/data/config/terminal_config_store.dart';
-import 'package:xorder_pos/data/config/file_secret_store.dart';
-import 'package:xorder_pos/data/config/secret_store.dart';
-import 'package:xorder_pos/features/licensing/data/file_license_store.dart';
+import 'package:shared_module/data/config/terminal_config_store.dart';
+import 'package:shared_module/data/config/file_secret_store.dart';
+import 'package:shared_module/data/config/secret_store.dart';
+import 'package:shared_module/features/licensing/data/file_license_store.dart';
 
 /// Keeps the end-to-end suite from leaving a terminal behind.
 ///

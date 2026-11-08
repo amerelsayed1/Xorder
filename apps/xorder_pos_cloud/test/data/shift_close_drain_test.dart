@@ -2,16 +2,16 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/core/security/pin_hash.dart';
-import 'package:xorder_pos/data/cloud/cloud_api.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/core/security/pin_hash.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:xorder_pos_cloud/data/cloud/outbox_drain.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/postgres/postgres_shift_repository.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/postgres/postgres_shift_repository.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 

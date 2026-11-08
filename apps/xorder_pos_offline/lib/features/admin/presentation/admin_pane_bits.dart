@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
 
 /// The three pieces every editor pane in this directory repeats.
 ///

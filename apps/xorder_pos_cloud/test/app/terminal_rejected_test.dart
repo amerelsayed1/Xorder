@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
+import 'package:shared_module/app/providers.dart';
 import 'package:xorder_pos_cloud/data/cloud/cloud_sync.dart';
 
 /// A till whose terminal has been deleted server-side must SAY so.

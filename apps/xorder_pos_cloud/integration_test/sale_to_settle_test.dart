@@ -3,8 +3,8 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 import 'support/e2e_app_files.dart';

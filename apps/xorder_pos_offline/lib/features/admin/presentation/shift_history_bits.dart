@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart' show businessDayProvider;
-import 'package:xorder_pos/app/shift_history_providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/mono_amount.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart' show businessDayWire;
-import 'package:xorder_pos/domain/models/finance_report.dart';
-import 'package:xorder_pos/domain/models/sales_report.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:shared_module/app/providers.dart' show businessDayProvider;
+import 'package:shared_module/app/shift_history_providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/mono_amount.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/branch_sales.dart' show businessDayWire;
+import 'package:shared_module/domain/models/finance_report.dart';
+import 'package:shared_module/domain/models/sales_report.dart';
+import 'package:shared_module/domain/models/shift.dart';
 import 'management_finance_panes.dart' show financePeriodLabel;
 
 /// What People › Shifts and Finance › Settlements share: the dates, the three

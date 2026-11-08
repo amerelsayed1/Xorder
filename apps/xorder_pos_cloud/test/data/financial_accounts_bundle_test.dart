@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
-import 'package:xorder_pos/domain/models/financial_account.dart';
+import 'package:shared_module/domain/models/financial_account.dart';
 
 /// Reading `money.financial_accounts` and `money.tender_account_defaults` out
 /// of the bundle (XORD-015, stage 1). A PROPOSED contract: the cloud sends the

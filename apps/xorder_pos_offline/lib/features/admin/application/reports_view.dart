@@ -11,10 +11,10 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/domain/models/branch_sales.dart';
-import 'package:xorder_pos/domain/models/home_sales.dart' show deltaBp;
-import 'package:xorder_pos/domain/models/sales_report.dart';
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
+import 'package:shared_module/domain/models/branch_sales.dart';
+import 'package:shared_module/domain/models/home_sales.dart' show deltaBp;
+import 'package:shared_module/domain/models/sales_report.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
 
 /// What the period chips offer. An enum and a total switch for the words, so
 /// a fifth chip without an Arabic label fails to compile.

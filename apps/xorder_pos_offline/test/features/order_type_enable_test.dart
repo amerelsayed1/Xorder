@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/models/order_type_config.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/models/ticket.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/models/order_type_config.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/models/ticket.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_order_types_pane.dart';
 
 /// Turning a kind of order off, from the pane that lists them.

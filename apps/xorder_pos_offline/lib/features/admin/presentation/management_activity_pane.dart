@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/core/money/quantity.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/core/money/quantity.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 
 final _activityProvider = FutureProvider.autoDispose<List<AuditEntry>>(
   (ref) => ref.watch(auditRepositoryProvider).recent(),

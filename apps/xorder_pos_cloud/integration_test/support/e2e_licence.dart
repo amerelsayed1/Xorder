@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/features/licensing/domain/license.dart';
-import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/features/licensing/domain/license.dart';
+import 'package:shared_module/features/licensing/domain/license_verifier.dart';
 
 /// Signs a licence the running app will actually accept.
 ///

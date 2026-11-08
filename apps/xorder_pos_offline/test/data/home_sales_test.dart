@@ -3,13 +3,13 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/postgres/postgres_branch_sales_repository.dart';
-import 'package:xorder_pos/data/postgres/postgres_business_day_repository.dart';
-import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart'
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/postgres/postgres_branch_sales_repository.dart';
+import 'package:shared_module/data/postgres/postgres_business_day_repository.dart';
+import 'package:shared_module/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
-import 'package:xorder_pos/domain/models/home_sales.dart';
+import 'package:shared_module/domain/models/home_sales.dart';
 import 'package:xorder_pos_offline/features/admin/application/back_office_home.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';

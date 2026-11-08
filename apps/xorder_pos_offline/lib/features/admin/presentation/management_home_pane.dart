@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/mono_amount.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart' show businessDayWire;
-import 'package:xorder_pos/domain/models/home_sales.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/services/authorization.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/mono_amount.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/branch_sales.dart' show businessDayWire;
+import 'package:shared_module/domain/models/home_sales.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/services/authorization.dart';
 import '../application/back_office_home.dart';
 
 /// A delta in basis points as a person reads it: `+12.50%`, `-3.07%`.

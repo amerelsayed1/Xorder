@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
-import 'package:xorder_pos/domain/models/tender_method.dart';
+import 'package:shared_module/domain/models/tender_method.dart';
 
 /// A representative bundle, shaped exactly as the agreed POS-BE-023 contract
 /// serialises it. If the backend changes a key, this fixture is where the

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/content_languages.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/content_languages.dart';
 import 'content_language_ui.dart';
-import 'package:xorder_pos/domain/models/pos_unit.dart';
-import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnabled;
+import 'package:shared_module/domain/models/pos_unit.dart';
+import 'package:shared_module/domain/services/eta_filing.dart' show etaFilingEnabled;
 
 /// Adding or editing one unit.
 ///

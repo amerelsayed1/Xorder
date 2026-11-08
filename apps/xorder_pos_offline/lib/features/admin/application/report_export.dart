@@ -15,13 +15,13 @@ library;
 
 import 'dart:typed_data';
 
-import 'package:xorder_pos/core/export/workbook.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart' show businessDayWire;
-import 'package:xorder_pos/domain/models/home_sales.dart' show deltaBp;
-import 'package:xorder_pos/domain/models/profit_report.dart';
-import 'package:xorder_pos/domain/models/sales_report.dart';
+import 'package:shared_module/core/export/workbook.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/domain/models/branch_sales.dart' show businessDayWire;
+import 'package:shared_module/domain/models/home_sales.dart' show deltaBp;
+import 'package:shared_module/domain/models/profit_report.dart';
+import 'package:shared_module/domain/models/sales_report.dart';
 
 /// `report-2026-09-01-2026-09-10.xlsx`, or one date for one day — and
 /// `report-items-…` for a breakdown's own file, so a folder of them says which

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
 
 /// What a CLOUD till shows where an offline till shows its back office.
 ///

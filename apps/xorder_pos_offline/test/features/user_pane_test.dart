@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/data/fakes/fake_repositories.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/data/fakes/fake_repositories.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_user_pane.dart';
 
 import 'package:xorder_pos_test_support/fonts.dart';

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/tokens.dart';
 
 /// The bundled faces, in place of the test font, for a test that draws the
 /// window's bar or the back office — or claims anything else fits.
@@ -38,7 +38,7 @@ Future<void> loadPosFonts() async {
 
 /// A bundled font file, from wherever this test run keeps it.
 ///
-/// Run from `packages/xorder_pos` the fonts are the package's own assets, at
+/// Run from `packages/shared_module` the fonts are the package's own assets, at
 /// the bare path. Run from an app (`apps/xorder_pos_*`), whose tests also use
 /// this helper, the same files are bundled under the dependency prefix Flutter
 /// gives a package's assets. Try the bare path first and fall back.
@@ -46,6 +46,6 @@ Future<ByteData> _font(String path) async {
   try {
     return await rootBundle.load(path);
   } on FlutterError {
-    return rootBundle.load('packages/xorder_pos/$path');
+    return rootBundle.load('packages/shared_module/$path');
   }
 }

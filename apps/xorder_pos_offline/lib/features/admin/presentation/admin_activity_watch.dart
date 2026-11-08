@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
 
 /// Locks Admin Mode when nobody has touched it for the configured time.
 ///

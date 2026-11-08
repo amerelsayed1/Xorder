@@ -1,5 +1,5 @@
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/pos_main.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/pos_main.dart';
 
 import 'wiring.dart';
 

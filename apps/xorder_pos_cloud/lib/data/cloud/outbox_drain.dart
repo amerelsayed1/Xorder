@@ -1,12 +1,12 @@
 import 'package:uuid/uuid.dart';
 import 'package:postgres/postgres.dart';
 
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/cloud/cloud_api.dart';
-import 'package:xorder_pos/domain/models/sync_outcome.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
+import 'package:shared_module/domain/models/sync_outcome.dart';
 
-export 'package:xorder_pos/domain/models/sync_outcome.dart' show DrainReport;
+export 'package:shared_module/domain/models/sync_outcome.dart' show DrainReport;
 
 /// How the drain reacts to a POS-BE-019 code.
 enum DrainAction {

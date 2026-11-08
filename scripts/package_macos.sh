@@ -41,7 +41,7 @@ set -euo pipefail
 #
 #   ./scripts/package_macos.sh cloud
 #
-# Each is a workspace member under apps/; the shared code is packages/xorder_pos
+# Each is a workspace member under apps/; the shared code is packages/shared_module
 # and the disk image still lands in the repository's dist/.
 FLAVOR="${1:-offline}"
 case "$FLAVOR" in

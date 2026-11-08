@@ -1,5 +1,5 @@
-import 'package:xorder_pos/domain/models/business_day.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:shared_module/domain/models/business_day.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
 
 BusinessDay testDay(int id, DateTime date, {DateTime? closedAt}) => BusinessDay(
   id: id,

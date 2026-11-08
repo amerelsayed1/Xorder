@@ -1,21 +1,21 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/labels.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/domain/models/refund.dart';
-import 'package:xorder_pos/core/money/quantity.dart';
-import 'package:xorder_pos/domain/models/finance_report.dart';
-import 'package:xorder_pos/domain/models/held_sync.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/purchase_order.dart';
-import 'package:xorder_pos/domain/models/sales_report.dart';
-import 'package:xorder_pos/domain/models/shift.dart' show ShiftStatus;
-import 'package:xorder_pos/domain/models/supplier_invoice.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/app/labels.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/domain/models/refund.dart';
+import 'package:shared_module/core/money/quantity.dart';
+import 'package:shared_module/domain/models/finance_report.dart';
+import 'package:shared_module/domain/models/held_sync.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/purchase_order.dart';
+import 'package:shared_module/domain/models/sales_report.dart';
+import 'package:shared_module/domain/models/shift.dart' show ShiftStatus;
+import 'package:shared_module/domain/models/supplier_invoice.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos_offline/features/admin/application/reports_view.dart';
-import 'package:xorder_pos/features/admin_mode/users_overview.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/features/admin_mode/users_overview.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_finance_panes.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_reports_pane.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/shift_history_bits.dart';
@@ -301,7 +301,7 @@ void main() {
     // for the same reason: a list nobody re-reads is the failure mode this file
     // exists to catch.
     final source = File(
-      '${Directory.current.path}/../../packages/xorder_pos/lib/domain/repositories/admin_repositories.dart',
+      '${Directory.current.path}/../../packages/shared_module/lib/domain/repositories/admin_repositories.dart',
     ).readAsStringSync();
 
     final declared = RegExp(r"static const \w+ = '([a-z_]+\.[a-z_]+)';")

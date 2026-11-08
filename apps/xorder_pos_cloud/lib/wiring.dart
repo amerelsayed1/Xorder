@@ -1,7 +1,7 @@
 /// "XOrder POS - Cloud": what this app binds over the shared till
 /// (pos-split-apps, stage 3).
 ///
-/// The shared package (`packages/xorder_pos`) leaves four things to the app
+/// The shared package (`packages/shared_module`) leaves four things to the app
 /// that runs cloud mode, each behind a provider whose shared default is "no
 /// platform": the sync loop, provisioning against the hosted platform,
 /// seeding from a bootstrap bundle, and the branch view's platform source.
@@ -16,20 +16,20 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:xorder_pos/app/bootstrap_seeding.dart';
-import 'package:xorder_pos/app/branch_sales_providers.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/app/sales_sync.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/features/licensing/data/file_license_store.dart';
-import 'package:xorder_pos/features/licensing/data/licence_service.dart';
-import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
-import 'package:xorder_pos/domain/models/branch_sales_source.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/features/admin_mode/back_office_contract.dart';
-import 'package:xorder_pos/features/licensing/domain/online_verdict.dart';
-import 'package:xorder_pos/features/setup/application/setup_controller.dart';
+import 'package:shared_module/app/bootstrap_seeding.dart';
+import 'package:shared_module/app/branch_sales_providers.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/app/sales_sync.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/features/licensing/data/file_license_store.dart';
+import 'package:shared_module/features/licensing/data/licence_service.dart';
+import 'package:shared_module/data/unconfigured/unconfigured_repositories.dart';
+import 'package:shared_module/domain/models/branch_sales_source.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
+import 'package:shared_module/features/admin_mode/back_office_contract.dart';
+import 'package:shared_module/features/licensing/domain/online_verdict.dart';
+import 'package:shared_module/features/setup/application/setup_controller.dart';
 
 import 'data/cloud/bootstrap_bundle.dart';
 import 'data/cloud/bootstrap_seeder.dart';

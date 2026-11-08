@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/services/eta_filing.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/services/eta_filing.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_screen.dart';
 
 /// E-receipts, switched off.

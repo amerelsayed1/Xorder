@@ -3,22 +3,22 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/data/cloud/cloud_api.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:xorder_pos_cloud/data/cloud/outbox_drain.dart';
-import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart'
+import 'package:shared_module/data/postgres/local_bootstrap.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
-import 'package:xorder_pos/data/postgres/postgres_refunds_repository.dart';
-import 'package:xorder_pos/domain/models/order_record.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/refund.dart';
-import 'package:xorder_pos/domain/models/ticket.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/domain/services/refund_engine.dart';
+import 'package:shared_module/data/postgres/postgres_refunds_repository.dart';
+import 'package:shared_module/domain/models/order_record.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/refund.dart';
+import 'package:shared_module/domain/models/ticket.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
+import 'package:shared_module/domain/services/refund_engine.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 

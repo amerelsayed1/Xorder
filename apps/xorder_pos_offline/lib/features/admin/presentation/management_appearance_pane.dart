@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/content_languages.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/content_languages.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 import 'admin_pane_bits.dart';
 
 /// Which half of this terminal's appearance a pane shows.

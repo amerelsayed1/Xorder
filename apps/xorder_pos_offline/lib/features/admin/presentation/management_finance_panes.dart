@@ -2,22 +2,22 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/finance_providers.dart';
-import 'package:xorder_pos/app/providers.dart' show businessDayProvider;
-import 'package:xorder_pos/app/reports_providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/mono_amount.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart';
-import 'package:xorder_pos/domain/models/business_day.dart';
-import 'package:xorder_pos/domain/models/finance_report.dart';
-import 'package:xorder_pos/domain/models/profit_and_loss.dart';
-import 'package:xorder_pos/domain/models/sales_report.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/app/finance_providers.dart';
+import 'package:shared_module/app/providers.dart' show businessDayProvider;
+import 'package:shared_module/app/reports_providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/mono_amount.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/branch_sales.dart';
+import 'package:shared_module/domain/models/business_day.dart';
+import 'package:shared_module/domain/models/finance_report.dart';
+import 'package:shared_module/domain/models/profit_and_loss.dart';
+import 'package:shared_module/domain/models/sales_report.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 
 /// Finance (BO-9, BO-10; plan 19 §2.4): money that moved, read-only, over
 /// ledgers that already exist.

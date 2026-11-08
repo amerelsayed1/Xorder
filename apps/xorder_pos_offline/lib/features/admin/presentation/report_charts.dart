@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
-import 'package:xorder_pos/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/tokens.dart';
 
 /// The Reports tab's three charts (plan 19 §2.3), drawn rather than imported.
 ///

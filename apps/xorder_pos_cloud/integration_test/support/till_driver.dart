@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/pos_main.dart' as app;
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/pos_main.dart' as app;
 import 'package:xorder_pos_cloud/wiring.dart';
 
 import 'e2e_app_files.dart';

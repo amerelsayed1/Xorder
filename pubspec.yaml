@@ -1,7 +1,7 @@
 # The xorder-pos workspace (Dart pub workspace). No code lives here: the
 # packages do. One lockfile, this folder's pubspec.lock, resolves them all.
 #
-#   packages/xorder_pos              the shared till: money rules, screens, the
+#   packages/shared_module              the shared till: money rules, screens, the
 #                                    branch database, the wiring
 #                                    (docs/features/pos-split-apps)
 #   packages/xorder_pos_test_support fakes, fonts and the PostgreSQL fixture
@@ -20,7 +20,7 @@ environment:
   sdk: ^3.13.0
 
 workspace:
-  - packages/xorder_pos
+  - packages/shared_module
   - packages/xorder_pos_test_support
   - apps/xorder_pos_offline
   - apps/xorder_pos_cloud

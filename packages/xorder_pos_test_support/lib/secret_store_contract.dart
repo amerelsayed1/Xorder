@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/data/config/secret_store.dart';
+import 'package:shared_module/data/config/secret_store.dart';
 
 /// What every [SecretStore] must do, run against each implementation.
 ///

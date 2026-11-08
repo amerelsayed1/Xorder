@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/security/attempt_limiter.dart';
-import 'package:xorder_pos/core/security/pin_hash.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/security/attempt_limiter.dart';
+import 'package:shared_module/core/security/pin_hash.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 
 /// The door to Admin Mode: a username and a password.
 ///
@@ -339,6 +339,8 @@ class _AdminSignInViewState extends ConsumerState<AdminSignInView> {
                   child: Center(
                     child: Image.asset(
                       'assets/icons/xorder_logo_official.png',
+                      // Declared once, by the shared package (see its pubspec).
+                      package: 'shared_module',
                       key: const Key('admin-sign-in-logo'),
                       width: 160,
                       fit: BoxFit.contain,

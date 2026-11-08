@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/models/order_type_config.dart';
-import 'package:xorder_pos/domain/models/ticket.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/models/order_type_config.dart';
+import 'package:shared_module/domain/models/ticket.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/order_type_dialog.dart';
 
 /// What a kind of order requires, on screen (§31).

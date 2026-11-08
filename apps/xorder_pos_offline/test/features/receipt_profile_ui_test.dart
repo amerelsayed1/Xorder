@@ -2,21 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/receipt_profile.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/models/ticket.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/receipt_profile.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/models/ticket.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/admin_pane_bits.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_receipt_pane.dart';
-import 'package:xorder_pos/features/receipt/receipt_data.dart';
-import 'package:xorder_pos/features/receipt/receipt_paper.dart';
-import 'package:xorder_pos/features/receipt/receipt_qr.dart';
+import 'package:shared_module/features/receipt/receipt_data.dart';
+import 'package:shared_module/features/receipt/receipt_paper.dart';
+import 'package:shared_module/features/receipt/receipt_qr.dart';
 
 /// Who the receipt says sold the food, on screen.
 ///

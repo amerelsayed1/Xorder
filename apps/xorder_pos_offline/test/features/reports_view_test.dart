@@ -1,9 +1,9 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart';
-import 'package:xorder_pos/domain/models/home_sales.dart' show deltaBp;
-import 'package:xorder_pos/domain/models/sales_report.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/domain/models/branch_sales.dart';
+import 'package:shared_module/domain/models/home_sales.dart' show deltaBp;
+import 'package:shared_module/domain/models/sales_report.dart';
 import 'package:xorder_pos_offline/features/admin/application/reports_view.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/report_charts.dart';
 

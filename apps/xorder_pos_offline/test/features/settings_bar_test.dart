@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/app.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/app/router.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
+import 'package:shared_module/app/app.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/app/router.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/tokens.dart';
 
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_screen.dart';
-import 'package:xorder_pos/features/settings/printer_settings_dialog.dart';
+import 'package:shared_module/features/settings/printer_settings_dialog.dart';
 
 import '../support/offline_harness.dart';
 import 'package:xorder_pos_test_support/fonts.dart';

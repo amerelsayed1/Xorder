@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart';
-import 'package:xorder_pos/domain/models/business_day.dart';
-import 'package:xorder_pos/domain/models/home_sales.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/domain/models/branch_sales.dart';
+import 'package:shared_module/domain/models/business_day.dart';
+import 'package:shared_module/domain/models/home_sales.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_home_pane.dart';
 
 Money _egp(int minor) => Money(minor, currency: 'EGP', exponent: 2);

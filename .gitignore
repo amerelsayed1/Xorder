@@ -35,8 +35,9 @@ migrate_working_dir/
 # The workspace members build and cover inside their own folders.
 /packages/*/build/
 /apps/*/build/
-# Font files that `flutter test` mirrors into an app whose pubspec names them
-# by a `../` path. Artefacts, never sources.
+# Where `flutter test` mirrored font files while an app declared them by a
+# `../` path (stage 3). The apps declare no fonts now; kept so a stray copy
+# can never be committed.
 /apps/*/packages/
 /packages/*/coverage/
 

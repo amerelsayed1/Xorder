@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:shared_module/core/config/deployment.dart';
 import 'package:xorder_pos_offline/wiring.dart';
 import 'package:xorder_pos_test_support/fakes.dart';
 

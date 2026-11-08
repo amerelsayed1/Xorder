@@ -2,17 +2,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/mono_amount.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/data/import/spreadsheet_reader.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/domain/services/menu_import.dart';
-import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/mono_amount.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/data/import/spreadsheet_reader.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/domain/services/menu_import.dart';
+import 'package:shared_module/features/admin_mode/admin_messages.dart';
 
 /// A spreadsheet the operator chose, already read into rows.
 class MenuFile {

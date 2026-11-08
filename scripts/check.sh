@@ -17,11 +17,11 @@
 # ever matches THIS checkout's test names. KEEP_TEST_DBS=1 skips that, to look at
 # what a failing suite left.
 set -euo pipefail
-# The till is the workspace member packages/xorder_pos. `flutter pub get` there
+# The till is the workspace member packages/shared_module. `flutter pub get` there
 # resolves the whole workspace (the lockfile is at the root), and the test
 # database names are tagged from this folder, as tool/drop_test_databases.dart
 # expects.
-cd "$(dirname "$0")/../packages/xorder_pos"
+cd "$(dirname "$0")/../packages/shared_module"
 
 export POS_PG_HOST="${POS_PG_HOST:-127.0.0.1}"
 export POS_PG_PORT="${POS_PG_PORT:-5432}"

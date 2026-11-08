@@ -21,7 +21,7 @@ name: Windows installer
 on:
   workflow_dispatch:
 
-# The shared code is packages/xorder_pos; the app built here is apps/xorder_pos_offline
+# The shared code is packages/shared_module; the app built here is apps/xorder_pos_offline
 # (pos-split-apps stage 2: one app per mode; stage 5 builds both as a matrix).
 # Its own build output stays in that folder; what the installer gathers
 # (PostgreSQL, tools, the runtime) goes to build/installer at the root.
@@ -62,7 +62,7 @@ jobs:
       - name: Version from pubspec
         id: version
         run: |
-          $v = (Select-String -Path packages/xorder_pos/pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $v = (Select-String -Path packages/shared_module/pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           "value=$v" >> $env:GITHUB_OUTPUT
 
       - name: The tag is the pubspec version
@@ -88,15 +88,15 @@ jobs:
           # `dart compile exe` refuses a package graph with build hooks
           # (objective_c, via file_picker); `dart build cli` is its replacement.
           New-Item -ItemType Directory -Force build/installer/tools | Out-Null
-          Push-Location packages/xorder_pos
+          Push-Location packages/shared_module
           dart build cli --target bin/pos_migrate.dart --output build/pos_migrate
           if ($LASTEXITCODE -ne 0) { throw "dart build cli exited with $LASTEXITCODE" }
           Pop-Location
           # The installer ships the executable alone. A native library beside it
           # would be left behind, so a new one has to be added to the .iss first.
-          $libs = Get-ChildItem packages/xorder_pos/build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
+          $libs = Get-ChildItem packages/shared_module/build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
           if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
-          Copy-Item packages/xorder_pos/build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
+          Copy-Item packages/shared_module/build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
 
       # Keyed on the pinned hash, and the hash is still checked after a restore,
       # so a cached archive is held to the same bar as a fresh download.
@@ -137,7 +137,7 @@ jobs:
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           $args = @(
             "/DAppVersion=${{ steps.version.outputs.value }}",
-            '/DAppDir=..\packages\xorder_pos\build\windows\x64\runner\Release',
+            '/DAppDir=..\packages\shared_module\build\windows\x64\runner\Release',
             '/DPgDir=..\build\installer\pgsql',
             '/DToolsDir=..\build\installer\tools'
           )
@@ -175,7 +175,7 @@ jobs:
 
           function Check([string] $when) {
             if ((Get-Service XOrderPOS-PostgreSQL).Status -ne 'Running') { throw "${when}: the database service is not running" }
-            if (-not (Test-Path (Join-Path $app 'xorder_pos.exe'))) { throw "${when}: the app is not installed" }
+            if (-not (Test-Path (Join-Path $app 'xorder_pos_offline.exe'))) { throw "${when}: the app is not installed" }
             $script:creds = Get-Content (Join-Path $root 'install-credentials.json') -Raw | ConvertFrom-Json
             $env:POS_PG_PASSWORD = $creds.admin.password
             $status = & (Join-Path $app 'tools\pos_migrate.exe') --host 127.0.0.1 --port $creds.port `

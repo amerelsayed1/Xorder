@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:postgres/postgres.dart';
 
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/domain/models/business_logo.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/domain/models/business_logo.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
 
 /// Fetches one URL and returns its bytes, or null for anything but a clean 200.
 typedef LogoFetch = Future<Uint8List?> Function(Uri url);

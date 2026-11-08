@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:postgres/postgres.dart';
 
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/tender_method.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/domain/models/customer.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/tender_method.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/domain/models/customer.dart';
 import 'bootstrap_bundle.dart';
 
 /// What a seed attempt did, as data the wizard and the sync loop can act on.

@@ -13,10 +13,10 @@
 /// price on a till is worse than a missing product.
 library;
 
-import 'package:xorder_pos/domain/models/receipt_profile.dart';
-import 'package:xorder_pos/domain/models/financial_account.dart';
-import 'package:xorder_pos/domain/models/tender_method.dart';
-import 'package:xorder_pos/domain/models/content_languages.dart';
+import 'package:shared_module/domain/models/receipt_profile.dart';
+import 'package:shared_module/domain/models/financial_account.dart';
+import 'package:shared_module/domain/models/tender_method.dart';
+import 'package:shared_module/domain/models/content_languages.dart';
 
 /// One parsed key, or null — never an exception.
 int? _asInt(Object? value) => switch (value) {

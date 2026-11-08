@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/models/eta_submission.dart';
-import 'package:xorder_pos/domain/models/receipt_profile.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/domain/services/eta_filing.dart';
-import 'package:xorder_pos/domain/services/eta_serialization.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/models/eta_submission.dart';
+import 'package:shared_module/domain/models/receipt_profile.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
+import 'package:shared_module/domain/services/eta_filing.dart';
+import 'package:shared_module/domain/services/eta_serialization.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_eta_pane.dart';
 
 /// What the tax authority has not accepted yet, on screen.

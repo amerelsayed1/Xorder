@@ -3,12 +3,12 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/data/fakes/fake_repositories.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/domain/services/syncing_orders_repository.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/data/fakes/fake_repositories.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/domain/services/syncing_orders_repository.dart';
 import 'package:xorder_pos_cloud/wiring.dart';
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 

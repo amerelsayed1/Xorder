@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:xorder_pos/app/shift_history_providers.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/mono_amount.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/services/authorization.dart';
-import 'package:xorder_pos/features/shift/presentation/shift_dialogs.dart';
+import 'package:shared_module/app/shift_history_providers.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/mono_amount.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/services/authorization.dart';
+import 'package:shared_module/features/shift/presentation/shift_dialogs.dart';
 import 'shift_history_bits.dart';
 
 /// People › Shifts (الأفراد › الورديات): every shift at the branch over the

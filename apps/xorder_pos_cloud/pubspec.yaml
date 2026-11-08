@@ -1,6 +1,6 @@
 # "XOrder POS - Cloud" (pos-split-apps, D4). Sales sync to xorder.io, and the
 # dashboard is the back office (CB-07). The code is the shared member
-# packages/xorder_pos; this package is the entry point, the platform folders
+# packages/shared_module; this package is the entry point, the platform folders
 # and, from stage 3, the cloud-only code (lib/data/cloud).
 name: xorder_pos_cloud
 description: "XOrder POS - Cloud: the desktop till that syncs its sales to the XOrder platform."
@@ -24,7 +24,7 @@ dependencies:
   file_picker: ^12.2.0
   postgres: ^3.5.12
   uuid: ^4.6.0
-  xorder_pos: any
+  shared_module: any
 
 dev_dependencies:
   flutter_test:
@@ -40,29 +40,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # The mark, a copy of the shared package's: shared code asks for it as
-  # `Image.asset('assets/icons/…')`, and Flutter keys an asset declared with a
-  # `../` path by that path, not by the bare one, so the file has to be here.
-  # The fonts are different: a `../` path is fine because the shared code asks
-  # by family name, which is what the FontManifest records.
-  assets:
-    - assets/icons/xorder_logo_official.png
-  fonts:
-    - family: IBM Plex Sans Arabic
-      fonts:
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Regular.ttf
-          weight: 400
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Medium.ttf
-          weight: 500
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-SemiBold.ttf
-          weight: 600
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexSansArabic-Bold.ttf
-          weight: 700
-    - family: IBM Plex Mono
-      fonts:
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-Regular.ttf
-          weight: 400
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-Medium.ttf
-          weight: 500
-        - asset: ../../packages/xorder_pos/assets/fonts/IBMPlexMono-SemiBold.ttf
-          weight: 600
+  # No assets or fonts here: the mark and the IBM Plex faces are declared once,
+  # by packages/shared_module, and reach this app as that package's assets
+  # (`package: 'shared_module'`, `packages/shared_module/IBM Plex …`).
+  # Declaring them again bundled every file twice.

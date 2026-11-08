@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:shared_module/core/config/deployment.dart';
 import 'package:xorder_pos_cloud/features/cloud_back_office_screen.dart';
 
 /// CB-07 — a cloud till has no back office of its own.

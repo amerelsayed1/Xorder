@@ -1,7 +1,7 @@
-import 'package:xorder_pos/domain/models/customer.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/domain/services/authorization.dart';
+import 'package:shared_module/domain/models/customer.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
+import 'package:shared_module/domain/services/authorization.dart';
 
 /// A customer directory in memory, for widget tests.
 ///

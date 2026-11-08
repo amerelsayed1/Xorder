@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/config/admin_mode_settings.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/config/lan_tls.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/core/ui/widgets/certificate_fingerprint.dart';
-import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart'
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/config/admin_mode_settings.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/config/lan_tls.dart';
+import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/core/ui/widgets/certificate_fingerprint.dart';
+import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart'
     show AuditAction;
-import 'package:xorder_pos/domain/services/authorization.dart';
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
+import 'package:shared_module/domain/services/authorization.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
 import 'admin_pane_bits.dart';
-import 'package:xorder_pos/features/admin_mode/admin_shortcut.dart';
+import 'package:shared_module/features/admin_mode/admin_shortcut.dart';
 
 /// This till's own setup, and running it again.
 ///

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/ui/theme.dart';
-import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/ui/theme.dart';
+import 'package:shared_module/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos_offline/features/admin/presentation/management_screen.dart';
 
 import 'package:xorder_pos_test_support/fakes.dart';

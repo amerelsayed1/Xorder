@@ -3,10 +3,10 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/money/money.dart';
+import 'package:shared_module/core/money/money.dart';
 import 'package:xorder_pos_cloud/data/cloud/branch_sales_api.dart';
-import 'package:xorder_pos/domain/models/branch_sales_source.dart';
-import 'package:xorder_pos/domain/models/tender_method.dart';
+import 'package:shared_module/domain/models/branch_sales_source.dart';
+import 'package:shared_module/domain/models/tender_method.dart';
 
 /// POS-BE-029's client and the per-till branch view it feeds (§3a, C4).
 ///

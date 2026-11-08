@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:postgres/postgres.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
 
 /// Shared setup for the suites that need a real PostgreSQL.
 ///

@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/config/terminal_config.dart';
-import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
-import 'package:xorder_pos/data/config/secret_store.dart';
-import 'package:xorder_pos/data/config/setup_progress_store.dart';
-import 'package:xorder_pos/data/config/terminal_config_store.dart';
-import 'package:xorder_pos/data/fakes/fake_repositories.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/features/admin_mode/admin_session.dart';
-import 'package:xorder_pos/features/licensing/data/licence_service.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/config/terminal_config.dart';
+import 'package:shared_module/data/config/pos_db_secret_store.dart';
+import 'package:shared_module/data/config/secret_store.dart';
+import 'package:shared_module/data/config/setup_progress_store.dart';
+import 'package:shared_module/data/config/terminal_config_store.dart';
+import 'package:shared_module/data/fakes/fake_repositories.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/features/admin_mode/admin_session.dart';
+import 'package:shared_module/features/licensing/data/licence_service.dart';
 
 /// The `Fake…` repositories, bound explicitly.
 ///

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:xorder_pos/core/ui/tokens.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/features/settings/about_dialog.dart';
+import 'package:shared_module/core/ui/tokens.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/features/settings/about_dialog.dart';
 
 /// Settings › About XOrder: the till's About dialog, as a pane.
 ///

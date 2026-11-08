@@ -2,17 +2,17 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:shared_module/core/config/deployment.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_bundle.dart';
 import 'package:xorder_pos_cloud/data/cloud/bootstrap_seeder.dart';
-import 'package:xorder_pos/data/postgres/migrations.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/postgres/postgres_financial_accounts_admin_repository.dart';
-import 'package:xorder_pos/data/postgres/postgres_financial_accounts_repository.dart';
-import 'package:xorder_pos/domain/models/financial_account.dart';
-import 'package:xorder_pos/domain/models/permissions.dart';
-import 'package:xorder_pos/domain/models/shift.dart';
-import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/postgres/postgres_financial_accounts_admin_repository.dart';
+import 'package:shared_module/data/postgres/postgres_financial_accounts_repository.dart';
+import 'package:shared_module/domain/models/financial_account.dart';
+import 'package:shared_module/domain/models/permissions.dart';
+import 'package:shared_module/domain/models/shift.dart';
+import 'package:shared_module/domain/repositories/admin_repositories.dart';
 
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 

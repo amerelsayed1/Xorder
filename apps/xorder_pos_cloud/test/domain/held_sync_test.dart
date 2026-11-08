@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos_cloud/data/cloud/outbox_drain.dart';
-import 'package:xorder_pos/domain/models/held_sync.dart';
+import 'package:shared_module/domain/models/held_sync.dart';
 
 /// The held-record vocabulary agrees with the drain that writes it.
 ///

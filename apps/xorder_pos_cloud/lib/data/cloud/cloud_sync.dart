@@ -1,18 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/config/terminal_profile.dart';
-import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/core/config/terminal_profile.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
 import 'bootstrap_bundle.dart';
 import 'bootstrap_seeder.dart';
-import 'package:xorder_pos/data/cloud/cloud_api.dart';
-import 'package:xorder_pos/app/sales_sync.dart';
-import 'package:xorder_pos/core/config/app_version.dart';
-import 'package:xorder_pos/domain/models/sync_outcome.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
+import 'package:shared_module/app/sales_sync.dart';
+import 'package:shared_module/core/config/app_version.dart';
+import 'package:shared_module/domain/models/sync_outcome.dart';
 
-export 'package:xorder_pos/domain/models/sync_outcome.dart' show SyncOutcome, DrainReport;
-import 'package:xorder_pos/data/cloud/device_token_vault.dart';
+export 'package:shared_module/domain/models/sync_outcome.dart' show SyncOutcome, DrainReport;
+import 'package:shared_module/data/cloud/device_token_vault.dart';
 import 'logo_sync.dart';
 import 'outbox_drain.dart';
 

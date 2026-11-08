@@ -1,12 +1,12 @@
 import 'package:dio/dio.dart';
 
-import 'package:xorder_pos/core/network/network_log.dart';
+import 'package:shared_module/core/network/network_log.dart';
 
-import 'package:xorder_pos/core/money/money.dart';
-import 'package:xorder_pos/domain/models/branch_sales.dart';
-import 'package:xorder_pos/domain/models/branch_sales_source.dart';
-import 'package:xorder_pos/domain/models/tender_method.dart';
-import 'package:xorder_pos/data/cloud/cloud_api.dart';
+import 'package:shared_module/core/money/money.dart';
+import 'package:shared_module/domain/models/branch_sales.dart';
+import 'package:shared_module/domain/models/branch_sales_source.dart';
+import 'package:shared_module/domain/models/tender_method.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
 
 /// The client half of **POS-BE-029** — the branch view for a cloud till whose
 /// database is its own (`docs/coordination/POS_TO_BACKEND.md`).

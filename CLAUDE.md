@@ -17,7 +17,7 @@ the one `pubspec.lock`. **One codebase, two apps, one mode each** (plan: the wor
 
 | Member | What |
 |---|---|
-| `packages/xorder_pos/` | The shared till (package name `xorder_pos`, unchanged): every `lib/`, `test/`, `bin/`, `tool/` path below is inside it. No app, no mode of its own |
+| `packages/shared_module/` | The shared till (package `shared_module`; the database it creates is still called `xorder_pos`): every `lib/`, `test/`, `bin/`, `tool/` path below is inside it. No app, no mode of its own |
 | `apps/xorder_pos_offline/` | **XOrder POS - Offline**: `main.dart` + `wiring.dart`, `windows/`, `macos/`, and the back office (`lib/features/admin/`, 60 panes) with its tests |
 | `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the dashboard signpost, `integration_test/` |
 | `packages/xorder_pos_test_support/` | Fakes, fonts, the PostgreSQL fixture — a dev dependency of every member's tests |
@@ -57,10 +57,10 @@ fails if the shared package imports either app or the apps import each other.
 ```bash
 flutter pub get                                   # anywhere in the workspace; resolves it all
 cd apps/xorder_pos_offline && flutter run -d macos  # or apps/xorder_pos_cloud; or -d windows
-cd packages/xorder_pos && flutter test            # the shared suites; each app has its own test/
+cd packages/shared_module && flutter test            # the shared suites; each app has its own test/
 flutter analyze                                   # in any member; flutter_lints; keep clean
 scripts/check.sh                                  # THE verification: every member, PostgreSQL included (not run in CI)
-cd packages/xorder_pos && dart bin/pos_migrate.dart  # prepare a branch PostgreSQL before first run
+cd packages/shared_module && dart bin/pos_migrate.dart  # prepare a branch PostgreSQL before first run
 ```
 
 ## Load-bearing facts (trust THIS over older prose in README/docs)
@@ -109,7 +109,7 @@ cd packages/xorder_pos && dart bin/pos_migrate.dart  # prepare a branch PostgreS
   `POS_PG_HOST` is unset (declared in `dart_test.yaml`).
 - `apps/xorder_pos_cloud/integration_test/` runs the assembled cloud app through the UI
   against a **real** PostgreSQL — point it at one to exercise the datastore.
-- Every member has suites: `packages/xorder_pos/test` (shared), `apps/*/test` (the code each
+- Every member has suites: `packages/shared_module/test` (shared), `apps/*/test` (the code each
   app owns). Test support (`fakeRepositoryOverrides`, `loadPosFonts`, `PgFixture`) is
   `package:xorder_pos_test_support/…`. All PostgreSQL suites share one database per
   checkout, named from the workspace root.

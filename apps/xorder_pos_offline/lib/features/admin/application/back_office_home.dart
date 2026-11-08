@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xorder_pos/app/branch_sales_providers.dart';
-import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/data/postgres/postgres_branch_sales_repository.dart';
-import 'package:xorder_pos/domain/models/home_sales.dart';
-import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:shared_module/app/branch_sales_providers.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/data/postgres/postgres_branch_sales_repository.dart';
+import 'package:shared_module/domain/models/home_sales.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
 
 /// Home's figures (BO-4): the open day — or the last closed one — and the day
 /// before it, cut at the same time since opening.
