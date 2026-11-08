@@ -1,7 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/pos_settings.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads and writes `pos_settings`.
 ///
@@ -11,14 +11,14 @@ import 'pos_database.dart';
 /// on every screen.
 class PostgresSettingsRepository implements SettingsRepository {
   const PostgresSettingsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
     required this.terminalId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

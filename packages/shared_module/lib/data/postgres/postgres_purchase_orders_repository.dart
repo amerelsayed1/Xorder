@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -8,21 +8,20 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/purchase_order.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 
 /// Reads and writes purchase orders.
 ///
 /// Administrative only, like the suppliers they name.
 class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
   const PostgresPurchaseOrdersRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.adminAvailable,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
   final int businessId;

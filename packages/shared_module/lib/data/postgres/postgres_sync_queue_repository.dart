@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/held_sync.dart';
@@ -8,7 +8,6 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
-import 'pos_database.dart';
 
 /// Held sync records, read from both outbox tables and released into them.
 ///
@@ -24,14 +23,14 @@ import 'pos_database.dart';
 /// count and the unsent count are two halves of the same queue.
 class PostgresSyncQueueRepository implements SyncQueueRepository {
   const PostgresSyncQueueRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
     this.terminalId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -21,7 +21,6 @@ import '../../domain/services/menu_import.dart';
 import '../../domain/services/table_batch.dart';
 import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
-import 'pos_database.dart';
 import 'stock_unit_guard.dart';
 
 /// A group as stored, and which side of the library line it is on — which
@@ -53,7 +52,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     this.offline = true,
   });
 
-  final PosDatabase database;
+  final SqlDatabase database;
   final DeploymentConfig config;
   final int businessId;
   final int? branchId;

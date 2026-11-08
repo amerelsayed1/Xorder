@@ -1,7 +1,6 @@
 // The collaborators are private fields with public parameter names: the
 // names belong to the call site, the fields do not belong to the API.
 // ignore_for_file: prefer_initializing_formals
-import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -11,6 +10,7 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/eta_filing.dart';
 import '../../domain/services/eta_receipt.dart';
 import '../postgres/pos_database.dart';
+import '../sql/sql.dart';
 
 /// What one pass of [EtaFiler.reconcile] did.
 class EtaReconcileReport {
@@ -48,7 +48,7 @@ class EtaReconcileReport {
 /// them as its own, so every query here is scoped to [terminalId].
 class EtaFiler implements EtaFilingPort {
   EtaFiler({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.branchId,
     required this.terminalId,
@@ -58,7 +58,7 @@ class EtaFiler implements EtaFilingPort {
        _queue = queue,
        _profile = profile;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int branchId;
 
@@ -451,9 +451,7 @@ class EtaFiler implements EtaFilingPort {
   }
 
   static bool _alreadyFiled(Object error) =>
-      error is PosDbException &&
-      error.raw is ServerException &&
-      (error.raw as ServerException).code == '23505';
+      error is PosDbException && error.sqlState == '23505';
 }
 
 /// Runs [EtaFiler.reconcile] on a schedule, one pass at a time.

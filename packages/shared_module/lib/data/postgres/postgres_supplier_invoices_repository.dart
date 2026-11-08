@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
@@ -13,7 +13,6 @@ import '../../domain/models/supplier_invoice.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
-import 'pos_database.dart';
 import 'postgres_cash_movements_repository.dart' show CashMovementWrite;
 import 'postgres_order_history_repository.dart';
 
@@ -28,14 +27,14 @@ import 'postgres_order_history_repository.dart';
 /// Entirely on the administrator connection. A till does not pay anybody.
 class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
   const PostgresSupplierInvoicesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.adminAvailable,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
   final int businessId;

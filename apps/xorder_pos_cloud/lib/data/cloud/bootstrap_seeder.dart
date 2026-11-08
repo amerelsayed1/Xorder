@@ -1,11 +1,10 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/domain/models/permissions.dart';
 import 'package:shared_module/domain/models/tender_method.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/domain/models/customer.dart';
 import 'bootstrap_bundle.dart';
 
@@ -44,10 +43,10 @@ class SeedReport {
 /// never deleted. Catalog rows have no such history: order lines snapshot the
 /// name and price at sale time precisely so the catalog can be replaced whole.
 class BootstrapSeeder {
-  const BootstrapSeeder({required PosDatabase database, required this.config})
+  const BootstrapSeeder({required SqlDatabase database, required this.config})
     : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
 
   Future<SeedReport> seed(BootstrapBundle bundle, {bool force = false}) async {

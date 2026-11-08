@@ -3,7 +3,7 @@ import '../../domain/models/customer.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads and writes `pos_customers` (migration 51, POS-BE-014).
 ///
@@ -16,7 +16,7 @@ import 'pos_database.dart';
 /// match is and only this one is asked to do it over the whole table.
 class PostgresCustomersRepository implements CustomersRepository {
   const PostgresCustomersRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     this.branchId,
@@ -27,7 +27,7 @@ class PostgresCustomersRepository implements CustomersRepository {
   /// Told after a customer is queued — see `PostgresOrdersRepository.onQueued`.
   final void Function()? onQueued;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

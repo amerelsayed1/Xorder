@@ -3,7 +3,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/branch_sales.dart';
 import '../../domain/models/branch_sales_source.dart';
 import '../../domain/models/tender_method.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// The branch view (§3a) where every terminal of the branch writes to this
 /// database — the shared-LAN shape, and any offline install with more than one
@@ -19,7 +19,7 @@ import 'pos_database.dart';
 /// Read-only; every table here is already `SELECT`-granted to the till role.
 class PostgresBranchSalesRepository implements BranchSalesSource {
   const PostgresBranchSalesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -28,7 +28,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
     this.clock = DateTime.now,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

@@ -4,7 +4,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/ticket.dart';
 import 'parked_ticket_codec.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// What one till has put down, on disk.
 ///
@@ -22,13 +22,13 @@ import 'pos_database.dart';
 /// database outage.
 class PostgresParkedTickets {
   const PostgresParkedTickets({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

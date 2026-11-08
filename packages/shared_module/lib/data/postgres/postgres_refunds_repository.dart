@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -9,7 +9,6 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/refund_engine.dart' show RefundQuote;
 import 'open_shift.dart';
-import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
 /// Writes refunds to the branch database.
@@ -33,7 +32,7 @@ import 'postgres_orders_repository.dart' show PosWriteContext;
 /// that same transaction (POS-BE-010).
 class PostgresRefundsRepository implements RefundsRepository {
   const PostgresRefundsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.context,
     this.currency = 'EGP',
@@ -44,7 +43,7 @@ class PostgresRefundsRepository implements RefundsRepository {
   /// Told after a refund is queued — see `PostgresOrdersRepository.onQueued`.
   final void Function()? onQueued;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosWriteContext context;
 

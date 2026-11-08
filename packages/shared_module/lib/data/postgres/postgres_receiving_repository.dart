@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -9,7 +9,6 @@ import '../../domain/models/purchase_order.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/stock_costing.dart';
-import 'pos_database.dart';
 
 /// Booking goods in against a purchase order.
 ///
@@ -22,14 +21,14 @@ import 'pos_database.dart';
 /// business with a back door.
 class PostgresReceivingRepository implements ReceivingRepository {
   const PostgresReceivingRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.adminAvailable,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
   final int businessId;

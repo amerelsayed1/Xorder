@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
@@ -8,7 +8,6 @@ import '../../domain/models/permissions.dart';
 import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
-import 'pos_database.dart';
 import 'postgres_order_history_repository.dart';
 
 /// Shifts on the branch server.
@@ -26,7 +25,7 @@ import 'postgres_order_history_repository.dart';
 /// against another.
 class PostgresShiftRepository implements ShiftRepository {
   const PostgresShiftRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
     required this._businessId,
     required this._branchId,
@@ -38,7 +37,7 @@ class PostgresShiftRepository implements ShiftRepository {
   /// `PostgresOrdersRepository.onQueued`.
   final void Function()? onQueued;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   final int _businessId;
   final int _branchId;

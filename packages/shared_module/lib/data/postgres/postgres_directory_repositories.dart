@@ -8,17 +8,18 @@ import '../../domain/services/permission_resolver.dart';
 import 'pos_database.dart';
 import 'postgres_admin_repositories.dart';
 import 'postgres_tenant.dart';
+import '../sql/sql.dart';
 
 const _uuid = Uuid();
 
 /// The branches a terminal may be assigned to, read from the branch server.
 class PostgresBranchRepository implements BranchRepository {
   PostgresBranchRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   late final _tenant = PosTenantResolver(_db, _config);
 
@@ -53,11 +54,11 @@ class PostgresBranchRepository implements BranchRepository {
 /// is looking at the business's terminals.
 class PostgresProvisioningRepository implements ProvisioningRepository {
   PostgresProvisioningRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
 
   @override
@@ -354,14 +355,14 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
 /// not necessarily the one holding the till. That is POS-BE-024.
 class PostgresSessionRepository implements SessionRepository {
   const PostgresSessionRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
     required this._businessId,
     required this._branchId,
     required this._terminalId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   final int _businessId;
   final int _branchId;

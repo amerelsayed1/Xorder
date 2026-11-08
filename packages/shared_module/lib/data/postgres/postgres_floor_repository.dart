@@ -1,7 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// The branch's floor plan, read from the branch server.
 ///
@@ -17,13 +17,13 @@ import 'pos_database.dart';
 /// nothing above this class moves.
 class PostgresFloorRepository implements TablesRepository {
   const PostgresFloorRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
     required this._businessId,
     required this._branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   final int _businessId;
   final int _branchId;

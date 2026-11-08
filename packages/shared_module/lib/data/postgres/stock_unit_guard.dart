@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/money/quantity.dart';
 import '../../domain/repositories/admin_repositories.dart';

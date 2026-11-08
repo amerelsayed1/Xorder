@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/quantity.dart';
@@ -20,9 +20,9 @@ import 'stock_unit_guard.dart';
 /// cashier's menu; an item that IS on the menu changes only its unit here.
 class PostgresStockItemsRepository implements StockItemsRepository {
   const PostgresStockItemsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
-    required PosDatabase readDatabase,
+    required SqlDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
     required this.businessId,
@@ -30,9 +30,9 @@ class PostgresStockItemsRepository implements StockItemsRepository {
   }) : _db = database,
        _tillDb = readDatabase;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
-  final PosDatabase _tillDb;
+  final SqlDatabase _tillDb;
   final DeploymentConfig readConfig;
   final bool adminAvailable;
   final int businessId;
@@ -195,8 +195,7 @@ class PostgresStockItemsRepository implements StockItemsRepository {
     } on PosDbException catch (error) {
       // The one refusal worth its own sentence: a SKU already in use. Any
       // other failure is a real one and goes on up.
-      if (error.raw is ServerException &&
-          (error.raw as ServerException).code == '23505') {
+      if (error.sqlState == '23505') {
         return AdminResult.refused(
           CatalogInvalid('Another item already has the SKU "${item.sku}".'),
         );

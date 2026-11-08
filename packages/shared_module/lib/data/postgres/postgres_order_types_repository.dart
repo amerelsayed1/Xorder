@@ -2,17 +2,17 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/order_type_config.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads `pos_order_types` (§31).
 class PostgresOrderTypesRepository implements OrderTypesRepository {
   const PostgresOrderTypesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

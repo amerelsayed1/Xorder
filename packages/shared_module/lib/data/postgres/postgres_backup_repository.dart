@@ -2,7 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/backup.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// `pos_backups` — every copy taken of this database, and how it went.
 ///
@@ -14,14 +14,14 @@ import 'pos_database.dart';
 /// migration 37 for why the database refuses the rest as well.
 class PostgresBackupRepository implements BackupRepository {
   const PostgresBackupRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     this.branchId,
     this.terminalId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int? branchId;

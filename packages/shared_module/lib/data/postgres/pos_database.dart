@@ -1,10 +1,11 @@
 import 'dart:developer' show log;
 
-import 'package:postgres/postgres.dart';
+import 'package:postgres/postgres.dart' as pg;
 
 import '../../core/config/deployment.dart';
 import '../../core/config/lan_tls.dart';
 import '../config/pos_db_secret_store.dart';
+import '../sql/sql.dart';
 import 'pos_tls.dart';
 
 /// Why a connection failed, as data rather than a string.
@@ -72,7 +73,7 @@ enum PosDbFailure {
     // By type first: the driver's text for this one is only "Bad server
     // certificate.", and a certificate refused is the case that must never be
     // mistaken for a network fault somebody might "fix" by turning TLS off.
-    if (error is BadCertificateException) return tls;
+    if (error is pg.BadCertificateException) return tls;
     // Then by SQLSTATE, where the server sent one. The text rules below read
     // the MESSAGE, and a message quotes whatever the statement named: a
     // migration that has not run yet fails as `column "password_hash" does
@@ -89,7 +90,7 @@ enum PosDbFailure {
     // "shutting down" or "starting up" is not one that nothing answered —
     // widening that door belongs in its own change, not in a classifier fix.
     // Every unmapped code falls through to the text rules exactly as before.
-    if (error is ServerException) {
+    if (error is pg.ServerException) {
       switch (error.code) {
         case '28P01': // invalid_password
           return auth;
@@ -144,12 +145,12 @@ enum PosDbFailure {
         text.contains('pg_hba')) {
       return auth;
     }
-    // 42501. Named before the generic ServerException below, which would
+    // 42501. Named before the generic pg.ServerException below, which would
     // otherwise report a GRANT problem as "the statement failed".
     if (text.contains('permission denied') || text.contains('42501')) {
       return permissionDenied;
     }
-    if (error is ServerException) return query;
+    if (error is pg.ServerException) return query;
     return unknown;
   }
 }
@@ -160,10 +161,17 @@ enum PosDbFailure {
 /// `lib/features/` ever catches a `postgres` type, which is what keeps the HTTP
 /// swap a one-file change.
 class PosDbException implements Exception {
-  PosDbException(this.failure, this.raw);
+  PosDbException(this.failure, this.raw, {String? sqlState})
+    : sqlState = sqlState ?? (raw is pg.ServerException ? raw.code : null);
 
   final PosDbFailure failure;
   final Object raw;
+
+  /// The SQLSTATE the database answered with, when it sent one —
+  /// `23505` for a unique violation, `42703` for a missing column. Read
+  /// here, engine-neutral, so a repository can ask "was that a duplicate?"
+  /// without knowing which engine it ran on.
+  final String? sqlState;
 
   /// The role a [PosDbFailure.missingRole] was about, when the driver named
   /// one — which Postgres always does, in exactly this shape.
@@ -279,7 +287,7 @@ class MutablePosDbCredentials implements PosDbCredentials {
 /// This class is the only place in the app that knows Postgres exists. Every
 /// caller goes through a repository contract, so replacing these with HTTP
 /// implementations later changes `providers.dart` and nothing else.
-class PosDatabase {
+class PosDatabase implements SqlDatabase {
   PosDatabase({
     required this.credentials,
     LanTlsDecision Function(DeploymentConfig config)? transportFor,
@@ -298,7 +306,7 @@ class PosDatabase {
   static LanTlsDecision _configuredTransport(DeploymentConfig config) =>
       config.lanTls;
 
-  Pool<void>? _pool;
+  pg.Pool<void>? _pool;
   String? _openedFor;
 
   /// The transport settings the open pool was built with, handed again to
@@ -308,13 +316,13 @@ class PosDatabase {
   /// pinned certificate's `SecurityContext` was silently dropped and a
   /// self-signed LAN server was refused. Found by running
   /// `lan_tls_handshake_test` against the real driver.
-  ConnectionSettings? _connectionSettings;
+  pg.ConnectionSettings? _connectionSettings;
 
   /// The pool for [config], opening one if the endpoint changed.
   ///
   /// Keyed on the resolved host so that reconfiguring the terminal in the setup
   /// wizard does not leave it talking to the previous branch server.
-  Future<Pool<void>> pool(DeploymentConfig config) async {
+  Future<pg.Pool<void>> pool(DeploymentConfig config) async {
     final host = hostFor(config);
     if (host == null) {
       throw PosDbException(
@@ -360,9 +368,9 @@ class PosDatabase {
     if (_pool != null && _openedFor == key) return _pool!;
     await close();
 
-    _pool = Pool.withEndpoints(
+    _pool = pg.Pool.withEndpoints(
       [
-        Endpoint(
+        pg.Endpoint(
           host: host,
           port: config.databasePort,
           database: config.databaseName,
@@ -370,7 +378,7 @@ class PosDatabase {
           password: password,
         ),
       ],
-      settings: PoolSettings(
+      settings: pg.PoolSettings(
         maxConnectionCount: 4,
         connectTimeout: const Duration(seconds: 5),
         queryTimeout: const Duration(seconds: 10),
@@ -382,7 +390,7 @@ class PosDatabase {
         securityContext: PosTlsSettings.securityContextFor(tls),
       ),
     );
-    _connectionSettings = ConnectionSettings(
+    _connectionSettings = pg.ConnectionSettings(
       sslMode: PosTlsSettings.sslModeFor(tls),
       securityContext: PosTlsSettings.securityContextFor(tls),
     );
@@ -408,6 +416,7 @@ class PosDatabase {
   ///
   /// Every write goes through here. A till that half-writes an order is worse
   /// than one that refuses it, so there is no non-transactional write path.
+  @override
   Future<T> runTx<T>(
     DeploymentConfig config,
     Future<T> Function(TxSession) action,
@@ -415,7 +424,7 @@ class PosDatabase {
     try {
       final session = await pool(config);
       return await session.withConnection(
-        (c) => c.runTx(action),
+        (c) => c.runTx((tx) => action(_PgTx(tx))),
         settings: _connectionSettings,
       );
     } on PosDbException {
@@ -426,6 +435,7 @@ class PosDatabase {
   }
 
   /// Read-only convenience with the same error translation.
+  @override
   Future<Result> query(
     DeploymentConfig config,
     String sql, {
@@ -433,9 +443,11 @@ class PosDatabase {
   }) async {
     try {
       final session = await pool(config);
-      return await session.withConnection(
-        (c) => c.execute(Sql.named(sql), parameters: parameters),
-        settings: _connectionSettings,
+      return _result(
+        await session.withConnection(
+          (c) => c.execute(pg.Sql.named(sql), parameters: parameters),
+          settings: _connectionSettings,
+        ),
       );
     } on PosDbException {
       rethrow;
@@ -446,6 +458,7 @@ class PosDatabase {
 
   /// Probe the endpoint and report which of the failure modes it hit.
   /// Returns null when the connection is healthy.
+  @override
   Future<PosDbFailure?> probe(DeploymentConfig config) async {
     try {
       await query(config, 'SELECT 1');
@@ -469,6 +482,7 @@ class PosDatabase {
     }
   }
 
+  @override
   Future<void> close() async {
     final existing = _pool;
     _pool = null;
@@ -476,3 +490,26 @@ class PosDatabase {
     if (existing != null) await existing.close();
   }
 }
+
+/// A PostgreSQL transaction behind the seam: a [Sql] goes to the driver as a
+/// named statement, plain text as it is, and the rows come back as the seam's.
+class _PgTx implements TxSession {
+  _PgTx(this._tx);
+
+  final pg.TxSession _tx;
+
+  @override
+  Future<Result> execute(Object query, {Object? parameters}) async => _result(
+    await _tx.execute(
+      query is Sql ? pg.Sql.named(query.text) : query,
+      parameters: parameters,
+    ),
+  );
+
+  @override
+  Future<void> rollback() => _tx.rollback();
+}
+
+Result _result(pg.Result rows) => Result([
+  for (final row in rows) ResultRow(row),
+], affectedRows: rows.affectedRows);

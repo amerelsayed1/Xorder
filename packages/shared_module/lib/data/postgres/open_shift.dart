@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 /// The shift this terminal has open **right now**, read inside the write that
 /// needs it.

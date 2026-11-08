@@ -3,7 +3,7 @@ import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import '../../domain/models/stock_level.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// What each counted item stands at in this branch (`pos_stock_levels`).
 ///
@@ -11,7 +11,7 @@ import 'pos_database.dart';
 /// levels, and this is only ever read from the back office.
 class PostgresStockLevelsRepository implements StockLevelsRepository {
   const PostgresStockLevelsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -19,7 +19,7 @@ class PostgresStockLevelsRepository implements StockLevelsRepository {
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

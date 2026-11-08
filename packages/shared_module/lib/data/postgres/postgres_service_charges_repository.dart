@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/services/authorization.dart';
@@ -7,14 +7,13 @@ import '../../domain/models/service_charge.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 
 /// Reads and writes `pos_service_charges` (§38).
 class PostgresServiceChargesRepository implements ServiceChargesRepository {
   const PostgresServiceChargesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
-    required PosDatabase readDatabase,
+    required SqlDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
     required this.businessId,
@@ -22,11 +21,11 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
   }) : _db = database,
        _tillDb = readDatabase;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
 
   /// Reads on the till's credential: pricing a ticket needs this on every sale.
-  final PosDatabase _tillDb;
+  final SqlDatabase _tillDb;
   final DeploymentConfig readConfig;
 
   final bool adminAvailable;

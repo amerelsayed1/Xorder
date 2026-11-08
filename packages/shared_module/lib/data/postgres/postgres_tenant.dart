@@ -1,5 +1,5 @@
 import '../../core/config/deployment.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// The business a till is working for.
 ///
@@ -51,7 +51,7 @@ class PosTenantMissing implements Exception {
 class PosTenantResolver {
   PosTenantResolver(this._db, this._config);
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   PosTenant? _cached;
 

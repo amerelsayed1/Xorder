@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/config/terminal_profile.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'bootstrap_bundle.dart';
 import 'bootstrap_seeder.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
@@ -15,6 +14,7 @@ export 'package:shared_module/domain/models/sync_outcome.dart' show SyncOutcome,
 import 'package:shared_module/data/cloud/device_token_vault.dart';
 import 'logo_sync.dart';
 import 'outbox_drain.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 /// When the next pass runs.
 ///
@@ -70,7 +70,7 @@ abstract final class SyncSchedule {
 /// "sync now" runs joins the same pass rather than racing it.
 class CloudSync implements SalesSync {
   CloudSync({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.api,
     required this.vault,
@@ -79,7 +79,7 @@ class CloudSync implements SalesSync {
   }) : _db = database,
        _drain = OutboxDrain(database: database, config: config, api: api);
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosCloudApi api;
   final DeviceTokenVault vault;

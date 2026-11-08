@@ -1,7 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/financial_account.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads `pos_financial_accounts` and `pos_tender_account_defaults`.
 ///
@@ -12,12 +12,12 @@ import 'pos_database.dart';
 class PostgresFinancialAccountsRepository
     implements FinancialAccountsRepository {
   const PostgresFinancialAccountsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

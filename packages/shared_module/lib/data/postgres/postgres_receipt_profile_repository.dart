@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/services/authorization.dart';
@@ -7,7 +7,6 @@ import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 
 /// Reads and writes `pos_receipt_profiles`.
 ///
@@ -16,9 +15,9 @@ import 'pos_database.dart';
 /// round trip to print a receipt.
 class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
   const PostgresReceiptProfileRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
-    required PosDatabase readDatabase,
+    required SqlDatabase readDatabase,
     required this.readConfig,
     required this.adminAvailable,
     required this.businessId,
@@ -27,13 +26,13 @@ class PostgresReceiptProfileRepository implements ReceiptProfileRepository {
        _tillDb = readDatabase;
 
   /// Writes, on the administrative connection.
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
 
   /// Reads, on the till's own credential — which holds SELECT and nothing
   /// more. A cashier printing a receipt must not need the back office's
   /// password to learn the business's address.
-  final PosDatabase _tillDb;
+  final SqlDatabase _tillDb;
   final DeploymentConfig readConfig;
 
   final bool adminAvailable;

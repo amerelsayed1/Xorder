@@ -4,8 +4,8 @@ import '../../core/money/quantity.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/combo.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 import 'postgres_tenant.dart';
+import '../sql/sql.dart';
 
 /// The business's actual menu, read from the branch server.
 ///
@@ -19,7 +19,7 @@ import 'postgres_tenant.dart';
 /// sale screen never see a half-applied refresh.
 class PostgresCatalogRepository implements CatalogRepository {
   PostgresCatalogRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
     this.branchId,
     DateTime Function()? clock,
@@ -30,7 +30,7 @@ class PostgresCatalogRepository implements CatalogRepository {
   /// single-branch business it changes nothing — there are no override rows.
   final int? branchId;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   final DateTime Function() _now;
   late final _tenant = PosTenantResolver(_db, _config);

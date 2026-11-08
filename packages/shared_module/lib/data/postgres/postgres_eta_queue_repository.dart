@@ -1,12 +1,11 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/eta_submission.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/eta_serialization.dart';
-import 'pos_database.dart';
 
 /// The queue of receipts owed to Egypt's tax authority.
 ///
@@ -17,13 +16,13 @@ import 'pos_database.dart';
 /// a misconfiguration; two threads on one till racing the head is a Tuesday.
 class PostgresEtaQueueRepository implements EtaQueueRepository {
   const PostgresEtaQueueRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

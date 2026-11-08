@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
@@ -8,7 +8,6 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/sales_report.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
-import 'pos_database.dart';
 import 'postgres_order_history_repository.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
@@ -87,7 +86,7 @@ abstract final class CashMovementWrite {
 /// is a second movement, not an edit of the first.
 class PostgresCashMovementsRepository implements CashMovementsRepository {
   const PostgresCashMovementsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.context,
     this.currency = 'EGP',
@@ -99,7 +98,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
   /// `PostgresOrdersRepository.onQueued`.
   final void Function()? onQueued;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosWriteContext context;
   final String currency;

@@ -1,8 +1,7 @@
 import 'package:uuid/uuid.dart';
-import 'package:postgres/postgres.dart';
+import 'package:shared_module/data/sql/sql.dart';
 
 import 'package:shared_module/core/config/deployment.dart';
-import 'package:shared_module/data/postgres/pos_database.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:shared_module/domain/models/sync_outcome.dart';
 
@@ -38,12 +37,12 @@ enum DrainAction {
 ///   [tenderNotFromPlatform].
 class OutboxDrain {
   const OutboxDrain({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.api,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosCloudApi api;
 

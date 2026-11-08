@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -9,7 +9,6 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/stock_costing.dart';
 import 'open_shift.dart';
-import 'pos_database.dart';
 
 /// Identifies which terminal and tenant a write belongs to.
 ///
@@ -49,7 +48,7 @@ class PosWriteContext {
 /// `providers.dart` with no change to the domain or the UI.
 class PostgresOrdersRepository implements OrdersRepository {
   PostgresOrdersRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
     required this._context,
     this.onQueued,
@@ -63,7 +62,7 @@ class PostgresOrdersRepository implements OrdersRepository {
   /// drain costs one heartbeat.
   final void Function()? onQueued;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
   final PosWriteContext _context;
   final DateTime Function() _now;

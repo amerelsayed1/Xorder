@@ -4,7 +4,7 @@ import '../../domain/models/branch_sales.dart' show settledStatuses;
 import '../../domain/models/customer.dart';
 import '../../domain/models/customer_summary.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// The directory with what each customer has bought (`pos_customers`,
 /// `pos_orders.customer_id`).
@@ -14,7 +14,7 @@ import 'pos_database.dart';
 class PostgresCustomerDirectoryRepository
     implements CustomerDirectoryRepository {
   const PostgresCustomerDirectoryRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -22,7 +22,7 @@ class PostgresCustomerDirectoryRepository
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

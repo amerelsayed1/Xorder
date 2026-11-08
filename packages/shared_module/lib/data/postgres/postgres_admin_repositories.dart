@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/security/pin_hash.dart';
@@ -31,7 +31,7 @@ class _AdminContext {
     this.terminalId,
   });
 
-  final PosDatabase database;
+  final SqlDatabase database;
   final DeploymentConfig config;
   final int businessId;
   final int? branchId;
@@ -112,8 +112,12 @@ const joinedRoleColumns =
 /// one failure the PIN-only entry in `AdminSession.setPassword` lets
 /// through.
 bool isUndefinedColumn(Object error) {
-  final raw = error is PosDbException ? error.raw : error;
-  return raw is ServerException && raw.code == '42703';
+  // An error that never passed through the engine is wrapped to read its
+  // code the same way: `PosDbException` knows each engine's error shape.
+  final wrapped = error is PosDbException
+      ? error
+      : PosDbException(PosDbFailure.query, error);
+  return wrapped.sqlState == '42703';
 }
 
 PosRole roleFromRow(List<Object?> row, [int offset = 0]) => PosRole(
@@ -140,10 +144,10 @@ PosRole? optionalRoleFromRow(List<Object?> row, int offset) =>
 /// exists only while somebody is in the back office.
 class PostgresRolesRepository implements RolesRepository {
   PostgresRolesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required DeploymentConfig config,
     required int businessId,
-    PosDatabase? readDatabase,
+    SqlDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
     int? branchId,
@@ -358,10 +362,10 @@ PosStaff _staffFrom(List<Object?> row) => PosStaff(
 /// chosen by what the method actually does.
 class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
   PostgresStaffDirectoryRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required DeploymentConfig config,
     required int businessId,
-    PosDatabase? readDatabase,
+    SqlDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
     this.offline = true,
@@ -1295,7 +1299,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
 
 class PostgresAuditRepository implements AuditRepository {
   PostgresAuditRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required DeploymentConfig config,
     required int businessId,
     int? branchId,

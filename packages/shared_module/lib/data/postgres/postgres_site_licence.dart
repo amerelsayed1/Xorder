@@ -1,5 +1,5 @@
 import '../../core/config/deployment.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// One row of `pos_site_licence` (migration 43), as plain values.
 ///
@@ -32,11 +32,11 @@ class SiteLicenceRow {
 /// on theirs — see `LocalBootstrap.tillGrants`.
 class PostgresSiteLicence {
   const PostgresSiteLicence({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this._config,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig _config;
 
   static const _select =

@@ -4,7 +4,7 @@ import '../../domain/models/discount.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads what the business offers from `pos_discounts`.
 ///
@@ -13,14 +13,14 @@ import 'pos_database.dart';
 /// back-office act and belongs to the administrative credential.
 class PostgresDiscountsRepository implements DiscountsRepository {
   const PostgresDiscountsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     this.currency = 'EGP',
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

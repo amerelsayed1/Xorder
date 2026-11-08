@@ -11,7 +11,7 @@ import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/payment_status.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads settled orders back out of the branch database.
 ///
@@ -29,7 +29,7 @@ import 'pos_database.dart';
 /// without signing anybody in.
 class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   const PostgresOrderHistoryRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -37,7 +37,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

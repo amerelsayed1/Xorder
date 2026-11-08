@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/business_logo.dart';
@@ -9,7 +9,6 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
-import 'pos_database.dart';
 
 /// Authoring the business logo on the till (XORD-021), offline installs only.
 ///
@@ -32,7 +31,7 @@ class PostgresBusinessLogoRepository implements BusinessLogoRepository {
     this.offline = true,
   });
 
-  final PosDatabase database;
+  final SqlDatabase database;
   final DeploymentConfig config;
   final int businessId;
   final int? branchId;

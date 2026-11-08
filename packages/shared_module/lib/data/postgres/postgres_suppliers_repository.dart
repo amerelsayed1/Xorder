@@ -1,4 +1,4 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/services/authorization.dart';
@@ -6,7 +6,6 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/supplier.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 
 /// Reads and writes `pos_suppliers`.
 ///
@@ -17,14 +16,14 @@ import 'pos_database.dart';
 /// operational benefit.
 class PostgresSuppliersRepository implements SuppliersRepository {
   const PostgresSuppliersRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.adminAvailable,
     required this.businessId,
     required this.branchId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final bool adminAvailable;
   final int businessId;

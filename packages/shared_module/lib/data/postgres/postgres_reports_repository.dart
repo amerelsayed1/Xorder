@@ -1,4 +1,3 @@
-import 'package:postgres/postgres.dart' show Result, Sql;
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -10,9 +9,9 @@ import '../../domain/models/sales_report.dart';
 import '../../domain/models/tax.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 import 'postgres_branch_sales_repository.dart';
 import 'postgres_order_history_repository.dart';
+import '../sql/sql.dart';
 
 /// Wave G's figures, over the rows every till at the branch already writes.
 ///
@@ -35,7 +34,7 @@ import 'postgres_order_history_repository.dart';
 /// Read-only; every table here is already `SELECT`-granted to the till role.
 class PostgresReportsRepository implements ReportsRepository {
   const PostgresReportsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
     required this.branchId,
@@ -43,7 +42,7 @@ class PostgresReportsRepository implements ReportsRepository {
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
   final int branchId;

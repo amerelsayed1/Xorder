@@ -1,7 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// Reads `pos_tender_types`.
 ///
@@ -10,12 +10,12 @@ import 'pos_database.dart';
 /// Management.
 class PostgresTenderTypesRepository implements TenderTypesRepository {
   const PostgresTenderTypesRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

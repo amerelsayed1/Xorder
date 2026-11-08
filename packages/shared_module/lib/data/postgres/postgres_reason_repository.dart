@@ -1,7 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/reason_code.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
+import '../sql/sql.dart';
 
 /// The reason lists, read from `pos_reason_codes`.
 ///
@@ -10,12 +10,12 @@ import 'pos_database.dart';
 /// well.
 class PostgresReasonsRepository implements ReasonsRepository {
   const PostgresReasonsRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.businessId,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final int businessId;
 

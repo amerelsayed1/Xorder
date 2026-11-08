@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import '../../core/config/deployment.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
+import '../sql/sql.dart';
 
 /// Receipts owed to paper, on the branch database.
 ///
@@ -18,12 +18,12 @@ import 'postgres_orders_repository.dart' show PosWriteContext;
 /// `payload`. See `LocalBootstrap.tillGrants`.
 class PostgresPrintQueueRepository implements PrintQueueRepository {
   const PostgresPrintQueueRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.context,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosWriteContext context;
 

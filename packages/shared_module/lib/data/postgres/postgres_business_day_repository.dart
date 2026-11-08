@@ -1,23 +1,22 @@
-import 'package:postgres/postgres.dart';
+import '../sql/sql.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
 import '../../domain/repositories/repositories.dart';
-import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
 /// The trading day, at one branch.
 class PostgresBusinessDayRepository implements BusinessDayRepository {
   const PostgresBusinessDayRepository({
-    required PosDatabase database,
+    required SqlDatabase database,
     required this.config,
     required this.context,
     this.currency = 'EGP',
     this.exponent = 2,
   }) : _db = database;
 
-  final PosDatabase _db;
+  final SqlDatabase _db;
   final DeploymentConfig config;
   final PosWriteContext context;
   final String currency;
