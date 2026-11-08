@@ -9,6 +9,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/dining_table.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
+import '../../../domain/services/floor_overlay.dart';
 import 'admin_messages.dart';
 
 /// The tables a waiter can seat somebody at.
@@ -16,9 +17,9 @@ import 'admin_messages.dart';
 /// **Offline only**, like the Menu and Money panes: on a cloud till the
 /// platform authors the floor and the bootstrap seeder replaces it wholesale.
 ///
-/// Until now the only way to add a table was `bin/pos_migrate.dart
-/// --seed-catalogue`, which lays out eight demo tables, or hand-written SQL.
-/// A restaurant that put two more tables on the terrace had no way to say so.
+/// Laid out the way the floor screen shows it: grouped by section, in
+/// `sort_order`. Move up / move down change that order and it is the order
+/// the cashier sees — the pane *is* the floor plan, not a list about it.
 ///
 /// Nothing deletes. A table goes out of service, because parked tickets and
 /// past orders name its row.
@@ -33,9 +34,7 @@ class ManagementFloorPane extends ConsumerStatefulWidget {
 }
 
 class _ManagementFloorPaneState extends ConsumerState<ManagementFloorPane> {
-  Future<void> _write(
-    Future<AdminResult<DiningTable>> Function() action,
-  ) async {
+  Future<void> _write<T>(Future<AdminResult<T>> Function() action) async {
     final result = await action();
     if (!mounted) return;
 
@@ -54,13 +53,40 @@ class _ManagementFloorPaneState extends ConsumerState<ManagementFloorPane> {
   Future<void> _edit(
     CatalogAdminRepository repository,
     DiningTable? existing,
+    List<String> sections,
   ) async {
     final edited = await showDialog<DiningTable>(
       context: context,
-      builder: (context) => _TableDialog(table: existing),
+      builder: (context) => _TableDialog(table: existing, sections: sections),
     );
     if (edited == null) return;
     await _write(() => repository.saveTable(edited, by: widget.admin));
+  }
+
+  /// Swap [table] with its neighbour inside its section, then write the whole
+  /// floor's order back in one call.
+  ///
+  /// The whole floor rather than the two that swapped: the repository numbers
+  /// what it is given 1..n, so handing it one section would collapse that
+  /// section onto the same numbers as the others and interleave them.
+  Future<void> _nudge(
+    CatalogAdminRepository repository,
+    List<FloorSection> sections,
+    DiningTable table, {
+    required int by,
+  }) async {
+    final order = <int>[];
+    for (final section in sections) {
+      final ids = [for (final t in section.tables) t.id];
+      final at = ids.indexOf(table.id);
+      final to = at + by;
+      if (at >= 0 && to >= 0 && to < ids.length) {
+        ids[at] = ids[to];
+        ids[to] = table.id;
+      }
+      order.addAll(ids);
+    }
+    await _write(() => repository.reorderTables(order, by: widget.admin));
   }
 
   @override
@@ -81,108 +107,162 @@ class _ManagementFloorPaneState extends ConsumerState<ManagementFloorPane> {
         ),
       ),
       error: (error, _) => _Centred(text: '$error'),
-      data: (floor) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            decoration: BoxDecoration(
-              border: Border(bottom: context.pos.hairline),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.tableSummary(floor.length),
-                    style: PosText.ui(size: 13, color: context.pos.muted),
+      data: (floor) {
+        final sections = floorSections(floor);
+        final sectionNames = [
+          for (final s in sections)
+            if (s.name != null) s.name!,
+        ];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(PosSpace.xl),
+              decoration: BoxDecoration(
+                border: Border(bottom: context.pos.hairline),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      strings.tableSummary(floor.length),
+                      style: PosText.ui(size: 13, color: context.pos.muted),
+                    ),
                   ),
-                ),
-                PosButton(
-                  label: strings.addTable,
-                  background: context.pos.ink,
-                  foreground: context.pos.onInk,
-                  onPressed: () => _edit(repository, null),
-                ),
-              ],
+                  PosButton(
+                    label: strings.addTable,
+                    background: context.pos.ink,
+                    foreground: context.pos.onInk,
+                    onPressed: () => _edit(repository, null, sectionNames),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: floor.isEmpty
-                ? _Centred(text: strings.noTablesYet)
-                : ListView(
-                    children: [
-                      for (final table in floor)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: PosSpace.xl,
-                            vertical: PosSpace.md,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border(bottom: context.pos.hairline),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  table.label,
-                                  style: PosText.ui(
-                                    size: 14,
-                                    weight: FontWeight.w600,
-                                    color: context.pos.ink,
-                                  ),
+            Expanded(
+              child: floor.isEmpty
+                  ? _Centred(text: strings.noTablesYet)
+                  : ListView(
+                      children: [
+                        for (final section in sections) ...[
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(
+                              PosSpace.xl,
+                              PosSpace.lg,
+                              PosSpace.xl,
+                              PosSpace.sm,
+                            ),
+                            child: Row(
+                              children: [
+                                MicroLabel(
+                                  section.name ?? strings.floorMainRoom,
                                 ),
-                              ),
-                              Text(
-                                strings.tableSeats(table.seats),
-                                style: PosText.mono(
-                                  size: 13,
-                                  color: context.pos.muted,
-                                ),
-                              ),
-                              if (table.areaName != null) ...[
-                                const SizedBox(width: PosSpace.lg),
+                                const SizedBox(width: PosSpace.sm),
                                 Text(
-                                  table.areaName!,
-                                  style: PosText.ui(
-                                    size: 13,
+                                  '${section.tables.length}',
+                                  style: PosText.mono(
+                                    size: 11,
                                     color: context.pos.muted,
                                   ),
                                 ),
                               ],
-                              const SizedBox(width: PosSpace.lg),
-                              PosButton(
-                                label: strings.takeOutOfService,
-                                border: Border.fromBorderSide(
-                                  context.pos.resting,
-                                ),
-                                onPressed: () => _write(
-                                  () => repository.archiveTable(
-                                    table,
-                                    by: widget.admin,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: PosSpace.sm),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, size: 16),
-                                onPressed: () => _edit(repository, table),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+                          for (var i = 0; i < section.tables.length; i++)
+                            _row(
+                              context,
+                              strings,
+                              repository,
+                              sections,
+                              sectionNames,
+                              section.tables[i],
+                              first: i == 0,
+                              last: i == section.tables.length - 1,
+                            ),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  Widget _row(
+    BuildContext context,
+    AppStrings strings,
+    CatalogAdminRepository repository,
+    List<FloorSection> sections,
+    List<String> sectionNames,
+    DiningTable table, {
+    required bool first,
+    required bool last,
+  }) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.xl,
+      vertical: PosSpace.sm,
+    ),
+    decoration: BoxDecoration(border: Border(bottom: context.pos.hairline)),
+    child: Row(
+      children: [
+        // Up/down rather than drag: a mouse drag on a 44px row is fiddly on
+        // the touch screens these tills run on, and the manager moves a
+        // table one place at a time anyway.
+        IconButton(
+          tooltip: strings.moveUp,
+          icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+          onPressed: first
+              ? null
+              : () => _nudge(repository, sections, table, by: -1),
+        ),
+        IconButton(
+          tooltip: strings.moveDown,
+          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          onPressed: last
+              ? null
+              : () => _nudge(repository, sections, table, by: 1),
+        ),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(
+          child: Text(
+            table.label,
+            style: PosText.ui(
+              size: 14,
+              weight: FontWeight.w600,
+              color: context.pos.ink,
+            ),
+          ),
+        ),
+        Text(
+          strings.tableSeats(table.seats),
+          style: PosText.mono(size: 13, color: context.pos.muted),
+        ),
+        const SizedBox(width: PosSpace.lg),
+        PosButton(
+          label: strings.takeOutOfService,
+          border: Border.fromBorderSide(context.pos.resting),
+          onPressed: () => _write(
+            () => repository.archiveTable(table, by: widget.admin),
+          ),
+        ),
+        const SizedBox(width: PosSpace.sm),
+        IconButton(
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          onPressed: () => _edit(repository, table, sectionNames),
+        ),
+      ],
+    ),
+  );
 }
 
 class _TableDialog extends StatefulWidget {
-  const _TableDialog({this.table});
+  const _TableDialog({this.table, required this.sections});
 
   final DiningTable? table;
+
+  /// Sections that already exist, offered as one-tap chips so "Terrace" and
+  /// "terrace " do not become two tabs on the floor.
+  final List<String> sections;
 
   @override
   State<_TableDialog> createState() => _TableDialogState();
@@ -206,10 +286,11 @@ class _TableDialogState extends State<_TableDialog> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final pos = context.pos;
 
     return Dialog(
-      backgroundColor: context.pos.surface,
-      shape: RoundedRectangleBorder(side: context.pos.emphasis),
+      backgroundColor: pos.surface,
+      shape: RoundedRectangleBorder(side: pos.emphasis),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
@@ -218,7 +299,7 @@ class _TableDialogState extends State<_TableDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(strings.addTable, style: PosText.panelTitle(color: context.pos.ink)),
+              Text(strings.addTable, style: PosText.panelTitle(color: pos.ink)),
               const SizedBox(height: PosSpace.lg),
               _Box(controller: _label, label: strings.tableLabel, mono: true),
               const SizedBox(height: PosSpace.md),
@@ -228,14 +309,35 @@ class _TableDialogState extends State<_TableDialog> {
                 mono: true,
               ),
               const SizedBox(height: PosSpace.md),
-              _Box(controller: _area, label: strings.tableArea),
+              _Box(
+                controller: _area,
+                label: strings.tableSection,
+                help: strings.tableSectionHelp,
+              ),
+              if (widget.sections.isNotEmpty) ...[
+                const SizedBox(height: PosSpace.sm),
+                Wrap(
+                  spacing: PosSpace.sm,
+                  runSpacing: PosSpace.sm,
+                  children: [
+                    for (final name in widget.sections)
+                      PosButton(
+                        label: name,
+                        height: 32,
+                        fontSize: 12,
+                        border: Border.fromBorderSide(pos.resting),
+                        onPressed: () => setState(() => _area.text = name),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: PosSpace.xl),
               Row(
                 children: [
                   Expanded(
                     child: PosButton(
                       label: strings.cancel,
-                      border: Border.fromBorderSide(context.pos.resting),
+                      border: Border.fromBorderSide(pos.resting),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -243,8 +345,8 @@ class _TableDialogState extends State<_TableDialog> {
                   Expanded(
                     child: PosButton(
                       label: strings.save,
-                      background: context.pos.ink,
-                      foreground: context.pos.onInk,
+                      background: pos.ink,
+                      foreground: pos.onInk,
                       onPressed: () => Navigator.of(context).pop(
                         DiningTable(
                           id: widget.table?.id ?? 0,
@@ -255,7 +357,8 @@ class _TableDialogState extends State<_TableDialog> {
                           seats: int.tryParse(_seats.text.trim()) ?? 0,
                           areaName: _area.text.trim().isEmpty
                               ? null
-                              : _area.text,
+                              : _area.text.trim(),
+                          sortOrder: widget.table?.sortOrder ?? 0,
                         ),
                       ),
                     ),
@@ -275,11 +378,13 @@ class _Box extends StatelessWidget {
     required this.controller,
     required this.label,
     this.mono = false,
+    this.help,
   });
 
   final TextEditingController controller;
   final String label;
   final bool mono;
+  final String? help;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -293,6 +398,10 @@ class _Box extends StatelessWidget {
             ? PosText.mono(size: 14, color: context.pos.ink)
             : PosText.ui(size: 14, color: context.pos.ink),
       ),
+      if (help case final text?) ...[
+        const SizedBox(height: PosSpace.xs),
+        Text(text, style: PosText.ui(size: 11.5, color: context.pos.muted)),
+      ],
     ],
   );
 }

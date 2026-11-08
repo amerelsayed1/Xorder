@@ -615,7 +615,8 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
   // ── the floor ──────────────────────────────────────────────────────────────
 
-  static const _tableColumns = 'id, label, seats, area_name, is_active';
+  static const _tableColumns =
+      'id, label, seats, area_name, is_active, sort_order';
 
   /// The floor plan is the ROOM, not the menu, so it answers to
   /// `settings.manage` like the money rules do.
@@ -1024,11 +1025,16 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           );
         }
 
+        // A new table goes to the END of the floor, not to position 0 in
+        // front of everything: `sort_order` is the manager's layout, and an
+        // insert must not silently rearrange it.
         final rows = await tx.execute(
           Sql.named(
             'INSERT INTO pos_dining_tables '
-            '  (restaurant_id, branch_id, label, seats, area_name) '
-            'VALUES (@r, @branch, @label, @seats, @area) '
+            '  (restaurant_id, branch_id, label, seats, area_name, sort_order) '
+            'VALUES (@r, @branch, @label, @seats, @area, '
+            '  (SELECT coalesce(max(sort_order), 0) + 1 FROM pos_dining_tables '
+            '   WHERE branch_id = @branch)) '
             'RETURNING $_tableColumns',
           ),
           parameters: parameters,
@@ -1115,11 +1121,57 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     });
   }
 
+  @override
+  Future<AdminResult<void>> reorderTables(
+    List<int> tableIdsInOrder, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult<void>.refused(blocked);
+    final branch = branchId;
+    if (branch == null) {
+      return const AdminResult<void>.refused(EditedElsewhere(0));
+    }
+    if (tableIdsInOrder.isEmpty) return const AdminResult<void>.done(null);
+
+    return database.runTx(config, (tx) async {
+      // One UPDATE over the whole list rather than a statement per table:
+      // the layout is one fact, and a failure halfway would leave the floor
+      // in an order nobody chose. Tables not in the list keep their place —
+      // the pane reorders within a section, and the other sections' numbers
+      // are not its business.
+      await tx.execute(
+        Sql.named(
+          'UPDATE pos_dining_tables AS t '
+          'SET sort_order = v.ord '
+          'FROM unnest(@ids::bigint[], @ords::int[]) AS v(id, ord) '
+          'WHERE t.id = v.id AND t.restaurant_id = @r AND t.branch_id = @branch',
+        ),
+        parameters: {
+          'ids': tableIdsInOrder,
+          'ords': [for (var i = 0; i < tableIdsInOrder.length; i++) i + 1],
+          'r': restaurantId,
+          'branch': branch,
+        },
+      );
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.tableUpdated,
+        entityType: AuditAction.entityTable,
+        entityId: 'floor',
+        after: {'order': tableIdsInOrder},
+      );
+      return const AdminResult<void>.done(null);
+    });
+  }
+
   DiningTable _tableFrom(ResultRow row) => DiningTable(
     id: row[0]! as int,
     label: row[1]! as String,
     seats: row[2]! as int,
     areaName: row[3] as String?,
+    sortOrder: row[5] as int? ?? 0,
   );
 
   @override

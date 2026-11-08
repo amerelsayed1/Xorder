@@ -32,7 +32,7 @@ class PostgresFloorRepository implements TablesRepository {
   Future<List<DiningTable>> liveFloor() async {
     final rows = await _db.query(
       _config,
-      'SELECT id, label, seats, area_name FROM pos_dining_tables '
+      'SELECT id, label, seats, area_name, sort_order FROM pos_dining_tables '
       'WHERE restaurant_id = @restaurant AND branch_id = @branch AND is_active '
       'ORDER BY sort_order, id',
       parameters: {'restaurant': _restaurantId, 'branch': _branchId},
@@ -45,6 +45,7 @@ class PostgresFloorRepository implements TablesRepository {
           label: row[1] as String,
           seats: row[2] as int,
           areaName: row[3] as String?,
+          sortOrder: row[4] as int,
         ),
     ];
   }

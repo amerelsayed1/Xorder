@@ -30,6 +30,10 @@ abstract final class ParkedTicketCodec {
     'currency': ticket.currency,
     'exponent': ticket.exponent,
     'rounds_sent': ticket.roundsSent,
+    // The floor's clocks. UTC on the wire so two tills in two time zones — a
+    // laptop that travelled — agree on how long a party has been sitting.
+    'seated_at': ticket.seatedAt?.toUtc().toIso8601String(),
+    'last_sent_at': ticket.lastSentAt?.toUtc().toIso8601String(),
     // The rules the ticket was priced under travel with it, all of them. The
     // four scalars alone used to: a parked table at an inclusive restaurant
     // came back exclusive and grew its VAT on top, a zero-rated line came back
@@ -267,6 +271,10 @@ abstract final class ParkedTicketCodec {
       currency: currency,
       exponent: exponent,
       roundsSent: json['rounds_sent'] is int ? json['rounds_sent'] as int : 0,
+      // Absent on payloads parked before the floor had clocks; the tile then
+      // shows no timer rather than a wrong one.
+      seatedAt: _instant(json['seated_at']),
+      lastSentAt: _instant(json['last_sent_at']),
       taxConfig: TaxConfig(
         serviceBp: tax['service_bp'] is int ? tax['service_bp'] as int : 1200,
         vatBp: tax['vat_bp'] is int ? tax['vat_bp'] as int : 1400,
@@ -489,6 +497,11 @@ abstract final class ParkedTicketCodec {
   /// same answer `groupFor` gives a group this till has not synced — the
   /// documented safe direction. A rate arriving as a float is refused, as
   /// `MoneyConfigCodec` refuses one, rather than rounded into a bill.
+  /// An ISO-8601 instant, or nothing. Never throws on data (client rule 11):
+  /// a payload with a garbled timestamp loses its timer, not its lines.
+  static DateTime? _instant(Object? value) =>
+      value is String ? DateTime.tryParse(value)?.toLocal() : null;
+
   static List<TaxGroup> _taxGroups(Object? value) => [
     if (value is List)
       for (final raw in value)

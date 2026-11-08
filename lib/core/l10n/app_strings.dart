@@ -278,6 +278,34 @@ sealed class AppStrings {
   String tableOpenWith(String total);
   String tableBillRequested(String total);
 
+  /// The section tabs. [floorAllSections] is the first tab; [floorMainRoom]
+  /// names the tables a manager gave no section.
+  String get floorAllSections;
+  String get floorMainRoom;
+  String floorSectionCount(int busy, int total);
+
+  /// The attention legend and the tile's one-line reason.
+  String legendNeedsAttention(int count);
+  String get tableUnsentRound;
+  String tableQuietFor(String elapsed);
+  String tableBillWaitingFor(String elapsed);
+  String tableSeatedFor(String elapsed);
+  String tableGuests(int guests);
+
+  /// Compact elapsed time on a tile: `4m`, `1h 12m`.
+  String elapsedMinutes(int minutes);
+  String elapsedHours(int hours, int minutes);
+
+  /// Type-to-jump: the cashier types a table number straight onto the floor.
+  String floorJumpHint(String typed);
+  String get floorJumpHelp;
+
+  /// The admin pane's reorder controls.
+  String get moveUp;
+  String get moveDown;
+  String get tableSection;
+  String get tableSectionHelp;
+
   // ── Lock ──────────────────────────────────────────────────────────────────
   String get terminalLocked;
   String get wrongPin;
@@ -3949,6 +3977,43 @@ final class EnStrings extends AppStrings {
   String tableOpenWith(String total) => 'Open · $total';
   @override
   String tableBillRequested(String total) => 'Bill requested · $total';
+  @override
+  String get floorAllSections => 'All';
+  @override
+  String get floorMainRoom => 'Main room';
+  @override
+  String floorSectionCount(int busy, int total) => '$busy/$total';
+  @override
+  String legendNeedsAttention(int count) => 'ATTENTION $count';
+  @override
+  String get tableUnsentRound => 'NOT SENT TO KITCHEN';
+  @override
+  String tableQuietFor(String elapsed) => 'QUIET $elapsed';
+  @override
+  String tableBillWaitingFor(String elapsed) => 'BILL WAITING $elapsed';
+  @override
+  String tableSeatedFor(String elapsed) => 'Seated $elapsed';
+  @override
+  String tableGuests(int guests) => '$guests guests';
+  @override
+  String elapsedMinutes(int minutes) => '${minutes}m';
+  @override
+  String elapsedHours(int hours, int minutes) => '${hours}h ${minutes}m';
+  @override
+  String floorJumpHint(String typed) => 'Jump to  $typed';
+  @override
+  String get floorJumpHelp =>
+      'Type a table number and press Enter to open it. Esc clears.';
+  @override
+  String get moveUp => 'Move up';
+  @override
+  String get moveDown => 'Move down';
+  @override
+  String get tableSection => 'Section';
+  @override
+  String get tableSectionHelp =>
+      'Terrace, Bar, Upstairs… Tables with the same section share a tab on '
+      'the floor. Leave empty for the main room.';
 
   @override
   String get terminalLocked => 'TERMINAL LOCKED';
@@ -9213,6 +9278,43 @@ final class ArStrings extends AppStrings {
   String tableOpenWith(String total) => 'مفتوحة · $total';
   @override
   String tableBillRequested(String total) => 'طلبت الحساب · $total';
+  @override
+  String get floorAllSections => 'الكل';
+  @override
+  String get floorMainRoom => 'الصالة الرئيسية';
+  @override
+  String floorSectionCount(int busy, int total) => '$busy/$total';
+  @override
+  String legendNeedsAttention(int count) => 'تحتاج انتباه $count';
+  @override
+  String get tableUnsentRound => 'لم تُرسل للمطبخ';
+  @override
+  String tableQuietFor(String elapsed) => 'هادئة $elapsed';
+  @override
+  String tableBillWaitingFor(String elapsed) => 'الحساب منتظر $elapsed';
+  @override
+  String tableSeatedFor(String elapsed) => 'جالسين منذ $elapsed';
+  @override
+  String tableGuests(int guests) => '$guests أفراد';
+  @override
+  String elapsedMinutes(int minutes) => '$minutes د';
+  @override
+  String elapsedHours(int hours, int minutes) => '$hours س $minutes د';
+  @override
+  String floorJumpHint(String typed) => 'انتقال إلى  $typed';
+  @override
+  String get floorJumpHelp =>
+      'اكتب رقم الطاولة واضغط Enter لفتحها. Esc للمسح.';
+  @override
+  String get moveUp => 'تحريك لأعلى';
+  @override
+  String get moveDown => 'تحريك لأسفل';
+  @override
+  String get tableSection => 'القسم';
+  @override
+  String get tableSectionHelp =>
+      'التراس، البار، الدور العلوي… الطاولات التي لها نفس القسم تظهر في تبويب '
+      'واحد في الصالة. اتركه فارغًا للصالة الرئيسية.';
 
   @override
   String get terminalLocked => 'الجهاز مقفل';

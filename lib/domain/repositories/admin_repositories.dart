@@ -798,6 +798,16 @@ abstract interface class CatalogAdminRepository {
     bool restore = false,
   });
 
+  /// Lay the floor out in this order. Tables not named keep their place.
+  ///
+  /// The floor screen draws tiles in `sort_order`, so this is how a manager
+  /// puts the window tables first and the terrace after the bar. Ids are
+  /// given in the order wanted; the repository numbers them.
+  Future<AdminResult<void>> reorderTables(
+    List<int> tableIdsInOrder, {
+    required PosStaff by,
+  });
+
   /// Which modifier groups a product offers, in the order shown, by id.
   ///
   /// The ids form of [setProductOptionGroups], and kept for its callers: a

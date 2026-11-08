@@ -82,6 +82,35 @@ void main() {
     expect(restored.totals.total.minor, original.totals.total.minor);
   });
 
+  test('the floor clocks survive a park and come back local', () {
+    final seated = DateTime(2026, 11, 8, 19, 0);
+    final fired = DateTime(2026, 11, 8, 19, 6);
+    var ticket = Ticket(id: 'txn-clk', orderType: OrderType.dineIn);
+    ticket = TicketEngine.attachTable(ticket, 12, 'T12', now: seated);
+    ticket = TicketEngine.addLine(ticket, _burger).ticket!;
+    ticket = TicketEngine.sendRound(ticket, now: fired);
+
+    final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(ticket)))
+        as Map<String, dynamic>;
+    final restored =
+        ParkedTicketCodec.decode(json.cast<String, Object?>(), _catalog)!;
+
+    expect(restored.seatedAt, seated);
+    expect(restored.lastSentAt, fired);
+  });
+
+  test('a payload parked before the floor had clocks decodes without them', () {
+    final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(_parked())))
+        as Map<String, dynamic>
+      ..remove('seated_at')
+      ..['last_sent_at'] = 'not a date';
+    final restored =
+        ParkedTicketCodec.decode(json.cast<String, Object?>(), _catalog)!;
+    expect(restored.seatedAt, isNull);
+    expect(restored.lastSentAt, isNull);
+    expect(restored.lines, hasLength(1));
+  });
+
   test('a parked Large is still the price after the size leaves the menu', () {
     const large = Modifier(
       id: 92,

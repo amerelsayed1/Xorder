@@ -491,12 +491,17 @@ abstract final class TicketEngine {
   }
 
   /// Fire the draft to the kitchen. Draft becomes sent; the table stays open.
-  static Ticket sendRound(Ticket ticket) {
+  ///
+  /// [now] stamps the round for the floor's "quiet for 25m" timer. Passed in,
+  /// like every other clock in the engine, so the rule is testable; callers
+  /// that do not care may leave it and the stamp is simply not taken.
+  static Ticket sendRound(Ticket ticket, {DateTime? now}) {
     if (!ticket.hasDraft) return ticket;
 
     final round = ticket.roundsSent + 1;
     return ticket.copyWith(
       roundsSent: round,
+      lastSentAt: now,
       lines: ticket.lines
           .map(
             (l) => l.stage == LineStage.draft
@@ -533,16 +538,23 @@ abstract final class TicketEngine {
     return ticket.copyWith(orderType: type, clearTable: !seated);
   }
 
+  /// Seat the ticket at a table.
+  ///
+  /// [now] becomes the seating time **only if the ticket has none** — moving a
+  /// party from T4 to T9 is the same visit, and the floor's timer must not
+  /// restart because a waiter shuffled them.
   static Ticket attachTable(
     Ticket ticket,
     int tableId,
     String label, {
     int? guests,
+    DateTime? now,
   }) => ticket.copyWith(
     orderType: OrderType.dineIn,
     tableId: tableId,
     tableLabel: label,
     guestCount: guests,
+    seatedAt: ticket.seatedAt ?? now,
   );
 
   /// Name who the food is for (POS-BE-014).

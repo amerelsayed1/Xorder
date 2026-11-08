@@ -1521,7 +1521,8 @@ class TicketController extends Notifier<Ticket> {
   void removeLine(String lineKey) =>
       state = TicketEngine.removeLine(state, lineKey);
 
-  void sendRound() => state = TicketEngine.sendRound(state);
+  void sendRound() =>
+      state = TicketEngine.sendRound(state, now: DateTime.now());
 
   /// Take back a ticket a sheet has edited.
   ///
@@ -1558,6 +1559,7 @@ class TicketController extends Notifier<Ticket> {
     table.id,
     table.label,
     guests: table.seats,
+    now: DateTime.now(),
   );
 
   /// Move this ticket to [table]: "Change table" on the cart.

@@ -620,6 +620,8 @@ class Ticket {
     this.exponent = 2,
     this.roundsSent = 0,
     this.customer,
+    this.seatedAt,
+    this.lastSentAt,
   });
 
   /// Client-generated. This is the `client_transaction_id` the server will
@@ -658,6 +660,17 @@ class Ticket {
   final String currency;
   final int exponent;
   final int roundsSent;
+
+  /// When the party sat down — set the first time a table is attached and
+  /// kept across a move to another table, because the guests did not arrive
+  /// again when the waiter moved them. Cleared with the table.
+  ///
+  /// The floor reads it for the "seated 42m" timer; nothing about money
+  /// depends on it.
+  final DateTime? seatedAt;
+
+  /// When the last round went to the kitchen. Null until something is fired.
+  final DateTime? lastSentAt;
 
   Money get _zero => Money(0, currency: currency, exponent: exponent);
 
@@ -823,6 +836,8 @@ class Ticket {
     PosCustomer? customer,
     /// Taking the customer back off, which `customer: null` cannot say.
     bool clearCustomer = false,
+    DateTime? seatedAt,
+    DateTime? lastSentAt,
   }) => Ticket(
     id: id,
     orderType: orderType ?? this.orderType,
@@ -838,5 +853,7 @@ class Ticket {
     exponent: exponent,
     roundsSent: roundsSent ?? this.roundsSent,
     customer: clearCustomer ? null : (customer ?? this.customer),
+    seatedAt: clearTable ? null : (seatedAt ?? this.seatedAt),
+    lastSentAt: lastSentAt ?? this.lastSentAt,
   );
 }
