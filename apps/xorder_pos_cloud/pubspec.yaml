@@ -22,8 +22,8 @@ dependencies:
   dio: ^5.11.0
   excel: ^4.0.6
   file_picker: ^12.2.0
-  postgres: ^3.5.12
   uuid: ^4.6.0
+  path_provider: ^2.1.6
   shared_module: any
 
 dev_dependencies:
@@ -35,7 +35,6 @@ dev_dependencies:
     sdk: flutter
   cryptography: ^2.7.0
   path: ^1.9.1
-  path_provider: ^2.1.6
   flutter_lints: ^6.0.0
 
 flutter:

@@ -38,6 +38,7 @@ import '../data/hardware/network_printer_ports.dart';
 import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/sql/row_reads.dart';
+import '../data/sql/embedded_datastore.dart';
 import '../data/sql/sql.dart' show SqlDatabase;
 import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
@@ -2638,10 +2639,21 @@ class TerminalReset {
     await _ref.read(licenseStoreProvider).clear();
     await _ref.read(licenceCheckStoreProvider).clear();
     await _ref.read(secretsFileProvider).deleteFile();
+    // What must outlive the wipe, read first: a cloud till's data-file key
+    // (pos-cloud-single-till-sqlite). Without it the sales in that file —
+    // unsent ones included — could never be read again, and this reset
+    // promises not to touch a sale.
+    final kept = [
+      for (final store in _ref.read(hardResetSurvivorsProvider))
+        (store, await store.read()),
+    ];
     // The OS store as well as the file. On Windows and macOS the secrets have
     // not been in `secrets.json` since the migration, and deleting only the
     // file would hand the next business this one's device token.
     await _ref.read(secretStoreProvider).deleteAll();
+    for (final (store, value) in kept) {
+      if (value != null) await store.write(value);
+    }
 
     _ref.read(terminalProfileProvider.notifier).renew();
     _ref.read(signedInStaffProvider.notifier).signOut();
@@ -2654,6 +2666,13 @@ class TerminalReset {
 }
 
 final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
+
+/// Secrets a hard reset puts back after wiping the store: the ones that
+/// guard data the reset promises to leave alone. Empty in the shared package;
+/// the cloud app keeps its data file's key here.
+final hardResetSurvivorsProvider = Provider<List<PosDbSecretStore>>(
+  (ref) => const [],
+);
 
 /// The shared `secrets.json`, for the hard reset to delete whole. A provider so
 /// a test can point it at a temporary folder.
@@ -3060,6 +3079,17 @@ final databaseBuilderProvider =
 /// AFTER the seeder, because the lists hang off a business row only the
 /// bundle can create. Upserts on the code, so a re-run keeps a renamed or
 /// retired reason.
+/// The till's own data file, when it has one instead of a PostgreSQL server:
+/// the cloud app binds its encrypted SQLite here (pos-cloud-single-till-sqlite)
+/// and the setup wizard prepares it rather than building a database. Null —
+/// the shared package and the offline app — means PostgreSQL, as before.
+final embeddedDatastoreProvider = Provider<EmbeddedDatastore?>((ref) => null);
+
+/// How a till whose data is one file copies it for a backup; see
+/// `BackupService.snapshot`. Null: `pg_dump`.
+final backupSnapshotProvider =
+    Provider<Future<Set<String>> Function(File target)?>((ref) => null);
+
 final cloudDefaultsSeederProvider =
     Provider<Future<void> Function(DeploymentConfig, String, int)>((ref) {
       return (config, adminPassword, businessId) async {
@@ -3806,6 +3836,7 @@ final backupServiceProvider = FutureProvider<BackupService?>((ref) async {
   final adminPassword = ref.watch(adminDbCredentialProvider);
 
   return BackupService(
+    snapshot: ref.watch(backupSnapshotProvider),
     // The till's pool and the till's config: the guard queries are counts the
     // till credential can already read, and the record and the audit row go
     // where every other till-written row goes.

@@ -45,6 +45,7 @@ class BackupService {
     this.reader,
     this.restorer,
     this.quiesce,
+    this.snapshot,
     this.currency = 'EGP',
     this.exponent = 2,
     this.keep = 14,
@@ -117,6 +118,13 @@ class BackupService {
   /// Closes every pool before a restore drops the objects underneath them.
   final Future<void> Function()? quiesce;
 
+  /// A till whose data is one file (the cloud app's encrypted SQLite) copies
+  /// it with this instead of `pg_dump`: the copy is written to the given
+  /// file, opened with the same key and its table names returned — the same
+  /// verification, by the same [essentialTables] rule, a dump's listing gets
+  /// (pos-cloud-single-till-sqlite). Null: PostgreSQL, as before.
+  final Future<Set<String>> Function(File target)? snapshot;
+
   final String currency;
   final int exponent;
 
@@ -177,6 +185,10 @@ class BackupService {
   }) async {
     final at = DateTime.now();
     final path = _fileFor(at, preRestore: preRestore);
+
+    if (snapshot case final copy?) {
+      return _takeSnapshot(copy, at: at, path: path, by: by, trigger: trigger);
+    }
 
     final tools = toolset;
     if (tools == null) {
@@ -718,6 +730,77 @@ class BackupService {
   /// database's own prefix, so these are never counted against [keep] — a
   /// suffix would have counted them among the nightly copies, and a few
   /// attempts at a restore would have pushed real ones out of the folder.
+  /// [_take] for a till whose data is one file: copy, reopen, check the
+  /// essential tables are there, record, and prune exactly as a dump would.
+  Future<BackupRecord> _takeSnapshot(
+    Future<Set<String>> Function(File) copy, {
+    required DateTime at,
+    required String path,
+    required PosStaff by,
+    required BackupTrigger trigger,
+  }) async {
+    final file = File(path);
+    final Set<String> tables;
+    try {
+      Directory(directory).createSync(recursive: true);
+      tables = await copy(file);
+    } on Object catch (error) {
+      if (file.existsSync()) file.deleteSync();
+      return _record(
+        by: by,
+        entry: BackupRecord(
+          takenAt: at,
+          takenByName: by.name,
+          takenById: by.id,
+          trigger: trigger,
+          outcome: BackupOutcome.failed,
+          filePath: path,
+          failure: error is FileSystemException
+              ? BackupFailure.destinationUnwritable
+              : BackupFailure.dumpRefused,
+          detail: error is FileSystemException
+              ? error.osError?.message ?? error.message
+              : '$error',
+        ),
+      );
+    }
+    final missing = [
+      for (final wanted in essentialTables)
+        if (!tables.contains(wanted)) wanted,
+    ];
+    final stored = await _record(
+      by: by,
+      entry: BackupRecord(
+        takenAt: at,
+        takenByName: by.name,
+        takenById: by.id,
+        trigger: trigger,
+        outcome: missing.isEmpty
+            ? BackupOutcome.verified
+            : BackupOutcome.unverified,
+        filePath: path,
+        sizeBytes: file.lengthSync(),
+        checksum: await _checksum(file),
+        tablesFound: tables.length,
+        failure: missing.isEmpty ? null : BackupFailure.archiveIncomplete,
+        detail: missing.isEmpty ? null : missing.join(', '),
+      ),
+    );
+    if (stored.isRestorable) {
+      try {
+        PgArchive.prune(
+          Directory(directory),
+          prefix: '${config.databaseName}-',
+          keep: keep,
+          extension: '.db',
+        );
+      } on FileSystemException {
+        // As for a dump: a copy that could not be tidied away is still a copy.
+      }
+    }
+    return stored;
+  }
+
   String _fileFor(DateTime at, {bool preRestore = false}) {
     String two(int value) => value.toString().padLeft(2, '0');
     final stamp =
@@ -725,7 +808,7 @@ class BackupService {
         '${two(at.hour)}${two(at.minute)}${two(at.second)}';
     return '$directory${Platform.pathSeparator}'
         '${preRestore ? preRestorePrefix : ''}'
-        '${config.databaseName}-$stamp.dump';
+        '${config.databaseName}-$stamp.${snapshot == null ? 'dump' : 'db'}';
   }
 
   Future<BackupRecord> _record({

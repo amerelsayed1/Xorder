@@ -1651,7 +1651,13 @@ class SetupController extends Notifier<SetupDraft> {
     // Read once. Once the fallback fields are on screen the operator is
     // answering this question themselves, and going back to the file would
     // throw their answer away on every retry.
-    if (!state.needsDatabase && !await _adoptInstalledDatabase()) {
+    // A till whose data is a file of its own (the cloud app's encrypted
+    // SQLite) has no installer credentials to read and no database to build:
+    // the file is prepared instead, below (pos-cloud-single-till-sqlite).
+    final embedded = ref.read(embeddedDatastoreProvider);
+    if (embedded == null &&
+        !state.needsDatabase &&
+        !await _adoptInstalledDatabase()) {
       state = state.copyWith(busy: false, needsDatabase: true);
       return;
     }
@@ -1672,53 +1678,72 @@ class SetupController extends Notifier<SetupDraft> {
       // explains why it is the one that opened. See [_restoreProgress].
       if (state.resumed) s.setupResumed,
     ];
-    try {
-      final report = await ref.read(databaseBuilderProvider)(
-        state.deployment,
-        state.adminDatabasePassword,
-        // The till's own, for the account the grants are for. On an installed
-        // machine it is already a role and this is never used; on the fallback
-        // path it is the password typed on this screen, and the only one the
-        // till will ever connect with.
-        state.databasePassword,
-      );
-      done
-        ..add(
-          report.created
-              ? s.createdDatabase(state.deployment.databaseName)
-              : s.databaseAlreadyThere(state.deployment.databaseName),
-        )
-        ..addAll([
-          if (report.tillRoleCreated)
-            s.tillRoleCreated(state.deployment.databaseUser),
-        ])
-        ..add(
-          report.migrations == 0
-              ? s.schemaAlreadyCurrent
-              : s.migrationsApplied(report.migrations),
-        )
-        ..add(
-          s.grantsApplied(
-            state.deployment.databaseUser,
-            state.deployment.adminDatabaseUser,
-          ),
+    if (embedded != null) {
+      try {
+        final report = await embedded.prepare(state.deployment);
+        done
+          ..add(report.created ? s.createdDataFile : s.dataFileAlreadyThere)
+          ..add(
+            report.migrations == 0
+                ? s.schemaAlreadyCurrent
+                : s.migrationsApplied(report.migrations),
+          );
+      } on Object catch (error, stack) {
+        // Without `provisioned`, as for a database that could not be built:
+        // a till with no data file has nowhere to write a sale.
+        debugPrint('setup[provisionTerminal] data file refused: $error\n$stack');
+        state = state.copyWith(busy: false, error: s.dataFileRefused);
+        return;
+      }
+    } else {
+      try {
+        final report = await ref.read(databaseBuilderProvider)(
+          state.deployment,
+          state.adminDatabasePassword,
+          // The till's own, for the account the grants are for. On an installed
+          // machine it is already a role and this is never used; on the fallback
+          // path it is the password typed on this screen, and the only one the
+          // till will ever connect with.
+          state.databasePassword,
         );
-    } on TillRoleRefused catch (refusal) {
-      state = state.copyWith(
-        busy: false,
-        error: s.tillRoleRefused(refusal.role, refusal.admin),
-      );
-      return;
-    } on PosDbException catch (error) {
-      // Returns WITHOUT `provisioned`, which is what keeps Continue dim: a till
-      // whose database was not built has nowhere to write a sale, and letting
-      // the wizard finish over it only moves the failure to the first order.
-      state = state.copyWith(busy: false, error: _bootstrapFailure(error));
-      return;
-    } on Object catch (error, stack) {
-      debugPrint('setup[provisionTerminal] threw: $error\n$stack');
-      state = state.copyWith(busy: false, error: '$error');
-      return;
+        done
+          ..add(
+            report.created
+                ? s.createdDatabase(state.deployment.databaseName)
+                : s.databaseAlreadyThere(state.deployment.databaseName),
+          )
+          ..addAll([
+            if (report.tillRoleCreated)
+              s.tillRoleCreated(state.deployment.databaseUser),
+          ])
+          ..add(
+            report.migrations == 0
+                ? s.schemaAlreadyCurrent
+                : s.migrationsApplied(report.migrations),
+          )
+          ..add(
+            s.grantsApplied(
+              state.deployment.databaseUser,
+              state.deployment.adminDatabaseUser,
+            ),
+          );
+      } on TillRoleRefused catch (refusal) {
+        state = state.copyWith(
+          busy: false,
+          error: s.tillRoleRefused(refusal.role, refusal.admin),
+        );
+        return;
+      } on PosDbException catch (error) {
+        // Returns WITHOUT `provisioned`, which is what keeps Continue dim: a till
+        // whose database was not built has nowhere to write a sale, and letting
+        // the wizard finish over it only moves the failure to the first order.
+        state = state.copyWith(busy: false, error: _bootstrapFailure(error));
+        return;
+      } on Object catch (error, stack) {
+        debugPrint('setup[provisionTerminal] threw: $error\n$stack');
+        state = state.copyWith(busy: false, error: '$error');
+        return;
+      }
     }
 
     // The bundle, seeded. Its failure is a notice and not a refusal: the claim

@@ -885,6 +885,10 @@ sealed class AppStrings {
   String get stepOwnerSignInBlurb;
   String get cloudLicenceMissing;
   String get refusalNotOwner;
+  String get createdDataFile;
+  String get dataFileAlreadyThere;
+  String get dataFileRefused;
+  String get eachTillAlone;
   String get username;
   String get password;
   String get managerPassword;
@@ -5172,6 +5176,20 @@ final class EnStrings extends AppStrings {
   String get refusalNotOwner =>
       'Only the business owner can set up a till. Sign in with the owner’s '
       'dashboard account.';
+  @override
+  String get createdDataFile => 'Created this till’s encrypted data file.';
+  @override
+  String get dataFileAlreadyThere => 'This till’s data file is already here.';
+  @override
+  String get dataFileRefused =>
+      'This till’s data file could not be opened, so it cannot take sales '
+      'yet. Press Try again. If it keeps failing, use a full reset for this '
+      'device.';
+  @override
+  String get eachTillAlone =>
+      'This till keeps its own tables, open checks and drawer. Other tills '
+      'in the branch do not see them — only finished sales meet on the '
+      'dashboard.';
   @override
   String get username => 'Username';
   @override
@@ -10679,6 +10697,20 @@ final class ArStrings extends AppStrings {
   String get refusalNotOwner =>
       'يمكن لمالك المنشأة فقط إعداد جهاز البيع. سجّل الدخول بحساب المالك في '
       'لوحة التحكم.';
+  @override
+  String get createdDataFile => 'تم إنشاء ملف البيانات المشفّر لهذا الجهاز.';
+  @override
+  String get dataFileAlreadyThere => 'ملف بيانات هذا الجهاز موجود بالفعل.';
+  @override
+  String get dataFileRefused =>
+      'تعذّر فتح ملف بيانات هذا الجهاز، لذلك لا يمكنه تسجيل المبيعات بعد. '
+      'اضغط «حاول مرة أخرى». إذا استمر الخطأ، استخدم إعادة الضبط الكاملة لهذا '
+      'الجهاز.';
+  @override
+  String get eachTillAlone =>
+      'يحتفظ هذا الجهاز بطاولاته وطلباته المفتوحة ودرج النقدية الخاص به. لا '
+      'تراها أجهزة البيع الأخرى في الفرع — تلتقي المبيعات المكتملة فقط في لوحة '
+      'التحكم.';
   @override
   String get username => 'اسم المستخدم';
   @override

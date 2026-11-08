@@ -8,6 +8,7 @@ import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/data/config/file_secret_store.dart';
+import 'package:shared_module/data/config/secret_store.dart';
 import 'package:shared_module/data/config/setup_progress_store.dart';
 import 'package:shared_module/data/config/terminal_config_store.dart';
 import 'package:shared_module/features/licensing/data/file_license_store.dart';
@@ -57,11 +58,12 @@ void main() {
 
   bool exists(String name) => File('${directory.path}/$name').existsSync();
 
-  ProviderContainer container() {
+  ProviderContainer container([List<Override> extra = const []]) {
     Future<Directory> here() async => directory;
     final container = ProviderContainer(
       overrides: [
         ...fakeRepositoryOverrides(),
+        ...extra,
         terminalConfigStoreProvider.overrideWithValue(
           FileTerminalConfigStore(directory: here),
         ),
@@ -255,6 +257,27 @@ void main() {
       expect(pair.$2, isNotEmpty);
       expect(pair.$2, isNot(pair.$1));
     }
+  });
+
+  // pos-cloud-single-till-sqlite: a cloud till's data file is encrypted with a
+  // key in this same store. Wiping it with everything else would make every
+  // sale in the file — unsent ones included — unreadable, and this reset
+  // promises not to touch a sale.
+  test('a hard reset puts back what guards the data, and nothing else',
+      () async {
+    final c = container([
+      hardResetSurvivorsProvider.overrideWith(
+        (ref) => [KeyedSecretStore(ref.watch(secretStoreProvider), 'data_key')],
+      ),
+    ]);
+    final secrets = c.read(secretStoreProvider);
+    await secrets.write('data_key', 'k' * 64);
+    await secrets.write(FileSecretStore.deviceTokenKey, 'a-device-token');
+
+    await c.read(terminalResetProvider).runHard();
+
+    expect(await secrets.read('data_key'), 'k' * 64);
+    expect(await secrets.read(FileSecretStore.deviceTokenKey), isNull);
   });
 }
 

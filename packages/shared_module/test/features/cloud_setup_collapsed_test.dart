@@ -23,6 +23,7 @@ import 'package:shared_module/features/setup/domain/setup_state.dart';
 import 'package:shared_module/features/setup/presentation/setup_wizard.dart';
 
 import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:shared_module/data/sql/embedded_datastore.dart';
 
 /// The cloud main device asks nothing the cloud already knows.
 ///
@@ -81,6 +82,17 @@ class _InstalledByTheInstaller implements InstallerCredentialsSource {
 }
 
 /// A machine nobody's installer ever ran on — a Mac, in practice.
+/// A till whose data is its own file: counts how often it was prepared.
+class _RecordingFile implements EmbeddedDatastore {
+  int prepared = 0;
+
+  @override
+  Future<EmbeddedDatastoreReport> prepare(DeploymentConfig config) async {
+    prepared++;
+    return EmbeddedDatastoreReport(created: prepared == 1, migrations: 64);
+  }
+}
+
 class _NoInstaller implements InstallerCredentialsSource {
   const _NoInstaller();
 
@@ -191,6 +203,7 @@ void main() {
     required HardwarePorts printers,
     InMemorySetupProgressStore? progress,
     _RecordingDefaultsSeeder? defaults,
+    EmbeddedDatastore? embedded,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 1200)
@@ -209,6 +222,8 @@ void main() {
           setupProgressStoreProvider.overrideWithValue(progress),
         if (defaults != null)
           cloudDefaultsSeederProvider.overrideWithValue(defaults.call),
+        if (embedded != null)
+          embeddedDatastoreProvider.overrideWithValue(embedded),
       ],
     );
     addTearDown(container.dispose);
@@ -882,6 +897,43 @@ void main() {
       expect(draft.error, isNull);
       expect(draft.provisioned, isTrue);
       expect(draft.canAdvance, isTrue);
+    });
+  });
+
+  // pos-cloud-single-till-sqlite, stage 5: the cloud app's data is a file of
+  // its own, so the connecting step prepares it — no installer file, no
+  // database fields, no PostgreSQL build.
+  group('a till whose data is its own file', () {
+    testWidgets('is never asked for a database, and nothing is built', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final file = _RecordingFile();
+      final (container, _) = await open(
+        tester,
+        // As on a Mac with no installer: the PostgreSQL path would stop here.
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+        embedded: file,
+      );
+      for (var i = 0; i < 3; i++) {
+        await answer(tester, container, modes: {DeploymentMode.cloud});
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+      }
+
+      final draft = container.read(setupProvider);
+      expect(draft.step, SetupStep.connecting);
+      expect(draft.needsDatabase, isFalse);
+      expect(find.text('Use this database'), findsNothing);
+      expect(file.prepared, 1);
+      expect(builder.calls, 0);
+      expect(draft.provisioned, isTrue, reason: '${draft.error}');
+      expect(
+        draft.bootstrapReport,
+        contains(const EnStrings().createdDataFile),
+      );
     });
   });
 

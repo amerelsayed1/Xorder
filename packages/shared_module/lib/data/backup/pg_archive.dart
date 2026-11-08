@@ -299,12 +299,14 @@ class PgArchive {
     Directory folder, {
     required String prefix,
     required int keep,
+    // `.db` for a till whose copies are its SQLite file.
+    String extension = '.dump',
   }) {
     if (!folder.existsSync()) return const [];
     final ours =
         folder.listSync().whereType<File>().where((file) {
           final name = file.uri.pathSegments.last;
-          return name.startsWith(prefix) && name.endsWith('.dump');
+          return name.startsWith(prefix) && name.endsWith(extension);
         }).toList()..sort(
           (a, b) => b.uri.pathSegments.last.compareTo(a.uri.pathSegments.last),
         );

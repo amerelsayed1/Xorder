@@ -30,6 +30,7 @@ import 'package:shared_module/features/licensing/domain/online_verdict.dart';
 import 'package:shared_module/features/setup/application/setup_controller.dart';
 
 import 'data/cloud/bootstrap_bundle.dart';
+import 'data/local/cloud_datastore.dart';
 import 'data/cloud/bootstrap_seeder.dart';
 import 'data/cloud/branch_sales_api.dart';
 import 'data/cloud/cloud_provisioning_repository.dart';
@@ -45,6 +46,32 @@ List<Override> cloudOverrides() => [
     (ref) => _CloudBootstrapSeeding(ref),
   ),
   backOfficeProvider.overrideWithValue(const CloudBackOffice()),
+  // The till's data is its own encrypted SQLite file, not a PostgreSQL server
+  // (pos-cloud-single-till-sqlite). Everything below follows from that.
+  posDatabaseProvider.overrideWith((ref) => ref.watch(cloudDatabaseProvider)),
+  embeddedDatastoreProvider.overrideWith(
+    (ref) => CloudDatastore(
+      database: ref.watch(cloudDatabaseProvider),
+      keys: ref.watch(cloudDataKeyStoreProvider),
+    ),
+  ),
+  backupSnapshotProvider.overrideWith(
+    (ref) => cloudSnapshot(
+      ref.watch(cloudDatabaseProvider),
+      ref.watch(cloudDataKeyStoreProvider),
+    ),
+  ),
+  cloudDefaultsSeederProvider.overrideWith(
+    (ref) => cloudDefaultsSeeder(ref.watch(cloudDatabaseProvider)),
+  ),
+  // A hard reset keeps the key: without it the sales in the file could never
+  // be read again, and a reset promises not to touch a sale.
+  hardResetSurvivorsProvider.overrideWith(
+    (ref) => [ref.watch(cloudDataKeyStoreProvider)],
+  ),
+  // Every cloud till is a till of its own (owner decision Q8): no tablet or
+  // extra desktop hangs off another's database, because there is none.
+  deviceRoleProvider.overrideWith((ref) => TerminalRole.main),
 ];
 
 /// The background conversation with the platform: heartbeat, config-version

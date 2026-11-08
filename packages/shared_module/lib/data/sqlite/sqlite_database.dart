@@ -25,10 +25,18 @@ import 'sqlite_statement.dart';
 /// **Durable.** Write-ahead log, `synchronous = FULL`: a sale the cashier was
 /// told is saved has reached the disk (BR-7).
 class SqliteDatabase implements SqlDatabase {
-  SqliteDatabase({required this.path, required this.key});
+  SqliteDatabase({
+    String? path,
+    Future<String> Function()? locate,
+    required this.key,
+  }) : assert(path != null || locate != null, 'a file, or a way to find it'),
+       _path = path,
+       _locate = locate;
 
-  /// The file. Created on first open.
-  final String path;
+  /// The file, or how to find it (the app's support folder is only known
+  /// asynchronously). Created on first open.
+  final String? _path;
+  final Future<String> Function()? _locate;
 
   /// The file's key: 32 bytes, as 64 hex characters. Null refuses to open,
   /// so a till never writes an unencrypted file.
@@ -56,6 +64,7 @@ class SqliteDatabase implements SqlDatabase {
       );
     }
     try {
+      final path = _path ?? await _locate!();
       await File(path).parent.create(recursive: true);
       final db = sq.sqlite3.open(path);
       try {

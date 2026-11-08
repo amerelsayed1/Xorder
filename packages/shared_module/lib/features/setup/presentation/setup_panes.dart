@@ -1960,6 +1960,16 @@ class _SummaryPane extends ConsumerWidget {
             ],
           ),
         ),
+        // A cloud till keeps its own file: its tables and open checks are its
+        // own, and the owner should know that before a second till is set up
+        // beside it (pos-cloud-single-till-sqlite, Q8).
+        if (short && ref.watch(embeddedDatastoreProvider) != null) ...[
+          const SizedBox(height: PosSpace.lg),
+          Text(
+            s.eachTillAlone,
+            style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+          ),
+        ],
         // The last screen before "Open the till" must not show an all-clear
         // over a terminal that has nothing to sell.
         if ((draft.catalogueItems ?? 0) == 0) ...[

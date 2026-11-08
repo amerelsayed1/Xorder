@@ -52,15 +52,25 @@ class FloorScreen extends ConsumerWidget {
         // Escape is the back button.
         const SingleActivator(LogicalKeyboardKey.escape): onClose,
       },
-      child: Focus(autofocus: true, child: _scaffold(context, strings, tables)),
+      child: Focus(
+        autofocus: true,
+        child: _scaffold(
+          context,
+          strings,
+          tables,
+          // A cloud till's tables are its own (pos-cloud-single-till-sqlite).
+          alone: ref.watch(embeddedDatastoreProvider) != null,
+        ),
+      ),
     );
   }
 
   Widget _scaffold(
     BuildContext context,
     AppStrings strings,
-    AsyncValue<List<DiningTable>> tables,
-  ) {
+    AsyncValue<List<DiningTable>> tables, {
+    required bool alone,
+  }) {
     return Scaffold(
       backgroundColor: context.pos.page,
       body: tables.when(
@@ -71,7 +81,12 @@ class FloorScreen extends ConsumerWidget {
         data: (data) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(context, strings, data),
+            _header(
+              context,
+              strings,
+              data,
+              alone: alone,
+            ),
             Expanded(
               child: data.isEmpty
                   ? _empty(context, strings)
@@ -86,8 +101,9 @@ class FloorScreen extends ConsumerWidget {
   Widget _header(
     BuildContext context,
     AppStrings strings,
-    List<DiningTable> tables,
-  ) {
+    List<DiningTable> tables, {
+    bool alone = false,
+  }) {
     final pos = context.pos;
     final free = tables.where((t) => t.state == TableState.free).length;
     final open = tables.where((t) => t.state == TableState.open).length;
@@ -119,6 +135,13 @@ class FloorScreen extends ConsumerWidget {
                       strings.pickATableHelp,
                       style: PosText.ui(size: 13.5, color: pos.muted),
                     ),
+                    if (alone) ...[
+                      const SizedBox(height: PosSpace.xs),
+                      Text(
+                        strings.eachTillAlone,
+                        style: PosText.ui(size: 12, color: pos.muted),
+                      ),
+                    ],
                   ],
                 ),
               ),
