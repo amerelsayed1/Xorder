@@ -77,6 +77,16 @@ function toggleIn(list, value, on) {
     if (on && i < 0) list.push(value)
     else if (!on && i >= 0) list.splice(i, 1)
 }
+// A licence covers one mode (owner, 2026-11-08). One signed for both before
+// that rule shows no choice, so renewing it makes the operator pick; the
+// legacy offline spellings count as offline.
+const asMode = (m) => (m === 'branch_server' || m === 'standalone' ? 'offline' : m)
+function oneMode(modes) {
+    // Kept as signed when it is one mode, so a renewal that changes nothing
+    // else does not rewrite `branch_server` as `offline`.
+    const list = [...(modes || [])]
+    return new Set(list.map(asMode)).size === 1 ? list : []
+}
 const fingerprintList = () => renewForm.fingerprints.split('\n').map((x) => x.trim()).filter(Boolean)
 
 function prefillTerms(l) {
@@ -84,7 +94,7 @@ function prefillTerms(l) {
         lifetime: !!l.lifetime,
         plan_id: l.plan?.id ?? '',
         features: [...(l.features || [])],
-        modes: [...(l.modes || [])],
+        modes: oneMode(l.modes),
         max_terminals: l.max_terminals ?? 1,
         max_users: l.max_users ?? '',
         max_offline_days: l.max_offline_days ?? '',
@@ -226,7 +236,9 @@ async function submitRenewal() {
         } else {
             body.plan_id = renewForm.plan_id === '' ? null : Number(renewForm.plan_id)
             body.features = renewForm.features
-            body.modes = renewForm.modes
+            // Left out when nothing is chosen: the server then says the
+            // licence covers both modes and asks for one.
+            if (renewForm.modes.length) body.modes = renewForm.modes
         }
         const { data } = await api.post(`api/admin/pos/licences/${licence.value.id}/renew`, body)
         renewing.value = false
@@ -758,8 +770,8 @@ const tone = computed(() => {
                             <legend class="label">{{ t('licence.modes') }}</legend>
                             <div class="flex flex-wrap gap-4">
                                 <label v-for="m in MODES" :key="m" class="flex items-center gap-2 text-sm">
-                                    <input type="checkbox" class="h-4 w-4" :checked="renewForm.modes.includes(m)"
-                                        :data-test="'renew-mode-' + m" @change="toggleIn(renewForm.modes, m, $event.target.checked)" />
+                                    <input type="radio" name="renew-mode" class="h-4 w-4" :checked="renewForm.modes.map(asMode).includes(m)"
+                                        :data-test="'renew-mode-' + m" @change="renewForm.modes = [m]" />
                                     {{ t('licence.mode.' + m) }}
                                 </label>
                             </div>

@@ -61,15 +61,10 @@ const menuLayouts = ['photo', 'text-grid', 'text-list']
 // afterwards from the standalone licence form, and the till in the meantime
 // reported "not licensed for this mode".
 //
-// Never submitted empty. An empty modes[] parses to an empty set on the till,
-// every mode then fails, and that reads to a cashier as a bricked terminal.
+// Exactly one (owner, 2026-11-08): the till is two apps, XOrder POS - Cloud
+// and XOrder POS - Offline, and each refuses a licence covering both.
 const POS_MODES = ['cloud', 'offline']
 const licenceModes = ref(['cloud'])
-function togglePosMode(mode, on) {
-    const i = licenceModes.value.indexOf(mode)
-    if (on && i < 0) licenceModes.value.push(mode)
-    else if (!on && i >= 0 && licenceModes.value.length > 1) licenceModes.value.splice(i, 1)
-}
 const errors = ref({})
 const saving = ref(false)
 const generatedPassword = ref('')
@@ -843,8 +838,8 @@ async function submitCreate() {
                         <p class="help" style="margin-top:0">{{ t('licence.modes_hint') }}</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label v-for="m in POS_MODES" :key="m" class="choice" :class="{ 'choice-on': licenceModes.includes(m) }">
-                                <input type="checkbox" :checked="licenceModes.includes(m)"
-                                    @change="togglePosMode(m, $event.target.checked)" class="h-4 w-4" />
+                                <input type="radio" name="licence-mode" :checked="licenceModes.includes(m)"
+                                    @change="licenceModes = [m]" class="h-4 w-4" />
                                 <span class="choice-title">{{ t('licence.mode.' + m) }}</span>
                             </label>
                         </div>

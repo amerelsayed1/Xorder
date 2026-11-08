@@ -88,7 +88,7 @@ class StoreRestaurantRequest extends FormRequest
             // filling the form by hand) but never allowed to be EMPTY: an empty
             // modes[] parses to an empty set on the till and every deployment
             // mode then fails to license, which reads as a bricked terminal.
-            'licence.modes' => ['nullable', 'array', 'min:1'],
+            'licence.modes' => ['nullable', 'array', 'min:1', StoreLicenceRequest::oneModeRule()],
             'licence.modes.*' => ['string', Rule::in(StoreLicenceRequest::MODES)],
             'licence.fingerprints' => ['nullable', 'array'],
             'licence.fingerprints.*' => ['string', 'max:128'],

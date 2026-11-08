@@ -27,6 +27,36 @@ class StoreLicenceRequest extends FormRequest
      */
     public const MODES = ['cloud', 'offline', 'branch_server', 'standalone'];
 
+    /** The mode a wire value means: both legacy values are offline on the till. */
+    public static function modeOf(string $wire): string
+    {
+        return in_array($wire, ['branch_server', 'standalone'], true) ? 'offline' : $wire;
+    }
+
+    /** How many different modes a modes[] list covers, legacy values folded. */
+    public static function modeCount(array $modes): int
+    {
+        return count(array_unique(array_map(
+            fn ($m) => is_string($m) ? self::modeOf($m) : '',
+            $modes,
+        )));
+    }
+
+    /**
+     * A licence covers ONE mode: cloud or offline (owner, 2026-11-08). The
+     * till is two apps, XOrder POS - Cloud and XOrder POS - Offline, and each
+     * refuses a licence that covers both; a cloud till already keeps selling
+     * on its own database when the internet drops, so nobody needs both.
+     */
+    public static function oneModeRule(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            if (is_array($value) && self::modeCount($value) > 1) {
+                $fail(__('xorder.validation.licence_one_mode'));
+            }
+        };
+    }
+
     public function authorize(): bool
     {
         return $this->user()?->can('licences.manage') ?? false;
@@ -57,7 +87,7 @@ class StoreLicenceRequest extends FormRequest
             // reports modeNotLicensed — which reads to a cashier as a bricked
             // till with no explanation. If a licence covers everything, all
             // three must be listed explicitly.
-            'modes' => ['required', 'array', 'min:1'],
+            'modes' => ['required', 'array', 'min:1', self::oneModeRule()],
             'modes.*' => ['string', Rule::in(self::MODES)],
 
             // Empty means every branch of the tenant.

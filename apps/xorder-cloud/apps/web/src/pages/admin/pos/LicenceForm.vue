@@ -15,9 +15,9 @@ const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 // The two CURRENT DeploymentMode.wire values — the model collapsed to
 // cloud/offline. Legacy branch_server/standalone stay parseable server-side
 // for already-signed licences but are no longer issuable from this form.
-// Never submitted empty: an empty modes[] parses to
-// an empty set on the till, every mode then fails, and the terminal reports
-// "not licensed for this mode" — which reads to a cashier as a bricked till.
+// Exactly one (owner, 2026-11-08): the till is two apps, XOrder POS - Cloud
+// and XOrder POS - Offline, and each refuses a licence covering both. Still
+// sent as a one-value modes[]: that is the signed claim's shape.
 const MODES = ['cloud', 'offline']
 
 // Screen order, not the server's rules order.
@@ -69,12 +69,6 @@ const planFeatures = computed(() => {
     const plan = plans.value.find((p) => p.id === Number(form.plan_id))
     return plan?.feature_keys || []
 })
-
-function toggleMode(mode, on) {
-    const i = form.modes.indexOf(mode)
-    if (on && i < 0) form.modes.push(mode)
-    else if (!on && i >= 0) form.modes.splice(i, 1)
-}
 
 onMounted(async () => {
     const [r, p] = await Promise.all([
@@ -188,7 +182,7 @@ function finish() {
                     <p class="help" style="margin-top:0;margin-bottom:8px">{{ t('licence.modes_hint') }}</p>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <label v-for="m in MODES" :key="m" class="opt cursor-pointer items-center">
-                            <input type="checkbox" :checked="form.modes.includes(m)" @change="toggleMode(m, $event.target.checked)" class="h-4 w-4" />
+                            <input type="radio" name="licence-mode" :checked="form.modes.includes(m)" @change="form.modes = [m]" class="h-4 w-4" />
                             <span class="text-sm">{{ t('licence.mode.' + m) }}</span>
                         </label>
                     </div>
