@@ -9,6 +9,14 @@ repo's remote is `amerelsayed1/xorder-pos`.
 This file is loaded every session — keep it tight. Depth lives in `README.md` (run +
 design language) and the numbered docs in `docs/pos/`. Read those only when you need it.
 
+## Workspace layout (pos-split-apps, in progress)
+
+The repository is a Dart pub workspace: the root `pubspec.yaml` lists the members and holds
+the one `pubspec.lock`. The till is the member **`packages/xorder_pos/`** (package name
+`xorder_pos`, unchanged); every `lib/`, `test/`, `bin/` and `tool/` path below is inside it.
+It is becoming two apps, XOrder POS - Cloud and XOrder POS - Offline, on shared packages:
+plan in the workspace's `docs/features/pos-split-apps/TECHNICAL.md`.
+
 ## Repo map (`lib/` is layered; UI never reaches past a repository interface)
 
 | Path | What |
@@ -36,11 +44,12 @@ design language) and the numbered docs in `docs/pos/`. Read those only when you 
 ## Commands
 
 ```bash
-flutter pub get
+cd packages/xorder_pos        # every command below runs in the member
+flutter pub get               # resolves the whole workspace
 flutter run -d macos          # or: flutter run -d windows
 flutter test                  # unit + widget; green with NO database (see below)
 flutter analyze               # flutter_lints; keep clean
-scripts/check.sh              # THE verification: analyse + every test, PostgreSQL included (not run in CI)
+../../scripts/check.sh        # THE verification: analyse + every test, PostgreSQL included (not run in CI)
 dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
 ```
 

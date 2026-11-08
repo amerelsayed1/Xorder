@@ -1,104 +1,15 @@
-name: xorder_pos
-description: "XOrder POS — offline-first desktop point of sale for Windows and macOS."
+# The xorder-pos workspace (Dart pub workspace). No code lives here: the
+# packages do. One lockfile, this folder's pubspec.lock, resolves them all.
+#
+#   packages/xorder_pos   the shared till: money rules, screens, the branch
+#                         database, the wiring (docs/features/pos-split-apps)
+#
+# Run `flutter pub get` here once; every member then shares the resolution.
+name: xorder_pos_workspace
 publish_to: 'none'
-version: 1.0.0+1
 
 environment:
   sdk: ^3.13.0
 
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_localizations:
-    sdk: flutter
-
-  # State management + routing. Riverpod because the ticket engine is pure Dart
-  # and must be testable without a widget tree; go_router because the desktop
-  # shell swaps whole screens rather than pushing a mobile stack.
-  flutter_riverpod: ^2.6.1
-  go_router: ^18.0.0
-
-  # Network. Only ever reached through a repository interface — see
-  # docs/pos/04-flutter-pos-architecture.md.
-  dio: ^5.11.0
-  connectivity_plus: ^7.3.1
-
-  # Primary datastore. PostgreSQL on the branch server, shared by every till on
-  # the LAN — see docs/pos/08-postgres-lan.md. Pure Dart, no native plugin, and
-  # it is reached only through the repository contracts in
-  # lib/domain/repositories/, so swapping to HTTP later touches one provider
-  # file and nothing in domain/ or features/.
-  postgres: ^3.5.12
-
-  path_provider: ^2.1.6
-  path: ^1.9.1
-
-  # Offline licence verification. Ed25519 public-key signatures: the public key
-  # ships in the binary, the private key never leaves the licence server.
-  cryptography: ^2.7.0
-  # SHA-256 for the terminal fingerprint and cashier PIN salting.
-  crypto: ^3.0.6
-
-  # Desktop shell + misc.
-  window_manager: ^0.5.2
-  uuid: ^4.6.0
-  intl: ^0.20.3
-  collection: ^1.19.1
-  cupertino_icons: ^1.0.8
-  menu_bar: ^0.5.3
-  csv: ^8.0.0
-  excel: ^4.0.6
-  file_picker: ^12.2.0
-  qr: ^3.0.2
-  win32: ^6.3.0
-  ffi: ^2.1.4
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  # Drives the assembled app on a real desktop device rather than in the
-  # headless widget harness. The end-to-end suite needs it because a real
-  # PostgreSQL round trip does not complete under fake async — see
-  # integration_test/README.md.
-  integration_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
-  # Regenerates the launcher icons for every platform from the master PNGs in
-  # assets/icons/. Config lives in flutter_launcher_icons.yaml at the repo root:
-  #   dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
-  flutter_launcher_icons: ^0.14.4
-  mocktail: ^1.0.5
-
-flutter:
-  uses-material-design: true
-
-  # The official mark. Bundled rather than redrawn in widgets: the welcome
-  # screen is the first thing anyone sees on a new till, and a wordmark
-  # rebuilt from Text + Border drifts from the brand the moment the brand
-  # moves. The PNG is 1348x376 — rendered at a fixed WIDTH so the aspect
-  # ratio is never the thing that decides the layout.
-  assets:
-    - assets/icons/xorder_logo_official.png
-
-  # IBM Plex, bundled so every till draws the same letters whatever the machine
-  # has installed (SIL Open Font Licence — assets/fonts/OFL.txt). Plex Sans
-  # Arabic carries a matching Latin set, so it is the face for both languages;
-  # Plex Mono is every number. Only the weights the type scale uses.
-  fonts:
-    - family: IBM Plex Sans Arabic
-      fonts:
-        - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/IBMPlexSansArabic-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/IBMPlexSansArabic-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
-          weight: 700
-    - family: IBM Plex Mono
-      fonts:
-        - asset: assets/fonts/IBMPlexMono-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/IBMPlexMono-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/IBMPlexMono-SemiBold.ttf
-          weight: 600
+workspace:
+  - packages/xorder_pos
