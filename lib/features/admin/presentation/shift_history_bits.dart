@@ -143,21 +143,21 @@ class _ShiftHistoryFrameState extends ConsumerState<ShiftHistoryFrame> {
           spacing: PosSpace.sm,
           runSpacing: PosSpace.sm,
           children: [
-            _Drop<String>(
+            FilterDropdown<String>(
               dropKey: Key('${widget.paneKey}-till'),
               everyone: s.shiftsAllTills,
               options: _tills,
               selected: _terminal,
               onChanged: (id) => setState(() => _terminal = id),
             ),
-            _Drop<int>(
+            FilterDropdown<int>(
               dropKey: Key('${widget.paneKey}-cashier'),
               everyone: s.shiftsAllCashiers,
               options: _people,
               selected: _staff,
               onChanged: (id) => setState(() => _staff = id),
             ),
-            _Drop<ShiftStatus>(
+            FilterDropdown<ShiftStatus>(
               dropKey: Key('${widget.paneKey}-status'),
               everyone: s.shiftsAllStatuses,
               options: [
@@ -249,59 +249,6 @@ class _PeriodBar extends ConsumerWidget {
           color: pos.ink,
         ),
       ],
-    );
-  }
-}
-
-/// One filter: "all", or one of [options]. The Users pane's role filter, for
-/// any key — an accent border while it narrows the list, resting while not.
-class _Drop<T extends Object> extends StatelessWidget {
-  const _Drop({
-    required this.dropKey,
-    required this.everyone,
-    required this.options,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final Key dropKey;
-  final String everyone;
-  final List<(T, String)> options;
-  final T? selected;
-  final ValueChanged<T?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    // A choice no longer offered is shown as "all" rather than handed to the
-    // dropdown, which asserts when its value is not among its items.
-    final value = options.any((option) => option.$1 == selected)
-        ? selected
-        : null;
-    return Container(
-      height: PosSize.filterChip,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-      decoration: BoxDecoration(
-        border: Border.fromBorderSide(
-          value == null ? pos.resting : pos.accentBorder,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T?>(
-          key: dropKey,
-          value: value,
-          isDense: true,
-          focusColor: Colors.transparent,
-          borderRadius: BorderRadius.zero,
-          style: PosText.ui(size: 12.5, color: pos.body),
-          items: [
-            DropdownMenuItem<T?>(value: null, child: Text(everyone)),
-            for (final (id, label) in options)
-              DropdownMenuItem<T?>(value: id, child: Text(label)),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
     );
   }
 }

@@ -583,10 +583,11 @@ class _AdminModeSettings extends ConsumerWidget {
           children: [
             Text(strings.adminLockAfter, style: label),
             const SizedBox(width: PosSpace.sm),
-            DropdownButton<int>(
-              key: const Key('admin-timeout'),
+            PosDropdownField<int>(
+              dropKey: const Key('admin-timeout'),
               value: settings.timeoutMinutes,
-              underline: const SizedBox.shrink(),
+              expanded: false,
+              dense: true,
               style: choice,
               items: [
                 for (final minutes in AdminModeSettings.timeoutChoices)
@@ -611,10 +612,11 @@ class _AdminModeSettings extends ConsumerWidget {
           children: [
             Text(strings.adminShortcut, style: label),
             const SizedBox(width: PosSpace.sm),
-            DropdownButton<AdminShortcut>(
-              key: const Key('admin-shortcut'),
+            PosDropdownField<AdminShortcut>(
+              dropKey: const Key('admin-shortcut'),
               value: settings.shortcut,
-              underline: const SizedBox.shrink(),
+              expanded: false,
+              dense: true,
               style: choice,
               items: [
                 for (final shortcut in AdminShortcut.values)

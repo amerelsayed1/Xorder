@@ -580,3 +580,143 @@ class UsernameField extends StatelessWidget {
     ],
   );
 }
+
+/// One filter: "everyone", or one of [options]. A bordered chip as tall as the
+/// other filter chips ([PosSize.filterChip]), resting while it narrows nothing
+/// and accent-bordered while it does.
+///
+/// **One widget for the history screen's, the shift list's and the Users
+/// pane's filters.** They were three copies of the same thirty lines, which is
+/// how three controls that look alike start to differ. [dropKey] is the inner
+/// dropdown's key, for the tests that open it; [key] is the chip's.
+class FilterDropdown<T extends Object> extends StatelessWidget {
+  const FilterDropdown({
+    super.key,
+    this.dropKey,
+    required this.everyone,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Key? dropKey;
+
+  /// The label for "no filter".
+  final String everyone;
+  final List<(T, String)> options;
+  final T? selected;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    // A value no longer offered is shown as "everyone" rather than handed to
+    // a dropdown that would assert on it.
+    final value = options.any((option) => option.$1 == selected)
+        ? selected
+        : null;
+    return Container(
+      height: PosSize.filterChip,
+      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
+      decoration: BoxDecoration(
+        border: Border.fromBorderSide(
+          value == null ? pos.resting : pos.accentBorder,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T?>(
+          key: dropKey,
+          value: value,
+          isDense: true,
+          focusColor: Colors.transparent,
+          borderRadius: BorderRadius.zero,
+          style: PosText.ui(size: 12.5, color: pos.body),
+          items: [
+            DropdownMenuItem<T?>(value: null, child: Text(everyone)),
+            for (final (id, label) in options)
+              DropdownMenuItem<T?>(value: id, child: Text(label)),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// A dropdown that looks like the text fields around it.
+///
+/// A bare `DropdownButton` draws Material's underline and nothing else, so on a
+/// form it sat under its label as a different control from the boxes above and
+/// below it — unframed, unfilled, shorter. This takes the frame, fill and padding
+/// from the theme's `inputDecorationTheme` (an [InputDecorator]), which is how a
+/// `TextField` gets them, so the two match by construction and follow the
+/// reading direction together.
+///
+/// The inner `DropdownButton` keeps [dropKey], so a test that opens it finds the
+/// same widget as before. [expanded] fills the width (a form row); [dense] is
+/// the compact frame for a setting that sits inline beside its label.
+class PosDropdownField<T> extends StatelessWidget {
+  const PosDropdownField({
+    super.key,
+    this.dropKey,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+    this.hint,
+    this.disabledHint,
+    this.style,
+    this.expanded = true,
+    this.dense = false,
+  });
+
+  final Key? dropKey;
+  final T? value;
+  final List<DropdownMenuItem<T>> items;
+
+  /// Null disables it, and then [disabledHint] is what it shows.
+  final ValueChanged<T?>? onChanged;
+  final Widget? hint;
+  final Widget? disabledHint;
+  final TextStyle? style;
+  final bool expanded;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final field = _frame();
+    // An input frame cannot have an unbounded width, and a setting that sits
+    // beside its label in a shrink-wrapped Row is given exactly that. Sized to
+    // its content instead.
+    return expanded ? field : IntrinsicWidth(child: field);
+  }
+
+  Widget _frame() => InputDecorator(
+    isEmpty: false,
+    decoration: InputDecoration(
+      isDense: dense,
+      contentPadding: dense
+          ? const EdgeInsets.symmetric(
+              horizontal: PosSpace.sm,
+              vertical: PosSpace.xs,
+            )
+          : null,
+      enabled: onChanged != null,
+    ),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButton<T>(
+        key: dropKey,
+        value: value,
+        isDense: true,
+        isExpanded: expanded,
+        hint: hint,
+        disabledHint: disabledHint,
+        style: style,
+        focusColor: Colors.transparent,
+        borderRadius: BorderRadius.zero,
+        items: items,
+        onChanged: onChanged,
+      ),
+    ),
+  );
+}
+
