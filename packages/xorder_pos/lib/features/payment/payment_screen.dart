@@ -21,7 +21,7 @@ import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart'
     show CheckChangedElsewhere, SubmitOrderResult;
 import '../../domain/services/authorization.dart';
-import '../admin/presentation/supervisor_override.dart';
+import '../admin_mode/supervisor_override.dart';
 
 /// A payment method offered at the till.
 ///

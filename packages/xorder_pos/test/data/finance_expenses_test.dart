@@ -20,7 +20,7 @@ import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Finance's expenses, bills due and drawers against PostgreSQL (plan 19
 /// BO-10). Local times throughout, so the dates hold in any zone.

@@ -9,7 +9,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_branch_sales_repository.dart';
 import 'package:xorder_pos/domain/models/branch_sales.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// §3a against PostgreSQL — the shared-database branch view.
 ///

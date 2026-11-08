@@ -24,13 +24,13 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/payment_status.dart';
-import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
 import 'package:xorder_pos/features/history/presentation/history_widgets.dart';
 import 'package:xorder_pos/features/history/presentation/order_detail_pane.dart';
 import 'package:xorder_pos/features/history/presentation/order_history_screen.dart';
 import 'package:xorder_pos/features/history/presentation/payment_status_chip.dart';
 
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// The order history screen.
 ///

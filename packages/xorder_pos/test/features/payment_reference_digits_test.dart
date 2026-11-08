@@ -8,7 +8,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/payment/payment_screen.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The authorisation / reference box on the payment screen (XORD-004 follow-up).
 ///

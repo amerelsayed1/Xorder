@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_catalog_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The tile's price for an item with sizes, as the till reads it.
 ///

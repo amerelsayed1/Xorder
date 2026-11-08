@@ -18,7 +18,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/services/authorization.dart';
 import '../payment/customer_dialog.dart';
 import '../../domain/services/ticket_engine.dart';
-import '../admin/presentation/supervisor_override.dart';
+import '../admin_mode/supervisor_override.dart';
 import '../receipt/receipt_dialog.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/discount_sheet.dart';

@@ -7,7 +7,7 @@ import 'package:xorder_pos/data/config/file_secret_store.dart';
 import 'package:xorder_pos/data/config/legacy_secret_migration.dart';
 import 'package:xorder_pos/data/config/secret_store.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The one-time move of an older build's `secrets.json` into the OS store.
 ///

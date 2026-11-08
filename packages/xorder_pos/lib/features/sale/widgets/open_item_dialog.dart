@@ -12,7 +12,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 /// What the dialog came back with.

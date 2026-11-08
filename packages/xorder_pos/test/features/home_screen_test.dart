@@ -16,8 +16,8 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/home/home_screen.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 
-import '../support/fakes.dart';
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 final _shift = PosShift(
   id: 3,

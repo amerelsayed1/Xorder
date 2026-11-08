@@ -7,7 +7,7 @@ import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The administrator grant set, applied to a real role and then tried.
 ///

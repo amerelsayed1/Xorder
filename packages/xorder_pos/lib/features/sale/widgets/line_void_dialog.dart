@@ -12,7 +12,7 @@ import '../../../domain/repositories/repositories.dart'
     show CheckChangedElsewhere;
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 
 /// Taking a line off the ticket — and which of the two acts that is.
 ///

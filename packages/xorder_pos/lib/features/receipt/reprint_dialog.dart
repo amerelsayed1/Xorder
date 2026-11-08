@@ -14,7 +14,7 @@ import '../../domain/models/shift.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
-import '../admin/presentation/supervisor_override.dart';
+import '../admin_mode/supervisor_override.dart';
 import 'receipt_data.dart';
 import 'receipt_document.dart';
 import 'receipt_paper.dart';

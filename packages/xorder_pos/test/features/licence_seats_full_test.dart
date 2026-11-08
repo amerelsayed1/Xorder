@@ -10,7 +10,7 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/licensing/presentation/licence_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// XORD-017 — what a cashier or owner reads on the till when the platform says
 /// every device the licence covers is already in use.

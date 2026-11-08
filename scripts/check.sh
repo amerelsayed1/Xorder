@@ -63,29 +63,39 @@ fi
 echo "PostgreSQL server ${server_major:-unknown}; $(pg_dump --version 2>/dev/null || echo 'pg_dump not found')"
 
 flutter pub get
-flutter analyze
-# Two passes, because every PostgreSQL suite shares ONE database (see
-# test/data/pg_fixture.dart): the ordinary tests run in parallel, the
-# `integration` ones one at a time. Running them in parallel against the shared
-# database brought back a fake "duplicate invoice number" failure.
-flutter test --exclude-tags integration "$@"
 
-# 79 is "no tests match the tag": a path argument that selects no PostgreSQL
-# suite is not a failure.
-set +e
-flutter test --tags integration --concurrency=1 "$@"
-status=$?
-set -e
-if [ "$status" -ne 0 ] && [ "$status" -ne 79 ]; then exit "$status"; fi
+# One member: analyse, then the two test passes. Two passes because every
+# PostgreSQL suite shares ONE database per checkout (see
+# packages/xorder_pos_test_support/lib/pg_fixture.dart): the ordinary tests run
+# in parallel, the `integration` ones one at a time. Running them in parallel
+# against the shared database brought back a fake "duplicate invoice number"
+# failure. 79 is "no tests match the tag": a member or a path argument that
+# selects no PostgreSQL suite is not a failure.
+check_member() {
+  echo "==> $1"
+  (
+    cd "$1"
+    flutter analyze
+    if [ -d test ]; then
+      flutter test --exclude-tags integration "${@:2}"
+      set +e
+      flutter test --tags integration --concurrency=1 "${@:2}"
+      status=$?
+      set -e
+      if [ "$status" -ne 0 ] && [ "$status" -ne 79 ]; then exit "$status"; fi
+    fi
+  )
+}
 
-# The two apps (pos-split-apps stage 2). Each is an entry point plus platform
-# folders over the shared package, so there is nothing to test in them yet —
-# analysing proves they still compile against it. Skipped when a path argument
-# narrows the run to part of the shared suite.
+# The shared till first, with any path arguments. Then the test-support
+# package (analysis only: it has no tests of its own) and the two apps
+# (pos-split-apps, stage 3: each carries its own code and tests — the back
+# office in the offline app, the cloud sync in the cloud app). A path argument
+# narrows the run to the shared package, where the paths are.
+check_member . "$@"
 if [ "$#" -eq 0 ]; then
-  for app in xorder_pos_offline xorder_pos_cloud; do
-    echo "Analysing apps/$app"
-    (cd "../../apps/$app" && flutter analyze)
-  done
+  check_member ../xorder_pos_test_support
+  check_member ../../apps/xorder_pos_offline
+  check_member ../../apps/xorder_pos_cloud
 fi
 echo "All checks passed."

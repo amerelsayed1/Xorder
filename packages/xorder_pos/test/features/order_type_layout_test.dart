@@ -6,7 +6,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// XORD-002 — the sale screen adapts to how many order types are sold.
 void main() {

@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/dining_table.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// XORD-044, through the real provider graph: two tills on one branch database.
 ///

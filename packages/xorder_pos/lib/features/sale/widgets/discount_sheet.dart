@@ -15,7 +15,7 @@ import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../domain/services/ticket_engine.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 import '../../../core/ui/widgets/fold_digits_formatter.dart';
 import '../../../core/text/digits.dart';
 

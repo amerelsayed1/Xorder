@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/content_languages.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The wizard's "this machine has no database yet" path, end to end, against a
 /// real PostgreSQL. Opt-in: it creates and drops a database of its own.

@@ -10,8 +10,8 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/home/home_screen.dart';
 
-import '../support/fakes.dart';
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// Close the day on the home screen is for whoever holds `day.close`, and only
 /// while a day is open.

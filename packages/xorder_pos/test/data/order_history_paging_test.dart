@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/history/history_scope.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The sales list's summary strip and its pages, against PostgreSQL (BO-3).
 ///

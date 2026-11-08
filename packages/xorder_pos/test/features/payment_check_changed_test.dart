@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/payment/payment_screen.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The datastore refusing the sale because the table's check moved on.
 class _ChangedElsewhere extends FakeOrdersRepository {

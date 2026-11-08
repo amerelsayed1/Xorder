@@ -18,7 +18,7 @@ import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/refund_engine.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 const _uuid = Uuid();

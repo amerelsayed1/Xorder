@@ -5,7 +5,7 @@ import '../core/l10n/app_strings.dart';
 import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
 import '../core/ui/widgets/pos_widgets.dart';
-import '../data/cloud/cloud_provisioning_repository.dart' show posAppVersion;
+import '../core/config/app_version.dart';
 import '../domain/models/branch_sales.dart' show businessDayWire;
 import '../domain/services/business_day_service.dart'
     show DayNotice, DayNoticeKind;

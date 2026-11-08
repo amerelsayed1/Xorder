@@ -11,8 +11,8 @@ import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 
-import '../support/fakes.dart';
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// Sign in first, then Home (pos-signin-first-home): through the real app and
 /// the real router, with **no shift open**, which is the morning and the end of

@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/lan_tls.dart';
 
-import '../support/lan_tls_fixtures.dart';
+import 'package:xorder_pos_test_support/lan_tls_fixtures.dart';
 
 /// Which transport a till's database connection gets (ADR-006, slice C).
 ///

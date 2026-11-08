@@ -15,7 +15,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/reason_code.dart';
 import '../../../domain/services/authorization.dart';
 import '../../receipt/receipt_printing.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 /// Money into or out of the drawer that is not a sale (§22).

@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/setup/presentation/force_reset_dialog.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The forced reset — Ctrl/Cmd+Shift+R, and the menu item that prints it — and
 /// who it asks for.

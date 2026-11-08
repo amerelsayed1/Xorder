@@ -10,10 +10,13 @@ import 'package:uuid/uuid.dart';
 import '../core/config/deployment.dart';
 import '../core/config/lan_tls.dart';
 import '../data/cloud/cloud_api.dart';
-import '../data/cloud/cloud_provisioning_repository.dart';
-import '../data/cloud/cloud_sync.dart';
+import '../core/config/app_version.dart';
+import '../domain/models/sync_outcome.dart';
+import '../features/admin_mode/back_office_contract.dart';
+import 'bootstrap_seeding.dart';
+import 'sales_sync.dart';
+import '../domain/services/syncing_orders_repository.dart';
 import '../data/cloud/device_token_vault.dart';
-import '../data/cloud/outbox_drain.dart';
 import '../core/config/platform_endpoint.dart';
 import '../core/config/printer_config.dart';
 import '../core/config/terminal_config.dart';
@@ -80,7 +83,7 @@ import '../data/postgres/postgres_shift_repository.dart';
 import '../data/postgres/postgres_sync_queue_repository.dart';
 import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
-import '../features/admin/application/admin_session.dart'
+import '../features/admin_mode/admin_session.dart'
     show adminSessionProvider;
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
@@ -94,7 +97,6 @@ import '../features/licensing/data/platform_licence_api.dart';
 import '../features/licensing/data/site_licence.dart';
 import '../features/licensing/domain/license_verifier.dart';
 import '../features/licensing/domain/license.dart';
-import '../features/licensing/domain/online_verdict.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
 import '../domain/models/held_sync.dart';
@@ -672,50 +674,23 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
   // A child tablet registers against its main device's PostgreSQL whatever
   // mode that main device runs in: the platform has never heard of it, and it
   // holds no device token to claim with.
+  // A cloud main device claims against the hosted platform (POS-BE-023) and
+  // seeds from the bundle the claim carries: that implementation is cloud
+  // code, bound over this provider by `apps/xorder_pos_cloud` (pos-split-apps,
+  // stage 3). Without that binding a cloud main device is unconfigured here.
   if (config.mode == DeploymentMode.cloud && !config.isChild) {
-    final api = ref.watch(posCloudApiProvider);
-    if (api == null) return const UnconfiguredProvisioningRepository();
-    return CloudProvisioningRepository(
-      api: api,
-      vault: ref.watch(deviceTokenVaultProvider),
-      database: ref.watch(posDatabaseProvider),
-      config: config,
-      fingerprint: TerminalIdFingerprint(
-        ref.watch(terminalProfileProvider).installationId,
-      ).value,
-      // The bundle's licence embed goes through the same verified path a typed
-      // key uses — signature checked, tenant checked — and is then HELD by the
-      // wizard rather than written, exactly like a typed one. A claim happens
-      // at step six of ten, and an installer can still walk away at any of the
-      // four that follow; `SetupController.complete()` is the only place a
-      // licence reaches this machine's disk.
-      installLicence: (licence) async {
-        final installed = await ref
-            .read(licenceServiceProvider)
-            .activate(
-              deployment: config,
-              key: '',
-              fileContents: jsonEncode(licence),
-              persist: false,
-            );
-        if (installed.file case final file?) {
-          ref.read(setupProvider.notifier).holdLicence(file);
-        }
-        // Where this till takes its verdict from (POS-BE-031). Absent from an
-        // older platform, and then nothing is recorded: the till keeps its file.
-        if (licence['enforcement'] case final String enforcement) {
-          try {
-            final store = ref.read(licenceCheckStoreProvider);
-            final record = await store.read() ?? const LicenceCheckRecord();
-            await store.write(record.copyWith(enforcement: enforcement));
-          } on Object {
-            // A cache, not a gate: the first check learns it again.
-          }
-        }
-      },
-    );
+    return const UnconfiguredProvisioningRepository();
   }
+  return branchProvisioningRepository(ref, config);
+});
 
+/// Claiming against the branch's own PostgreSQL — an offline till, or a child
+/// tablet of either kind. Public so the cloud app's override can fall through
+/// to it for a child.
+ProvisioningRepository branchProvisioningRepository(
+  Ref ref,
+  DeploymentConfig config,
+) {
   if (PosDatabase.hostFor(config) == null) {
     return const UnconfiguredProvisioningRepository();
   }
@@ -723,7 +698,7 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
   );
-});
+}
 
 /// The hosted platform, or null when this terminal has no business talking to
 /// one — offline mode, or a cloud terminal whose base URL is not yet set.
@@ -751,78 +726,29 @@ final deviceTokenVaultProvider = Provider<DeviceTokenVault>(
 );
 
 /// The background conversation with the platform: heartbeat, config-version
-/// refresh, and the outbox drain. Null when there is nothing to talk to or
-/// nothing to say (unprovisioned).
+/// refresh, and the outbox drain. Null when there is nothing to talk to —
+/// an offline till, or a cloud till not yet provisioned.
 ///
-/// Under [SyncPolicy.automatic] a pass runs shortly after boot and then on the
-/// cadence [SyncSchedule] sets — four hours when everything is through, thirty
-/// minutes while anything is still queued or the platform is unreachable.
-/// Every settled sale also kicks one immediately, which is what keeps a busy
-/// till's money moving between the slow ticks. Under [SyncPolicy.manual]
-/// nothing runs on its own — the operator drains from the sync pill, and
-/// closing a shift offers to drain first.
-final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
-  final config = ref.watch(deploymentProvider);
-  final api = ref.watch(posCloudApiProvider);
-  final context = ref.watch(posWriteContextProvider);
-  if (api == null || context == null) return null;
+/// **pos-split-apps, stage 3.** The conversation itself (`CloudSync`, its
+/// cadence under `SyncPolicy.automatic`, the drain) is cloud code, bound over
+/// this provider by `apps/xorder_pos_cloud`. The shared shell only nudges,
+/// kicks and reads outcomes through [SalesSync]; the offline app never binds
+/// it, and every caller already treats null as "no platform".
+final Provider<SalesSync?> cloudSyncProvider = Provider<SalesSync?>(
+  (ref) => null,
+);
 
-  // One disposer for the provider, not one per sync pass: a callback that
-  // registered its own would leak a listener every three minutes.
-  var alive = true;
-  ref.onDispose(() => alive = false);
+/// Seeding from a platform bootstrap reply, for the wizard's menu download.
+/// Bound by the cloud app; null here and in the offline app (pos-split-apps).
+final bootstrapSeedingProvider = Provider<BootstrapSeeding?>((ref) => null);
 
-  final sync = CloudSync(
-    database: ref.watch(posDatabaseProvider),
-    config: config,
-    api: api,
-    vault: ref.watch(deviceTokenVaultProvider),
-    profile: ref.watch(terminalProfileProvider),
-    onChanged: (outcome) {
-      // Invalidate through the CONTAINER, not through this provider's own
-      // ref. `pendingSyncCountProvider` reads the orders repository, which
-      // reads this provider — so `ref.invalidate` from inside here is a
-      // dependency cycle, and Riverpod throws CircularDependencyError. That
-      // exception escaped mid-pass and killed the drain: a cloud till would
-      // stop sending money and say nothing. Scheduling the invalidation
-      // outside the current build breaks the cycle and keeps the refresh.
-      Future.microtask(() {
-        if (!alive) return;
-        applySyncOutcome(ref.container, outcome);
-      });
-    },
-  );
-
-  if (config.syncPolicy == SyncPolicy.automatic) {
-    // Self-rescheduling rather than `Timer.periodic`: the gap to the next pass
-    // is decided by how the last one went, which a fixed period cannot express.
-    // Each pass is AWAITED before the next is scheduled, so a slow drain can
-    // never stack passes on top of each other — the old periodic timer could,
-    // and `CloudSync.run` had to serialise them itself.
-    Timer? next;
-    void schedule(Duration delay) {
-      next = Timer(delay, () async {
-        if (!alive) return;
-        // A nudge may have just run a pass — the start screen asks for one
-        // on launch, two seconds before this first tick. Yield to it rather
-        // than heartbeat twice in the same breath.
-        final since = sync.sinceLastPass;
-        if (since != null && since < SyncSchedule.nudgeFloor) {
-          schedule(SyncSchedule.nudgeFloor - since);
-          return;
-        }
-        final outcome = await sync.run();
-        if (!alive) return;
-        schedule(SyncSchedule.after(outcome));
-      });
-    }
-
-    schedule(const Duration(seconds: 5));
-    ref.onDispose(() => next?.cancel());
-  }
-  ref.onDispose(sync.dispose);
-  return sync;
-});
+/// The back office behind `PosRoutes.management` and the window bar's menus.
+///
+/// **pos-split-apps, stage 3.** The offline app binds the management screen
+/// and its menus; the cloud app binds the signpost to the dashboard (CB-07).
+/// The shared package has neither, so its default shows nothing and offers no
+/// menus — only a test harness ever runs it.
+final backOfficeProvider = Provider<BackOffice>((ref) => const NoBackOffice());
 
 /// Printer and drawer — on the network, or plugged into the till.
 ///

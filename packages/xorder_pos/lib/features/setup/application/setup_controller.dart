@@ -11,8 +11,6 @@ import '../../../core/config/lan_tls.dart';
 import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
-import '../../../data/cloud/bootstrap_bundle.dart';
-import '../../../data/cloud/bootstrap_seeder.dart';
 import '../../../data/config/installer_credentials.dart';
 import '../../../data/config/setup_progress_store.dart';
 import '../../../data/postgres/local_bootstrap.dart';
@@ -2186,18 +2184,19 @@ class SetupController extends Notifier<SetupDraft> {
         ),
       );
     }
-    final bundle = BootstrapBundle.tryParse(reply.body);
-    if (bundle == null || !bundle.seedable) {
-      throw _CatalogueBlocked(s.menuShapeNotUnderstood(api.baseUrl));
-    }
-
+    // Parsing and writing the bundle are cloud code, bound by the cloud app
+    // (pos-split-apps, stage 3); a build without that binding cannot seed.
+    //
     // Forced: during setup the operator pressing "Download menu" IS the
     // precedence decision, and a half-applied earlier seed must not win a
     // config_version tie against a complete one.
-    await BootstrapSeeder(
-      database: ref.read(posDatabaseProvider),
-      config: state.deployment,
-    ).seed(bundle, force: true);
+    final seeding = ref.read(bootstrapSeedingProvider);
+    final seeded =
+        seeding != null &&
+        await seeding.seed(reply.body, config: state.deployment, force: true);
+    if (!seeded) {
+      throw _CatalogueBlocked(s.menuShapeNotUnderstood(api.baseUrl));
+    }
   }
 
   /// What the bundle has no field for — reasons and order types — seeded over

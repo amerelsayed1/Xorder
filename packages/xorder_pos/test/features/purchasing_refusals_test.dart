@@ -3,7 +3,7 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
 
 /// The two purchasing refusals the back office can now meet, in words.
 ///

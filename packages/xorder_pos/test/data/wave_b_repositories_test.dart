@@ -16,7 +16,7 @@ import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// A cashier: no cash movement of their own, a supervisor's PIN for one.
 const _cashier = PosRole(

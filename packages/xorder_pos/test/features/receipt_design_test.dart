@@ -16,7 +16,7 @@ import 'package:xorder_pos/features/receipt/receipt_paper.dart';
 import 'package:xorder_pos/features/receipt/receipt_raster.dart';
 import 'package:xorder_pos/features/receipt/slip_style.dart';
 
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// The receipt's design rules (receipt-design-system, 26 Oct 2026).
 ///

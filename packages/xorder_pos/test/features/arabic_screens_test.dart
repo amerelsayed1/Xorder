@@ -10,7 +10,7 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The two screens that were still English on an Arabic till.
 ///

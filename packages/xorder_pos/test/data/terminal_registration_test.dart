@@ -10,7 +10,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_directory_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_site_licence.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Registering a till by hand is an upsert on the machine, not an insert per
 /// attempt (P0-4).

@@ -4,7 +4,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/order_type_entitlement.dart';
 
-import '../support/staff.dart';
+import 'package:xorder_pos_test_support/staff.dart';
 
 /// XORD-002 — which order types a licence covers, and who may choose.
 void main() {

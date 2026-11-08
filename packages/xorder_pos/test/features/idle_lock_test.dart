@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/lock/idle_lock.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// Five minutes with nobody at the till, and it locks (ADR-006).
 ///

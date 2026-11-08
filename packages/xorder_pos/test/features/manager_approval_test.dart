@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/features/admin/presentation/supervisor_override.dart';
+import 'package:xorder_pos/features/admin_mode/supervisor_override.dart';
 
 /// The manager-approval dialog (patterns 5.1).
 ///

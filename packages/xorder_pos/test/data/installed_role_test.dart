@@ -6,7 +6,7 @@ import 'package:xorder_pos/data/config/installed_role.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// A desktop installed "Till only" is a child of the main device.
 ///

@@ -6,7 +6,7 @@ import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Migration 46: the owner role may enter Admin Mode, and nobody else is given
 /// it by a migration.

@@ -11,7 +11,7 @@ import '../../../domain/models/business_day.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
-import '../../admin/presentation/supervisor_override.dart';
+import '../../admin_mode/supervisor_override.dart';
 
 /// Ending the trading day (§28).
 ///

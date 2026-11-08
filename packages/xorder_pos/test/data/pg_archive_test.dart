@@ -6,7 +6,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/backup/pg_archive.dart';
 import 'package:xorder_pos/data/backup/pg_tools.dart';
 
-import '../support/lan_tls_fixtures.dart';
+import 'package:xorder_pos_test_support/lan_tls_fixtures.dart';
 
 /// The rules a copy has to keep before anybody trusts it with a business's
 /// only record of its trading. Run against a fake `pg_dump`, so they hold on a

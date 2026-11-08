@@ -9,7 +9,7 @@ import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/payment_status.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The sales list and sale details, against PostgreSQL (plan 17 S1).
 ///

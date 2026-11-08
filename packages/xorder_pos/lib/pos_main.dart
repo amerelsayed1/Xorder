@@ -33,7 +33,15 @@ const _initialWindow = Size(1440, 900);
 /// The window, the macOS app menu and the About box carry
 /// [DeploymentMode.productName]; `appModeProvider` carries the mode to the
 /// wizard, the deployment default and the licence rules.
-Future<void> runPos({required DeploymentMode mode}) async {
+///
+/// [overrides] is the app's own wiring (pos-split-apps, stage 3): the cloud
+/// app binds its sync, provisioning, seeding and branch-sales client; the
+/// offline app binds its back office. They are added after the shared
+/// bindings below, so an app may replace any of them.
+Future<void> runPos({
+  required DeploymentMode mode,
+  List<Override> overrides = const [],
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (_isDesktop) {
@@ -107,6 +115,7 @@ Future<void> runPos({required DeploymentMode mode}) async {
         posDbCredentialsStoreProvider.overrideWithValue(credentials),
         deviceTokenVaultProvider.overrideWithValue(deviceTokens),
         secretStoreProvider.overrideWithValue(secrets),
+        ...overrides,
       ],
       child: const XorderPosApp(),
     ),

@@ -6,8 +6,8 @@ import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/services/business_day_service.dart';
 
-import '../support/fake_business_days.dart';
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fake_business_days.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The real providers the two sign-in doors use, not the doubles the widget
 /// tests hand them (review of the business-day change, 2026-10-24): that the

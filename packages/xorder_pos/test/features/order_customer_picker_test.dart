@@ -10,8 +10,8 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/payment/customer_dialog.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
-import '../support/in_memory_customers.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/in_memory_customers.dart';
 
 /// XORD-001 — choosing, or adding, who an order is for without leaving the sale.
 ///

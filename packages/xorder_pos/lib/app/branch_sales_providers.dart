@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/cloud/branch_sales_api.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/postgres/postgres_branch_sales_repository.dart';
 import '../domain/models/branch_sales_source.dart';
@@ -31,16 +30,17 @@ final postgresBranchSalesProvider = Provider<PostgresBranchSalesRepository?>((
   );
 });
 
-/// POS-BE-029's client. Null when this terminal does not talk to the platform.
-final branchSalesApiProvider = Provider<BranchSalesApi?>((ref) {
-  final config = ref.watch(deploymentProvider);
-  final base = config.baseUrl;
-  if (!config.mode.syncsSalesToPlatform || base == null || base.isEmpty) {
-    return null;
-  }
-  final vault = ref.watch(deviceTokenVaultProvider);
-  return BranchSalesApi(baseUrl: base, deviceToken: () => vault.token);
-});
+/// The branch's sales as the PLATFORM holds them (POS-BE-029), for a per-till
+/// cloud terminal whose own database holds only its own sales.
+///
+/// **pos-split-apps, stage 3.** The client and the source over it are cloud
+/// code in `apps/xorder_pos_cloud`, which binds them here; the offline app
+/// binds nothing, and [branchSalesSourceProvider] never asks it to — an
+/// offline branch reads every terminal's rows locally. Null when the platform
+/// cannot be reached for an address: unprovisioned, or no base URL yet.
+final platformBranchSalesProvider = Provider<BranchSalesSource?>(
+  (ref) => null,
+);
 
 /// Where this till's branch view reads from — the two rows of §3a's table.
 ///
@@ -62,17 +62,7 @@ final branchSalesSourceProvider = Provider<BranchSalesSource?>((ref) {
 
   if (!(config.mode.syncsSalesToPlatform && config.isLoopback)) return local;
 
-  final api = ref.watch(branchSalesApiProvider);
-  if (api == null) return null;
-  return PlatformBranchSalesSource(
-    api: api,
-    branchId: context.branchId,
-    unsyncedOnThisTill: (day) =>
-        local.unsyncedSalesOn(day, terminalId: context.terminalId),
-    // Read at request time, not watched: a change of operator must not throw
-    // away the snapshot this source is holding for the offline case.
-    actingUserId: () => ref.read(signedInStaffProvider)?.id,
-  );
+  return ref.watch(platformBranchSalesProvider);
 });
 
 /// Whether the signed-in operator may open the branch view (§3a:

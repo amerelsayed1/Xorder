@@ -14,7 +14,7 @@ import 'package:xorder_pos/features/licensing/data/file_license_store.dart';
 import 'package:xorder_pos/features/licensing/data/licence_check_store.dart';
 import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// A hard reset that really goes back to a blank till, on any operating system.
 ///

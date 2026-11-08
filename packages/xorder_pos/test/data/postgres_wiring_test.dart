@@ -9,13 +9,12 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/data/eta/filing_orders_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
-import '../support/fakes.dart';
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// End-to-end through the **real provider graph**.
 ///
@@ -127,17 +126,15 @@ void main() {
     // against its own PostgreSQL now, so refusing it a repository would leave it
     // with no way to record a sale at all.
     //
-    // Wrapped, not bare: a cloud till pokes the sync drain after every settled
-    // sale, so `SyncingOrdersRepository` sits over the Postgres one. Asserting
-    // the bare type here was asserting the absence of that wrapper, which is
-    // the behaviour a cloud terminal is supposed to have — the write itself is
-    // identical either way, PostgreSQL first and an outbox claim in the same
-    // transaction.
-    // With e-receipts off nothing sits over it, so what comes back is the
-    // sync kicker itself.
+    // Bare PostgreSQL here, on purpose (pos-split-apps stage 3). The sync loop
+    // is the cloud app's: the shared package binds none, so nothing kicks a
+    // drain and nothing wraps the repository. The write itself is the same
+    // either way — PostgreSQL first, an outbox claim in the same transaction.
+    // That the cloud app DOES wrap it is
+    // `apps/xorder_pos_cloud/test/data/cloud_orders_wiring_test.dart`.
     expect(
       container.read(ordersRepositoryProvider),
-      isA<SyncingOrdersRepository>(),
+      isA<PostgresOrdersRepository>(),
     );
   });
 

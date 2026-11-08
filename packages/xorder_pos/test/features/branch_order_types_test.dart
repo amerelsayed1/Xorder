@@ -5,7 +5,7 @@ import 'package:xorder_pos/domain/models/order_type_config.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 ProviderContainer _withBranch(List<String> types, {OrderTypeRules? rules}) {
   final container = ProviderContainer(overrides: [

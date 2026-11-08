@@ -13,7 +13,7 @@ import '../../../domain/models/order_record.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
-import '../../admin/presentation/admin_messages.dart';
+import '../../admin_mode/admin_messages.dart';
 import '../../receipt/receipt_printing.dart';
 import '../../receipt/receipt_preview_dialog.dart';
 import '../../receipt/reprint_dialog.dart';

@@ -9,7 +9,7 @@ import 'package:xorder_pos/core/config/lan_tls.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/pos_tls.dart';
 
-import '../support/lan_tls_fixtures.dart';
+import 'package:xorder_pos_test_support/lan_tls_fixtures.dart';
 
 /// A refused handshake is an error, never a plaintext retry (ADR-006 §TLS
 /// downgrade test).

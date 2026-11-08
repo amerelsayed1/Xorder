@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/postgres/postgres_reports_repository.dart';
 import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The profit report's SQL, against the stock ledger it reads.
 ///

@@ -6,7 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/postgres_site_licence.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The licence a main device shares with its tablets, against a real server.
 ///

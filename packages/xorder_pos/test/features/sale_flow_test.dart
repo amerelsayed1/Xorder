@@ -13,7 +13,7 @@ import 'package:xorder_pos/features/floor/floor_screen.dart';
 import 'package:xorder_pos/features/payment/payment_screen.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// A desktop-sized surface. The three-pane shell only exists above 1100dp, so
 /// testing it at the default 800×600 would exercise a shell the design does not

@@ -5,7 +5,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 import 'package:xorder_pos/core/security/pin_hash.dart';
 
 /// Two rules that used to be enforced only where they were finally USED, which

@@ -8,7 +8,7 @@ import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The licence decides the mode, so the wizard must ask for it first.
 ///

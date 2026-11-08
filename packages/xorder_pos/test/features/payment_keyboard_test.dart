@@ -8,7 +8,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/payment/payment_screen.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The physical keyboard on the payment screen. It was ignored: the amount
 /// could only be built from the on-screen keypad.

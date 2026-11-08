@@ -5,6 +5,7 @@ import '../domain/models/refund.dart';
 import '../domain/models/tender_method.dart';
 import '../domain/models/ticket.dart';
 import '../domain/repositories/repositories.dart' show ClaimNotice;
+import '../domain/services/eta_filing.dart';
 import '../features/licensing/domain/license.dart';
 import '../features/setup/domain/setup_state.dart';
 
@@ -332,3 +333,18 @@ String refundKindLabel(AppStrings s, RefundKind kind) => switch (kind) {
   RefundKind.full => s.refundKindFull,
   RefundKind.partial => s.refundKindPartial,
 };
+
+/// The sentence for an ETA filing problem a person can fix, or null for none.
+///
+/// Shared because two screens say the same thing — the start screen and the
+/// offline app's ETA pane — and the problem is the business's, whichever
+/// screen somebody happens to open. Moved here from the ETA pane when the
+/// panes left the shared package (pos-split-apps, stage 3).
+String? etaProblemText(AppStrings strings, EtaFilingSkipped? problem) =>
+    switch (problem) {
+      ProfileIncomplete(:final problems) => strings.etaProblemProfile(
+        problems.length,
+      ),
+      FilingFailed(:final detail) => strings.etaProblemFailed(detail),
+      _ => null,
+    };

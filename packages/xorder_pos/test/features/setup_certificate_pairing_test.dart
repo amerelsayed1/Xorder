@@ -15,8 +15,8 @@ import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
 
-import '../support/fakes.dart';
-import '../support/lan_tls_fixtures.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/lan_tls_fixtures.dart';
 
 /// A child till learns to trust its database server on the connection step
 /// (ADR-006, slice C).

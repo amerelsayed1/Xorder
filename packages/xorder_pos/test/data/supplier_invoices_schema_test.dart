@@ -14,7 +14,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// What is owed and what has been paid, stored.
 ///

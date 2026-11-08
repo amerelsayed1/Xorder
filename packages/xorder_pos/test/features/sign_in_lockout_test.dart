@@ -7,11 +7,11 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
-import 'package:xorder_pos/features/admin/presentation/supervisor_override.dart';
+import 'package:xorder_pos/features/admin_mode/supervisor_override.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 import 'package:xorder_pos/features/shift/presentation/shift_dialogs.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The till's PIN doors shut after five wrong tries (ADR-006, Phase 1).
 ///

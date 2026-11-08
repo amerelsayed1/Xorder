@@ -14,7 +14,7 @@ import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Finance's taxes and payments against PostgreSQL (plan 19 BO-9).
 ///

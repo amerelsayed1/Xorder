@@ -8,7 +8,7 @@ import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_customers_repository.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Migration 51 — who the food is for (POS-BE-014).
 ///

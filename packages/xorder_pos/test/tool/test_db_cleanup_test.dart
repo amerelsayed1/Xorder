@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/test_db_cleanup.dart';
-import '../data/pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The rules behind `tool/drop_test_databases.dart`, which runs `DROP DATABASE`.
 /// Every claim is about a name it must NOT touch, because a wrong match here
@@ -105,11 +105,12 @@ void main() {
   });
 
   test('its tag is the fixture\'s tag, so it finds what the suites made', () {
-    // PgFixture hashes the same working directory; if either algorithm drifts
-    // this fails instead of the cleanup silently matching nothing (or, worse,
-    // something else).
+    // PgFixture hashes the same path — the workspace root, since every member
+    // shares one database (pos-split-apps, stage 3); if either algorithm
+    // drifts this fails instead of the cleanup silently matching nothing (or,
+    // worse, something else).
     expect(
-      'xorder_pos_test_${checkoutTag(Directory.current.path)}',
+      'xorder_pos_test_${checkoutTag(PgFixture.workspaceRootOf(Directory.current.path))}',
       PgFixture.sharedName,
     );
   });

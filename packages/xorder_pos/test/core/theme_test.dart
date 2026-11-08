@@ -10,7 +10,7 @@ import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The till ships two themes rather than one fixed palette.
 ///

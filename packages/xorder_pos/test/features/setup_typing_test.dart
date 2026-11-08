@@ -7,7 +7,7 @@ import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// Typing into the wizard must keep every character.
 ///

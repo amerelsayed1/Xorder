@@ -15,7 +15,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Exercises the real SQL against a real PostgreSQL.
 ///

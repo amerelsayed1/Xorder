@@ -8,7 +8,7 @@ import 'package:xorder_pos/data/postgres/postgres_order_history_repository.dart'
 import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Reading orders back out — migration 11 and the history repository.
 ///

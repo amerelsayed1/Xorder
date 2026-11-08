@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/dining_table.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 import 'package:xorder_pos/features/floor/floor_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// Guards the two properties the localisation design actually rests on.
 ///

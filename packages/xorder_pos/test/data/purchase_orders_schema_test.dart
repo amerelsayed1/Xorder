@@ -13,7 +13,7 @@ import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Purchase orders, stored.
 void main() {

@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
-import 'package:xorder_pos/features/admin/application/admin_session.dart';
+import 'package:xorder_pos/features/admin_mode/admin_session.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/cash/presentation/cash_dialogs.dart';
 import 'package:xorder_pos/features/cash/presentation/day_close_dialog.dart';

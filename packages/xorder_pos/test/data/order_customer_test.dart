@@ -7,7 +7,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_order_history_repository.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Who a sale was for, in the sales list and its detail, against PostgreSQL.
 ///

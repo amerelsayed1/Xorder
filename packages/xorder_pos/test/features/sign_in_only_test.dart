@@ -9,7 +9,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/services/business_day_service.dart';
 import 'package:xorder_pos/features/shift/presentation/shift_dialogs.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// Signing in at the till is not opening a shift (pos-signin-first-home).
 ///

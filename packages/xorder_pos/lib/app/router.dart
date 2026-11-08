@@ -2,10 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/config/deployment.dart';
 import '../core/ui/widgets/pos_widgets.dart' show posToast;
-import '../features/admin/presentation/cloud_back_office_screen.dart';
-import '../features/admin/presentation/management_screen.dart';
+import '../features/admin_mode/back_office_contract.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/history/presentation/order_history_screen.dart';
 import '../features/home/home_screen.dart';
@@ -293,30 +291,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           // start screen, from Ctrl+Shift+S, from the status bar and from
           // deep links that name a pane, and a guard on any one of those is a
           // guard somebody adds a fifth way around. A cloud till has no back
-          // office of its own — see [CloudBackOfficeScreen] for why editing a
-          // row the platform authors is worse than not offering to.
+          // office of its own — only a signpost to the dashboard.
           //
-          // A CLAIMED cloud tenant, not merely `mode == cloud`:
-          // `DeploymentConfig.unconfigured` is cloud, so guarding on the mode
-          // alone locked a machine out of its own back office before it had a
-          // business — including the Terminal pane, which is how a till is
-          // reconfigured. A tenant slug is the signal that a platform actually
-          // authors this till's rows.
-          final deployment = ref.read(deploymentProvider);
-          if (deployment.mode == DeploymentMode.cloud &&
-              (deployment.tenantSlug ?? '').isNotEmpty) {
-            return CloudBackOfficeScreen(
-              onClose: () => context.go(destination.returnTo ?? PosRoutes.start),
-            );
-          }
-          return ManagementScreen(
+          // Since pos-split-apps stage 3 the choice is not made here: the
+          // offline app binds its management screen and the cloud app its
+          // signpost over `backOfficeProvider`, so neither app carries the
+          // other's screen.
+          return ref.read(backOfficeProvider).screen(
+            context,
+            destination: destination,
             onClose: () =>
                 context.go(destination.returnTo ?? PosRoutes.start),
             onReconfigure: () => context.go(PosRoutes.setup),
-            initialPane: destination.pane,
-            purchasingTab: destination.purchasingTab,
-            create: destination.create,
-            request: destination.request,
           );
         },
       ),

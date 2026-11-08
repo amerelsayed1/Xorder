@@ -9,7 +9,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// When the till cannot open its database, the person at the counter sees a
 /// sentence, not an exception.

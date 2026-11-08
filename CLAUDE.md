@@ -9,13 +9,23 @@ repo's remote is `amerelsayed1/xorder-pos`.
 This file is loaded every session — keep it tight. Depth lives in `README.md` (run +
 design language) and the numbered docs in `docs/pos/`. Read those only when you need it.
 
-## Workspace layout (pos-split-apps, in progress)
+## Workspace layout (pos-split-apps, stages 1–3 done)
 
 The repository is a Dart pub workspace: the root `pubspec.yaml` lists the members and holds
-the one `pubspec.lock`. The till is the member **`packages/xorder_pos/`** (package name
-`xorder_pos`, unchanged); every `lib/`, `test/`, `bin/` and `tool/` path below is inside it.
-It is becoming two apps, XOrder POS - Cloud and XOrder POS - Offline, on shared packages:
-plan in the workspace's `docs/features/pos-split-apps/TECHNICAL.md`.
+the one `pubspec.lock`. **One codebase, two apps, one mode each** (plan: the workspace's
+`docs/features/pos-split-apps/TECHNICAL.md`):
+
+| Member | What |
+|---|---|
+| `packages/xorder_pos/` | The shared till (package name `xorder_pos`, unchanged): every `lib/`, `test/`, `bin/`, `tool/` path below is inside it. No app, no mode of its own |
+| `apps/xorder_pos_offline/` | **XOrder POS - Offline**: `main.dart` + `wiring.dart`, `windows/`, `macos/`, and the back office (`lib/features/admin/`, 60 panes) with its tests |
+| `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the dashboard signpost, `integration_test/` |
+| `packages/xorder_pos_test_support/` | Fakes, fonts, the PostgreSQL fixture — a dev dependency of every member's tests |
+
+The apps fix the mode in `runPos(mode:, overrides:)` and bind their own code over shared
+providers (`cloudSyncProvider`, `provisioningRepositoryProvider`, `bootstrapSeedingProvider`,
+`platformBranchSalesProvider`, `backOfficeProvider`). `test/package_boundaries_test.dart`
+fails if the shared package imports either app or the apps import each other.
 
 ## Repo map (`lib/` is layered; UI never reaches past a repository interface)
 
@@ -29,28 +39,28 @@ plan in the workspace's `docs/features/pos-split-apps/TECHNICAL.md`.
 | `lib/domain/services/ticket_engine.dart` | **Every ticket mutation and money rule.** Pure, unit-tested |
 | `lib/domain/repositories/` | The contracts the UI depends on — the seam |
 | `lib/data/postgres/` | PostgreSQL datastore: pool, migrations, repository implementations |
-| `lib/data/cloud/` | Cloud transport: `cloud_api`, `cloud_sync`, provisioning, outbox drain |
+| `lib/data/cloud/` | Only `cloud_api` (both apps: licence renewal) and `device_token_vault`; the sync, drain, bootstrap and provisioning are the cloud app's |
+| `lib/features/admin_mode/` | Shared Admin Mode: the door (`admin_session`, shortcut), supervisor override, admin messages, and `back_office_contract` (pane/tab enums, `BackOffice`) |
 | `lib/data/fakes/` | Test doubles. **Not bound by the app** — injected only by tests |
 | `lib/data/unconfigured/` | What the till binds before it has a database: empty, never invented |
-| `lib/features/` | `setup · start · lock · floor · sale · payment · receipt · refund · shift · cash · history · admin · settings · licensing` |
+| `lib/features/` | `setup · start · lock · floor · sale · payment · receipt · refund · shift · cash · history · home · settings · licensing · admin_mode` (the back office itself is `apps/xorder_pos_offline/lib/features/admin/`) |
 | `lib/app/providers.dart` | **Riverpod DI — the one place implementations are chosen.** Swapping datastore/transport touches this file, nothing in `domain/` or `features/` |
 | `lib/app/router.dart` | go_router (the desktop shell swaps whole screens) |
 | `bin/pos_migrate.dart` | Install-time: creates the branch schema + grants the till role |
 | `bin/pos_licence.dart` | Licence tooling |
 | `docs/pos/` | Numbered design + implementation docs (`01…19`, `production-readiness`) |
 | `docs/coordination/` | Backend contract negotiation (`POS-BE-xxx`, `CB-xx`) |
-| `integration_test/` | The assembled app driven through the UI against a real database |
+| `apps/xorder_pos_cloud/integration_test/` | The assembled cloud app driven through the UI against a real database |
 
 ## Commands
 
 ```bash
-cd packages/xorder_pos        # every command below runs in the member
-flutter pub get               # resolves the whole workspace
-flutter run -d macos          # or: flutter run -d windows
-flutter test                  # unit + widget; green with NO database (see below)
-flutter analyze               # flutter_lints; keep clean
-../../scripts/check.sh        # THE verification: analyse + every test, PostgreSQL included (not run in CI)
-dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
+flutter pub get                                   # anywhere in the workspace; resolves it all
+cd apps/xorder_pos_offline && flutter run -d macos  # or apps/xorder_pos_cloud; or -d windows
+cd packages/xorder_pos && flutter test            # the shared suites; each app has its own test/
+flutter analyze                                   # in any member; flutter_lints; keep clean
+scripts/check.sh                                  # THE verification: every member, PostgreSQL included (not run in CI)
+cd packages/xorder_pos && dart bin/pos_migrate.dart  # prepare a branch PostgreSQL before first run
 ```
 
 ## Load-bearing facts (trust THIS over older prose in README/docs)
@@ -97,8 +107,12 @@ dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
 
 - `flutter test` stays **green with no database**: suites tagged `integration` self-skip when
   `POS_PG_HOST` is unset (declared in `dart_test.yaml`).
-- `integration_test/` runs the assembled app through the UI against a **real** PostgreSQL —
-  point it at one to exercise the datastore.
+- `apps/xorder_pos_cloud/integration_test/` runs the assembled cloud app through the UI
+  against a **real** PostgreSQL — point it at one to exercise the datastore.
+- Every member has suites: `packages/xorder_pos/test` (shared), `apps/*/test` (the code each
+  app owns). Test support (`fakeRepositoryOverrides`, `loadPosFonts`, `PgFixture`) is
+  `package:xorder_pos_test_support/…`. All PostgreSQL suites share one database per
+  checkout, named from the workspace root.
 - **Verification runs locally, not in CI.** Run `scripts/check.sh` before pushing; it needs a
   local PostgreSQL (defaults to `127.0.0.1:5432` as `$USER`; override with `POS_PG_*`).
 - **CI only builds and install-tests the Windows installer, and only when started by hand**

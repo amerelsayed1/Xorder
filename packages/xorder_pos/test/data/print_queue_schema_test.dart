@@ -10,7 +10,7 @@ import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
 import 'package:xorder_pos/data/postgres/postgres_print_queue_repository.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Receipts the printer would not take (§ ship blocker 1).
 ///

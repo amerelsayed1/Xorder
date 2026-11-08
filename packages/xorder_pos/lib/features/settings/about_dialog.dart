@@ -7,7 +7,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
-import '../../data/cloud/cloud_provisioning_repository.dart' show posAppVersion;
+import '../../core/config/app_version.dart';
 import '../../data/postgres/pos_database.dart';
 
 /// What support asks for first: which version, which till, which database.

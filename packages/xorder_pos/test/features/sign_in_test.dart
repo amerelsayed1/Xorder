@@ -9,7 +9,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/app/router.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// Who is at the till, and how the till finds out (POS-BE-024).
 ///

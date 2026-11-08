@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/services/business_day_service.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Opening the trading day against the real database (report 2026-10-24,
 /// Part 4): the one-open-day index, the closed-date refusal and the trigger that

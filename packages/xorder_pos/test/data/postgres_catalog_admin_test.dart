@@ -18,7 +18,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/menu_import.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// `jsonb` comes back decoded on some driver paths and as text on others.
 Map<String, Object?> _payload(Object? raw) => switch (raw) {

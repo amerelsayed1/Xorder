@@ -6,7 +6,7 @@ import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/dining_table.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 Product _burger() => const Product(
       id: 101,

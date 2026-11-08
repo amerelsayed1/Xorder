@@ -5,7 +5,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The wizard must ADOPT a terminal the dashboard already created, not make
 /// another one beside it.

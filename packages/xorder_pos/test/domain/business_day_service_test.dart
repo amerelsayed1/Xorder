@@ -4,7 +4,7 @@ import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/services/business_day_service.dart';
 
-import '../support/fake_business_days.dart';
+import 'package:xorder_pos_test_support/fake_business_days.dart';
 
 /// Opening the trading day (plan: report 2026-10-24, Part 4).
 ///

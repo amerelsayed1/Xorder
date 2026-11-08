@@ -10,7 +10,7 @@ import 'package:xorder_pos/data/postgres/postgres_directory_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_floor_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_tenant.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The reads that replaced the fakes.
 ///

@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/domain/services/eta_filing.dart';
 import 'package:xorder_pos/domain/services/eta_receipt.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Blockers 3 and 4: every sale and every refund this till recorded owes a
 /// receipt, and nothing but a query decides which ones still do.

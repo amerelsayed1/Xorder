@@ -10,10 +10,10 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/features/admin/application/admin_session.dart';
-import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin_mode/admin_session.dart';
+import 'package:xorder_pos/features/admin_mode/admin_messages.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The rules of Admin Mode, without a screen in front of them.
 ///

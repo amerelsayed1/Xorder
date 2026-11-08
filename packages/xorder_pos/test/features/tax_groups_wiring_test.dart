@@ -6,7 +6,7 @@ import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The business's named rates reach the ticket.
 ///

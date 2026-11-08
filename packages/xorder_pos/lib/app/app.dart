@@ -13,11 +13,11 @@ import '../core/ui/tokens.dart';
 import '../features/settings/about_dialog.dart';
 import '../features/settings/printer_settings_dialog.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
-import '../features/admin/application/admin_session.dart';
-import '../features/admin/presentation/admin_shortcut.dart';
+import '../features/admin_mode/admin_session.dart';
+import '../features/admin_mode/admin_shortcut.dart';
 import '../features/lock/idle_lock.dart';
 import 'providers.dart';
-import '../features/admin/presentation/management_screen.dart';
+import '../features/admin_mode/back_office_contract.dart';
 import 'router.dart';
 import 'till_status_bar.dart';
 
@@ -662,7 +662,9 @@ class XorderPosApp extends ConsumerWidget {
     final admin = ref.watch(adminSessionProvider)?.staff;
     if (admin == null) return const [];
 
-    return managementBarFor(
+    // Whichever back office this app carries (pos-split-apps, stage 3): the
+    // offline app's menus, or none on the cloud app.
+    return ref.watch(backOfficeProvider).barMenus(
       strings,
       admin: admin,
       authorsItsOwnCatalogue: ref.watch(catalogAdminRepositoryProvider) != null,

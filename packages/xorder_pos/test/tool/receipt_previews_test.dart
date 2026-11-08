@@ -12,7 +12,7 @@ import 'package:xorder_pos/features/receipt/receipt_data.dart';
 import 'package:xorder_pos/features/receipt/receipt_document.dart';
 import 'package:xorder_pos/features/receipt/receipt_raster.dart';
 
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// Writes pictures of the receipt, for LOOKING at. Asserts nothing.
 ///

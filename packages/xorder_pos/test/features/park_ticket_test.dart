@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 import 'package:xorder_pos/features/sale/widgets/cart_panel.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The three-pane shell only exists above 1100dp, and the cart — where Park
 /// lives — is only drawn there and in the medium shell.

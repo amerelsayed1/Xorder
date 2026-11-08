@@ -13,7 +13,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/models/order_type_config.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Order types, stored (§31).
 void main() {

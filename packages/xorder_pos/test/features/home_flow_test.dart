@@ -16,8 +16,8 @@ import 'package:xorder_pos/features/floor/floor_screen.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 
-import '../support/fakes.dart';
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 const _rana = PosStaff(
   id: 1,

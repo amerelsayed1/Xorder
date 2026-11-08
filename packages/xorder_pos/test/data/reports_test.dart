@@ -16,7 +16,7 @@ import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/ticket.dart' show OrderType;
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Wave G's reports against PostgreSQL (plan 19 BO-5).
 ///

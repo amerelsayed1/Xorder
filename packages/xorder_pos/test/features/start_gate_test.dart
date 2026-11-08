@@ -14,7 +14,7 @@ import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 const _cloud = DeploymentConfig(
   mode: DeploymentMode.cloud,

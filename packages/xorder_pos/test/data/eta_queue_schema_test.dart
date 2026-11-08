@@ -13,7 +13,7 @@ import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/services/eta_receipt.dart';
 import 'package:xorder_pos/domain/services/eta_serialization.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The queue of receipts owed to Egypt's tax authority.
 ///

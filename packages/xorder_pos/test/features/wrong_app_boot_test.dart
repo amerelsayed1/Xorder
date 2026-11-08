@@ -9,7 +9,7 @@ import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/features/setup/presentation/wrong_app_screen.dart';
 import 'package:xorder_pos/pos_main.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// One app per machine (pos-split-apps, BR-8).
 ///

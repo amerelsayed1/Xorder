@@ -12,7 +12,7 @@ import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// XORD-058: which number a receipt may print.
 ///

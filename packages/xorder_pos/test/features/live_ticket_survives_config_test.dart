@@ -8,7 +8,7 @@ import 'package:xorder_pos/domain/models/service_charge.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
-import '../support/fakes.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 const _burger = Product(id: 101, categoryId: 1, nameEn: 'Burger', price: Money(9500));
 

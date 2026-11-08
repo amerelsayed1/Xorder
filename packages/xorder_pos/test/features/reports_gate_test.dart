@@ -9,7 +9,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
-import 'package:xorder_pos/features/admin/application/admin_session.dart';
+import 'package:xorder_pos/features/admin_mode/admin_session.dart';
 
 /// `reports.view` gates the figures, on the provider every reader goes
 /// through — so BO-6's tab inherits it instead of having to remember it.

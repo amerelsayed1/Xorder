@@ -10,8 +10,8 @@ import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
 import 'package:xorder_pos/data/config/secret_store.dart';
 import 'package:xorder_pos/data/config/windows_dpapi_secret_store.dart';
 
-import '../support/fakes.dart';
-import '../support/secret_store_contract.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/secret_store_contract.dart';
 
 /// The secret stores' own rules, on the Linux machine the suite runs on.
 ///

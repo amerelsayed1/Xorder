@@ -1,0 +1,27 @@
+# Test doubles and fixtures shared by every member's tests (pos-split-apps,
+# stage 3): the Riverpod override list, the bundled fonts, the PostgreSQL
+# fixture, staff and customer fakes. It used to be packages/xorder_pos/test/
+# support/, which only that package's tests could import; the apps' tests need
+# the same harness. A dev dependency everywhere, never a dependency.
+name: xorder_pos_test_support
+description: "Test support for the XOrder POS workspace: fakes, fonts, the PostgreSQL fixture."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  mocktail: ^1.0.5
+  postgres: ^3.5.12
+  xorder_pos: any
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

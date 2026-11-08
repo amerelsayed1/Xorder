@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/data/config/mac_keychain_secret_store.dart';
 import 'package:xorder_pos/data/config/windows_dpapi_secret_store.dart';
 
-import '../support/secret_store_contract.dart';
+import 'package:xorder_pos_test_support/secret_store_contract.dart';
 
 /// The real operating-system stores, each on its own system only.
 ///

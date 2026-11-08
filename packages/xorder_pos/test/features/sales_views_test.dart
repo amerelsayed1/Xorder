@@ -22,7 +22,7 @@ import 'package:xorder_pos/features/history/presentation/order_history_screen.da
 import 'package:xorder_pos/features/history/presentation/order_status_chip.dart';
 import 'package:xorder_pos/features/history/presentation/refund_detail_pane.dart';
 import 'package:xorder_pos/features/history/presentation/refunds_screen.dart';
-import '../support/fonts.dart';
+import 'package:xorder_pos_test_support/fonts.dart';
 
 /// Sales › Invoices, Returns and Cancelled orders, as the back office will
 /// host them.

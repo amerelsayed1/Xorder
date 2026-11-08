@@ -9,7 +9,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/order_type_config.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// What a cloud till seeds for itself after the bundle lands.
 ///

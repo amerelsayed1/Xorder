@@ -13,7 +13,7 @@ import 'package:xorder_pos/domain/models/refund_history.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/history/history_scope.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// Sales › Returns, Invoices and Cancelled orders, against PostgreSQL.
 ///

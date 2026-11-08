@@ -41,7 +41,10 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  tag ??= checkoutTag(Directory.current.path);
+  // The same path `PgFixture` hashes: the workspace root, so a run from any
+  // member — the shared package or an app — names the one database per
+  // checkout (pos-split-apps, stage 3).
+  tag ??= checkoutTag(_workspaceRootOf(Directory.current.path));
   if (!isCheckoutTag(tag)) {
     _fail('"$tag" is not a checkout tag (8 lowercase hex digits).');
   }
@@ -135,4 +138,20 @@ Future<void> main(List<String> args) async {
 Never _fail(String message) {
   stderr.writeln(message);
   exit(64);
+}
+
+/// The nearest ancestor of [path] holding a `pubspec.yaml` with a
+/// `workspace:` section, or [path] itself. Mirrors `PgFixture.workspaceRootOf`.
+String _workspaceRootOf(String path) {
+  var dir = Directory(path).absolute;
+  while (true) {
+    final pubspec = File('${dir.path}/pubspec.yaml');
+    if (pubspec.existsSync() &&
+        pubspec.readAsLinesSync().any((l) => l.startsWith('workspace:'))) {
+      return dir.path;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) return Directory(path).absolute.path;
+    dir = parent;
+  }
 }

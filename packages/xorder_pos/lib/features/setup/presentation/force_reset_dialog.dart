@@ -10,7 +10,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
-import '../../admin/application/admin_session.dart'
+import '../../admin_mode/admin_session.dart'
     show StaffRefused, StaffUnreachable, StaffVerified, checkStaffPin;
 
 /// The deliberate escape hatch: wipe this machine's terminal setup and run the

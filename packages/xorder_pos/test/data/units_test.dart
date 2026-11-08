@@ -11,7 +11,7 @@ import 'package:xorder_pos/domain/models/pos_unit.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 
-import 'pg_fixture.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
 
 /// The units stock is counted and bought in, as the business names them.
 ///

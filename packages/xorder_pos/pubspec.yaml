@@ -58,12 +58,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Drives the assembled app on a real desktop device rather than in the
-  # headless widget harness. The end-to-end suite needs it because a real
-  # PostgreSQL round trip does not complete under fake async — see
-  # integration_test/README.md.
-  integration_test:
-    sdk: flutter
+  # The harness every member's tests share (pos-split-apps, stage 3).
+  xorder_pos_test_support: any
   flutter_lints: ^6.0.0
   # Regenerates the Windows and macOS launcher icons from the master PNGs in
   # assets/icons/. The config sits beside each app's platform folders:
