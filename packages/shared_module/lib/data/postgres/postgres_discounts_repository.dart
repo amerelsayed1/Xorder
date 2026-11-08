@@ -5,6 +5,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Reads what the business offers from `pos_discounts`.
 ///
@@ -66,18 +67,18 @@ class PostgresDiscountsRepository implements DiscountsRepository {
           valueMinor: row[6] == null ? null : _money(row[6]),
           minOrder: row[8] == null ? null : _money(row[8]),
           maxDiscount: row[9] == null ? null : _money(row[9]),
-          startsAt: row[10] as DateTime?,
-          endsAt: row[11] as DateTime?,
+          startsAt: row.dateTimeOrNull(10),
+          endsAt: row.dateTimeOrNull(11),
           daysOfWeek: {
-            for (final day in (row[12] as List? ?? const []))
+            for (final day in (row.list(12) ?? const []))
               if (day is int) day,
           },
           timeFrom: _minutes(row[13]),
           timeTo: _minutes(row[14]),
-          requiresCustomer: row[15] as bool? ?? false,
-          requiresManager: row[16] as bool? ?? false,
-          isRestricted: row[17] as bool? ?? false,
-          isActive: row[18] as bool? ?? true,
+          requiresCustomer: row.booleanOrNull(15) ?? false,
+          requiresManager: row.booleanOrNull(16) ?? false,
+          isRestricted: row.booleanOrNull(17) ?? false,
+          isActive: row.booleanOrNull(18) ?? true,
           targets: await _targetsFor(id),
           revision: row[19] as int? ?? 1,
         ),

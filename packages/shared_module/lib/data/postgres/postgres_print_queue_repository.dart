@@ -4,6 +4,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/repositories/repositories.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Receipts owed to paper, on the branch database.
 ///
@@ -84,7 +85,7 @@ class PostgresPrintQueueRepository implements PrintQueueRepository {
         QueuedPrintJob(
           id: row[0]! as int,
           printerName: row[1]! as String,
-          bytes: row[2]! as Uint8List,
+          bytes: row.bytes(2)!,
           attempts: row[3]! as int,
           invoiceNumber: row[4] as String?,
         ),

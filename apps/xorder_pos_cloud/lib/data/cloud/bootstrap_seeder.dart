@@ -551,13 +551,10 @@ class BootstrapSeeder {
     // Past the compiled-in ids before anything is inserted. Migration 41's
     // CHECK refuses a platform row at 1–4; this is what stops the serial from
     // offering one.
-    await tx.execute(
-      Sql.named(
-        "SELECT setval(pg_get_serial_sequence('pos_tender_types', 'id'), "
-        'GREATEST(COALESCE((SELECT MAX(id) FROM pos_tender_types), 0), '
-        '@floor), true)',
-      ),
-      parameters: {'floor': TenderMethod.seededIdCeiling},
+    await _bumpSequence(
+      tx,
+      'pos_tender_types',
+      floor: TenderMethod.seededIdCeiling,
     );
 
     for (final tender in tenders) {
@@ -900,10 +897,43 @@ class BootstrapSeeder {
       'pos_financial_accounts',
     ];
     for (final table in tables) {
-      await tx.execute(
-        "SELECT setval(pg_get_serial_sequence('$table', 'id'), "
-        'GREATEST(COALESCE((SELECT MAX(id) FROM $table), 0), 1), true)',
-      );
+      await _bumpSequence(tx, table, floor: 1);
     }
+  }
+
+  /// Make the next id [table] hands out larger than every id in it and than
+  /// [floor] — PostgreSQL's serial sequence, or SQLite's `sqlite_sequence`
+  /// row for an `AUTOINCREMENT` key (which has no row until the first insert).
+  Future<void> _bumpSequence(
+    TxSession tx,
+    String table, {
+    required int floor,
+  }) async {
+    final top =
+        'max(coalesce((SELECT max(id) FROM $table), 0), @floor)';
+    if (_db.dialect == SqlDialect.sqlite) {
+      await tx.execute(
+        Sql.named(
+          'UPDATE sqlite_sequence SET seq = max(seq, $top) '
+          "WHERE name = '$table'",
+        ),
+        parameters: {'floor': floor},
+      );
+      await tx.execute(
+        Sql.named(
+          "INSERT INTO sqlite_sequence (name, seq) SELECT '$table', $top "
+          "WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = '$table')",
+        ),
+        parameters: {'floor': floor},
+      );
+      return;
+    }
+    await tx.execute(
+      Sql.named(
+        "SELECT setval(pg_get_serial_sequence('$table', 'id'), "
+        'GREATEST(COALESCE((SELECT MAX(id) FROM $table), 0), @floor), true)',
+      ),
+      parameters: {'floor': floor},
+    );
   }
 }

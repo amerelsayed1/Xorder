@@ -306,6 +306,9 @@ class PosDatabase implements SqlDatabase {
   static LanTlsDecision _configuredTransport(DeploymentConfig config) =>
       config.lanTls;
 
+  @override
+  SqlDialect get dialect => SqlDialect.postgres;
+
   pg.Pool<void>? _pool;
   String? _openedFor;
 

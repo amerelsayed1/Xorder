@@ -4,6 +4,7 @@ import 'package:shared_module/data/sql/sql.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:shared_module/domain/models/sync_outcome.dart';
+import 'package:shared_module/data/sql/row_reads.dart';
 
 export 'package:shared_module/domain/models/sync_outcome.dart' show DrainReport;
 
@@ -401,7 +402,7 @@ class OutboxDrain {
         serviceMinor: row[10] as int,
         vatMinor: row[11] as int,
         totalMinor: row[12] as int,
-        occurredAt: (row[13] as DateTime),
+        occurredAt: (row.dateTime(13)),
         actingUserId: row[14] as int?,
         shiftClientId: row[15]?.toString(),
         lines: await _linesFor(orderId),
@@ -780,7 +781,7 @@ class OutboxDrain {
       'client_transaction_id': clientTransactionId,
       'branch_id': row[0] as int,
       'acting_user_id': row[1] as int,
-      'opened_at': (row[2] as DateTime).toUtc().toIso8601String(),
+      'opened_at': (row.dateTime(2)).toUtc().toIso8601String(),
       'opening_float_minor': row[3] as int,
     };
     return _LifecycleEvent(request: request, send: () => api.openShift(request));
@@ -847,7 +848,7 @@ class OutboxDrain {
     final request = <String, Object?>{
       'client_transaction_id': clientTransactionId,
       'acting_user_id': row[2] as int,
-      'closed_at': (row[3] as DateTime).toUtc().toIso8601String(),
+      'closed_at': (row.dateTime(3)).toUtc().toIso8601String(),
       'counted_cash_minor': row[4] as int,
       // Always sent. The platform works out its own expected cash and answers
       // 422 to a count that differs from it unless a reason comes with it;
@@ -903,7 +904,7 @@ class OutboxDrain {
       'reason': row[4] as String?,
       'reference': row[5] as String?,
       'acting_user_id': row[6] as int,
-      'occurred_at': (row[7] as DateTime).toUtc().toIso8601String(),
+      'occurred_at': (row.dateTime(7)).toUtc().toIso8601String(),
     };
     return _LifecycleEvent(
       request: request,
@@ -935,13 +936,19 @@ class OutboxDrain {
         JOIN pos_orders o ON o.id = r.order_id
         LEFT JOIN pos_shifts shift ON shift.id = r.shift_id
         LEFT JOIN pos_reason_codes reason ON reason.id = r.reason_id
+        ${_db.dialect == SqlDialect.sqlite ? '''
+        LEFT JOIN pos_outbox sale ON sale.id = (
+          SELECT ob.id FROM pos_outbox ob
+           WHERE ob.order_id = o.id
+           ORDER BY ob.id
+           LIMIT 1)''' : '''
         LEFT JOIN LATERAL (
           SELECT ob.id, ob.delivered_at, ob.quarantined_at
             FROM pos_outbox ob
            WHERE ob.order_id = o.id
            ORDER BY ob.id
            LIMIT 1
-        ) sale ON true
+        ) sale ON true'''}
        WHERE r.id = @id
       ''',
       parameters: {'id': sourceId},
@@ -1015,7 +1022,7 @@ class OutboxDrain {
       actingUserId: row[4] as int?,
       authorizedByUserId: row[5] as int?,
       shiftClientId: row[6]?.toString(),
-      occurredAt: row[7] as DateTime,
+      occurredAt: row.dateTime(7),
       lines: lines,
       tenders: tenders.sendable,
     );
@@ -1112,7 +1119,32 @@ class OutboxDrain {
   Future<List<Map<String, Object?>>> _linesFor(int orderId) async {
     final rows = await _db.query(
       config,
+      _db.dialect == SqlDialect.sqlite
+          // No LATERAL on SQLite: the discount sums grouped per line, and the
+          // latest price override joined by its id. Same columns, same order.
+          ? '''
+      SELECT l.menu_item_id, l.name_snapshot, l.modifier_ids, l.quantity,
+             l.unit_price_minor, l.note,
+             coalesce(discount.amount_minor, 0), discount.reason,
+             ov.unit_price_after_minor, ov_reason.code, l.id
+        FROM pos_order_lines l
+        LEFT JOIN (
+          SELECT d.order_line_id, sum(d.amount_minor) AS amount_minor,
+                 min(reason.code) AS reason
+            FROM pos_order_discounts d
+            LEFT JOIN pos_reason_codes reason ON reason.id = d.reason_id
+           GROUP BY d.order_line_id
+        ) discount ON discount.order_line_id = l.id
+        LEFT JOIN pos_order_line_events ov ON ov.id = (
+          SELECT e.id FROM pos_order_line_events e
+           WHERE e.order_line_id = l.id AND e.event = 'price_overridden'
+           ORDER BY e.occurred_at DESC, e.id DESC
+           LIMIT 1)
+        LEFT JOIN pos_reason_codes ov_reason ON ov_reason.id = ov.reason_id
+       WHERE l.order_id = @order
+       ORDER BY l.id
       '''
+          : '''
       SELECT l.menu_item_id, l.name_snapshot, l.modifier_ids, l.quantity,
              l.unit_price_minor, l.note,
              coalesce(discount.amount_minor, 0)::bigint, discount.reason,
@@ -1149,8 +1181,8 @@ class OutboxDrain {
           clientLineId: '${row[10]}',
           nameSnapshot: row[1] as String,
           optionIds: [
-            if (row[2] is List)
-              for (final id in row[2] as List)
+            if (row.list(2) case final ids?)
+              for (final id in ids)
                 if (id is int) id,
           ],
           quantity: row[3] as int,
@@ -1229,7 +1261,7 @@ class OutboxDrain {
               'tender_type_id': platformId,
               'amount_minor': row[2] as int,
               'reference': row[3] as String?,
-              'received_at': (row[4] as DateTime).toUtc().toIso8601String(),
+              'received_at': (row.dateTime(4)).toUtc().toIso8601String(),
             },
       ],
       stranded: [

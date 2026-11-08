@@ -12,6 +12,7 @@ import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/payment_status.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Reads settled orders back out of the branch database.
 ///
@@ -110,14 +111,21 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// Card, as its receipt does. Aggregated here rather than read from the
   /// payments per row afterwards: two hundred rows would be two hundred more
   /// round trips to draw one column.
-  static final _orderJoins =
+  static String _orderJoins(SqlDialect dialect) =>
       '''
         LEFT JOIN pos_users       AS served ON served.id = o.served_by
         LEFT JOIN pos_users       AS voider ON voider.id = o.voided_by
         LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
         LEFT JOIN pos_terminals   AS term   ON term.id = o.terminal_id
         LEFT JOIN pos_customers   AS cust   ON cust.id = o.customer_id
-        $_moneyJoins
+        ${_moneyJoins(dialect)}
+        ${_tendersJoin(dialect)}
+        ${tradingDayJoin('o', dialect: dialect)}''';
+
+  /// The methods a sale was paid in, in the order first used, as two arrays
+  /// in step: `tenders.labels` and `tenders.type_ids`.
+  static String _tendersJoin(SqlDialect dialect) => switch (dialect) {
+    SqlDialect.postgres => '''
         LEFT JOIN LATERAL (
           SELECT coalesce(array_agg(used.label ORDER BY used.first_id),
                           '{}') AS labels,
@@ -127,8 +135,29 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
                     FROM pos_order_payments AS p
                    WHERE p.order_id = o.id
                    GROUP BY p.label, p.tender_type_id) AS used
-        ) AS tenders ON true
-        ${tradingDayJoin('o')}''';
+        ) AS tenders ON true''',
+    // No LATERAL on SQLite: the same per-order arrays (as JSON), one row per
+    // order, joined on the order's id. A till's own file is small enough
+    // that computing them for every order the join touches costs nothing.
+    SqlDialect.sqlite => '''
+        LEFT JOIN (
+          SELECT o2.id AS order_id,
+                 (SELECT json_group_array(used.label ORDER BY used.first_id)
+                    FROM (SELECT p.label, min(p.id) AS first_id
+                            FROM pos_order_payments AS p
+                           WHERE p.order_id = o2.id
+                           GROUP BY p.label, p.tender_type_id) AS used)
+                   AS labels,
+                 (SELECT json_group_array(used.tender_type_id
+                                          ORDER BY used.first_id)
+                    FROM (SELECT p.tender_type_id, min(p.id) AS first_id
+                            FROM pos_order_payments AS p
+                           WHERE p.order_id = o2.id
+                           GROUP BY p.label, p.tender_type_id) AS used)
+                   AS type_ids
+            FROM pos_orders AS o2
+        ) AS tenders ON tenders.order_id = o.id''',
+  };
 
   /// What was taken and what went back, per order, as `taken.minor` and
   /// `given_back.minor` — the sums [paymentStatusSql] reads.
@@ -137,7 +166,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// are drawn from, without the name and tender joins a total has no use
   /// for. A second copy of these two sums is where "paid" on the strip would
   /// start disagreeing with PAID on the row.
-  static const _moneyJoins = '''
+  static String _moneyJoins(SqlDialect dialect) => switch (dialect) {
+    SqlDialect.postgres => '''
         LEFT JOIN LATERAL (
           SELECT coalesce(sum(p.amount_minor), 0)::bigint AS minor
             FROM pos_order_payments AS p WHERE p.order_id = o.id
@@ -145,7 +175,23 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         LEFT JOIN LATERAL (
           SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
             FROM pos_refunds AS r WHERE r.order_id = o.id
-        ) AS given_back ON true''';
+        ) AS given_back ON true''',
+    SqlDialect.sqlite => '''
+        LEFT JOIN (
+          SELECT o2.id AS order_id,
+                 coalesce((SELECT sum(p.amount_minor)
+                             FROM pos_order_payments AS p
+                            WHERE p.order_id = o2.id), 0) AS minor
+            FROM pos_orders AS o2
+        ) AS taken ON taken.order_id = o.id
+        LEFT JOIN (
+          SELECT o2.id AS order_id,
+                 coalesce((SELECT sum(r.total_minor)
+                             FROM pos_refunds AS r
+                            WHERE r.order_id = o2.id), 0) AS minor
+            FROM pos_orders AS o2
+        ) AS given_back ON given_back.order_id = o.id''',
+  };
 
   /// The trading day the row [alias] belongs to, as `trading.business_date`.
   ///
@@ -164,8 +210,30 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// the id is null. Ordered by `opened_at` so the most recent day that covers
   /// it answers, should a force-closed day and its successor ever overlap by a
   /// second.
-  static String tradingDayJoin(String alias) =>
-      '''
+  ///
+  /// [dialect] defaults to PostgreSQL for the offline-only readers (reports,
+  /// supplier invoices); a reader a cloud till reaches passes its engine's.
+  static String tradingDayJoin(
+    String alias, {
+    SqlDialect dialect = SqlDialect.postgres,
+  }) => dialect == SqlDialect.sqlite
+      // The same day, chosen by the same rule, joined by its id: a correlated
+      // scalar subquery in the ON clause, which SQLite has where it has no
+      // LATERAL.
+      ? '''
+        LEFT JOIN pos_business_days AS trading ON trading.id = (
+          SELECT d.id
+            FROM pos_business_days AS d
+           WHERE d.business_id = $alias.business_id
+             AND d.branch_id = $alias.branch_id
+             AND (d.id = $alias.business_day_id
+                  OR ($alias.business_day_id IS NULL
+                      AND d.opened_at <= $alias.occurred_at
+                      AND (d.closed_at IS NULL
+                           OR $alias.occurred_at < d.closed_at)))
+           ORDER BY d.opened_at DESC
+           LIMIT 1)'''
+      : '''
         LEFT JOIN LATERAL (
           SELECT d.business_date
             FROM pos_business_days AS d
@@ -184,7 +252,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     final currencyCode = row[11];
     final rowExponent = row[12];
     Money money(Object? minor) => _rowMoney(minor, currencyCode, rowExponent);
-    final businessDate = row[25] as DateTime?;
+    final businessDate = row.dateTimeOrNull(25);
 
     return OrderRecord(
       id: row[0] as int,
@@ -199,7 +267,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // no table — the alternative is dropping the order out of history over a
       // label.
       orderType: OrderType.fromWire(row[4] as String) ?? OrderType.takeaway,
-      occurredAt: (row[5] as DateTime).toLocal(),
+      occurredAt: (row.dateTime(5)).toLocal(),
       subtotal: money(row[6]),
       discount: money(row[7]),
       service: money(row[8]),
@@ -207,7 +275,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       total: money(row[10]),
       tableLabel: row[13] as String?,
       guestCount: row[14] as int?,
-      voidedAt: (row[15] as DateTime?)?.toLocal(),
+      voidedAt: (row.dateTimeOrNull(15))?.toLocal(),
       voidNote: row[16] as String?,
       servedByName: row[17] as String?,
       voidedByName: row[18] as String?,
@@ -232,9 +300,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // same tender — and arrays arrive typed, where jsonb arrives as maps to
       // be re-typed by hand.
       tenders: [
-        for (final (i, label) in (row[28]! as List).indexed)
+        for (final (i, label) in row.list(28)!.indexed)
           OrderRecordTender(
-            tenderTypeId: (row[29]! as List)[i] as int,
+            tenderTypeId: row.list(29)![i] as int,
             label: label as String,
           ),
       ],
@@ -242,7 +310,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       customerName: row[31] as String?,
       customerPhone: row[32] as String?,
       customerEmail: row[33] as String?,
-      platformNumbered: row[34] as bool,
+      platformNumbered: row.boolean(34),
     );
   }
 
@@ -430,7 +498,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     }
     final rows = await _db.query(
       config,
-      'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
+      'SELECT $_orderColumns FROM pos_orders AS o ${_orderJoins(_db.dialect)} '
       'WHERE ${where.join(' AND ')} '
       'ORDER BY o.occurred_at DESC, o.id DESC LIMIT @limit',
       parameters: parameters,
@@ -476,7 +544,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       'FROM (SELECT o.status = ANY(@deadStatuses) AS dead, '
       '             o.total_minor AS total, taken.minor AS taken, '
       '             $paymentStatusSql AS money '
-      '        FROM pos_orders AS o $_moneyJoins ${tradingDayJoin('o')} '
+      '        FROM pos_orders AS o ${_moneyJoins(_db.dialect)} '
+      '        ${tradingDayJoin('o', dialect: _db.dialect)} '
       '       WHERE ${filter.where.join(' AND ')}) AS listed',
       parameters: {
         ...filter.parameters,
@@ -517,7 +586,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   Future<OrderRecord?> byInvoiceNumber(String invoiceNumber) async {
     final rows = await _db.query(
       config,
-      'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
+      'SELECT $_orderColumns FROM pos_orders AS o ${_orderJoins(_db.dialect)} '
       'WHERE o.business_id = @business AND o.branch_id = @branch '
       '  AND coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) = @invoice',
       parameters: {
@@ -573,18 +642,25 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// row per refund is the list's whole promise, and a join to its lines is
   /// one row per line until something groups it back — the step a later
   /// edit forgets, and the strip starts counting items as refunds.
-  static final _refundJoins =
+  static String _refundJoins(SqlDialect dialect) =>
       '''
         JOIN pos_orders AS o ON o.id = r.order_id
         LEFT JOIN pos_users        AS issuer   ON issuer.id = r.refunded_by
         LEFT JOIN pos_users        AS approver ON approver.id = r.approved_by_id
         LEFT JOIN pos_reason_codes AS reason   ON reason.id = r.reason_id
         LEFT JOIN pos_terminals    AS term     ON term.id = r.terminal_id
+        ${dialect == SqlDialect.sqlite ? '''
+        LEFT JOIN (
+          SELECT r2.id AS refund_id,
+                 (SELECT count(*) FROM pos_refund_lines AS l
+                   WHERE l.refund_id = r2.id) AS lines
+            FROM pos_refunds AS r2
+        ) AS counted ON counted.refund_id = r.id''' : '''
         LEFT JOIN LATERAL (
           SELECT count(*)::bigint AS lines
             FROM pos_refund_lines AS l WHERE l.refund_id = r.id
-        ) AS counted ON true
-        ${tradingDayJoin('r')}''';
+        ) AS counted ON true'''}
+        ${tradingDayJoin('r', dialect: dialect)}''';
 
   /// The WHERE clauses and parameters Returns runs [query] with, over
   /// `pos_refunds AS r JOIN pos_orders AS o` with [tradingDayJoin] on `r`.
@@ -665,7 +741,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     }
     final rows = await _db.query(
       config,
-      'SELECT $_refundColumns FROM pos_refunds AS r $_refundJoins '
+      'SELECT $_refundColumns FROM pos_refunds AS r ${_refundJoins(_db.dialect)} '
       'WHERE ${where.join(' AND ')} '
       'ORDER BY r.occurred_at DESC, r.id DESC LIMIT @limit',
       parameters: parameters,
@@ -673,12 +749,12 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     return rows
         .map((raw) {
           final row = raw.toList();
-          final businessDate = row[17] as DateTime?;
+          final businessDate = row.dateTimeOrNull(17);
           return RefundRecord(
             id: row[0] as int,
             orderId: row[1] as int,
             invoiceNumber: row[2] as String,
-            occurredAt: (row[3] as DateTime).toLocal(),
+            occurredAt: (row.dateTime(3)).toLocal(),
             total: _rowMoney(row[4], row[5], row[6]),
             // The CHECK in migration 12 allows two words. One this build does
             // not know is shown as the kind that claims less.
@@ -720,7 +796,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       config,
       'SELECT count(*)::bigint, coalesce(sum(r.total_minor), 0)::bigint '
       'FROM pos_refunds AS r JOIN pos_orders AS o ON o.id = r.order_id '
-      '${tradingDayJoin('r')} '
+      '${tradingDayJoin('r', dialect: _db.dialect)} '
       'WHERE ${filter.where.join(' AND ')}',
       parameters: filter.parameters,
     );
@@ -735,7 +811,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   Future<OrderRecordDetail?> detail(int orderId) async {
     final orderRows = await _db.query(
       config,
-      'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
+      'SELECT $_orderColumns FROM pos_orders AS o ${_orderJoins(_db.dialect)} '
       'WHERE o.id = @id AND o.business_id = @business '
       '  AND o.branch_id = @branch',
       parameters: {
@@ -813,7 +889,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           note: row[7] as String?,
           menuItemId: row[8] as int?,
           refundedQuantity: row[9] as int? ?? 0,
-          voidedAt: (row[10] as DateTime?)?.toLocal(),
+          voidedAt: (row.dateTimeOrNull(10))?.toLocal(),
           voidedByName: row[11] as String?,
         );
       }).toList(growable: false),
@@ -824,7 +900,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           amount: money(row[1]),
           tenderTypeId: row[2] as int?,
           reference: row[3] as String?,
-          occurredAt: (row[4] as DateTime?)?.toLocal(),
+          occurredAt: (row.dateTimeOrNull(4))?.toLocal(),
         );
       }).toList(growable: false),
       discounts: discountRows.map((raw) {
@@ -835,7 +911,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           lineKey: row[2] as String?,
           appliedByName: row[3] as String?,
           approvedByName: row[4] as String?,
-          appliedAt: (row[5] as DateTime?)?.toLocal(),
+          appliedAt: (row.dateTimeOrNull(5))?.toLocal(),
         );
       }).toList(growable: false),
       taxLines: taxRows.map((raw) {
@@ -879,7 +955,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // Two kinds and two states, both held by CHECK constraints in migration
       // 34 — so `reprint` or not, `printed` or not, is the whole space.
       final copy = row[0] == 'reprint';
-      final printedAt = row[3] as DateTime?;
+      final printedAt = row.dateTimeOrNull(3);
       final done = row[1] == 'printed' && printedAt != null;
       events.add(
         SaleEvent(
@@ -889,7 +965,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
             (true, true) => SaleEventKind.reprinted,
             (true, false) => SaleEventKind.reprintPending,
           },
-          at: (done ? printedAt : row[2] as DateTime).toLocal(),
+          at: (done ? printedAt : row.dateTime(2)).toLocal(),
         ),
       );
     }
@@ -914,7 +990,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       events.add(
         SaleEvent(
           kind: reprint ? SaleEventKind.reprintRequested : SaleEventKind.audit,
-          at: (row[3] as DateTime).toLocal(),
+          at: (row.dateTime(3)).toLocal(),
           actorName: row[1] as String?,
           approvedByName: row[2] as String?,
           auditAction: reprint ? null : action,
@@ -950,7 +1026,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       events.add(
         SaleEvent(
           kind: SaleEventKind.refunded,
-          at: (row[0] as DateTime).toLocal(),
+          at: (row.dateTime(0)).toLocal(),
           actorName: row[1] as String?,
           approvedByName: row[2] as String?,
           amount: money(row[3]),

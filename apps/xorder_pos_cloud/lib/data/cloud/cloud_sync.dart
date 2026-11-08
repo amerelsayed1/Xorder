@@ -15,6 +15,7 @@ import 'package:shared_module/data/cloud/device_token_vault.dart';
 import 'logo_sync.dart';
 import 'outbox_drain.dart';
 import 'package:shared_module/data/sql/sql.dart';
+import 'package:shared_module/data/sql/row_reads.dart';
 
 /// When the next pass runs.
 ///
@@ -238,7 +239,7 @@ class CloudSync implements SalesSync {
         'WHERE business_id = @restaurant',
         parameters: {'restaurant': businessId},
       );
-      return rows.isEmpty ? null : (rows.first[0] as DateTime?)?.toLocal();
+      return rows.isEmpty ? null : (rows.first.dateTimeOrNull(0))?.toLocal();
     } on Object {
       return null;
     }
@@ -293,7 +294,7 @@ class CloudSync implements SalesSync {
         parameters: {'restaurant': profile.businessId},
       );
       pending = rows.first[0] as int;
-      oldest = (rows.first[1] as DateTime?)?.toUtc().toIso8601String();
+      oldest = (rows.first.dateTimeOrNull(1))?.toUtc().toIso8601String();
       held = rows.first[2] as int;
 
       final shifts = await _db.query(

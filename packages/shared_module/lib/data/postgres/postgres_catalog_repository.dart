@@ -6,6 +6,7 @@ import '../../domain/models/combo.dart';
 import '../../domain/repositories/repositories.dart';
 import 'postgres_tenant.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// The business's actual menu, read from the branch server.
 ///
@@ -144,10 +145,10 @@ class PostgresCatalogRepository implements CatalogRepository {
     final defaultSize = <int, ({int regular, int? sale})>{};
     for (final row in modifiers) {
       final groupId = row[1] as int;
-      final isVariant = row[6] as bool;
+      final isVariant = row.boolean(6);
       final regular = row[4] as int;
       final sale = row[7] as int?;
-      final isAvailable = row[5] as bool;
+      final isAvailable = row.boolean(5);
 
       byGroup
           .putIfAbsent(groupId, () => [])
@@ -166,7 +167,7 @@ class PostgresCatalogRepository implements CatalogRepository {
               // Read at last: the column has existed since Wave M and the sheet
               // honours it, but nothing ever selected it. Sizes ignore it — see
               // `TicketEngine.defaultSelection`.
-              isDefault: row[8] as bool,
+              isDefault: row.boolean(8),
             ),
           );
       if (isVariant && isAvailable) {
@@ -176,7 +177,7 @@ class PostgresCatalogRepository implements CatalogRepository {
 
     final variantGroups = {
       for (final row in groups)
-        if (row[5] as bool) row[0] as int,
+        if (row.boolean(5)) row[0] as int,
     };
 
     final groupIdsByProduct = <int, List<int>>{};
@@ -189,7 +190,7 @@ class PostgresCatalogRepository implements CatalogRepository {
         (
           id: row[0]! as int,
           everywhere: row[1] == 'all',
-          categories: (row[2]! as List).whereType<int>().toSet(),
+          categories: row.list(2)!.whereType<int>().toSet(),
         ),
     ];
 
@@ -310,10 +311,10 @@ class PostgresCatalogRepository implements CatalogRepository {
             : (ownDiscount == null ? null : _money(ownDiscount)),
         sku: row[6] as String?,
         barcode: row[7] as String?,
-        isAvailable: row[8]! as bool,
+        isAvailable: row.boolean(8),
         taxGroupId: row[9] as int?,
         modifierGroupIds: groupIds,
-        isStocked: row[10]! as bool,
+        isStocked: row.boolean(10),
         stockUnit: row[11] == null
             ? null
             : QuantityUnit.fromWire(row[11] as String),
@@ -340,9 +341,9 @@ class PostgresCatalogRepository implements CatalogRepository {
             id: row[0] as int,
             nameEn: row[1] as String,
             nameAr: row[2] as String?,
-            isRequired: row[3] as bool,
+            isRequired: row.boolean(3),
             maxSelect: row[4] as int,
-            isVariant: row[5] as bool,
+            isVariant: row.boolean(5),
             modifiers: byGroup[row[0] as int] ?? const [],
             minSelect: row[6] as int? ?? 0,
             freeOptions: row[7] as int? ?? 0,
@@ -414,7 +415,7 @@ class PostgresCatalogRepository implements CatalogRepository {
               price: _money(row[4] as int),
               taxGroupId: row[5] as int?,
               sku: row[6] as String?,
-              isAvailable: row[7] as bool,
+              isAvailable: row.boolean(7),
               groups: groups,
             ),
     ];

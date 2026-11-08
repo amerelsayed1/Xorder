@@ -3,6 +3,7 @@ import '../../domain/models/backup.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// `pos_backups` — every copy taken of this database, and how it went.
 ///
@@ -84,7 +85,7 @@ class PostgresBackupRepository implements BackupRepository {
 
   static BackupRecord _record(List<Object?> row) => BackupRecord(
     id: row[0] as int?,
-    takenAt: (row[1]! as DateTime).toLocal(),
+    takenAt: (row.dateTime(1)).toLocal(),
     takenById: row[2] as int?,
     takenByName: row[3]! as String,
     trigger: BackupTrigger.fromWire(row[4]! as String),

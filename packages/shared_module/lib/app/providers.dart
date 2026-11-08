@@ -37,6 +37,7 @@ import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
+import '../data/sql/row_reads.dart';
 import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
@@ -1446,7 +1447,7 @@ final businessLogoProvider = FutureProvider<BusinessLogo?>((ref) async {
       bytes: bytes,
       mime: row[1] as String? ?? '',
       source: source,
-      updatedAt: row[3] as DateTime?,
+      updatedAt: row.dateTimeOrNull(3),
     );
   } on Object {
     return null;
@@ -1582,7 +1583,7 @@ final taxGroupsProvider = FutureProvider<List<TaxGroup>>((ref) async {
           nameEn: row[1]! as String,
           nameAr: row[2] as String?,
           rateBp: row[3]! as int,
-          isDefault: row[4]! as bool,
+          isDefault: row.boolean(4),
         ),
     ];
   } on Object {

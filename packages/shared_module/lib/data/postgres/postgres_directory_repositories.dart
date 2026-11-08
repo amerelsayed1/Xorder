@@ -9,6 +9,7 @@ import 'pos_database.dart';
 import 'postgres_admin_repositories.dart';
 import 'postgres_tenant.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 const _uuid = Uuid();
 
@@ -41,7 +42,7 @@ class PostgresBranchRepository implements BranchRepository {
           name: row[1] as String,
           code: row[2] as String?,
           supportedOrderTypes: _textArray(row[3]),
-          isActive: row[4] as bool,
+          isActive: row.boolean(4),
         ),
     ];
   }
@@ -372,7 +373,23 @@ class PostgresSessionRepository implements SessionRepository {
   Future<PosSession> current() async {
     final rows = await _db.query(
       _config,
-      'SELECT r.name, b.name, t.name, s.name, s.capabilities '
+      _db.dialect == SqlDialect.sqlite
+          // No LATERAL and no array concatenation on SQLite: the same first
+          // active member, joined by id, with the role's grants read
+          // alongside and unioned below.
+          ? 'SELECT r.name, b.name, t.name, st.name, st.capabilities, '
+                '       ro.capabilities '
+                'FROM pos_businesses r '
+                'JOIN pos_branches b ON b.id = @branch '
+                'JOIN pos_terminals t ON t.id = @terminal '
+                'LEFT JOIN pos_users st ON st.id = ('
+                '  SELECT u.id FROM pos_users u '
+                '   WHERE u.business_id = r.id AND u.is_active '
+                '     AND (u.branch_id IS NULL OR u.branch_id = @branch) '
+                '   ORDER BY u.id LIMIT 1) '
+                'LEFT JOIN pos_roles ro ON ro.id = st.role_id '
+                'WHERE r.id = @business'
+          : 'SELECT r.name, b.name, t.name, s.name, s.capabilities '
       'FROM pos_businesses r '
       'JOIN pos_branches b ON b.id = @branch '
       // `id::text`, not `id = @terminal`: the parameter arrives as a string and
@@ -412,7 +429,10 @@ class PostgresSessionRepository implements SessionRepository {
       // No staff row yet is a setup problem, not a crash: the till still shows
       // its identity and the operator can see what is missing.
       userName: (row[3] as String?) ?? 'No staff configured',
-      capabilities: PosCapability.canonicalAll(_textArray(row[4])),
+      capabilities: PosCapability.canonicalAll([
+        ..._textArray(row[4]),
+        if (row.length > 5) ..._textArray(row[5]),
+      ]),
       // Shifts are not recorded yet (POS-BE-009). An invented reference on a
       // report would be worse than an empty one.
       shiftReference: '',
@@ -513,7 +533,7 @@ class PostgresSessionRepository implements SessionRepository {
           name: row[1] as String,
           username: row[2] as String?,
           capabilities: PosCapability.canonicalAll(_textArray(row[3])),
-          isActive: row[4] as bool,
+          isActive: row.boolean(4),
           role: optionalRoleFromRow(row, 5),
         );
       }
@@ -557,7 +577,7 @@ class PostgresSessionRepository implements SessionRepository {
           name: row[1] as String,
           username: row[2] as String?,
           capabilities: PosCapability.canonicalAll(_textArray(row[3])),
-          isActive: row[4] as bool,
+          isActive: row.boolean(4),
           role: optionalRoleFromRow(row, 5),
         );
       }
@@ -646,7 +666,7 @@ class PostgresSessionRepository implements SessionRepository {
                 capability: row[0]! as String,
                 effect: effect,
                 grantedById: row[2] as int?,
-                grantedAt: (row[3] as DateTime?)?.toUtc(),
+                grantedAt: (row.dateTimeOrNull(3))?.toUtc(),
               ),
         ],
         limits: PermissionResolver.resolve(
@@ -663,7 +683,7 @@ class PostgresSessionRepository implements SessionRepository {
 }
 
 /// PostgreSQL `text[]` arrives as a `List` of dynamics.
-List<String> _textArray(Object? value) => switch (value) {
+List<String> _textArray(Object? value) => switch (readJson(value)) {
   null => const [],
   final List<Object?> list => [
     for (final item in list)

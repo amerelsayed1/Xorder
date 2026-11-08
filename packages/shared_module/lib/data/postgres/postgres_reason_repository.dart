@@ -2,6 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/reason_code.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// The reason lists, read from `pos_reason_codes`.
 ///
@@ -39,7 +40,7 @@ class PostgresReasonsRepository implements ReasonsRepository {
           code: row[1] as String,
           nameEn: row[2] as String,
           nameAr: row[3] as String?,
-          requiresNote: row[4] as bool? ?? false,
+          requiresNote: row.booleanOrNull(4) ?? false,
           sortOrder: row[5] as int? ?? 0,
         ),
     ];

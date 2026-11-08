@@ -5,6 +5,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
 import '../../domain/repositories/repositories.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
+import '../sql/row_reads.dart';
 
 /// The trading day, at one branch.
 class PostgresBusinessDayRepository implements BusinessDayRepository {
@@ -37,10 +38,10 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
 
   BusinessDay _day(List<Object?> row) => BusinessDay(
     id: row[0]! as int,
-    date: row[1]! as DateTime,
-    openedAt: (row[2]! as DateTime).toLocal(),
-    closedAt: (row[3] as DateTime?)?.toLocal(),
-    forced: row[4] as bool? ?? false,
+    date: row.dateTime(1),
+    openedAt: (row.dateTime(2)).toLocal(),
+    closedAt: (row.dateTimeOrNull(3))?.toLocal(),
+    forced: row.booleanOrNull(4) ?? false,
     forceReason: row[5] as String?,
     gross: _money(row[6]),
     net: _money(row[7]),

@@ -10,6 +10,7 @@ import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'open_shift.dart';
 import 'pos_database.dart';
+import '../sql/row_reads.dart';
 
 /// The Management section's data layer.
 ///
@@ -126,9 +127,9 @@ PosRole roleFromRow(List<Object?> row, [int offset = 0]) => PosRole(
   nameEn: row[offset + 2] as String,
   nameAr: row[offset + 3] as String?,
   capabilities: PosCapability.canonicalAll(
-    (row[offset + 4] as List).cast<String>(),
+    row.list(offset + 4)!.cast<String>(),
   ),
-  isSystem: row[offset + 5] as bool,
+  isSystem: row.boolean(offset + 5),
 );
 
 /// A role row, or null when the staff member has none. The join is a LEFT one,
@@ -347,8 +348,8 @@ PosStaff _staffFrom(List<Object?> row) => PosStaff(
   id: row[0] as int,
   name: row[1] as String,
   username: row[2] as String?,
-  capabilities: PosCapability.canonicalAll((row[3] as List).cast<String>()),
-  isActive: row[4] as bool,
+  capabilities: PosCapability.canonicalAll(row.list(3)!.cast<String>()),
+  isActive: row.boolean(4),
   role: optionalRoleFromRow(row, 5),
 );
 
@@ -1378,7 +1379,7 @@ class PostgresAuditRepository implements AuditRepository {
           before: _json(row[8]),
           after: _json(row[9]),
           reason: row[10] as String?,
-          occurredAt: row[11] as DateTime,
+          occurredAt: row.dateTime(11),
         ),
     ];
   }

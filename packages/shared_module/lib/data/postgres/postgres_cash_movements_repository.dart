@@ -10,6 +10,7 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'postgres_order_history_repository.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
+import '../sql/row_reads.dart';
 
 /// The one INSERT that puts a row in `pos_cash_movements`.
 ///
@@ -125,7 +126,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
         CashMovementKind.fromWire(row[1]! as String) ??
         CashMovementKind.drawerOpen,
     amount: _money(row[2]),
-    occurredAt: (row[3]! as DateTime).toLocal(),
+    occurredAt: (row.dateTime(3)).toLocal(),
     note: row[4] as String?,
     reasonName: row[5] as String?,
     reasonNameAr: row[6] as String?,
@@ -209,7 +210,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
       id: rows.first[0]! as int,
       kind: kind,
       amount: stored,
-      occurredAt: (rows.first[1]! as DateTime).toLocal(),
+      occurredAt: (rows.first.dateTime(1)).toLocal(),
       note: note,
       staffName: by.name,
       approvedByName: approvedBy?.name,
@@ -264,7 +265,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
       config,
       'SELECT $_columns, term.name FROM pos_cash_movements AS m $_joins '
       'LEFT JOIN pos_terminals AS term ON term.id = m.terminal_id '
-      '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
+      '${PostgresOrderHistoryRepository.tradingDayJoin('m', dialect: _db.dialect)} '
       'WHERE ${where.join(' AND ')} '
       'ORDER BY m.occurred_at DESC, m.id DESC',
       parameters: {

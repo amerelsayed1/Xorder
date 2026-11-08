@@ -9,7 +9,9 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/refund_engine.dart' show RefundQuote;
 import 'open_shift.dart';
+import 'pos_database.dart' show PosDbException, PosDbFailure;
 import 'postgres_orders_repository.dart' show PosWriteContext;
+import '../sql/row_reads.dart';
 
 /// Writes refunds to the branch database.
 ///
@@ -210,6 +212,32 @@ class PostgresRefundsRepository implements RefundsRepository {
         );
       }
 
+      // A refund must foot: what went back equals what was tendered back.
+      // PostgreSQL checks this at commit (the deferred constraint trigger
+      // `pos_refunds_tendered_in_full`); SQLite has no deferred triggers, so
+      // on SQLite it is checked here, after the payments and before commit,
+      // with the same words (pos-cloud-single-till-sqlite).
+      if (_db.dialect == SqlDialect.sqlite) {
+        final tendered = await tx.execute(
+          Sql.named(
+            'SELECT coalesce(sum(amount_minor), 0), '
+            '       (SELECT total_minor FROM pos_refunds WHERE id = @refund) '
+            '  FROM pos_refund_payments WHERE refund_id = @refund',
+          ),
+          parameters: {'refund': refundId},
+        );
+        final paid = tendered.first[0] as int;
+        final total = tendered.first[1] as int;
+        if (paid != total) {
+          throw PosDbException(
+            PosDbFailure.query,
+            'refund $refundId is $total, but $paid was tendered back — a refund '
+            'that does not foot is one nobody can reconcile against a drawer',
+            sqlState: 'P0001',
+          );
+        }
+      }
+
       // The platform's claim on this refund, in the transaction that wrote it.
       // Two commits would leave a refund the platform never hears about if the
       // second one lost — invisible precisely because the first succeeded, the
@@ -321,7 +349,7 @@ class PostgresRefundsRepository implements RefundsRepository {
         service: _money(row[6]),
         vat: _money(row[7]),
         total: _money(row[8]),
-        occurredAt: (row[9] as DateTime).toLocal(),
+        occurredAt: (row.dateTime(9)).toLocal(),
         note: row[10] as String?,
         reasonName: row[11] as String?,
         reasonNameAr: row[12] as String?,

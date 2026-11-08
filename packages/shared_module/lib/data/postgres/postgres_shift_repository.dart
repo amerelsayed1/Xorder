@@ -9,6 +9,7 @@ import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'postgres_order_history_repository.dart';
+import '../sql/row_reads.dart';
 
 /// Shifts on the branch server.
 ///
@@ -107,7 +108,7 @@ class PostgresShiftRepository implements ShiftRepository {
       }
       return PosShift(
         id: id,
-        openedAt: rows.first[1] as DateTime,
+        openedAt: rows.first.dateTime(1),
         openingFloat: openingFloat,
         openedByName: by.name,
         openedById: by.id,
@@ -145,7 +146,7 @@ class PostgresShiftRepository implements ShiftRepository {
     for (final row in rows) {
       final staff = row[0]! as int;
       final openHere = row[2]! as int;
-      last[staff] = row[1]! as DateTime;
+      last[staff] = row.dateTime(1);
       open += openHere;
       if (openHere > 0) onShift.add(staff);
     }
@@ -238,7 +239,7 @@ class PostgresShiftRepository implements ShiftRepository {
               FROM $_shiftsAsDated
               JOIN pos_users st ON st.id = s.opened_by
               LEFT JOIN pos_terminals term ON term.id = s.terminal_id
-              ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
+              ${PostgresOrderHistoryRepository.tradingDayJoin('s', dialect: _db.dialect)}
              WHERE ${dated.join(' AND ')}
           '''),
           parameters: parameters,
@@ -270,7 +271,18 @@ class PostgresShiftRepository implements ShiftRepository {
               JOIN pos_users st ON st.id = s.opened_by
               LEFT JOIN pos_users closer ON closer.id = s.closed_by
               LEFT JOIN pos_terminals term ON term.id = s.terminal_id
-              ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
+              ${PostgresOrderHistoryRepository.tradingDayJoin('s', dialect: _db.dialect)}
+              ${_db.dialect == SqlDialect.sqlite ? '''
+              LEFT JOIN pos_audit_events AS approval ON approval.id = (
+                SELECT a.id
+                  FROM pos_audit_events a
+                 WHERE a.business_id = s.business_id
+                   AND a.entity_type = @entity
+                   AND a.entity_id = CAST(s.id AS TEXT)
+                   AND a.action = @closed
+                   AND a.approved_by_name IS NOT NULL
+                 ORDER BY a.occurred_at DESC
+                 LIMIT 1)''' : '''
               LEFT JOIN LATERAL (
                 SELECT a.approved_by_name
                   FROM pos_audit_events a
@@ -281,7 +293,7 @@ class PostgresShiftRepository implements ShiftRepository {
                    AND a.approved_by_name IS NOT NULL
                  ORDER BY a.occurred_at DESC
                  LIMIT 1
-              ) AS approval ON true
+              ) AS approval ON true'''}
              WHERE ${where.join(' AND ')}
              ORDER BY (s.closed_at IS NULL) DESC, s.opened_at DESC, s.id DESC
              LIMIT @limit
@@ -415,7 +427,7 @@ class PostgresShiftRepository implements ShiftRepository {
         summary: summary,
         countedCash: countedCash,
         variance: variance,
-        closedAt: rows.first[0] as DateTime,
+        closedAt: rows.first.dateTime(0),
       );
     });
 
@@ -556,7 +568,7 @@ class PostgresShiftRepository implements ShiftRepository {
             // From the payment row, not from today's tender configuration. A
             // business that changes what counts as cash must not change what
             // a shift closed last week said the drawer should have held.
-            countsAsCash: (row[4] as bool?) ?? false,
+            countsAsCash: (row.booleanOrNull(4)) ?? false,
           ),
       ],
     );
@@ -564,10 +576,10 @@ class PostgresShiftRepository implements ShiftRepository {
 
   PosShift _shift(ResultRow row, {String? clientTransactionId}) => PosShift(
     id: row[0] as int,
-    openedAt: row[1] as DateTime,
+    openedAt: row.dateTime(1),
     openingFloat: Money(row[2] as int),
     openedByName: row[3] as String,
-    closedAt: row[4] as DateTime?,
+    closedAt: row.dateTimeOrNull(4),
     openedById: row[5] as int?,
     clientTransactionId: clientTransactionId,
   );

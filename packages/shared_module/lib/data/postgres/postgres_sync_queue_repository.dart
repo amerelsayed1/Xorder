@@ -8,6 +8,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
+import '../sql/row_reads.dart';
 
 /// Held sync records, read from both outbox tables and released into them.
 ///
@@ -197,7 +198,7 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
   }
 
   HeldSyncItem _read(List<Object?> row) {
-    final isSale = row[0]! as bool;
+    final isSale = row.boolean(0);
     final rawCode = row[3] as String?;
     return HeldSyncItem(
       id: row[1]! as int,
@@ -209,7 +210,7 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
       lastError: row[4] as String?,
       reference: row[5] as String?,
       sourceId: row[6] as int?,
-      quarantinedAt: (row[7]! as DateTime).toLocal(),
+      quarantinedAt: (row.dateTime(7)).toLocal(),
       attempts: row[8]! as int,
     );
   }

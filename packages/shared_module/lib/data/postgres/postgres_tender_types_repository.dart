@@ -2,6 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Reads `pos_tender_types`.
 ///
@@ -44,11 +45,11 @@ class PostgresTenderTypesRepository implements TenderTypesRepository {
           nameEn: row[2]! as String,
           nameAr: row[3] as String?,
           kind: TenderKind.fromWire(row[4] as String?),
-          countsAsCash: row[5]! as bool,
-          opensDrawer: row[6]! as bool,
-          requiresReference: row[7]! as bool,
-          refundAllowed: row[8]! as bool,
-          isActive: row[9]! as bool,
+          countsAsCash: row.boolean(5),
+          opensDrawer: row.boolean(6),
+          requiresReference: row.boolean(7),
+          refundAllowed: row.boolean(8),
+          isActive: row.boolean(9),
           sortOrder: row[10]! as int,
         ),
     ];

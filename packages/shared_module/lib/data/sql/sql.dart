@@ -55,12 +55,20 @@ abstract interface class TxSession {
   Future<void> rollback();
 }
 
+/// Which SQL an engine speaks, for the few statements that cannot be written
+/// once for both — PostgreSQL's `LATERAL` joins above all, which SQLite does
+/// not have. Everything else is one statement for both engines.
+enum SqlDialect { postgres, sqlite }
+
 /// Where a till keeps its data.
 ///
 /// Every write goes through [runTx]: a till that half-writes an order is worse
 /// than one that refuses it, so there is no non-transactional write path.
 /// Failures leave as `PosDbException`, whichever engine raised them.
 abstract interface class SqlDatabase {
+  /// The SQL this engine speaks.
+  SqlDialect get dialect;
+
   /// Run [action] in a transaction for [config]'s database.
   Future<T> runTx<T>(
     DeploymentConfig config,

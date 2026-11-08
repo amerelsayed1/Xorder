@@ -3,6 +3,7 @@ import '../../domain/models/order_type_config.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../sql/sql.dart';
+import '../sql/row_reads.dart';
 
 /// Reads `pos_order_types` (§31).
 class PostgresOrderTypesRepository implements OrderTypesRepository {
@@ -38,10 +39,10 @@ class PostgresOrderTypesRepository implements OrderTypesRepository {
             type: type,
             nameEn: row[1]! as String,
             nameAr: row[2] as String?,
-            requiresTable: row[3]! as bool,
-            requiresCustomer: row[4]! as bool,
-            requiresAddress: row[5]! as bool,
-            isActive: row[6]! as bool,
+            requiresTable: row.boolean(3),
+            requiresCustomer: row.boolean(4),
+            requiresAddress: row.boolean(5),
+            isActive: row.boolean(6),
             sortOrder: row[7]! as int,
           ),
     ];
