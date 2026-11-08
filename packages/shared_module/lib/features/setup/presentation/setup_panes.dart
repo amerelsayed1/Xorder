@@ -202,32 +202,40 @@ class _FieldState extends State<_Field> {
     children: [
       MicroLabel(widget.label),
       const SizedBox(height: PosSpace.sm),
-      TextFormField(
-        // The field identity must not contain its value. Doing that
-        // destroys and recreates the TextFormField after every keystroke,
-        // which drops keyboard focus and makes an operator type only one
-        // character at a time. The label is stable within each pane.
-        key: ValueKey('${widget.label}:${widget.readOnly}'),
-        controller: _controller,
-        focusNode: _focus,
-        onChanged: widget.onChanged,
-        readOnly: widget.readOnly,
-        textDirection: widget.ltr ? TextDirection.ltr : null,
-        textAlign: widget.ltr ? TextAlign.left : TextAlign.start,
-        style: widget.mono
-            ? PosText.mono(
-                size: 14,
-                color: widget.readOnly ? context.pos.muted : context.pos.ink,
-              )
-            : PosText.ui(
-                size: 14,
-                color: widget.readOnly ? context.pos.muted : context.pos.ink,
-              ),
-        decoration: InputDecoration(
-          hintText: widget.hint,
-          hintStyle: PosText.ui(size: 14, color: context.pos.muted),
-          suffixText: widget.suffix,
-          suffixStyle: PosText.mono(size: 14, color: context.pos.muted),
+      // A left-to-right value lays its whole box out left to right, so a
+      // suffix such as `.xorder.io` follows the text on an Arabic screen too
+      // instead of landing before it with its dot turned round.
+      Directionality(
+        textDirection: widget.ltr
+            ? TextDirection.ltr
+            : Directionality.of(context),
+        child: TextFormField(
+          // The field identity must not contain its value. Doing that
+          // destroys and recreates the TextFormField after every keystroke,
+          // which drops keyboard focus and makes an operator type only one
+          // character at a time. The label is stable within each pane.
+          key: ValueKey('${widget.label}:${widget.readOnly}'),
+          controller: _controller,
+          focusNode: _focus,
+          onChanged: widget.onChanged,
+          readOnly: widget.readOnly,
+          textDirection: widget.ltr ? TextDirection.ltr : null,
+          textAlign: widget.ltr ? TextAlign.left : TextAlign.start,
+          style: widget.mono
+              ? PosText.mono(
+                  size: 14,
+                  color: widget.readOnly ? context.pos.muted : context.pos.ink,
+                )
+              : PosText.ui(
+                  size: 14,
+                  color: widget.readOnly ? context.pos.muted : context.pos.ink,
+                ),
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            hintStyle: PosText.ui(size: 14, color: context.pos.muted),
+            suffixText: widget.suffix,
+            suffixStyle: PosText.mono(size: 14, color: context.pos.muted),
+          ),
         ),
       ),
       if (widget.error != null) ...[

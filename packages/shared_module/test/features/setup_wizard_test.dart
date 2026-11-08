@@ -552,6 +552,26 @@ void main() {
       expect(find.text('Sign in instead'), findsNothing);
     });
 
+    // Found running the app on 2026-11-08: on an Arabic screen the suffix sat
+    // before the address and read "xorder.io.demo".
+    testWidgets('on an Arabic screen the address still reads cafe-nile.xorder.io',
+        (tester) async {
+      final container = await _pump(tester, appMode: DeploymentMode.cloud);
+      container.read(localeProvider.notifier).apply('ar');
+      await tester.pumpAndSettle();
+
+      final suffix = find.text('.xorder.io');
+      expect(suffix, findsOneWidget);
+      final direction = tester
+          .widget<Directionality>(
+            find
+                .ancestor(of: suffix, matching: find.byType(Directionality))
+                .first,
+          )
+          .textDirection;
+      expect(direction, TextDirection.ltr);
+    });
+
     testWidgets('the offline app opens on the licence, as it always has', (
       tester,
     ) async {
