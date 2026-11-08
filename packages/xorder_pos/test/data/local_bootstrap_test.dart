@@ -122,18 +122,18 @@ void main() {
     Future<String?> stored(int id) async {
       final rows = await database.query(
         admin,
-        'SELECT content_languages FROM pos_restaurants WHERE id = @id',
+        'SELECT content_languages FROM pos_businesses WHERE id = @id',
         parameters: {'id': id},
       );
       return rows.first[0] as String?;
     }
 
-    final arabic = await bootstrap.seedRestaurant(admin,
+    final arabic = await bootstrap.seedBusiness(admin,
         slug: 'ar-cafe', name: 'Cafe', contentLanguages: ContentLanguages.arabic);
-    final english = await bootstrap.seedRestaurant(admin,
+    final english = await bootstrap.seedBusiness(admin,
         slug: 'en-cafe', name: 'Cafe', contentLanguages: ContentLanguages.english);
     final unspecified =
-        await bootstrap.seedRestaurant(admin, slug: 'old-cafe', name: 'Cafe');
+        await bootstrap.seedBusiness(admin, slug: 'old-cafe', name: 'Cafe');
 
     expect(await stored(arabic), 'ar', reason: 'the wizard was Arabic');
     expect(await stored(english), 'en', reason: 'the wizard was English');
@@ -144,10 +144,10 @@ void main() {
     // wizard) must not put the wizard's language back over it.
     await database.query(
       admin,
-      "UPDATE pos_restaurants SET content_languages = 'en' WHERE id = @id",
+      "UPDATE pos_businesses SET content_languages = 'en' WHERE id = @id",
       parameters: {'id': arabic},
     );
-    final again = await bootstrap.seedRestaurant(admin,
+    final again = await bootstrap.seedBusiness(admin,
         slug: 'ar-cafe', name: 'Cafe', contentLanguages: ContentLanguages.arabic);
 
     expect(again, arabic, reason: 'the same row is adopted');
