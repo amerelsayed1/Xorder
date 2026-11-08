@@ -19,7 +19,7 @@ the one `pubspec.lock`. **One codebase, two apps, one mode each** (plan: the wor
 |---|---|
 | `packages/shared_module/` | The shared till (package `shared_module`; the database it creates is still called `xorder_pos`): every `lib/`, `test/`, `bin/`, `tool/` path below is inside it. No app, no mode of its own |
 | `apps/xorder_pos_offline/` | **XOrder POS - Offline**: `main.dart` + `wiring.dart`, `windows/`, `macos/`, and the back office (`lib/features/admin/`, 60 panes) with its tests |
-| `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the dashboard signpost, `integration_test/` |
+| `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the encrypted SQLite datastore (`lib/data/local/`), the dashboard signpost, `integration_test/` |
 | `packages/xorder_pos_test_support/` | Fakes, fonts, the PostgreSQL fixture — a dev dependency of every member's tests |
 
 The apps fix the mode in `runPos(mode:, overrides:)` and bind their own code over shared
@@ -59,7 +59,7 @@ flutter pub get                                   # anywhere in the workspace; r
 cd apps/xorder_pos_offline && flutter run -d macos  # or apps/xorder_pos_cloud; or -d windows
 cd packages/shared_module && flutter test            # the shared suites; each app has its own test/
 flutter analyze                                   # in any member; flutter_lints; keep clean
-scripts/check.sh                                  # THE verification: every member, PostgreSQL included (not run in CI)
+scripts/check.sh                                  # THE verification: every member, PostgreSQL included, then the cloud-till suites on SQLite (not run in CI)
 cd packages/shared_module && dart bin/pos_migrate.dart  # prepare a branch PostgreSQL before first run
 ```
 
@@ -79,9 +79,17 @@ cd packages/shared_module && dart bin/pos_migrate.dart  # prepare a branch Postg
   which is why a first run once showed a restaurant nobody owns; that is fixed). Swapping a
   repository to an `Api…`/HTTP implementation as a contract reaches `READY` is a one-line
   change here.
-- **Primary datastore is PostgreSQL on the branch server**, reached directly with the pure
-  Dart `postgres` package (no native plugin) and shared by every till on the LAN. The outbound
-  sync queue is the `pos_outbox` table in the same database; nothing under `lib/` imports `sqflite`.
+- **Two engines, one set of repositories** (pos-cloud-single-till-sqlite, 2026-11-08). The
+  **Offline** app keeps **PostgreSQL** on the branch server, reached directly with the pure Dart
+  `postgres` package and shared by every till on the LAN. The **Cloud** app keeps each till's data
+  in **one encrypted SQLite file** (`package:sqlite3`, SQLite3MultipleCiphers in SQLCipher mode; key
+  in the OS secret store; `apps/xorder_pos_cloud/lib/data/local/cloud_datastore.dart`), every
+  cloud till on its own. Repositories are written once in PostgreSQL SQL against the seam in
+  `lib/data/sql/` (`SqlDatabase`, `Sql.named`, `row_reads.dart`); `lib/data/sqlite/` translates the
+  PostgreSQL forms they use and holds the generated schema (`tool/gen_sqlite_schema.dart`) and
+  hand-written triggers. **A new PostgreSQL migration on a table a cloud till uses needs a
+  `sqliteUpgrades` entry** (a test fails until it has one). The outbound sync queue is the
+  `pos_outbox` table in either engine; nothing under `lib/` imports `sqflite`.
 - **Contract status lives in `docs/coordination/BACKEND_TO_POS.md` — read its table, not this
   file.** At last check `POS-BE-006/007/008/009/013/023/024` (orders, idempotency, invoice
   sequence, shifts, money config, provisioning, PIN) are `READY`; branch-server, upstream-sync

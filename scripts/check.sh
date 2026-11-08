@@ -97,5 +97,24 @@ if [ "$#" -eq 0 ]; then
   check_member ../xorder_pos_test_support
   check_member ../../apps/xorder_pos_offline
   check_member ../../apps/xorder_pos_cloud
+
+  # The cloud till's engine (pos-cloud-single-till-sqlite): the same suites a
+  # cloud till relies on, run again on an encrypted SQLite file instead of
+  # PostgreSQL. Tests that need PostgreSQL itself (roles, migration replays,
+  # disabled triggers) skip themselves here and say why.
+  echo "==> SQLite (the cloud till's engine)"
+  sqlite_suites=(
+    order_lifecycle order_history order_history_paging sales_history
+    refund_schema refund_history postgres_shift shift_history
+    business_day_opening business_day_schema business_day_stamping
+    parked_tickets_schema sync_queue print_queue_schema customers_repository
+    order_customer discount_schema tender_types_schema receipt_profile_schema
+    site_licence_postgres postgres_directory one_owner postgres_integration
+    sqlite_schema sqlite_database sqlite_statement
+  )
+  files=()
+  for suite in "${sqlite_suites[@]}"; do files+=("test/data/${suite}_test.dart"); done
+  POS_TEST_ENGINE=sqlite flutter test --concurrency=1 "${files[@]}"
+  (cd ../../apps/xorder_pos_cloud && POS_TEST_ENGINE=sqlite flutter test --concurrency=1 test/data)
 fi
 echo "All checks passed."
