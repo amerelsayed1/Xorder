@@ -126,7 +126,7 @@ void main() {
     await tester.tap(find.byKey(const Key('product-11')));
     await tester.pumpAndSettle();
     expect(find.textContaining('changed on another device'), findsOneWidget);
-    expect(find.text('Round 1'), findsOneWidget, reason: "the other device's sent tea is shown");
+    expect(find.text('ROUND 1'), findsOneWidget, reason: "the other device's sent tea is shown, under its round's header");
   });
 
   testWidgets('a wrong PIN is worded; a revoked device goes back to pairing', (tester) async {

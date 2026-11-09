@@ -13,7 +13,8 @@ class ItemChoice {
   final String? note;
 }
 
-/// An item's options, quantity and note before it goes on the check.
+/// An item's options, quantity and note before it goes on the check
+/// (design §5.6).
 ///
 /// The limits checked here (required groups, how many per group) are only so
 /// the waiter is not sent back by the till for something the screen could
@@ -82,7 +83,8 @@ class _ItemSheetState extends State<ItemSheet> {
     });
   }
 
-  /// One unit with the options chosen so far.
+  /// One unit with the options chosen so far — an estimate for the button
+  /// only; the check shows the till's own figure once the line exists.
   int get _unitMinor => [
     widget.product.priceMinor,
     for (final g in widget.groups)
@@ -105,9 +107,13 @@ class _ItemSheetState extends State<ItemSheet> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(WaiterSpace.lg),
-                child: Text(
-                  widget.product.name.pick(arabic: s.arabic),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: WaiterColors.ink),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(widget.product.name.pick(arabic: s.arabic), style: WaiterText.heading())),
+                    const SizedBox(width: WaiterSpace.md),
+                    MoneyText(widget.currency, widget.product.priceMinor, style: WaiterText.price(color: WaiterColors.body)),
+                  ],
                 ),
               ),
               const Divider(),
@@ -117,80 +123,81 @@ class _ItemSheetState extends State<ItemSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: WaiterSpace.lg),
                   children: [
                     for (final g in widget.groups) ...[
-                      const SizedBox(height: WaiterSpace.md),
-                      Row(children: [
-                        Expanded(
-                          child: Text(g.name.pick(arabic: s.arabic),
-                              style: const TextStyle(fontWeight: FontWeight.w700, color: WaiterColors.ink)),
-                        ),
-                        Text(
+                      const SizedBox(height: WaiterSpace.sm),
+                      SectionHeader(
+                        g.name.pick(arabic: s.arabic),
+                        color: WaiterColors.body,
+                        trailing: Text(
                           g.isRequired ? s.required : s.chooseUpTo(g.maxSelect),
-                          style: TextStyle(fontSize: 12, color: g.isRequired ? WaiterColors.warn : WaiterColors.muted),
+                          style: WaiterText.meta(color: g.isRequired ? WaiterColors.warn : WaiterColors.muted),
                         ),
-                      ]),
-                      const SizedBox(height: WaiterSpace.xs),
-                      Wrap(
-                        spacing: WaiterSpace.sm,
-                        runSpacing: WaiterSpace.sm,
-                        children: [
-                          for (final m in g.modifiers)
-                            FilterChip(
-                              key: Key('option-${m.id}'),
-                              label: Text(m.deltaMinor == 0
-                                  ? m.name.pick(arabic: s.arabic)
-                                  : '${m.name.pick(arabic: s.arabic)}  +${moneyText(widget.currency, m.deltaMinor, arabic: s.arabic)}'),
-                              selected: _chosen[g.id]!.contains(m.id),
-                              onSelected: m.available ? (_) => _toggle(g, m) : null,
-                              showCheckmark: false,
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                              selectedColor: WaiterColors.accentSoft,
-                              side: BorderSide(
-                                color: _chosen[g.id]!.contains(m.id) ? WaiterColors.accent : WaiterColors.lineStrong,
-                                width: _chosen[g.id]!.contains(m.id) ? 2 : 1,
-                              ),
-                            ),
-                        ],
                       ),
+                      for (final m in g.modifiers)
+                        OptionRow(
+                          key: Key('option-${m.id}'),
+                          name: m.name.pick(arabic: s.arabic),
+                          selected: _chosen[g.id]!.contains(m.id),
+                          single: g.isSingle,
+                          enabled: m.available,
+                          trailing: m.deltaMinor == 0
+                              ? null
+                              : MoneyText(
+                                  widget.currency,
+                                  m.deltaMinor,
+                                  prefix: '+',
+                                  style: WaiterText.price(color: m.available ? WaiterColors.body : WaiterColors.muted),
+                                ),
+                          onTap: () => _toggle(g, m),
+                        ),
                     ],
                     const SizedBox(height: WaiterSpace.lg),
                     TextField(
                       controller: _note,
                       maxLength: 140,
+                      textInputAction: TextInputAction.done,
                       decoration: InputDecoration(labelText: s.note, hintText: s.noteHint),
                     ),
                   ],
                 ),
               ),
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.all(WaiterSpace.md),
-                child: Row(children: [
-                  OutlinedButton(
-                    onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
-                    child: const Icon(Icons.remove),
-                  ),
-                  SizedBox(width: 48, child: Text('$_quantity', textAlign: TextAlign.center, style: waiterMono(size: 20))),
-                  OutlinedButton(
-                    onPressed: _quantity < 99 ? () => setState(() => _quantity++) : null,
-                    child: const Icon(Icons.add),
-                  ),
-                  const SizedBox(width: WaiterSpace.md),
-                  Expanded(
-                    child: FilledButton(
-                      key: const Key('add-item'),
-                      onPressed: _complete
-                          ? () => Navigator.of(context).pop(ItemChoice(
-                                modifierIds: [for (final g in widget.groups) ..._chosen[g.id]!],
-                                quantity: _quantity,
-                                note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-                              ))
-                          : null,
-                      // An estimate for the button only: the check shows the
-                      // till's own figure once it is added.
-                      child: Text('${s.addToCheck} · ${moneyText(widget.currency, _unitMinor * _quantity, arabic: s.arabic)}'),
+              BottomBar(
+                child: Row(
+                  children: [
+                    QuantityStepper(value: _quantity, onChanged: (v) => setState(() => _quantity = v)),
+                    const SizedBox(width: WaiterSpace.md),
+                    Expanded(
+                      child: SizedBox(
+                        height: WaiterSpace.cta,
+                        child: FilledButton(
+                          key: const Key('add-item'),
+                          onPressed: _complete
+                              ? () => Navigator.of(context).pop(ItemChoice(
+                                    modifierIds: [for (final g in widget.groups) ..._chosen[g.id]!],
+                                    quantity: _quantity,
+                                    note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+                                  ))
+                              : null,
+                          // Shrinks on a narrow phone rather than clipping the figure.
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('${s.addToCheck} · '),
+                                MoneyText(
+                                  widget.currency,
+                                  _unitMinor * _quantity,
+                                  prefix: '${s.estimate} ',
+                                  style: WaiterText.mono(size: 15, weight: FontWeight.w700, color: WaiterColors.onAccent),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
               ),
             ],
           ),
@@ -200,7 +207,7 @@ class _ItemSheetState extends State<ItemSheet> {
   }
 }
 
-/// An unsent line: change how many, add a note, or take it off.
+/// An unsent line: change how many, add a note, or take it off (design §5.7).
 class LineSheet extends StatefulWidget {
   const LineSheet({required this.line, super.key});
   final WaiterLine line;
@@ -239,47 +246,60 @@ class _LineSheetState extends State<LineSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Padding(
-          padding: const EdgeInsets.all(WaiterSpace.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(widget.line.name.pick(arabic: s.arabic),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: WaiterColors.ink)),
-              const SizedBox(height: WaiterSpace.lg),
-              Row(children: [
-                Text(s.quantity, style: const TextStyle(color: WaiterColors.body)),
-                const Spacer(),
-                OutlinedButton(
-                  onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
-                  child: const Icon(Icons.remove),
-                ),
-                SizedBox(width: 48, child: Text('$_quantity', textAlign: TextAlign.center, style: waiterMono(size: 20))),
-                OutlinedButton(
-                  onPressed: _quantity < 99 ? () => setState(() => _quantity++) : null,
-                  child: const Icon(Icons.add),
-                ),
-              ]),
-              const SizedBox(height: WaiterSpace.md),
-              TextField(controller: _note, maxLength: 140, decoration: InputDecoration(labelText: s.note, hintText: s.noteHint)),
-              const SizedBox(height: WaiterSpace.sm),
-              Row(children: [
-                OutlinedButton(
-                  key: const Key('remove-line'),
-                  style: OutlinedButton.styleFrom(foregroundColor: WaiterColors.danger),
-                  onPressed: () => Navigator.of(context).pop(<WaiterOp>[WaiterRemoveLine(lineKey: widget.line.key)]),
-                  child: Text(s.removeLine),
-                ),
-                const Spacer(),
-                FilledButton(
-                  key: const Key('save-line'),
-                  onPressed: () => Navigator.of(context).pop(_ops()),
-                  child: Text(s.save),
-                ),
-              ]),
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(WaiterSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(widget.line.name.pick(arabic: s.arabic), style: WaiterText.heading()),
+                  if (widget.line.modifiers.isNotEmpty) ...[
+                    const SizedBox(height: WaiterSpace.xs),
+                    Text(widget.line.modifiers.map((m) => m.pick(arabic: s.arabic)).join(s.listSeparator), style: WaiterText.meta()),
+                  ],
+                  const SizedBox(height: WaiterSpace.lg),
+                  Row(
+                    children: [
+                      Expanded(child: Text(s.quantity, style: WaiterText.body())),
+                      QuantityStepper(value: _quantity, onChanged: (v) => setState(() => _quantity = v)),
+                    ],
+                  ),
+                  const SizedBox(height: WaiterSpace.md),
+                  TextField(
+                    controller: _note,
+                    maxLength: 140,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(labelText: s.note, hintText: s.noteHint),
+                  ),
+                ],
+              ),
+            ),
+            BottomBar(
+              child: Row(
+                children: [
+                  SizedBox(
+                    height: WaiterSpace.cta,
+                    child: OutlinedButton(
+                      key: const Key('remove-line'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: WaiterColors.danger,
+                        side: const BorderSide(color: WaiterColors.danger),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(<WaiterOp>[WaiterRemoveLine(lineKey: widget.line.key)]),
+                      child: Text(s.removeLine),
+                    ),
+                  ),
+                  const SizedBox(width: WaiterSpace.md),
+                  Expanded(
+                    child: PrimaryCta(key: const Key('save-line'), label: s.save, onPressed: () => Navigator.of(context).pop(_ops())),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

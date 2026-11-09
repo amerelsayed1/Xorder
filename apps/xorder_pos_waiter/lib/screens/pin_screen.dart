@@ -8,7 +8,8 @@ import '../theme.dart';
 import 'widgets.dart';
 
 /// Who is holding the handheld. The same PIN as on the till's lock screen;
-/// the till checks it and decides what this person may do.
+/// the till checks it and decides what this person may do. A shell screen
+/// (design §5.2): the error has a fixed slot so the keypad never jumps.
 class PinScreen extends ConsumerStatefulWidget {
   const PinScreen({super.key});
 
@@ -66,7 +67,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(s.cancel)),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(s.unpairAction, style: const TextStyle(color: WaiterColors.danger)),
+            child: Text(s.unpairAction, style: WaiterText.ui(weight: FontWeight.w600, color: WaiterColors.danger)),
           ),
         ],
       ),
@@ -79,7 +80,11 @@ class _PinScreenState extends ConsumerState<PinScreen> {
     final s = WaiterStrings.of(context);
     final till = ref.watch(waiterAppProvider.select((a) => a.pairing?.tillName)) ?? '';
     return Scaffold(
+      backgroundColor: WaiterColors.shell,
       appBar: AppBar(
+        backgroundColor: WaiterColors.shell,
+        foregroundColor: WaiterColors.shellText,
+        shape: const Border(bottom: BorderSide(color: WaiterColors.shellLine)),
         title: Text(s.appTitle),
         actions: [
           const LanguageButton(),
@@ -96,13 +101,13 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               constraints: const BoxConstraints(maxWidth: 360),
               child: Column(
                 children: [
-                  Text(s.pinTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: WaiterColors.ink)),
+                  Text(s.pairedWith(till), style: WaiterText.meta(color: WaiterColors.shellMuted)),
                   const SizedBox(height: WaiterSpace.xs),
-                  Text(s.pairedWith(till), style: const TextStyle(color: WaiterColors.muted)),
+                  Text(s.pinTitle, textAlign: TextAlign.center, style: WaiterText.heading(color: WaiterColors.shellText)),
                   const SizedBox(height: WaiterSpace.xl),
                   _Dots(length: _pin.length),
                   const SizedBox(height: WaiterSpace.md),
-                  SizedBox(height: 48, child: _error == null ? null : Center(child: ErrorNote(_error!))),
+                  SizedBox(height: WaiterSpace.touch, child: _error == null ? null : Center(child: ErrorNote(_error!))),
                   const SizedBox(height: WaiterSpace.md),
                   _Keypad(onDigit: _tap, onBack: _back, onEnter: _submit, busy: _busy),
                 ],
@@ -121,6 +126,8 @@ class _Dots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
+    // Fills left to right as the digits are typed, in either language, like the keypad under it.
+    textDirection: TextDirection.ltr,
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
       for (var i = 0; i < 4 || i < length; i++)
@@ -129,8 +136,8 @@ class _Dots extends StatelessWidget {
           height: 16,
           margin: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
-            color: i < length ? WaiterColors.ink : WaiterColors.surface,
-            border: const Border.fromBorderSide(BorderSide(color: WaiterColors.ink, width: 2)),
+            color: i < length ? WaiterColors.shellText : WaiterColors.shellCard,
+            border: const Border.fromBorderSide(BorderSide(color: WaiterColors.shellText, width: 2)),
           ),
         ),
     ],
@@ -148,34 +155,38 @@ class _Keypad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
-    Widget key(String label, VoidCallback onTap, {Key? k, bool accent = false}) => Expanded(
+    Widget key(Widget label, VoidCallback onTap, {Key? k, bool accent = false}) => Expanded(
       child: Padding(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(WaiterSpace.xs),
         child: SizedBox(
-          height: 64,
+          height: WaiterSpace.key,
           child: accent
-              ? FilledButton(key: k, onPressed: busy ? null : onTap, child: busy ? const SmallSpinner() : Text(label))
+              ? FilledButton(key: k, onPressed: busy ? null : onTap, child: busy ? const SmallSpinner() : label)
               : OutlinedButton(
                   key: k,
                   onPressed: onTap,
-                  style: OutlinedButton.styleFrom(backgroundColor: WaiterColors.surface),
-                  child: Text(label, style: waiterMono(size: 24)),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: WaiterColors.shellCard,
+                    side: const BorderSide(color: WaiterColors.shellLine),
+                  ),
+                  child: label,
                 ),
         ),
       ),
     );
+    Widget digit(String d) => Text(d, style: WaiterText.keypad(color: WaiterColors.shellText));
     // Digits always left to right, as on every keypad, in either language.
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Column(
         children: [
           for (final row in const [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']])
-            Row(children: [for (final d in row) key(d, () => onDigit(d), k: Key('pin-$d'))]),
+            Row(children: [for (final d in row) key(digit(d), () => onDigit(d), k: Key('pin-$d'))]),
           Row(
             children: [
-              key('⌫', onBack, k: const Key('pin-back')),
-              key('0', () => onDigit('0'), k: const Key('pin-0')),
-              key(s.signInAction, onEnter, k: const Key('pin-enter'), accent: true),
+              key(const Icon(Icons.backspace_outlined, color: WaiterColors.shellText), onBack, k: const Key('pin-back')),
+              key(digit('0'), () => onDigit('0'), k: const Key('pin-0')),
+              key(Text(s.signInAction), onEnter, k: const Key('pin-enter'), accent: true),
             ],
           ),
         ],

@@ -35,6 +35,13 @@ void main() {
       'warnSoft': till.warnSoft,
       'danger': till.danger,
       'dangerSoft': till.dangerSoft,
+      // The shell family (WA2 design pass): the pairing and PIN screens are
+      // shell screens, as the till's start and lock screens are.
+      'shell': till.shell,
+      'shellCard': till.shellCard,
+      'shellLine': till.shellLine,
+      'shellText': till.shellText,
+      'shellMuted': till.shellMuted,
     };
     expect(copied.keys.toSet(), expected.keys.toSet());
     for (final name in expected.keys) {

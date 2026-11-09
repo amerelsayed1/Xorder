@@ -11,6 +11,9 @@ sealed class WaiterStrings {
       Localizations.localeOf(context).languageCode == 'ar' ? const ArWaiterStrings() : const EnWaiterStrings();
 
   bool get arabic;
+
+  /// Between a line's modifiers: the comma of the language on screen.
+  String get listSeparator => arabic ? '، ' : ', ';
   String get appTitle;
   String get languageToggle;
 
@@ -41,6 +44,8 @@ sealed class WaiterStrings {
   String items(int n);
   String guests(int n);
   String get noTables;
+  String floorSummary({required int open, required int paying, required int free});
+  String get noArea;
 
   // Check
   String get menu;
@@ -68,6 +73,14 @@ sealed class WaiterStrings {
   String chooseUpTo(int n);
   String get roundSent;
   String get checkChangedElsewhere;
+  String get notSentHeader;
+  String notSentCount(int n);
+  String sendRoundCount(int n);
+  String checkTab(int n);
+  String get openMenu;
+  String get searchMenu;
+  String get noMatches;
+  String get estimate;
   String get retry;
   String get cancel;
   String get save;
@@ -174,6 +187,11 @@ class EnWaiterStrings extends WaiterStrings {
   @override
   String get noTables => 'The till has no tables. Add them in the back office.';
   @override
+  String floorSummary({required int open, required int paying, required int free}) =>
+      '$open open · $paying paying · $free free';
+  @override
+  String get noArea => 'No area';
+  @override
   String get menu => 'Menu';
   @override
   String get check => 'Check';
@@ -224,6 +242,22 @@ class EnWaiterStrings extends WaiterStrings {
   @override
   String get checkChangedElsewhere =>
       'This table was changed on another device. You are now seeing the latest check; please redo your last change.';
+  @override
+  String get notSentHeader => 'Not sent yet';
+  @override
+  String notSentCount(int n) => n == 1 ? '1 line not sent' : '$n lines not sent';
+  @override
+  String sendRoundCount(int n) => 'Send to kitchen ($n)';
+  @override
+  String checkTab(int n) => 'Check ($n)';
+  @override
+  String get openMenu => 'Open the menu';
+  @override
+  String get searchMenu => 'Search the menu';
+  @override
+  String get noMatches => 'Nothing matches.';
+  @override
+  String get estimate => '≈';
   @override
   String get retry => 'Try again';
   @override
@@ -324,6 +358,11 @@ class ArWaiterStrings extends WaiterStrings {
   @override
   String get noTables => 'لا توجد طاولات على الجهاز. أضفها من الإدارة.';
   @override
+  String floorSummary({required int open, required int paying, required int free}) =>
+      '$open مفتوحة · $paying تدفع · $free متاحة';
+  @override
+  String get noArea => 'بدون منطقة';
+  @override
   String get menu => 'المنيو';
   @override
   String get check => 'الحساب';
@@ -374,6 +413,22 @@ class ArWaiterStrings extends WaiterStrings {
   @override
   String get checkChangedElsewhere =>
       'تغيّرت هذه الطاولة على جهاز آخر. يظهر لك الآن آخر حساب؛ أعد آخر تعديل من فضلك.';
+  @override
+  String get notSentHeader => 'بانتظار الإرسال';
+  @override
+  String notSentCount(int n) => n == 1 ? 'صنف واحد لم يُرسل' : '$n أصناف لم تُرسل';
+  @override
+  String sendRoundCount(int n) => 'إرسال للمطبخ ($n)';
+  @override
+  String checkTab(int n) => 'الحساب ($n)';
+  @override
+  String get openMenu => 'افتح المنيو';
+  @override
+  String get searchMenu => 'ابحث في المنيو';
+  @override
+  String get noMatches => 'لا نتائج.';
+  @override
+  String get estimate => '≈';
   @override
   String get retry => 'حاول مرة أخرى';
   @override
