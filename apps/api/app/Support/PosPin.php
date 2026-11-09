@@ -35,6 +35,26 @@ final class PosPin
         ];
     }
 
+    /** Constant-time check of a PIN against a stored (salt, hash) pair. */
+    public static function verify(string $pin, ?string $salt, ?string $hash): bool
+    {
+        if ($salt === null || $hash === null) {
+            return false;
+        }
+
+        $rawSalt = base64_decode($salt, true);
+        $expected = base64_decode($hash, true);
+
+        if ($rawSalt === false || $expected === false) {
+            return false;
+        }
+
+        return hash_equals(
+            $expected,
+            hash_pbkdf2('sha256', $pin, $rawSalt, self::ITERATIONS, self::KEY_BYTES, true),
+        );
+    }
+
     /** The wire block bootstrap emits inside staff[] (null when no PIN set). */
     public static function wire(?string $salt, ?string $hash): ?array
     {

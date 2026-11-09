@@ -123,6 +123,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Guest paging (docs/features/guest-paging)
+    |--------------------------------------------------------------------------
+    | call_out_minutes: a READY order nobody acknowledged for this long gets
+    | the board's "Call it out" badge. tracking_ttl_hours: how long a receipt's
+    | tracking link keeps resolving after the order was placed.
+    */
+    'guest_paging' => [
+        'call_out_minutes' => env('GUEST_PAGING_CALL_OUT_MINUTES', 3),
+        'tracking_ttl_hours' => env('GUEST_PAGING_TRACKING_TTL_HOURS', 48),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Report day-part periods (Phase 4 — Product Analytics)
     |--------------------------------------------------------------------------
     | Ordered windows used to bucket each order into a "time of day" for the

@@ -155,10 +155,43 @@ async function setActive(account, on) {
 const currentDefault = (methodId, branchId) =>
     defaults.value.find(d => d.tender_type_id === methodId && (d.branch_id ?? null) === branchId)?.financial_account_id ?? ''
 
+// Which account kinds a payment method may pay into: cash into a cash account,
+// a card into a bank, and `external` (a card taken on the bank's own terminal —
+// the till reads it as a card) into a bank too; `other` has no natural type, so
+// any account will do. The same table as the till's `AccountRules.kindsFor` and
+// the server's `FinancialAccount::KINDS_FOR_TENDER`, which refuses a mismatch.
+// A wallet method (InstaPay and the like) pays into a wallet account, as on an
+// offline till.
+const KINDS_FOR_TENDER = { cash: ['cash'], card: ['bank'], wallet: ['wallet'], external: ['bank'], other: null }
+const fits = (methodKind, accountKind) => {
+    const allowed = KINDS_FOR_TENDER[methodKind]
+    return !allowed || allowed.includes(accountKind)
+}
+const neededKinds = (method) => KINDS_FOR_TENDER[method.kind] ?? null
+
 // A business-wide default must be a shared account; a branch default may use a
-// shared account or that branch's own. The server enforces the same rule.
-const fallbackChoices = computed(() => activeAccounts.value.filter(a => a.branch_id === null))
-const branchChoices = (branchId) => activeAccounts.value.filter(a => a.branch_id === null || a.branch_id === branchId)
+// shared account or that branch's own. The server enforces the same rule, and
+// the kind rule above, on every save.
+const fallbackChoices = (method) =>
+    activeAccounts.value.filter(a => a.branch_id === null && fits(method.kind, a.kind))
+const branchChoices = (method, branchId) =>
+    activeAccounts.value.filter(a => (a.branch_id === null || a.branch_id === branchId) && fits(method.kind, a.kind))
+
+// A pairing saved before the rule is kept and marked, never cleared: it stays
+// selectable-by-name until somebody picks a fitting account or none.
+const savedAccount = (method, branchId) => {
+    const id = currentDefault(method.id, branchId)
+    return id === '' ? null : accounts.value.find(a => a.id === id) ?? null
+}
+const mismatched = (method, branchId) => {
+    const a = savedAccount(method, branchId)
+    return !!a && !fits(method.kind, a.kind)
+}
+const noneFitHint = (method, choices) => {
+    const kinds = neededKinds(method)
+    if (!kinds || choices.length) return ''
+    return t('financial_accounts.none_fit', { kind: kinds.map(k => t(`financial_accounts.kind.${k}`)).join(' / ').toLowerCase() })
+}
 
 async function setDefault(method, branchId, value) {
     const accountId = value === '' ? null : Number(value)
@@ -257,8 +290,11 @@ function showToast(message) {
                                 @change="setDefault(m, null, $event.target.value)"
                             >
                                 <option value="">{{ t('financial_accounts.no_account') }}</option>
-                                <option v-for="a in fallbackChoices" :key="a.id" :value="a.id">{{ a.name }}</option>
+                                <option v-if="mismatched(m, null)" :value="savedAccount(m, null).id">{{ savedAccount(m, null).name }} · {{ t('financial_accounts.not_matching') }}</option>
+                                <option v-for="a in fallbackChoices(m)" :key="a.id" :value="a.id">{{ a.name }}</option>
                             </select>
+                            <span v-if="mismatched(m, null)" class="fa-err" role="alert">{{ t('financial_accounts.not_matching') }}</span>
+                            <span v-else-if="noneFitHint(m, fallbackChoices(m))" class="fa-map-label">{{ noneFitHint(m, fallbackChoices(m)) }}</span>
                         </label>
                         <template v-if="multiBranch">
                             <label v-for="b in branches" :key="b.id" class="fa-map-field">
@@ -270,8 +306,10 @@ function showToast(message) {
                                     @change="setDefault(m, b.id, $event.target.value)"
                                 >
                                     <option value="">{{ t('financial_accounts.same_as_all') }}</option>
-                                    <option v-for="a in branchChoices(b.id)" :key="a.id" :value="a.id">{{ a.name }}</option>
+                                    <option v-if="mismatched(m, b.id)" :value="savedAccount(m, b.id).id">{{ savedAccount(m, b.id).name }} · {{ t('financial_accounts.not_matching') }}</option>
+                                    <option v-for="a in branchChoices(m, b.id)" :key="a.id" :value="a.id">{{ a.name }}</option>
                                 </select>
+                                <span v-if="mismatched(m, b.id)" class="fa-err" role="alert">{{ t('financial_accounts.not_matching') }}</span>
                             </label>
                         </template>
                     </div>

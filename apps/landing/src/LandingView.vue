@@ -7,6 +7,8 @@ import Icon from '@xorder/ui/Icon.vue'
 import { fetchLandingContent, postLead } from './lib/content.js'
 import { isValidMobile } from './lib/phone.js'
 import { track } from './lib/analytics.js'
+import HeroPhone from './components/HeroPhone.vue'
+import ShowcaseSection from './components/ShowcaseSection.vue'
 
 const { t, locale } = useI18n()
 
@@ -81,7 +83,25 @@ const targetLocaleKey = () => (locale.value === 'ar' ? 'languages.en' : 'languag
 const targetLocaleAriaKey = () => (locale.value === 'ar' ? 'common.switch_to_english' : 'common.switch_to_arabic')
 
 // ---- Derived links -------------------------------------------------------
-const demoSlug = computed(() => content.value?.demo?.restaurant_slug || 'mahsoub-restaurnt')
+// Optional demo tabs (one per venue type); with fewer than two we show the
+// single demo from demo.restaurant_slug, exactly as before.
+const demoTabs = computed(() => (content.value?.demo?.tabs || []).filter((tb) => tb?.restaurant_slug))
+const activeDemoTab = ref(0)
+const demoSlug = computed(() =>
+    (demoTabs.value.length > 1 ? demoTabs.value[activeDemoTab.value]?.restaurant_slug : null)
+    || content.value?.demo?.restaurant_slug || 'mahsoub-restaurnt')
+function pickDemoTab(i) { activeDemoTab.value = i; demoQrOk.value = true }
+function onTabKey(e) {
+    const n = demoTabs.value.length
+    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key] * (locale.value === 'ar' ? -1 : 1)
+    if (!d) return
+    e.preventDefault()
+    pickDemoTab((activeDemoTab.value + d + n) % n)
+    document.getElementById(`lp-demo-tab-${activeDemoTab.value}`)?.focus()
+}
+const heroChips = computed(() => (content.value?.hero?.value_points || []).filter((c) => L(c)))
+const whyItems = computed(() => (content.value?.why_us?.items || []).filter((w) => w && L(w.text)))
+const loginHref = computed(() => content.value?.hero?.login_link || '')
 // Demo menu link: in production use the canonical {slug}.host/menu subdomain form
 // real QR codes encode (Restaurant::publicUrl); on localhost fall back to the
 // always-available /r/{slug} path so the demo link works in dev too.
@@ -272,6 +292,7 @@ const year = new Date().getFullYear()
                 </nav>
 
                 <div class="lp-actions">
+                    <a v-if="loginHref" :href="loginHref" class="lp-login">{{ L(content?.hero?.login_label) || t('landing.login') }}</a>
                     <a href="#lead" class="btn btn-accent lp-cta-nav" @click="onRequestDemo">
                         {{ L(content?.hero?.cta) || t('landing.get_started') }}
                     </a>
@@ -296,6 +317,7 @@ const year = new Date().getFullYear()
                     </a>
                 </nav>
                 <div class="lp-drawer-actions">
+                    <a v-if="loginHref" :href="loginHref" class="btn btn-ghost lp-btn-lg">{{ L(content?.hero?.login_label) || t('landing.login') }}</a>
                     <a href="#lead" class="btn btn-accent lp-btn-lg" @click="onNavClick('home'); onRequestDemo()">
                         {{ L(content?.hero?.cta) || t('landing.get_started') }}
                     </a>
@@ -309,91 +331,36 @@ const year = new Date().getFullYear()
             <section id="home" class="lp-hero">
                 <div class="lp-hero-blob lp-hero-blob-1" aria-hidden="true"></div>
                 <div class="lp-hero-blob lp-hero-blob-2" aria-hidden="true"></div>
-                <div class="lp-container lp-hero-inner">
-                    <span class="lp-badge">{{ L(content.hero.badge) }}</span>
-                    <h1 class="lp-h1">{{ L(content.hero.title) }}</h1>
-                    <p class="lp-lead">{{ L(content.hero.sub) }}</p>
+                <div class="lp-container lp-hero-grid">
+                    <div class="lp-hero-copy">
+                        <span class="lp-badge">{{ L(content.hero.badge) }}</span>
+                        <h1 class="lp-h1">{{ L(content.hero.title) }}</h1>
+                        <p class="lp-lead">{{ L(content.hero.sub) }}</p>
 
-                    <div class="lp-hero-cta">
-                        <a :href="heroPrimaryLink" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.hero.cta) }}</a>
-                        <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
-                    </div>
+                        <div class="lp-hero-cta">
+                            <a :href="heroPrimaryLink" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.hero.cta) }}</a>
+                            <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
+                        </div>
 
-                    <!-- Dashboard illustration (vector). Decorative abstract UI — food
-                         emoji + bars + a trend chart — so nothing reads as real data. -->
-                    <div class="lp-hero-figure">
-                        <svg class="lp-dash-illus" viewBox="0 0 980 620" xmlns="http://www.w3.org/2000/svg"
-                            role="img" :aria-label="t('landing.nav_qr_menu')">
-                            <!-- main dashboard panel -->
-                            <rect class="il-shadow" x="158" y="100" width="664" height="470" rx="26" />
-                            <rect class="il-panel" x="150" y="88" width="664" height="470" rx="26" />
+                        <ul v-if="heroChips.length" class="lp-chips">
+                            <li v-for="(c, i) in heroChips" :key="i"><span class="lp-chip-ck" aria-hidden="true">✓</span>{{ L(c) }}</li>
+                        </ul>
 
-                            <!-- panel header: branch title + category pills -->
-                            <rect class="il-bar-strong" x="678" y="120" width="118" height="12" rx="6" />
-                            <rect class="il-bar-soft" x="706" y="140" width="90" height="8" rx="4" />
-                            <rect class="il-pill-on" x="726" y="166" width="70" height="26" rx="13" />
-                            <rect class="il-pill" x="644" y="166" width="70" height="26" rx="13" />
-                            <rect class="il-pill" x="562" y="166" width="70" height="26" rx="13" />
-                            <rect class="il-pill" x="480" y="166" width="70" height="26" rx="13" />
+                        <div class="lp-venues" aria-hidden="true">
+                            <span>{{ t('landing.bt_restaurant') }}</span>
+                            <span>{{ t('landing.bt_cafe') }}</span>
+                            <span>{{ t('landing.bt_truck') }}</span>
+                            <span>{{ t('landing.bt_cloud') }}</span>
+                        </div>
 
-                            <!-- soft tint bands behind the grid -->
-                            <rect class="il-band-a" x="176" y="214" width="300" height="60" rx="14" />
-                            <rect class="il-band-b" x="488" y="214" width="300" height="60" rx="14" />
-
-                            <!-- menu item cards (generic food emoji + abstract bars) -->
-                            <g v-for="(em, i) in ['🍔','🌮','🥙','🧆']" :key="i" :transform="`translate(${644 - i * 162}, 300)`">
-                                <rect class="il-card" x="0" y="0" width="150" height="224" rx="16" />
-                                <text class="il-emoji" x="75" y="96" text-anchor="middle">{{ em }}</text>
-                                <rect class="il-bar-strong" x="22" y="150" width="72" height="9" rx="4.5" />
-                                <rect class="il-price" x="104" y="149" width="24" height="12" rx="6" />
-                                <rect class="il-bar-soft" x="22" y="172" width="106" height="7" rx="3.5" />
-                                <rect class="il-bar-soft" x="22" y="188" width="72" height="7" rx="3.5" />
-                            </g>
-
-                            <!-- floating: sales report + trend chart -->
-                            <g>
-                                <rect class="il-shadow" x="70" y="196" width="210" height="188" rx="20" />
-                                <rect class="il-float" x="62" y="188" width="210" height="188" rx="20" />
-                                <circle class="il-accent" cx="88" cy="216" r="8" />
-                                <rect class="il-bar-soft" x="104" y="212" width="86" height="8" rx="4" />
-                                <rect class="il-bar-strong" x="86" y="236" width="120" height="16" rx="6" />
-                                <rect class="il-bar-soft" x="86" y="262" width="74" height="8" rx="4" />
-                                <path class="il-chart-fill" d="M84 350 L106 338 L128 342 L150 322 L172 328 L194 304 L216 310 L238 286 L252 280 L252 360 L84 360 Z" />
-                                <path class="il-chart-line" d="M84 350 L106 338 L128 342 L150 322 L172 328 L194 304 L216 310 L238 286 L252 280" />
-                            </g>
-
-                            <!-- floating: new order notification -->
-                            <g>
-                                <rect class="il-shadow" x="700" y="212" width="220" height="94" rx="16" />
-                                <rect class="il-float" x="692" y="204" width="220" height="94" rx="16" />
-                                <circle class="il-accent" cx="890" cy="230" r="6" />
-                                <rect class="il-bar-strong" x="756" y="224" width="120" height="10" rx="5" />
-                                <rect class="il-price" x="712" y="222" width="36" height="14" rx="7" />
-                                <rect class="il-bar-soft" x="724" y="250" width="164" height="8" rx="4" />
-                                <rect class="il-bar-soft" x="770" y="268" width="118" height="8" rx="4" />
-                            </g>
-
-                            <!-- floating: loyalty points -->
-                            <g>
-                                <rect class="il-shadow" x="686" y="452" width="222" height="140" rx="20" />
-                                <rect class="il-float" x="678" y="444" width="222" height="140" rx="20" />
-                                <text class="il-emoji-sm" x="716" y="490" text-anchor="middle">🥐</text>
-                                <rect class="il-bar-soft" x="748" y="468" width="130" height="8" rx="4" />
-                                <rect class="il-bar-strong" x="778" y="486" width="100" height="10" rx="5" />
-                                <rect class="il-track" x="700" y="516" width="178" height="8" rx="4" />
-                                <rect class="il-accent" x="700" y="516" width="112" height="8" rx="4" />
-                                <rect class="il-accent" x="700" y="540" width="92" height="30" rx="10" />
-                                <rect class="il-btn-label" x="720" y="552" width="52" height="8" rx="4" />
-                            </g>
-                        </svg>
-                    </div>
-
-                    <div class="lp-stats">
-                        <div v-for="(p, i) in content.proof" :key="i">
-                            <span class="lp-stat-num">{{ L(p.title) }}</span>
-                            <span class="lp-stat-lbl">{{ L(p.text) }}</span>
+                        <div class="lp-stats">
+                            <div v-for="(p, i) in content.proof" :key="i">
+                                <span class="lp-stat-num">{{ L(p.title) }}</span>
+                                <span class="lp-stat-lbl">{{ L(p.text) }}</span>
+                            </div>
                         </div>
                     </div>
+                    <HeroPhone class="lp-hero-visual" :qr-url="demoQrUrl" :qr-ok="demoQrOk" @qr-error="demoQrOk = false" />
                 </div>
             </section>
 
@@ -416,6 +383,22 @@ const year = new Date().getFullYear()
                 </div>
             </section>
 
+            <ShowcaseSection :showcase="content.showcase" />
+
+            <!-- ===================== Why go digital ===================== -->
+            <section v-if="whyItems.length" id="why" class="lp-section lp-section-alt lp-why-sec">
+                <div class="lp-container">
+                    <div class="lp-section-head">
+                        <span class="lp-eyebrow">{{ t('landing.why_eyebrow') }}</span>
+                        <h2 class="lp-h2">{{ L(content.why_us.title) }}</h2>
+                        <p v-if="L(content.why_us.sub)" class="lp-sub">{{ L(content.why_us.sub) }}</p>
+                    </div>
+                    <ul class="lp-why">
+                        <li v-for="(w, i) in whyItems" :key="i"><span class="lp-why-ic" aria-hidden="true">{{ w.icon }}</span>{{ L(w.text) }}</li>
+                    </ul>
+                </div>
+            </section>
+
             <!-- =================== How it works + Live demo ================ -->
             <section id="how" class="lp-section">
                 <div class="lp-container">
@@ -432,9 +415,15 @@ const year = new Date().getFullYear()
                     </ol>
 
                     <!-- Live demo, merged into the How-it-works section. -->
-                    <div v-if="content.demo.enabled !== false" class="lp-demo-grid lp-how-demo">
+                    <div v-if="content.demo.enabled !== false" class="lp-how-demo">
+                    <div v-if="demoTabs.length > 1" class="lp-tabs" role="tablist" :aria-label="t('landing.demo_tabs_label')" @keydown="onTabKey">
+                        <button v-for="(tb, i) in demoTabs" :key="i" :id="`lp-demo-tab-${i}`" aria-controls="lp-demo-panel" type="button" role="tab"
+                            class="lp-tab" :class="{ on: i === activeDemoTab }" :aria-selected="i === activeDemoTab"
+                            :tabindex="i === activeDemoTab ? 0 : -1" @click="pickDemoTab(i)">{{ L(tb.label) }}</button>
+                    </div>
+                    <div id="lp-demo-panel" class="lp-demo-grid" :role="demoTabs.length > 1 ? 'tabpanel' : undefined" :aria-labelledby="demoTabs.length > 1 ? `lp-demo-tab-${activeDemoTab}` : undefined">
                         <div class="lp-demo-card" :class="{ 'lp-demo-card-empty': !demoQrOk }">
-                            <img v-show="demoQrOk" class="lp-qr-img" :src="demoQrUrl" width="200" height="200" alt="QR" loading="lazy" @error="demoQrOk = false" />
+                            <img v-show="demoQrOk" class="lp-qr-img" :src="demoQrUrl" width="200" height="200" alt="" loading="lazy" @error="demoQrOk = false" />
                             <div class="lp-demo-stand">{{ t('landing.demo_stand') }}</div>
                         </div>
                         <div class="lp-demo-copy">
@@ -443,6 +432,7 @@ const year = new Date().getFullYear()
                             <p class="lp-sub">{{ L(content.demo.text) }}</p>
                             <a :href="demoMenuUrl" target="_blank" rel="noopener" class="btn btn-accent lp-btn-lg" @click="onViewDemo">{{ L(content.demo.button) }}</a>
                         </div>
+                    </div>
                     </div>
                 </div>
             </section>
@@ -592,6 +582,15 @@ const year = new Date().getFullYear()
             </section>
 
             <!-- ========================== Footer ========================== -->
+            <section v-if="content.cta && L(content.cta.title)" class="lp-final">
+                <div class="lp-container lp-final-inner">
+                    <span class="lp-eyebrow lp-eyebrow-on-dark">{{ t('landing.final_eyebrow') }}</span>
+                    <h2 class="lp-final-title">{{ L(content.cta.title) }}</h2>
+                    <p v-if="L(content.cta.sub)" class="lp-final-sub">{{ L(content.cta.sub) }}</p>
+                    <a href="#lead" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.cta.button) || L(content.hero.cta) }}</a>
+                </div>
+            </section>
+
             <footer class="lp-footer">
                 <div class="lp-container lp-footer-inner">
                     <div class="lp-footer-brand">
@@ -670,60 +669,48 @@ const year = new Date().getFullYear()
 .btn-accent:hover { background: var(--lp-amber-hover); }
 
 /* =============================== Hero ============================== */
-.lp-hero { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
-    padding: clamp(80px, 9vh, 100px) 0 clamp(24px, 4vh, 44px); overflow: hidden; }
+.lp-hero { position: relative; display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(28px, 5vw, 56px) 0 clamp(28px, 4vw, 48px); overflow: hidden; }
 .lp-hero-blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; z-index: 0; pointer-events: none; }
 .lp-hero-blob-1 { width: 460px; height: 460px; inset-inline-end: -120px; top: -140px;
     background: radial-gradient(circle, var(--accent-soft), transparent 70%); }
 .lp-hero-blob-2 { width: 360px; height: 360px; inset-inline-start: -140px; bottom: -160px;
     background: radial-gradient(circle, var(--green-soft), transparent 70%); }
-.lp-hero-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.lp-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
+.lp-hero-copy { display: flex; flex-direction: column; align-items: flex-start; text-align: start; }
+.lp-hero-visual { justify-self: center; }
+.lp-chips { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.lp-chips li { display: inline-flex; align-items: center; gap: 7px; font-size: 14.5px; color: var(--body); font-weight: 600; }
+.lp-chip-ck { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--green); color: #fff; font-size: 11px; }
+.lp-venues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.lp-venues span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+    font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.lp-venues span:first-child { background: var(--ink); color: #fff; border-color: var(--ink); }
+.lp-login { color: var(--ink); font-weight: 700; font-size: 15px; text-decoration: none; padding: 9px 14px; border-radius: 10px; }
+.lp-login:hover { color: var(--lp-amber); background: var(--accent-soft); }
 .lp-badge { display: inline-block; background: var(--card); color: var(--lp-amber); border: 1px solid var(--accent-soft);
     font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 20px; font-family: var(--font-display);
     box-shadow: 0 2px 10px -6px rgba(42,30,20,.3); }
 .lp-h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(32px, 5vw, 52px); line-height: 1.08;
     color: var(--ink); margin: 18px 0 0; letter-spacing: -0.02em; }
-.lp-lead { font-size: clamp(16px, 2vw, 19px); line-height: 1.62; color: var(--body); margin: 18px auto 0; max-width: 40em; }
-.lp-hero-cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; justify-content: center; }
+.lp-lead { font-size: clamp(16px, 2vw, 19px); line-height: 1.62; color: var(--body); margin: 18px 0 0; max-width: 36em; }
+.lp-hero-cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
 .lp-hero-wa { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--green);
     font-weight: 600; font-size: 15.5px; text-decoration: none; }
 .lp-hero-wa:hover { text-decoration: underline; }
 .lp-wa-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
     background: var(--green); color: #fff; font-size: 14px; }
-.lp-stats { display: flex; gap: 18px 48px; margin: clamp(14px, 2.2vh, 26px) auto 0; flex-wrap: wrap; justify-content: center;
-    padding-top: clamp(14px, 2vh, 22px); border-top: 1px solid var(--line); max-width: 760px; width: 100%; }
-.lp-stats > div { display: flex; flex-direction: column; min-width: 96px; align-items: center; }
+.lp-stats { display: flex; gap: 18px 40px; margin: clamp(18px, 3vh, 28px) 0 0; flex-wrap: wrap;
+    padding-top: clamp(14px, 2vh, 22px); border-top: 1px solid var(--line); width: 100%; }
+.lp-stats > div { display: flex; flex-direction: column; min-width: 96px; align-items: flex-start; }
 .lp-stat-num { font-family: var(--font-display); font-weight: 800; font-size: 27px; color: var(--ink); }
 .lp-stat-lbl { font-size: 14px; color: var(--lp-muted); margin-top: 2px; }
 
-/* Dashboard illustration (vector) */
-.lp-hero-figure { width: 100%; margin-top: clamp(12px, 2vh, 24px); display: flex; justify-content: center; }
-.lp-dash-illus { width: 100%; max-width: 920px; max-height: 38vh; height: auto; display: block;
-    filter: drop-shadow(0 40px 80px rgba(42,30,20,.16)); }
-.il-shadow { fill: rgba(42,30,20,.10); }
-.il-panel { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
-.il-float { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
-.il-card { fill: var(--page); stroke: var(--line); stroke-width: 1.5; }
-.il-accent { fill: var(--accent); }
-.il-bar-strong { fill: var(--ink); opacity: .8; }
-.il-bar-soft { fill: var(--muted); opacity: .4; }
-.il-pill-on { fill: var(--ink); }
-.il-pill { fill: var(--accent-soft); }
-.il-band-a { fill: var(--accent-soft); opacity: .7; }
-.il-band-b { fill: var(--green-soft); opacity: .7; }
-.il-price { fill: var(--accent); opacity: .85; }
-.il-track { fill: var(--line); }
-.il-btn-label { fill: #fff; opacity: .92; }
-.il-chart-fill { fill: var(--green-soft); }
-.il-chart-line { fill: none; stroke: var(--green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.il-emoji { font-size: 46px; }
-.il-emoji-sm { font-size: 30px; }
 
 /* ============================= Sections ============================ */
-.lp-section { min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
-    padding: clamp(64px, 9vh, 104px) 0; scroll-margin-top: 80px; }
+.lp-section { padding: clamp(44px, 6vw, 72px) 0; scroll-margin-top: 80px; }
 .lp-section-alt { background: color-mix(in srgb, var(--accent-soft) 55%, var(--page)); }
-.lp-section-head { text-align: center; max-width: 44em; margin: 0 auto clamp(36px, 5vw, 56px); }
+.lp-section-head { text-align: center; max-width: 44em; margin: 0 auto clamp(24px, 3.5vw, 40px); }
 .lp-eyebrow { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 13px;
     letter-spacing: .06em; text-transform: uppercase; color: var(--lp-amber); margin-bottom: 12px; }
 .lp-h2 { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 38px); color: var(--ink); letter-spacing: -0.01em; line-height: 1.15; }
@@ -792,7 +779,7 @@ const year = new Date().getFullYear()
     box-shadow: 0 30px 60px -40px rgba(42,30,20,.5); justify-self: center; max-width: 320px; }
 .lp-qr-img { width: 100%; max-width: 220px; height: auto; border-radius: 12px; }
 .lp-demo-stand { margin-top: 14px; font-family: var(--font-display); font-weight: 600; color: var(--lp-muted); font-size: 14px; }
-.lp-how-demo { margin-top: clamp(40px, 6vh, 72px); padding-top: clamp(32px, 4vh, 48px); border-top: 1px solid var(--line); }
+.lp-how-demo { margin-top: clamp(28px, 4vw, 44px); padding-top: clamp(24px, 3vw, 36px); border-top: 1px solid var(--line); }
 .lp-demo-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(22px, 3vw, 30px); color: var(--ink); margin-top: 6px; }
 .lp-demo-copy .btn { margin-top: 22px; }
 
@@ -903,11 +890,39 @@ const year = new Date().getFullYear()
     border-top-color: var(--accent); animation: lp-spin .8s linear infinite; }
 @keyframes lp-spin { to { transform: rotate(360deg); } }
 
+
+/* Demo tabs */
+.lp-tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 28px; }
+.lp-tab { border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; font-family: var(--font-display);
+    font-weight: 700; font-size: 14.5px; padding: 9px 20px; border-radius: 999px; }
+.lp-tab.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+/* Why go digital */
+.lp-why-sec { min-height: 0; }
+.lp-why { list-style: none; padding: 0; margin: 0 auto; max-width: 960px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.lp-why li { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 18px 20px; font-size: 16px; font-weight: 600; color: var(--ink); }
+.lp-why-ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; flex: none;
+    background: var(--accent-soft); font-size: 22px; }
+
+/* Closing CTA band */
+.lp-final { background: var(--ink); color: #fff; padding: clamp(56px, 9vh, 96px) 0; }
+.lp-final-inner { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.lp-eyebrow-on-dark { color: var(--accent); margin: 0; }
+.lp-final-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 40px); line-height: 1.15; max-width: 22em; }
+.lp-final-sub { font-size: 17px; opacity: .85; max-width: 36em; line-height: 1.6; }
+.lp-final .btn { margin-top: 10px; }
+
 /* Focus visibility (accessibility) */
 .landing a:focus-visible, .landing button:focus-visible { outline: 2px solid var(--lp-amber); outline-offset: 2px; border-radius: 8px; }
 
 /* ============================ Responsive =========================== */
 @media (max-width: 980px) {
+    .lp-hero-grid { grid-template-columns: 1fr; }
+    .lp-hero-copy { align-items: center; text-align: center; }
+    .lp-hero-cta, .lp-chips, .lp-venues, .lp-stats { justify-content: center; }
+    .lp-stats > div { align-items: center; }
+    .lp-why { grid-template-columns: 1fr; }
     .lp-showcase, .lp-problem-grid, .lp-compare, .lp-demo-grid, .lp-lead-grid { grid-template-columns: 1fr; }
     .lp-demo-grid .lp-demo-card { order: -1; }
     .lp-feature-grid, .lp-steps { grid-template-columns: repeat(2, 1fr); }
@@ -935,7 +950,5 @@ const year = new Date().getFullYear()
     .lp-industries { grid-template-columns: repeat(2, 1fr); }
     .lp-field-row { grid-template-columns: 1fr; }
     .lp-footer-inner { flex-direction: column; align-items: flex-start; }
-    .lp-hero-qr { inset-inline-start: 50%; transform: translateX(-50%); inset-block-end: -18px; }
-    .lp-phone { width: 260px; height: 522px; }
 }
 </style>

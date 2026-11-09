@@ -27,6 +27,14 @@ class UpdateLandingContentRequest extends FormRequest
             "$path.ar" => ['nullable', 'string', 'max:2000'],
         ];
 
+        // Lenient variant for keys added after the CMS shipped: a payload that
+        // omits them still saves, and the public read falls back to defaults.
+        $bo = fn (string $path) => [
+            "$path" => ['nullable', 'array'],
+            "$path.en" => ['nullable', 'string', 'max:2000'],
+            "$path.ar" => ['nullable', 'string', 'max:2000'],
+        ];
+
         return array_merge(
             ['content' => ['required', 'array']],
 
@@ -39,8 +47,12 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.hero.no_commission_label'),
             $bi('content.hero.ready_label'),
             $bi('content.hero.whatsapp_label'),
-            ['content.hero.primary_link' => ['nullable', 'string', 'max:255']],
-            ['content.hero.secondary_link' => ['nullable', 'string', 'max:255']],
+            ['content.hero.primary_link' => ['nullable', 'string', 'max:255', 'regex:/^(https?:\/\/|\/|#)/i']],
+            ['content.hero.secondary_link' => ['nullable', 'string', 'max:255', 'regex:/^(https?:\/\/|\/|#)/i']],
+            $bo('content.hero.login_label'),
+            ['content.hero.login_link' => ['nullable', 'string', 'max:255', 'regex:/^(https?:\/\/|\/|#)/i']],
+            ['content.hero.value_points' => ['nullable', 'array', 'max:8']],
+            $bo('content.hero.value_points.*'),
 
             // Proof points (repeater)
             ['content.proof' => ['present', 'array', 'max:12']],
@@ -86,7 +98,26 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.demo.title'),
             $bi('content.demo.text'),
             $bi('content.demo.button'),
-            ['content.demo.restaurant_slug' => ['nullable', 'string', 'max:80']],
+            ['content.demo.restaurant_slug' => ['nullable', 'string', 'max:80', 'regex:/^[a-z0-9-]+$/i']],
+            ['content.demo.tabs' => ['nullable', 'array', 'max:6']],
+            ['content.demo.tabs.*.key' => ['nullable', 'string', 'max:40', 'alpha_dash']],
+            $bo('content.demo.tabs.*.label'),
+            ['content.demo.tabs.*.restaurant_slug' => ['nullable', 'string', 'max:80', 'regex:/^[a-z0-9-]+$/i']],
+
+            // Showcase blocks
+            ['content.showcase' => ['nullable', 'array']],
+            $bo('content.showcase.dashboard.title'),
+            $bo('content.showcase.dashboard.text'),
+            $bo('content.showcase.whatsapp.title'),
+            $bo('content.showcase.whatsapp.text'),
+
+            // Why a digital menu
+            ['content.why_us' => ['nullable', 'array']],
+            $bo('content.why_us.title'),
+            $bo('content.why_us.sub'),
+            ['content.why_us.items' => ['nullable', 'array', 'max:8']],
+            ['content.why_us.items.*.icon' => ['nullable', 'string', 'max:8']],
+            $bo('content.why_us.items.*.text'),
 
             // Steps (ordering flow)
             $bi('content.steps.title'),

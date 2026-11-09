@@ -160,6 +160,90 @@ class LandingContentTest extends TestCase
             ->assertJsonValidationErrors('content.faq.items.0.a.en');
     }
 
+    public function test_legacy_rows_resolve_redesign_keys_from_defaults(): void
+    {
+        LandingContent::create(['content' => ['hero' => ['title' => ['en' => 'Legacy', 'ar' => '']]]]);
+
+        $this->getJson('/api/public/landing-content')
+            ->assertOk()
+            ->assertJsonStructure(['data' => [
+                'hero' => ['value_points', 'login_label', 'login_link'],
+                'demo' => ['tabs'],
+                'showcase' => ['dashboard' => ['title', 'text'], 'whatsapp'],
+                'why_us' => ['title', 'items'],
+            ]])
+            ->assertJsonPath('data.demo.tabs', []);
+    }
+
+    public function test_redesign_keys_are_saved_and_not_stripped(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $content = LandingContent::defaultContent();
+        $content['hero']['login_link'] = 'https://xorder.io/login';
+        $content['demo']['tabs'] = [
+            ['key' => 'cafe', 'label' => ['en' => 'Cafe', 'ar' => 'كافيه'], 'restaurant_slug' => 'demo-cafe'],
+        ];
+        $content['why_us']['items'][0]['text']['en'] = 'Edited benefit';
+
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])->assertOk();
+
+        $this->getJson('/api/public/landing-content')
+            ->assertJsonPath('data.hero.login_link', 'https://xorder.io/login')
+            ->assertJsonPath('data.demo.tabs.0.restaurant_slug', 'demo-cafe')
+            ->assertJsonPath('data.hero.value_points.0.en', 'QR menu ready to share')
+            ->assertJsonPath('data.why_us.items.0.text.en', 'Edited benefit');
+    }
+
+    public function test_payload_without_redesign_keys_still_saves(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $content = LandingContent::defaultContent();
+        unset($content['showcase'], $content['why_us'], $content['demo']['tabs']);
+
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])->assertOk();
+        $this->getJson('/api/public/landing-content')->assertJsonStructure(['data' => ['why_us' => ['items']]]);
+    }
+
+    public function test_demo_tab_validation_rejects_bad_slug_and_too_many_tabs(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $content = LandingContent::defaultContent();
+        $content['demo']['tabs'] = [['key' => 'x', 'label' => ['en' => 'A', 'ar' => 'ا'], 'restaurant_slug' => 'bad slug/<x>']];
+
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('content.demo.tabs.0.restaurant_slug');
+
+        $content['demo']['tabs'] = array_fill(0, 7, ['key' => 'k', 'label' => ['en' => 'A', 'ar' => 'ا'], 'restaurant_slug' => 'ok']);
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('content.demo.tabs');
+    }
+
+    public function test_hero_links_and_demo_slugs_reject_unsafe_values(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+
+        foreach (['login_link', 'primary_link', 'secondary_link'] as $field) {
+            $content = LandingContent::defaultContent();
+            $content['hero'][$field] = 'javascript:alert(1)';
+            $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors("content.hero.$field");
+        }
+
+        $content = LandingContent::defaultContent();
+        $content['demo']['restaurant_slug'] = 'bad_slug/../x';
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('content.demo.restaurant_slug');
+
+        $content = LandingContent::defaultContent();
+        $content['hero']['login_link'] = '/login';
+        $content['hero']['secondary_link'] = 'https://example.com/menu';
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])->assertOk();
+    }
+
     public function test_unknown_and_unsafe_keys_are_stripped_by_the_whitelist(): void
     {
         $sa = User::factory()->superAdmin()->create();

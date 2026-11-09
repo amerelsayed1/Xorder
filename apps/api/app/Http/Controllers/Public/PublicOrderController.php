@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Public;
 
 use App\Enums\OrderStatus;
+use App\Enums\PickupStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\StoreOrderRequest;
 use App\Models\MenuSession;
@@ -12,6 +13,7 @@ use App\Models\OrderRound;
 use App\Services\BranchEgressIpService;
 use App\Services\CustomerDirectory;
 use App\Services\DinerOrderPricing;
+use App\Services\GuestPagingService;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
 use App\Services\TableVisitService;
@@ -145,6 +147,16 @@ class PublicOrderController extends Controller
                         $order->branch_id = $session->branch_id;
                         $order->order_type = 'dine_in';
                     }
+
+                    // Guest paging (BR-2/BR-3): a counter order the diner will
+                    // collect gets its tracking token here, at creation, so the
+                    // success screen can open the page at once. Never a round
+                    // of a seated table — that is served, not collected.
+                    $paging = app(GuestPagingService::class);
+                    if ($paging->isEligible($restaurant, $order->order_type, $session?->table_visit_id !== null)) {
+                        $order->pickup_token = GuestPagingService::generateToken();
+                        $order->pickup_status = PickupStatus::PREPARING->value;
+                    }
                     $order->save();
                 } else {
                     $existingItems = $order->items ?? [];
@@ -189,8 +201,14 @@ class PublicOrderController extends Controller
             );
         });
 
+        $payload = ['id' => $order->id, 'code' => $order->code()];
+        if ($order->isPaged()) {
+            $payload['pickup_token'] = $order->pickup_token;
+            $payload['tracking_url'] = $restaurant->trackingUrl($order->pickup_token);
+        }
+
         return response()->json([
-            'data' => ['id' => $order->id, 'code' => $order->code()],
+            'data' => $payload,
             'message' => __('xorder.messages.order_received'),
         ], 201);
     }

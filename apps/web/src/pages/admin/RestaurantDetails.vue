@@ -450,6 +450,10 @@ async function deleteTerminal(term) {
         posTerminals.value = posTerminals.value.filter((x) => x.id !== term.id)
         msg.value = t('pos_terminals.deleted')
     } catch (err) {
+        if (err.response?.data?.code === 'TERMINAL_HAS_HISTORY') {
+            posTerminals.value = posTerminals.value.map((x) =>
+                x.id === term.id ? { ...x, has_money_history: true } : x)
+        }
         errMsg.value = err.response?.data?.message || t('common.error')
     }
 }
@@ -916,9 +920,17 @@ const subTone = computed(() => {
                                                     {{ t('pos_terminals.revoke') }}
                                                 </button>
                                             </template>
-                                            <button v-else type="button" @click="deleteTerminal(term)" class="btn btn-ghost btn-sm act" style="color:var(--red)">
-                                                {{ t('pos_terminals.delete') }}
-                                            </button>
+                                            <!-- XORD-042: a terminal that traded
+                                                 is kept; say so instead of a
+                                                 Delete the server refuses. -->
+                                            <template v-else>
+                                                <button v-if="term.has_money_history !== true" type="button" @click="deleteTerminal(term)" class="btn btn-ghost btn-sm act" style="color:var(--red)">
+                                                    {{ t('pos_terminals.delete') }}
+                                                </button>
+                                                <span v-else class="text-xs" style="color:var(--body)" :title="t('pos_terminals.kept_history_help')">
+                                                    {{ t('pos_terminals.kept_history') }}
+                                                </span>
+                                            </template>
                                         </div>
                                     </td>
                                 </tr>

@@ -264,7 +264,9 @@ class FinancialAccountsTest extends PosTestCase
     {
         $tender = $this->tender();
         $bank = $this->account(['name' => 'Bank', 'kind' => 'bank']);
-        $wallet = $this->account(['name' => 'Wallet', 'kind' => 'wallet']);
+        // A second bank: a card pays into a bank, not a wallet, so "replaced"
+        // means one bank for another.
+        $wallet = $this->account(['name' => 'Second bank', 'kind' => 'bank']);
 
         $this->setDefault($this->owner, $tender, $bank->id)->assertOk()
             ->assertJsonPath('data.financial_account_id', $bank->id)->assertJsonPath('data.branch_id', null);
@@ -296,6 +298,133 @@ class FinancialAccountsTest extends PosTestCase
             ->assertStatus(422)->assertJsonValidationErrors('financial_account_id');
 
         $this->assertSame(1, TenderAccountDefault::count());
+    }
+
+    public function test_a_method_only_pays_into_an_account_of_its_own_kind(): void
+    {
+        $cash = $this->tender(kind: 'cash');
+        $card = $this->tender(kind: 'card');
+        $external = $this->tender(kind: 'external');
+        $walletMethod = $this->tender(kind: 'wallet');
+        $other = $this->tender(kind: 'other');
+        $safe = $this->account(['name' => 'Safe', 'kind' => 'cash']);
+        $bank = $this->account(['name' => 'Bank', 'kind' => 'bank']);
+        $wallet = $this->account(['name' => 'Wallet', 'kind' => 'wallet']);
+
+        // Refused, with the reason on the account field, and nothing stored.
+        foreach ([
+            [$cash, $bank], [$cash, $wallet],
+            [$card, $safe], [$card, $wallet],
+            [$external, $safe], [$external, $wallet],
+            [$walletMethod, $safe], [$walletMethod, $bank],
+        ] as [$tender, $account]) {
+            $this->setDefault($this->owner, $tender, $account->id)
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('financial_account_id')
+                ->assertJsonPath('errors.financial_account_id.0', __('xorder.validation.account_kind_mismatch'));
+        }
+        $this->assertSame(0, TenderAccountDefault::count());
+
+        // Accepted: the matching kind, and anything for a method with no natural type.
+        foreach ([
+            [$cash, $safe], [$card, $bank], [$external, $bank], [$walletMethod, $wallet],
+            [$other, $safe], [$other, $bank], [$other, $wallet],
+        ] as [$tender, $account]) {
+            $this->setDefault($this->owner, $tender, $account->id)->assertOk();
+        }
+        $this->assertSame(5, TenderAccountDefault::count());
+
+        // And clearing is always allowed.
+        $this->setDefault($this->owner, $cash, null)->assertOk();
+    }
+
+    public function test_the_pairing_table_is_the_tills(): void
+    {
+        // The offline till's `AccountRules.kindsFor`, over the platform's
+        // vocabulary: `external` is a card taken on the bank's own terminal
+        // (the till reads it as a card), so it pays into a bank, and `wallet` is
+        // an e-wallet paying into a wallet account. Kept in step by hand and by
+        // `test/domain/account_kind_rules_test.dart` there.
+        $expected = [
+            'cash' => ['cash'],
+            'card' => ['bank'],
+            'wallet' => ['wallet'],
+            'external' => ['bank'],
+            'other' => null,
+        ];
+
+        $this->assertSame(array_keys($expected), array_keys(FinancialAccount::KINDS_FOR_TENDER));
+        foreach ($expected as $tenderKind => $allowed) {
+            $this->assertSame($allowed, FinancialAccount::kindsForTender($tenderKind), $tenderKind);
+            foreach (FinancialAccount::KINDS as $accountKind) {
+                $account = new FinancialAccount(['name' => 'A', 'kind' => $accountKind]);
+                $this->assertSame(
+                    $allowed === null || in_array($accountKind, $allowed, true),
+                    $account->fitsTender($tenderKind),
+                    "$tenderKind -> $accountKind",
+                );
+            }
+        }
+
+        // A kind this build does not know is treated like `other`.
+        $this->assertNull(FinancialAccount::kindsForTender('crypto'));
+        $this->assertNull(FinancialAccount::kindsForTender(null));
+    }
+
+    public function test_a_pairing_saved_before_the_rule_is_kept_and_replaced_only_by_a_fitting_account(): void
+    {
+        $card = $this->tender(kind: 'card');
+        $safe = $this->account(['name' => 'Safe', 'kind' => 'cash']);
+        $bank = $this->account(['name' => 'Bank', 'kind' => 'bank']);
+
+        // Written straight into the table, as before the rule existed.
+        $row = new TenderAccountDefault(['tender_type_id' => $card->id, 'financial_account_id' => $safe->id]);
+        $row->restaurant_id = $this->restaurant->id;
+        $row->save();
+
+        $this->actingAs($this->owner)->getJson('/api/dashboard/tender-account-defaults')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.financial_account_id', $safe->id);
+
+        // Saving the same mismatch again is refused, and the old row is untouched.
+        $this->setDefault($this->owner, $card, $safe->id)->assertStatus(422);
+        $this->assertSame($safe->id, TenderAccountDefault::first()->financial_account_id);
+
+        $this->setDefault($this->owner, $card, $bank->id)->assertOk();
+        $this->assertSame(1, TenderAccountDefault::count());
+        $this->assertSame($bank->id, TenderAccountDefault::first()->financial_account_id);
+    }
+
+    public function test_a_wallet_payment_method_can_be_created_and_pairs_with_a_wallet_account(): void
+    {
+        // `wallet` is a platform payment-method kind (2026-10-26), so a wallet
+        // method behaves on the platform as it does on an offline till.
+        $created = $this->actingAs($this->owner)->postJson('/api/dashboard/tender-types', [
+            'name' => 'InstaPay', 'kind' => 'wallet',
+        ])->assertCreated()->assertJsonPath('data.kind', 'wallet');
+
+        $wallet = $this->account(['name' => 'InstaPay wallet', 'kind' => 'wallet']);
+        $bank = $this->account(['name' => 'Bank', 'kind' => 'bank']);
+        $tender = TenderType::findOrFail($created->json('data.id'));
+
+        $this->setDefault($this->owner, $tender, $bank->id)->assertStatus(422);
+        $this->setDefault($this->owner, $tender, $wallet->id)->assertOk();
+
+        // And an unknown kind is still refused.
+        $this->actingAs($this->owner)->postJson('/api/dashboard/tender-types', [
+            'name' => 'Crypto', 'kind' => 'crypto',
+        ])->assertStatus(422)->assertJsonValidationErrors('kind');
+    }
+
+    public function test_the_kind_refusal_is_worded_in_both_languages(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            app()->setLocale($locale);
+            $text = __('xorder.validation.account_kind_mismatch');
+            $this->assertNotSame('xorder.validation.account_kind_mismatch', $text, $locale);
+            $this->assertNotSame('', $text);
+        }
+        app()->setLocale('en');
     }
 
     public function test_a_shared_account_can_be_a_default_for_any_branch(): void

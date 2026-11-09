@@ -39,7 +39,7 @@ const joinList = (parts) => parts.join(listSep.value)
 // The order types a till offers as tabs. Free text on the POS wire (the branch's
 // own list is the gate), so this is the vocabulary, not a server enum.
 const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery', 'drive_thru']
-const TENDER_KINDS = ['cash', 'card', 'external', 'other']
+const TENDER_KINDS = ['cash', 'card', 'wallet', 'external', 'other']
 
 const taxes = ref([])
 const charges = ref([])

@@ -53,6 +53,13 @@ class PosTerminalResource extends JsonResource
             'licence_id' => $this->licence_id,
             'last_licence_check_at' => $this->last_licence_check_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
+            // Only the two terminal lists compute it (PosProvisioningService::
+            // withMoneyHistory); every other response keeps its shape. True
+            // means delete() refuses with TERMINAL_HAS_HISTORY (XORD-042).
+            'has_money_history' => $this->when(
+                array_key_exists('has_money_history', $this->resource->getAttributes()),
+                fn () => (bool) $this->resource->getAttributes()['has_money_history'],
+            ),
         ];
     }
 }

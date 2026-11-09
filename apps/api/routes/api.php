@@ -33,8 +33,10 @@ use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\NotificationController;
 use App\Http\Controllers\Dashboard\OptionGroupController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
+use App\Http\Controllers\Dashboard\PickupBoardController;
 use App\Http\Controllers\Dashboard\PosPinController;
 use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
+use App\Http\Controllers\Dashboard\PosWaiterDeviceController as DashboardPosWaiterDeviceController;
 use App\Http\Controllers\Dashboard\PulseController;
 use App\Http\Controllers\Dashboard\PurchaseOrderController;
 use App\Http\Controllers\Dashboard\PurchasingLookupController;
@@ -60,6 +62,8 @@ use App\Http\Controllers\Dashboard\TenderAccountDefaultController;
 use App\Http\Controllers\Dashboard\TenderTypeController;
 use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
+use App\Http\Controllers\PosWaiter\AuthController as WaiterAuthController;
+use App\Http\Controllers\PosWaiter\FloorController as WaiterFloorController;
 use App\Http\Controllers\Pos\CustomerController as PosCustomerController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
@@ -72,6 +76,7 @@ use App\Http\Controllers\Public\PublicBillRequestController;
 use App\Http\Controllers\Public\PublicCustomerController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\PublicOrderController;
+use App\Http\Controllers\Public\PublicOrderTrackingController;
 use App\Http\Controllers\Public\PublicReviewController;
 use App\Http\Controllers\Public\PublicTableController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
@@ -465,6 +470,20 @@ Route::prefix('dashboard')
         });
 
         /*
+        | Guest paging (docs/features/guest-paging) — the counter's pickup board
+        | and its Ready / Picked up buttons. Same capabilities as the order
+        | queue (orders.read / orders.update) and, like it, deliberately NOT
+        | behind subscription.writable: a diner waiting at the counter is not
+        | the place to enforce a lapsed subscription.
+        */
+        Route::middleware('feature:guest_paging')->group(function () {
+            Route::middleware('can:orders.read')
+                ->get('pickup-board', [PickupBoardController::class, 'index']);
+            Route::middleware('can:orders.update')
+                ->patch('orders/{order}/pickup', [PickupBoardController::class, 'update']);
+        });
+
+        /*
         | Table experience (Phase 1) — gated on the table_management feature.
         */
         Route::middleware('feature:table_management')->group(function () {
@@ -480,6 +499,8 @@ Route::prefix('dashboard')
                 Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
                 // Bundle several tables' QR PNGs into one ZIP (read-only, no writable gate).
                 Route::post('tables/qr/download-bulk', [TableController::class, 'qrDownloadBulk']);
+                // POS-BE-033: the waiter phones registered by their first sign-in.
+                Route::get('waiter-devices', [DashboardPosWaiterDeviceController::class, 'index']);
             });
 
             // Closing out a visit is floor work, not configuration — it stays
@@ -503,6 +524,8 @@ Route::prefix('dashboard')
                     // Rotating a QR invalidates the printed one — an edit to the
                     // table, not a new table.
                     Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);
+                    Route::post('waiter-devices/{device}/revoke', [DashboardPosWaiterDeviceController::class, 'revoke'])
+                        ->whereNumber('device');
                 });
 
                 Route::middleware('can:tables.delete')->group(function () {
@@ -844,6 +867,33 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Waiter wire  (POS-BE-033) — XOrder Waiter, cloud flavor
+|--------------------------------------------------------------------------
+| The same wire v1 the till serves on the LAN, served by the platform for a
+| restaurant without a till. The restaurant is the SLUG IN THE PATH (the
+| handheld's base is https://xorder.io/api/pos/waiter/{slug}); the `waiter`
+| middleware pins that tenant and checks device and session at three depths.
+| Credentials are the waiter's own (`xwd_` device, `xws_` session), never a
+| till's `xdt_` token and never the dashboard JWT.
+*/
+Route::prefix('pos/waiter/{slug}/v1')->group(function () {
+    Route::get('hello', [WaiterAuthController::class, 'hello'])
+        ->middleware(['waiter:public', 'throttle:60,1']);
+    Route::post('sign-in', [WaiterAuthController::class, 'signIn'])
+        ->middleware(['waiter:public', 'throttle:30,1']);
+    Route::post('sign-out', [WaiterAuthController::class, 'signOut'])
+        ->middleware(['waiter:device', 'throttle:60,1']);
+
+    Route::middleware(['waiter:session', 'throttle:240,1'])->group(function () {
+        Route::get('menu', [WaiterFloorController::class, 'menu']);
+        Route::get('floor', [WaiterFloorController::class, 'floor']);
+        Route::get('tables/{table}/check', [WaiterFloorController::class, 'check'])->whereNumber('table');
+        Route::post('tables/{table}/ops', [WaiterFloorController::class, 'ops'])->whereNumber('table');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
 | Uploads  (any authenticated admin)
 |--------------------------------------------------------------------------
 */
@@ -879,6 +929,26 @@ Route::post('public/restaurants/{slug}/orders', [PublicOrderController::class, '
 // return whether their order is closed and it's time to ask for feedback.
 Route::get('public/restaurants/{slug}/orders/{id}/status', [PublicOrderController::class, 'status'])
     ->middleware('throttle:60,1');
+
+// Guest paging (docs/features/guest-paging): the diner's tracking page, keyed
+// by the 40-char token on the receipt. The page polls `track` every few
+// seconds and a café's Wi-Fi puts many diners behind one IP, hence the
+// looser read limit; the writes happen once or twice per order.
+//
+// The third throttle argument matters: a bare `throttle:N,1` keys on the IP
+// alone, so every such public route shares ONE counter per address and a
+// diner's own polling would 429 their "On my way". Each group below gets its
+// own bucket (the prefix becomes part of the limiter key).
+Route::prefix('public/orders/track/{token}')
+    ->where(['token' => '[A-Za-z0-9]{40}'])
+    ->controller(PublicOrderTrackingController::class)
+    ->group(function () {
+        Route::get('', 'show')->middleware('throttle:120,1,paging-read');
+        Route::post('follow', 'follow')->middleware('throttle:20,1,paging-write');
+        Route::post('ack', 'acknowledge')->middleware('throttle:20,1,paging-write');
+        Route::post('push-token', 'storePushToken')->middleware('throttle:10,1,paging-push');
+        Route::delete('push-token', 'destroyPushToken')->middleware('throttle:10,1,paging-push');
+    });
 
 // WhatsApp checkout captures just the customer (no order record) so the
 // restaurant still builds its directory. Same throttle as guest orders.
