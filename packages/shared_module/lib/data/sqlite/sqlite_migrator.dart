@@ -11,7 +11,26 @@ import 'sqlite_triggers.dart';
 /// an empty one for a migration that touches nothing a cloud till keeps
 /// (`sqlite_schema_test.dart` fails until it has one). That is how the two
 /// schemas are kept in step (pos-cloud-single-till-sqlite, FEATURE §10).
-const sqliteUpgrades = <int, List<String>>{};
+const sqliteUpgrades = <int, List<String>>{
+  // Waiter handhelds paired with this till (waiter-app, WA1).
+  65: [
+    '''CREATE TABLE IF NOT EXISTS "pos_waiter_devices" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "business_id" INTEGER NOT NULL,
+  "branch_id" INTEGER,
+  "name" TEXT NOT NULL,
+  "token_hash" TEXT NOT NULL,
+  "paired_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z', 'now')),
+  "last_seen_at" TEXT,
+  "revoked_at" TEXT,
+  CONSTRAINT "pos_waiter_devices_token_unique" UNIQUE (token_hash),
+  CONSTRAINT "pos_waiter_devices_name_present" CHECK ((trim(name) <> '')),
+  FOREIGN KEY (branch_id) REFERENCES pos_branches(id),
+  FOREIGN KEY (business_id) REFERENCES pos_businesses(id) ON DELETE CASCADE
+)''',
+    '''CREATE INDEX IF NOT EXISTS pos_waiter_devices_business_idx ON pos_waiter_devices (business_id, branch_id)''',
+  ],
+};
 
 /// Brings a cloud till's SQLite file up to the current schema.
 ///

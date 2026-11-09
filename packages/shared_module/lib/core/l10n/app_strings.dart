@@ -1974,6 +1974,23 @@ sealed class AppStrings {
   String get close;
   String get settingsOrders;
   String get settingsPrinter;
+  // Waiter handhelds (waiter-app, WA1).
+  String get settingsWaiterDevices;
+  String get waiterDevicesTitle;
+  String get waiterDevicesIntro;
+  String get waiterDevicesUnavailable;
+  String get waiterLinkOn;
+  String get waiterLinkOff;
+  String get waiterLinkTurnOn;
+  String get waiterLinkTurnOff;
+  String get waiterLinkAddress;
+  String get waiterPairDevice;
+  String get waiterPairingCodeHelp;
+  String get waiterDevicesNone;
+  String get waiterDeviceRevoke;
+  String get waiterDeviceRevoked;
+  String waiterDeviceLastSeen(String when);
+  String waiterLinkFailed(String error);
   String get settingsAbout;
   String get printerSettingsTitle;
   String get printerNoneChosen;
@@ -7575,6 +7592,46 @@ final class EnStrings extends AppStrings {
   @override
   String get settingsPrinter => 'Printer & cash drawer…';
   @override
+  String get settingsWaiterDevices => 'Waiter devices…';
+  @override
+  String get waiterDevicesTitle => 'Waiter devices';
+  @override
+  String get waiterDevicesIntro =>
+      'Waiters take table orders on a phone or tablet paired with this till. '
+      'The till prices every order and keeps the tables; the handheld never '
+      'takes payment.';
+  @override
+  String get waiterDevicesUnavailable =>
+      'Handhelds pair with the till that holds the tables: the main till of '
+      'this branch.';
+  @override
+  String get waiterLinkOn => 'Serving waiter devices';
+  @override
+  String get waiterLinkOff => 'Not serving waiter devices';
+  @override
+  String get waiterLinkTurnOn => 'Turn on';
+  @override
+  String get waiterLinkTurnOff => 'Turn off';
+  @override
+  String get waiterLinkAddress => 'Till address';
+  @override
+  String get waiterPairDevice => 'Pair a device';
+  @override
+  String get waiterPairingCodeHelp =>
+      'Enter this code and the till address on the handheld. It works once, '
+      'for ten minutes.';
+  @override
+  String get waiterDevicesNone => 'No devices paired yet.';
+  @override
+  String get waiterDeviceRevoke => 'Revoke';
+  @override
+  String get waiterDeviceRevoked => 'Revoked';
+  @override
+  String waiterDeviceLastSeen(String when) => 'Last seen $when';
+  @override
+  String waiterLinkFailed(String error) =>
+      'The till could not start serving handhelds: $error';
+  @override
   String get settingsAbout => 'About XOrder POS';
   @override
   String get printerSettingsTitle => 'Printer & cash drawer';
@@ -13028,6 +13085,43 @@ final class ArStrings extends AppStrings {
   String get settingsOrders => 'سجل الطلبات';
   @override
   String get settingsPrinter => 'الطابعة ودرج النقدية…';
+  @override
+  String get settingsWaiterDevices => 'أجهزة الويتر…';
+  @override
+  String get waiterDevicesTitle => 'أجهزة الويتر';
+  @override
+  String get waiterDevicesIntro =>
+      'يأخذ الويتر طلبات الطاولات على هاتف أو تابلت مقترن بهذا الجهاز. '
+      'الجهاز يسعّر كل طلب ويحتفظ بالطاولات، والجهاز المحمول لا يستلم أي دفع.';
+  @override
+  String get waiterDevicesUnavailable =>
+      'تقترن الأجهزة المحمولة بالجهاز الذي يحتفظ بالطاولات: الجهاز الرئيسي لهذا الفرع.';
+  @override
+  String get waiterLinkOn => 'يخدم أجهزة الويتر';
+  @override
+  String get waiterLinkOff => 'لا يخدم أجهزة الويتر';
+  @override
+  String get waiterLinkTurnOn => 'تشغيل';
+  @override
+  String get waiterLinkTurnOff => 'إيقاف';
+  @override
+  String get waiterLinkAddress => 'عنوان الجهاز';
+  @override
+  String get waiterPairDevice => 'إقران جهاز';
+  @override
+  String get waiterPairingCodeHelp =>
+      'أدخل هذا الرمز وعنوان الجهاز على الجهاز المحمول. يعمل مرة واحدة لمدة عشر دقائق.';
+  @override
+  String get waiterDevicesNone => 'لا توجد أجهزة مقترنة بعد.';
+  @override
+  String get waiterDeviceRevoke => 'إلغاء';
+  @override
+  String get waiterDeviceRevoked => 'ملغى';
+  @override
+  String waiterDeviceLastSeen(String when) => 'آخر ظهور $when';
+  @override
+  String waiterLinkFailed(String error) =>
+      'تعذّر على الجهاز بدء خدمة الأجهزة المحمولة: $error';
   @override
   String get settingsAbout => 'حول XOrder POS';
   @override

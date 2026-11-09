@@ -10,6 +10,9 @@
 #                                    platforms, and the back office
 #   apps/xorder_pos_cloud            "XOrder POS - Cloud": entry point,
 #                                    platforms, and the cloud sync code
+#   packages/xorder_waiter_link      the waiter handheld <-> till wire,
+#                                    client and server (waiter-app)
+#   apps/xorder_pos_waiter           "XOrder Waiter": the handheld app
 #
 # Run `flutter pub get` in any member once; every member then shares the
 # resolution.
@@ -24,6 +27,8 @@ workspace:
   - packages/xorder_pos_test_support
   - apps/xorder_pos_offline
   - apps/xorder_pos_cloud
+  - packages/xorder_waiter_link
+  - apps/xorder_pos_waiter
 
 # The cloud app's data file is encrypted: package:sqlite3 bundles
 # SQLite3MultipleCiphers instead of plain SQLite (pos-cloud-single-till-sqlite,

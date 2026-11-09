@@ -5051,6 +5051,33 @@ const posMigrations = <PosMigration>[
         "CHECK ((scope = 'business' AND scope_id = '') "
         "OR (scope <> 'business' AND scope_id <> ''))",
   ]),
+  // Waiter handhelds paired with the till that holds the tables (waiter-app,
+  // WA1). A device keeps a token; the till keeps only its SHA-256, so the
+  // table can be read without handing anyone a working token. Revoking stamps
+  // `revoked_at` and leaves the row: who took orders on what is history.
+  //
+  // Additive: a new table, nothing else touched. The SQLite counterpart is in
+  // `sqliteUpgrades` (a cloud till hosts handhelds too).
+  PosMigration(65, 'waiter handhelds paired with this till', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_waiter_devices (
+      id           bigserial   PRIMARY KEY,
+      business_id  bigint      NOT NULL REFERENCES pos_businesses(id) ON DELETE CASCADE,
+      branch_id    bigint      REFERENCES pos_branches(id),
+      name         text        NOT NULL,
+      token_hash   text        NOT NULL,
+      paired_at    timestamptz NOT NULL DEFAULT now(),
+      last_seen_at timestamptz,
+      revoked_at   timestamptz,
+      CONSTRAINT pos_waiter_devices_token_unique UNIQUE (token_hash),
+      CONSTRAINT pos_waiter_devices_name_present CHECK (btrim(name) <> '')
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_waiter_devices_business_idx
+      ON pos_waiter_devices (business_id, branch_id)
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

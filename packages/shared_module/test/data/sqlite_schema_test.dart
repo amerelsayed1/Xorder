@@ -28,10 +28,9 @@ void main() {
 
   test('a new file takes the whole schema and the triggers', () async {
     final ran = await PosMigrator(db).migrate(config);
-    expect(ran, [
-      for (final m in posMigrations)
-        if (m.version <= sqliteSchemaMatchesMigration) m.version,
-    ]);
+    // The generated baseline records every version up to the one it matches,
+    // and each later migration then runs as its `sqliteUpgrades` entry.
+    expect(ran, [for (final m in posMigrations) m.version]);
     final tables = await db.query(
       config,
       "SELECT count(*) FROM sqlite_master WHERE type = 'table' "

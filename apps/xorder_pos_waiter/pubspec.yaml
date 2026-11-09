@@ -1,0 +1,32 @@
+# "XOrder Waiter" (waiter-app, WA1): table orders on a phone or tablet, paired
+# with the till that holds the tables. It depends on the link package and
+# Flutter only — never on packages/shared_module — so a handheld does not ship
+# PostgreSQL, the encrypted SQLite engine or the desktop screens. Everything it
+# shows was priced by the till (FEATURE BR-2).
+name: xorder_pos_waiter
+description: "XOrder Waiter: table orders on a handheld, priced by the till."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  # Where the pairing (till address + device token) is kept on the device.
+  path_provider: ^2.1.6
+  xorder_waiter_link: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

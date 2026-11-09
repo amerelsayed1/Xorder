@@ -88,7 +88,8 @@ check_member() {
 }
 
 # The shared till first, with any path arguments. Then the test-support
-# package (analysis only: it has no tests of its own) and the two apps
+# package (analysis only: it has no tests of its own), the two till apps and
+# the waiter handheld
 # (pos-split-apps, stage 3: each carries its own code and tests — the back
 # office in the offline app, the cloud sync in the cloud app). A path argument
 # narrows the run to the shared package, where the paths are.
@@ -97,6 +98,11 @@ if [ "$#" -eq 0 ]; then
   check_member ../xorder_pos_test_support
   check_member ../../apps/xorder_pos_offline
   check_member ../../apps/xorder_pos_cloud
+  # The waiter handheld (waiter-app): its link package and the app. Neither
+  # has PostgreSQL suites; the till's side of the link is tested in the
+  # shared package, on both engines.
+  check_member ../xorder_waiter_link
+  check_member ../../apps/xorder_pos_waiter
 
   # The cloud till's engine (pos-cloud-single-till-sqlite): the same suites a
   # cloud till relies on, run again on an encrypted SQLite file instead of
@@ -110,7 +116,7 @@ if [ "$#" -eq 0 ]; then
     parked_tickets_schema sync_queue print_queue_schema customers_repository
     order_customer discount_schema tender_types_schema receipt_profile_schema
     site_licence_postgres postgres_directory one_owner postgres_integration
-    sqlite_schema sqlite_database sqlite_statement
+    sqlite_schema sqlite_database sqlite_statement waiter_devices
   )
   files=()
   for suite in "${sqlite_suites[@]}"; do files+=("test/data/${suite}_test.dart"); done

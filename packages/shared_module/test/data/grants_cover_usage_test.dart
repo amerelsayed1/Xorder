@@ -85,6 +85,8 @@ void main() {
     'postgres_floor_repository.dart',
     'postgres_shift_repository.dart',
     'postgres_parked_tickets.dart',
+    // The till that serves waiter handhelds pairs, stamps and revokes them.
+    'postgres_waiter_devices.dart',
     'postgres_reason_repository.dart',
     'postgres_discounts_repository.dart',
     'postgres_refunds_repository.dart',

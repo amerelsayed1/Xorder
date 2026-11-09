@@ -49,6 +49,9 @@ dependencies:
   intl: ^0.20.3
   collection: ^1.19.1
   cupertino_icons: ^1.0.8
+
+  # The waiter handheld link (waiter-app): the till serves it to handhelds.
+  xorder_waiter_link: any
   menu_bar: ^0.5.3
   csv: ^8.0.0
   excel: ^4.0.6

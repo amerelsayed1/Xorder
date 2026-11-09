@@ -1,0 +1,27 @@
+# The link between a waiter's handheld and the till that holds the tables
+# (waiter-app, stage WA1). Pure Dart and no dependencies of its own, on
+# purpose: the handheld app depends on this and on Flutter, never on
+# packages/shared_module, so a phone does not ship PostgreSQL, the encrypted
+# SQLite engine or the desktop screens. The till depends on it too, and serves
+# the same wire it defines.
+#
+#   lib/src/wire.dart     what travels: menu, tables, a check, the edits
+#   lib/src/client.dart   the handheld's side (dart:io HttpClient)
+#   lib/src/server.dart   the till's side (dart:io HttpServer) over a backend
+#                         the till implements with its own repositories
+name: xorder_waiter_link
+description: "The waiter handheld <-> till link for XOrder POS: wire format, client and server."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dev_dependencies:
+  # Run with `flutter test` like every other member; nothing here imports
+  # Flutter outside the tests.
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

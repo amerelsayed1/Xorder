@@ -21,6 +21,8 @@ the one `pubspec.lock`. **One codebase, two apps, one mode each** (plan: the wor
 | `apps/xorder_pos_offline/` | **XOrder POS - Offline**: `main.dart` + `wiring.dart`, `windows/`, `macos/`, and the back office (`lib/features/admin/`, 60 panes) with its tests |
 | `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the encrypted SQLite datastore (`lib/data/local/`), the dashboard signpost, `integration_test/` |
 | `packages/xorder_pos_test_support/` | Fakes, fonts, the PostgreSQL fixture — a dev dependency of every member's tests |
+| `packages/xorder_waiter_link/` | The waiter handheld ↔ till LAN link (waiter-app): wire, client, server. Pure Dart, no dependencies |
+| `apps/xorder_pos_waiter/` | **XOrder Waiter**: the handheld app (Android/iOS). Depends on the link package only, never on `shared_module`; the till serves it from `lib/features/waiter_link/` |
 
 The apps fix the mode in `runPos(mode:, overrides:)` and bind their own code over shared
 providers (`cloudSyncProvider`, `provisioningRepositoryProvider`, `bootstrapSeedingProvider`,

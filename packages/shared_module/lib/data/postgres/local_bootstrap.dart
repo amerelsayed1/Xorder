@@ -1043,6 +1043,11 @@ class LocalBootstrap {
     // removes the parked row because the durable record of the money now
     // lives in pos_orders.
     'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_parked_tickets TO "$role"',
+    // Waiter handhelds paired with this till (waiter-app, migration 65): the
+    // till that hosts them pairs, revokes and stamps them. No DELETE: a
+    // revoked device stays on record.
+    'GRANT SELECT, INSERT, UPDATE ON pos_waiter_devices TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_waiter_devices_id_seq TO "$role"',
     // Tax rules and charges, cached where pricing can reach them.
     'GRANT SELECT, INSERT, UPDATE ON pos_money_config TO "$role"',
     // So the in-app migrator can see the schema is current and do nothing,

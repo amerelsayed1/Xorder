@@ -84,6 +84,10 @@ abstract final class SettingKey {
   // copies go is two half-filled folders and no complete history in either.
   static const backupDirectory = 'backup.directory';
   static const backupOnDayClose = 'backup.on_day_close';
+
+  // Waiter handhelds (waiter-app, WA1). Terminal-scoped: the till that holds
+  // the tables serves them, and only that till. Off unless turned on.
+  static const waiterLinkEnabled = 'waiter.link_enabled';
 }
 
 /// Resolved settings for one terminal.

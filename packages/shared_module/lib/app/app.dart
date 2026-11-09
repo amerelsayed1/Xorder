@@ -12,6 +12,8 @@ import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
 import '../features/settings/about_dialog.dart';
 import '../features/settings/printer_settings_dialog.dart';
+import '../features/waiter_link/waiter_devices_dialog.dart';
+import '../features/waiter_link/waiter_link_host.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
 import '../features/admin_mode/admin_session.dart';
 import '../features/admin_mode/admin_shortcut.dart';
@@ -33,6 +35,9 @@ class XorderPosApp extends ConsumerWidget {
     // without this, the background sync only started once somebody visited
     // the sale screen, which is exactly backwards.
     ref.watch(cloudSyncProvider);
+    // The waiter link, for the same reason: handhelds pair with this till and
+    // must find it serving after a restart, whatever screen it opened on.
+    ref.watch(waiterLinkHostProvider);
     final adminShortcut = ref.watch(adminModeSettingsProvider).shortcut;
 
     return MaterialApp.router(
@@ -432,6 +437,20 @@ class XorderPosApp extends ConsumerWidget {
                                 final context = rootNavigatorKey.currentContext;
                                 if (context != null) {
                                   PrinterSettingsDialog.show(context);
+                                }
+                              },
+                            ),
+                          // Pairing a handheld lets its holder take orders at
+                          // every table: terminal configuration, like the printer.
+                          if (managesTerminal &&
+                              ref.watch(waiterLinkHostProvider).available)
+                            MenuButton(
+                              text: Text(strings.settingsWaiterDevices),
+                              icon: const Icon(Icons.phone_android_outlined, size: 16),
+                              onTap: () {
+                                final context = rootNavigatorKey.currentContext;
+                                if (context != null) {
+                                  WaiterDevicesDialog.show(context);
                                 }
                               },
                             ),
