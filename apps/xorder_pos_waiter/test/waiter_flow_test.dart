@@ -1,65 +1,58 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos_waiter/main.dart';
+import 'package:xorder_pos_waiter/app.dart';
+import 'package:xorder_pos_waiter/mode.dart';
 import 'package:xorder_pos_waiter/state.dart';
 import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 
-/// The handheld end to end against a fake till (waiter-app, WA1): pair, sign
-/// in, open a table, add, send — at a phone's size and a tablet's, in Arabic
-/// (the default) and English.
+/// The handheld end to end against a fake till (waiter-app, WA1; sign-in
+/// WA3): sign in with address, name and PIN, open a table, add, send — at a
+/// phone's size and a tablet's, in Arabic (the default) and English. And the
+/// cloud flavor's door, against the same fake standing in for xorder.io.
 void main() {
   late _FakeTill till;
-  late _MemoryPairing store;
+  late _MemoryConnection store;
 
   setUp(() {
     till = _FakeTill();
-    store = _MemoryPairing();
+    store = _MemoryConnection();
   });
 
-  Future<void> boot(WidgetTester tester, {Size size = const Size(390, 844)}) async {
+  Future<void> boot(WidgetTester tester, {WaiterMode mode = WaiterMode.offline, Size size = const Size(390, 844)}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        pairingStoreProvider.overrideWithValue(store),
-        clientFactoryProvider.overrideWithValue((uri, token) => till.client(uri, token)),
+        waiterModeProvider.overrideWithValue(mode),
+        connectionStoreProvider.overrideWithValue(store),
+        clientFactoryProvider.overrideWithValue((mode, target, token) => till.client(mode, target, token)),
       ],
       child: const WaiterApplication(),
     ));
     await tester.pumpAndSettle();
   }
 
-  Future<void> pinIn(WidgetTester tester, String pin) async {
-    for (final d in pin.split('')) {
-      await tester.tap(find.byKey(Key('pin-$d')));
-    }
-    await tester.tap(find.byKey(const Key('pin-enter')));
-    await tester.pump();
-    await tester.pump();
+  Future<void> signIn(WidgetTester tester, {String? target, String? username, String pin = '1111'}) async {
+    if (target != null) await tester.enterText(find.byKey(const Key('target')), target);
+    if (username != null) await tester.enterText(find.byKey(const Key('username')), username);
+    await tester.enterText(find.byKey(const Key('pin')), pin);
+    await tester.tap(find.byKey(const Key('sign-in')));
+    await tester.pumpAndSettle();
   }
 
-  testWidgets('pairing, PIN, a table, an item and a round — on a phone, in Arabic', (tester) async {
+  testWidgets('address, name and PIN; a table, an item and a round — on a phone, in Arabic', (tester) async {
     await boot(tester);
-    expect(find.text('الإقران بجهاز الكاشير'), findsOneWidget);
+    expect(find.text('تسجيل الدخول'), findsOneWidget);
+    expect(find.text('عنوان الجهاز'), findsOneWidget, reason: 'the offline flavor asks for the till');
 
-    await tester.enterText(find.byKey(const Key('address')), '10.0.0.5');
-    await tester.enterText(find.byKey(const Key('code')), '123456');
-    await tester.enterText(find.byKey(const Key('name')), 'Phone 1');
-    await tester.tap(find.byKey(const Key('pair')));
-    await tester.pumpAndSettle();
-
-    expect(till.pairedName, 'Phone 1');
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
     expect(till.lastUri!.port, defaultWaiterPort, reason: 'a bare address gets the default port');
-    expect(store.saved!.token, 'device-token');
-    expect(find.text('مقترن بـ Main till'), findsOneWidget);
-
-    await pinIn(tester, '1111');
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.pump();
+    expect(till.registeredAs, 'mona · linux', reason: 'the first sign-in registers the phone under the name');
+    expect(store.saved!.deviceToken, 'device-token');
+    expect(store.saved!.username, 'mona');
+    expect(store.saved!.serverName, 'Main till');
     expect(find.text('الطاولات'), findsOneWidget);
     expect(find.text('T1'), findsOneWidget);
 
@@ -82,13 +75,27 @@ void main() {
     expect(find.text('الدفعة 1'), findsOneWidget);
   });
 
+  testWidgets('a remembered till and name need only the PIN; the same device signs in again', (tester) async {
+    store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
+    await boot(tester);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(find.text('Main till'), findsOneWidget, reason: 'the door says where it signs in');
+    expect(tester.widget<TextField>(find.byKey(const Key('target'))).controller!.text, '10.0.0.5:8787');
+    expect(tester.widget<TextField>(find.byKey(const Key('username'))).controller!.text, 'mona');
+
+    await signIn(tester);
+    expect(find.text('Tables'), findsOneWidget);
+    expect(till.registeredAs, isNull, reason: 'a known device is not registered again');
+    expect(till.signInTokens.single, 'device-token');
+  });
+
   testWidgets('an item with options opens the options sheet; required ones are required', (tester) async {
-    store.saved = const Pairing(address: '10.0.0.5:8787', token: 'device-token', tillName: 'Main till');
+    store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
-    await pinIn(tester, '1111');
-    await tester.pumpAndSettle();
+    await signIn(tester);
 
     await tester.tap(find.byKey(const Key('table-1')));
     await tester.pumpAndSettle();
@@ -113,12 +120,11 @@ void main() {
   });
 
   testWidgets('a table changed on another device shows the latest check and says so', (tester) async {
-    store.saved = const Pairing(address: '10.0.0.5:8787', token: 'device-token', tillName: 'Main till');
+    store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
-    await pinIn(tester, '1111');
-    await tester.pumpAndSettle();
+    await signIn(tester);
     await tester.tap(find.byKey(const Key('table-1')));
     await tester.pumpAndSettle();
 
@@ -129,32 +135,60 @@ void main() {
     expect(find.text('ROUND 1'), findsOneWidget, reason: "the other device's sent tea is shown, under its round's header");
   });
 
-  testWidgets('a wrong PIN is worded; a revoked device goes back to pairing', (tester) async {
-    store.saved = const Pairing(address: '10.0.0.5:8787', token: 'device-token', tillName: 'Main till');
+  testWidgets('a wrong PIN is worded; a revoked phone is told, then registers itself again', (tester) async {
+    store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
 
-    await pinIn(tester, '9999');
-    await tester.pumpAndSettle();
-    expect(find.text('Wrong PIN.'), findsOneWidget);
+    await signIn(tester, pin: '9999');
+    expect(find.text('That name and PIN were not accepted.'), findsOneWidget);
 
     till.revoked = true;
-    await pinIn(tester, '1111');
+    await signIn(tester);
+    expect(find.textContaining('removed on the till'), findsOneWidget);
+    expect(store.saved!.deviceToken, isNull, reason: 'the dead token is forgotten; the till and name are kept');
+    expect(store.saved!.target, '10.0.0.5:8787');
+
+    till.revoked = false;
+    await signIn(tester);
+    expect(find.text('Tables'), findsOneWidget);
+    expect(till.registeredAs, 'mona · linux', reason: 'signed in afresh as a new device');
+    expect(store.saved!.deviceToken, 'device-token');
+  });
+
+  testWidgets('the cloud flavor signs in with the restaurant, a name and a PIN', (tester) async {
+    await boot(tester, mode: WaiterMode.cloud);
+    await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
-    expect(find.text('Pair with the till'), findsOneWidget);
-    expect(store.saved, isNull, reason: 'the dead token is forgotten');
+    expect(find.text('XOrder Waiter Cloud'), findsOneWidget);
+    expect(find.text('Restaurant'), findsOneWidget);
+    expect(find.text('.xorder.io'), findsOneWidget, reason: 'the slug completes to the subdomain');
+
+    await signIn(tester, target: 'Demo', username: 'mona');
+    expect(till.lastMode, WaiterMode.cloud);
+    expect(till.lastTarget, 'Demo');
+    expect(find.text('Tables'), findsOneWidget);
+    expect(store.saved!.target, 'Demo');
+  });
+
+  test('the cloud flavor reaches the restaurant\'s subdomain over https; the offline flavor the till over http', () {
+    final cloud = defaultClientFactory(WaiterMode.cloud, 'Demo', null) as WaiterLinkClient;
+    expect(cloud.baseUri.toString(), 'https://demo.xorder.io/api/pos/waiter');
+    final offline = defaultClientFactory(WaiterMode.offline, '10.0.0.5', 'tok') as WaiterLinkClient;
+    expect(offline.baseUri.toString(), 'http://10.0.0.5:8787');
+    expect(offline.deviceToken, 'tok');
   });
 }
 
 // ---------------------------------------------------------------------------
 
-class _MemoryPairing implements PairingStore {
-  Pairing? saved;
+class _MemoryConnection implements ConnectionStore {
+  SavedConnection? saved;
   @override
-  Future<Pairing?> load() async => saved;
+  Future<SavedConnection?> load() async => saved;
   @override
-  Future<void> save(Pairing pairing) async => saved = pairing;
+  Future<void> save(SavedConnection connection) async => saved = connection;
   @override
   Future<void> clear() async => saved = null;
 }
@@ -162,17 +196,22 @@ class _MemoryPairing implements PairingStore {
 const _egp = WaiterCurrency('EGP', 2);
 
 class _FakeTill {
-  String? pairedName;
+  String? registeredAs;
   Uri? lastUri;
+  WaiterMode? lastMode;
+  String? lastTarget;
   bool revoked = false;
   bool conflictNext = false;
   final ops = <WaiterOp>[];
+  final signInTokens = <String?>[];
   var lines = <WaiterLine>[];
   int? version;
 
-  WaiterLinkClient client(Uri uri, String? token) {
-    lastUri = uri;
-    return _FakeClient(this, uri, token);
+  WaiterClient client(WaiterMode mode, String target, String? token) {
+    lastMode = mode;
+    lastTarget = target;
+    lastUri = mode == WaiterMode.offline ? WaiterLinkClient.addressToUri(target) : null;
+    return _FakeClient(this, token);
   }
 
   final menu = const WaiterMenu(
@@ -241,43 +280,39 @@ class _FakeTill {
   }
 }
 
-class _FakeClient implements WaiterLinkClient {
-  _FakeClient(this.till, this.baseUri, this.deviceToken);
+class _FakeClient implements WaiterClient {
+  _FakeClient(this.till, this.deviceToken);
 
   final _FakeTill till;
   @override
-  final Uri baseUri;
-  @override
   String? deviceToken;
-  @override
-  String? sessionToken;
-  @override
-  Duration get timeout => const Duration(seconds: 1);
 
   void _guard() {
-    if (till.revoked) throw const WaiterLinkFailure(WaiterError.revoked, 401);
+    if (till.revoked && deviceToken != null) throw const WaiterLinkFailure(WaiterError.revoked, 401);
   }
 
   @override
   Future<String> hello() async => 'Main till';
 
   @override
-  Future<String> pair({required String code, required String deviceName}) async {
-    if (code != '123456') throw const WaiterLinkFailure(WaiterError.badPairingCode, 403);
-    till.pairedName = deviceName;
-    return deviceToken = 'device-token';
-  }
-
-  @override
-  Future<WaiterSession> signIn(String pin) async {
+  Future<WaiterSession> signIn({required String username, required String pin, required String deviceName}) async {
     _guard();
-    if (pin != '1111') throw const WaiterLinkFailure(WaiterError.wrongPin, 403);
-    sessionToken = 's';
-    return const WaiterSession(token: 's', staff: WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}));
+    till.signInTokens.add(deviceToken);
+    if (username != 'mona' || pin != '1111') throw const WaiterLinkFailure(WaiterError.wrongPin, 403);
+    String? issued;
+    if (deviceToken == null) {
+      till.registeredAs = deviceName;
+      issued = deviceToken = 'device-token';
+    }
+    return WaiterSession(
+      token: 's',
+      staff: const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
+      deviceToken: issued,
+    );
   }
 
   @override
-  Future<void> signOut() async => sessionToken = null;
+  Future<void> signOut() async {}
 
   @override
   Future<WaiterMenu> menu() async => till.menu;
@@ -300,7 +335,4 @@ class _FakeClient implements WaiterLinkClient {
 
   @override
   void close() {}
-
-  // Never reached by the screens; here so the fake is a full client.
-  HttpClient get http => throw UnimplementedError();
 }

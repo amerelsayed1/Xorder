@@ -36,6 +36,25 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // Two apps from one codebase, the mode fixed per build (owner decision,
+    // 2026-11-09). Each flavor has its own id and name so both can sit on one
+    // phone; the Dart side is fixed by the matching entry point:
+    //   flutter build apk --flavor cloud   -t lib/main_cloud.dart
+    //   flutter build apk --flavor offline -t lib/main_offline.dart
+    flavorDimensions += "mode"
+    productFlavors {
+        create("cloud") {
+            dimension = "mode"
+            applicationIdSuffix = ".cloud"
+            resValue("string", "app_name", "XOrder Waiter Cloud")
+        }
+        create("offline") {
+            dimension = "mode"
+            applicationIdSuffix = ".offline"
+            resValue("string", "app_name", "XOrder Waiter Offline")
+        }
+    }
 }
 
 kotlin {

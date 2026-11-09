@@ -5,13 +5,37 @@ import 'dart:io';
 import 'server.dart' show sessionHeader;
 import 'wire.dart';
 
-/// The handheld's side of the waiter link (waiter-app, WA1).
+/// What a handheld asks of whoever holds its tables: the till over the LAN
+/// ([WaiterLinkClient]), or the platform over the internet in the cloud
+/// flavor, which serves the same wire (POS-BE-033). The screens depend on
+/// this and nothing else; tests put a fake behind it.
+abstract interface class WaiterClient {
+  /// The token the server gave this device on its first sign-in, if any.
+  String? get deviceToken;
+  set deviceToken(String? value);
+
+  Future<String> hello();
+
+  /// Name and PIN open a session. With no [deviceToken] yet, the server
+  /// registers the device as [deviceName] and the returned session carries
+  /// the token, which this client keeps.
+  Future<WaiterSession> signIn({required String username, required String pin, required String deviceName});
+
+  Future<void> signOut();
+  Future<WaiterMenu> menu();
+  Future<WaiterFloor> floor();
+  Future<WaiterCheck> check(int tableId);
+  Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops});
+  void close();
+}
+
+/// The handheld's side of the waiter link (waiter-app, WA1; sign-in WA3).
 ///
-/// One object per till the handheld is paired with. It holds the device token
-/// (from [pair]) and the current waiter's session (from [signIn]); every call
+/// One object per server the handheld talks to. It holds the device token
+/// (from the first [signIn]) and the current waiter's session; every call
 /// after those carries both. Failures come back as [WaiterLinkFailure] with
-/// the till's code, so the screen words them in the waiter's language.
-class WaiterLinkClient {
+/// the server's code, so the screen words them in the waiter's language.
+class WaiterLinkClient implements WaiterClient {
   WaiterLinkClient({
     required this.baseUri,
     this.deviceToken,
@@ -19,8 +43,11 @@ class WaiterLinkClient {
     this.timeout = const Duration(seconds: 8),
   }) : _http = httpClient ?? HttpClient();
 
-  /// `http://192.168.1.20:8787` — the till's address on the restaurant LAN.
+  /// `http://192.168.1.20:8787` — the till's address on the restaurant LAN —
+  /// or `https://demo.xorder.io/api/pos/waiter` in the cloud flavor; the wire
+  /// version and the call's path are appended to whatever path it carries.
   final Uri baseUri;
+  @override
   String? deviceToken;
   String? sessionToken;
   final Duration timeout;
@@ -35,6 +62,7 @@ class WaiterLinkClient {
     return uri.replace(port: uri.hasPort ? uri.port : defaultPort, path: '');
   }
 
+  @override
   Future<String> hello() async {
     final body = await _call('GET', ['hello'], auth: false);
     if (body['wire'] != waiterWireVersion) {
@@ -43,28 +71,25 @@ class WaiterLinkClient {
     return body['name'] is String ? body['name'] as String : '';
   }
 
-  /// Exchange the code the till shows for this device's token.
-  Future<String> pair({required String code, required String deviceName}) async {
-    final body = await _call('POST', ['pair'], auth: false, body: {
-      'code': code.trim(),
-      'device_name': deviceName,
-    });
-    final token = body['device_token'];
-    if (token is! String || token.isEmpty) {
-      throw const WaiterLinkFailure(WaiterError.badRequest, 200);
-    }
-    deviceToken = token;
-    return token;
-  }
-
-  Future<WaiterSession> signIn(String pin) async {
+  @override
+  Future<WaiterSession> signIn({
+    required String username,
+    required String pin,
+    required String deviceName,
+  }) async {
     final session = WaiterSession.fromJson(
-      await _call('POST', ['sign-in'], session: false, body: {'pin': pin}),
+      await _call('POST', ['sign-in'], auth: deviceToken != null, session: false, body: {
+        'username': username.trim(),
+        'pin': pin,
+        'device_name': deviceName,
+      }),
     );
+    if (session.deviceToken case final token?) deviceToken = token;
     sessionToken = session.token;
     return session;
   }
 
+  @override
   Future<void> signOut() async {
     try {
       await _call('POST', ['sign-out']);
@@ -74,16 +99,20 @@ class WaiterLinkClient {
     sessionToken = null;
   }
 
+  @override
   Future<WaiterMenu> menu() async => WaiterMenu.fromJson(await _call('GET', ['menu']));
 
+  @override
   Future<WaiterFloor> floor() async => WaiterFloor.fromJson(await _call('GET', ['floor']));
 
+  @override
   Future<WaiterCheck> check(int tableId) async =>
       WaiterCheck.fromJson(await _call('GET', ['tables', '$tableId', 'check']));
 
   /// Apply [ops] against the check the waiter is looking at. A table changed
   /// elsewhere meanwhile throws [WaiterCheckChanged] with the till's current
   /// check, so the screen can show it and let the waiter redo the edit.
+  @override
   Future<WaiterCheck> apply({
     required int tableId,
     required int? version,
@@ -95,6 +124,7 @@ class WaiterLinkClient {
     }),
   );
 
+  @override
   void close() => _http.close(force: true);
 
   Future<Map<String, Object?>> _call(
@@ -104,7 +134,11 @@ class WaiterLinkClient {
     bool session = true,
     Map<String, Object?>? body,
   }) async {
-    final uri = baseUri.replace(pathSegments: ['v$waiterWireVersion', ...path]);
+    final uri = baseUri.replace(pathSegments: [
+      ...baseUri.pathSegments.where((p) => p.isNotEmpty),
+      'v$waiterWireVersion',
+      ...path,
+    ]);
     try {
       final request = await _http.openUrl(method, uri).timeout(timeout);
       request.headers.contentType = ContentType.json;

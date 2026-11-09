@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos_waiter/main.dart';
+import 'package:xorder_pos_waiter/app.dart';
+import 'package:xorder_pos_waiter/mode.dart';
 import 'package:xorder_pos_waiter/screens/widgets.dart';
 import 'package:xorder_pos_waiter/state.dart';
 import 'package:xorder_waiter_link/xorder_waiter_link.dart';
@@ -23,18 +22,17 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        pairingStoreProvider.overrideWithValue(_Paired()),
-        clientFactoryProvider.overrideWithValue((uri, token) => _Client(till)),
+        waiterModeProvider.overrideWithValue(WaiterMode.offline),
+        connectionStoreProvider.overrideWithValue(_Remembered()),
+        clientFactoryProvider.overrideWithValue((mode, target, token) => _Client(till)),
       ],
       child: const WaiterApplication(),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
-    for (final d in '1111'.split('')) {
-      await tester.tap(find.byKey(Key('pin-$d')));
-    }
-    await tester.tap(find.byKey(const Key('pin-enter')));
+    await tester.enterText(find.byKey(const Key('pin')), '1111');
+    await tester.tap(find.byKey(const Key('sign-in')));
     await tester.pumpAndSettle();
   }
 
@@ -115,11 +113,12 @@ void main() {
 
 // ---------------------------------------------------------------------------
 
-class _Paired implements PairingStore {
+class _Remembered implements ConnectionStore {
   @override
-  Future<Pairing?> load() async => const Pairing(address: '10.0.0.5:8787', token: 't', tillName: 'Main till');
+  Future<SavedConnection?> load() async =>
+      const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 't', serverName: 'Main till');
   @override
-  Future<void> save(Pairing pairing) async {}
+  Future<void> save(SavedConnection connection) async {}
   @override
   Future<void> clear() async {}
 }
@@ -166,25 +165,17 @@ class _Till {
       : WaiterCheck.empty(tableId: tableId, tableLabel: 'T$tableId', currency: _egp);
 }
 
-class _Client implements WaiterLinkClient {
+class _Client implements WaiterClient {
   _Client(this.till);
   final _Till till;
 
   @override
-  Uri get baseUri => Uri.parse('http://10.0.0.5:8787');
-  @override
   String? deviceToken = 't';
-  @override
-  String? sessionToken;
-  @override
-  Duration get timeout => const Duration(seconds: 1);
 
   @override
   Future<String> hello() async => 'Main till';
   @override
-  Future<String> pair({required String code, required String deviceName}) async => 't';
-  @override
-  Future<WaiterSession> signIn(String pin) async =>
+  Future<WaiterSession> signIn({required String username, required String pin, required String deviceName}) async =>
       const WaiterSession(token: 's', staff: WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}));
   @override
   Future<void> signOut() async {}
@@ -199,6 +190,4 @@ class _Client implements WaiterLinkClient {
       till.check(tableId);
   @override
   void close() {}
-  // Never reached by the screens; here so the fake is a full client.
-  HttpClient get http => throw UnimplementedError();
 }

@@ -11,12 +11,13 @@ import '../../core/ui/widgets/pos_widgets.dart';
 import '../../data/postgres/postgres_waiter_devices.dart';
 import 'waiter_link_host.dart';
 
-/// Settings › Waiter devices (waiter-app, WA1): turn the link on, pair a
-/// handheld with a one-time code, see and revoke paired devices.
+/// Settings › Waiter devices (waiter-app, WA1; sign-in WA3): turn the link
+/// on, show the address a handheld signs in to, see and revoke the devices
+/// that have signed in.
 ///
-/// Reached from the till's Settings menu by someone holding `terminal.manage`
-/// — pairing a device lets whoever holds it, with a PIN, take orders at every
-/// table.
+/// Reached from the till's Settings menu by someone holding `terminal.manage`.
+/// A handheld registers itself on its first sign-in with a waiter's name and
+/// PIN; this list is where a phone nobody recognises gets removed.
 class WaiterDevicesDialog extends ConsumerStatefulWidget {
   const WaiterDevicesDialog({super.key});
 
@@ -36,8 +37,8 @@ class _WaiterDevicesDialogState extends ConsumerState<WaiterDevicesDialog> {
   @override
   void initState() {
     super.initState();
-    // While the dialog is open, a device that pairs shows up in the list and
-    // the used code disappears, without anybody pressing refresh.
+    // While the dialog is open, a device that signs in for the first time
+    // shows up in the list without anybody pressing refresh.
     _poll = Timer.periodic(const Duration(seconds: 2), (_) {
       unawaited(ref.read(waiterLinkHostProvider.notifier).refreshDevices());
     });
@@ -106,19 +107,8 @@ class _WaiterDevicesDialogState extends ConsumerState<WaiterDevicesDialog> {
                       '$address:${status.port}',
                       style: PosText.mono(size: 16, color: pos.ink, weight: FontWeight.w600),
                     ),
-                  const SizedBox(height: PosSpace.lg),
-                  if (status.pairing case final pairing?)
-                    _PairingCodeBox(code: pairing.code, onClose: host.closePairing)
-                  else
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: PosButton(
-                        label: strings.waiterPairDevice,
-                        background: pos.accent,
-                        foreground: pos.onAccent,
-                        onPressed: host.openPairing,
-                      ),
-                    ),
+                  const SizedBox(height: PosSpace.sm),
+                  Text(strings.waiterSignInHelp, style: PosText.ui(size: 12.5, color: pos.body)),
                 ],
                 const SizedBox(height: PosSpace.lg),
                 Flexible(
@@ -172,46 +162,6 @@ class _StatusRow extends StatelessWidget {
           onPressed: busy ? null : () => onToggle(!running),
         ),
       ],
-    );
-  }
-}
-
-class _PairingCodeBox extends StatelessWidget {
-  const _PairingCodeBox({required this.code, required this.onClose});
-
-  final String code;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    return Container(
-      padding: const EdgeInsets.all(PosSpace.lg),
-      decoration: BoxDecoration(border: Border.fromBorderSide(pos.accentBorder), color: pos.accentSoft),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  // Grouped 3+3 so it can be read aloud across a room.
-                  '${code.substring(0, 3)} ${code.substring(3)}',
-                  textDirection: TextDirection.ltr,
-                  style: PosText.mono(size: 34, color: pos.ink, weight: FontWeight.w700),
-                ),
-              ),
-              IconButton(
-                onPressed: onClose,
-                icon: Icon(Icons.close, color: pos.body, size: 18),
-                tooltip: context.strings.close,
-              ),
-            ],
-          ),
-          const SizedBox(height: PosSpace.xs),
-          Text(context.strings.waiterPairingCodeHelp, style: PosText.ui(size: 12.5, color: pos.body)),
-        ],
-      ),
     );
   }
 }

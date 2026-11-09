@@ -133,17 +133,31 @@ one-off styling.
 
 ## 5. Screens
 
-### 5.1 Pair with the till
-Shell screen. A `shellCard` panel, max 440 wide, centred: the XOrder mark (accent square, mono
-"X"), title 20/700, the two-sentence instruction, **Till address** (LTR, URL keyboard),
-**Pairing code** (6 digits, LTR, mono 24, letter-spaced, numeric keyboard), **Name for this
-device**, error note, **Pair** CTA at 56. Nothing else on the screen; a device is paired once.
+### 5.1 Two flavors, one door each
+XOrder Waiter ships as **two apps** — *XOrder Waiter – Cloud* and *XOrder Waiter – Offline* —
+built from one codebase with the mode fixed by the entry point (`lib/main_cloud.dart`,
+`lib/main_offline.dart`; Android product flavors `cloud` / `offline`, their own application
+ids and names). A waiter never chooses a mode; the restaurant is given the app that fits it
+(a restaurant with a till gets Offline, one without gets Cloud — POS-BE-033). There is no
+pairing code (owner decision, 2026-11-09).
 
 ### 5.2 Sign in
-Shell screen. "Paired with {till}" in `shellMuted`, title, **four or more 16 px squares** for
-the PIN, a 3×4 keypad of 64 px keys (digits mono 24, backspace, **Sign in** in accent),
-error note in a fixed 48 px slot so the keypad never jumps. Overflow menu: *Unpair this device*
-(confirmed). Language toggle in the bar.
+Shell screen, the same in both flavors but for the first field. A `shellCard` panel, max 440
+wide, centred: the XOrder mark, the title, one line of guidance (or, once remembered, the
+server's name), then three fields and the CTA:
+
+| | Offline | Cloud |
+|---|---|---|
+| Field 1 | **Till address** (`192.168.1.20`, port assumed; LTR, URL keyboard, mono) | **Restaurant** (`demo`, suffixed `.xorder.io`; LTR, mono) |
+| Field 2 | **Your name** — the username on the till | **Your name** — the username in the dashboard |
+| Field 3 | **PIN** — obscured, digits only, 4–8, mono, letter-spaced | same |
+| Talks to | the till on the LAN | `https://{slug}.xorder.io/api/pos/waiter` |
+
+Field 1 and the name are remembered on the phone; the PIN is never. The first sign-in from a
+phone registers it with the server under "{name} · {phone kind}" and the token that comes back
+is kept; a phone the server revoked is told so and simply signs in again, as a new device. An
+overflow menu offers *Forget this till / restaurant*. One error note in a fixed slot: a wrong
+name or PIN is one message ("That name and PIN were not accepted"), never which of the two.
 
 ### 5.3 Floor
 App bar: **Tables** · staff name (end side) · overflow (language, sign out). Under it a
@@ -225,8 +239,10 @@ start side, **Save** CTA on the end side.
 | D5 | Floor: summary strip, area sections, tile per §5.3 | `screens/floor_screen.dart` |
 | D6 | Check: search, sticky check bar, rounds grouping, CTA with count, empty-state action | `screens/check_screen.dart` |
 | D7 | Options sheet with `OptionRow`s and the ≈ estimate; line sheet per §5.7 | `screens/item_sheet.dart` |
-| D8 | Pair and PIN as shell screens | `screens/connect_screen.dart`, `screens/pin_screen.dart` |
+| D8 | One sign-in shell screen per flavor (address or slug · name · PIN); the pairing code is gone | `screens/sign_in_screen.dart`, `mode.dart`, `main_cloud.dart`, `main_offline.dart` |
 | D9 | New strings: summary strip, "Not sent", "Round n", "Open the menu", "Search", "Tables" (no area) | `strings.dart` |
 
-Out of the design pass, unchanged from WA1 and tracked there: TLS on the link, keystore token
-storage, kitchen dockets, an offline queue on the handheld, voiding sent lines, payment.
+Out of the design pass, unchanged from WA1 and tracked there: TLS on the link (now **required**
+before a pilot, since name and PIN are the whole gate), keystore token storage, kitchen dockets,
+an offline queue on the handheld, voiding sent lines, payment. The cloud flavor waits on
+POS-BE-033 and runs against a fake until it is READY.

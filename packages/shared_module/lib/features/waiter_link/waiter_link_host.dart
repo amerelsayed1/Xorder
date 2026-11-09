@@ -20,7 +20,6 @@ class WaiterLinkStatus {
     this.running = false,
     this.port = defaultWaiterPort,
     this.addresses = const [],
-    this.pairing,
     this.devices = const [],
     this.error,
   });
@@ -33,7 +32,6 @@ class WaiterLinkStatus {
 
   /// This machine's LAN addresses, for the handheld's "till address" field.
   final List<String> addresses;
-  final PairingCode? pairing;
   final List<WaiterDevice> devices;
 
   /// Why the last start failed (port in use, ...), in the system's words.
@@ -44,8 +42,6 @@ class WaiterLinkStatus {
     bool? running,
     int? port,
     List<String>? addresses,
-    PairingCode? pairing,
-    bool clearPairing = false,
     List<WaiterDevice>? devices,
     String? error,
     bool clearError = false,
@@ -54,7 +50,6 @@ class WaiterLinkStatus {
     running: running ?? this.running,
     port: port ?? this.port,
     addresses: addresses ?? this.addresses,
-    pairing: clearPairing ? null : (pairing ?? this.pairing),
     devices: devices ?? this.devices,
     error: clearError ? null : (error ?? this.error),
   );
@@ -109,11 +104,11 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
     await start();
   }
 
-  /// Turn it off. Paired devices stay paired; they reconnect when it is on.
+  /// Turn it off. Registered devices stay registered; they reconnect when it is on.
   Future<void> disable(PosStaff by) async {
     await _remember(false, by);
     await _close();
-    state = state.copyWith(running: false, clearPairing: true);
+    state = state.copyWith(running: false);
   }
 
   Future<void> _remember(bool on, PosStaff by) async {
@@ -155,7 +150,9 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
       catalog: () => ref.read(catalogProvider.future),
       tables: () => ref.read(tablesRepositoryProvider).liveFloor(),
       taxConfig: () => ref.read(taxConfigProvider),
-      signInWithPin: (pin) => ref.read(sessionRepositoryProvider).signIn(pin),
+      // Name and PIN together, as the lock screen matches them (WA3).
+      signInAs: ({required username, required pin}) =>
+          ref.read(sessionRepositoryProvider).signInAs(username: username, pin: pin),
       checks: ParkedTicketsCheckStore(parked),
       devices: PostgresWaiterDeviceStore(devices),
       // The till's own floor catches up now, not at its next 5 s refresh.
@@ -180,28 +177,12 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
     }
   }
 
-  /// Show a fresh pairing code for ten minutes.
-  void openPairing() {
-    final server = _server;
-    if (server == null) return;
-    state = state.copyWith(pairing: server.openPairing());
-  }
-
-  void closePairing() {
-    _server?.closePairing();
-    state = state.copyWith(clearPairing: true);
-  }
-
+  /// Re-read the device list: a handheld that just signed in for the first
+  /// time appears here without anybody pressing refresh.
   Future<void> refreshDevices() async {
     final devices = _devices;
     if (devices == null) return;
-    // The code is used once; a device that just paired has consumed it.
-    final pairing = _server?.currentPairing;
-    state = state.copyWith(
-      devices: await devices.all(),
-      pairing: pairing,
-      clearPairing: pairing == null,
-    );
+    state = state.copyWith(devices: await devices.all());
   }
 
   Future<void> revoke(int deviceId) async {

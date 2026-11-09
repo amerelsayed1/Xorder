@@ -5,20 +5,26 @@ import 'dart:math';
 
 import 'wire.dart';
 
-/// The till's side of the waiter link (waiter-app, WA1).
+/// The till's side of the waiter link (waiter-app, WA1; sign-in revised WA3).
 ///
 /// Runs inside the till that holds the tables — the offline app's main device,
 /// or a cloud till, which keeps its own tables (pos-cloud-single-till-sqlite).
 /// Handhelds talk only to this; they never hold a database password (FEATURE
 /// T4, TECHNICAL section 2).
 ///
-/// Three keys, from the outside in:
-/// 1. **A pairing code** the till shows for ten minutes, used once, turns into
-/// 2. **a device token**, kept by the handheld and revocable on the till; a
-///    request without a known, unrevoked token is refused before anything
-///    else is read.
-/// 3. **A waiter session**, from that person's PIN on that device. Every edit
-///    is made as, and checked against, the signed-in person.
+/// Two keys, from the outside in:
+/// 1. **A device token.** A handheld's first sign-in names the device and the
+///    till registers it, handing back a token the handheld keeps and sends on
+///    every later request. The till lists its devices and revokes any of them;
+///    a request with an unknown or revoked token is refused before anything
+///    else is read. There is no pairing code (owner decision, 2026-11-09:
+///    the sign-in is address, name and PIN, nothing more), so the name and
+///    PIN are the whole gate — which is why TLS on this link is required
+///    before any pilot, and why wrong PINs are counted per device and, for a
+///    device the till does not know yet, per address.
+/// 2. **A waiter session**, from that person's name and PIN on that device,
+///    matched as the till's own lock screen matches them. Every edit is made
+///    as, and checked against, the signed-in person.
 ///
 /// Everything about the money — prices, tax, rounds, the version check that
 /// stops two devices overwriting one table — is the backend's, which is the
@@ -28,7 +34,6 @@ class WaiterLinkServer {
     required this.backend,
     DateTime Function()? clock,
     Random? random,
-    this.pairingLifetime = const Duration(minutes: 10),
     this.sessionIdle = const Duration(hours: 12),
     this.maxFailures = 5,
     this.lockout = const Duration(minutes: 1),
@@ -38,34 +43,12 @@ class WaiterLinkServer {
   final WaiterLinkBackend backend;
   final DateTime Function() _clock;
   final Random _random;
-  final Duration pairingLifetime;
   final Duration sessionIdle;
   final int maxFailures;
   final Duration lockout;
 
-  _PairingCode? _pairing;
   final _sessions = <String, _Session>{};
   final _failures = <String, _Failures>{};
-
-  // ---------------------------------------------------------------- pairing
-
-  /// A fresh six-digit code for the till's screen. Replaces any earlier one:
-  /// there is only ever one code a handheld can use.
-  PairingCode openPairing() {
-    final code = List.generate(6, (_) => _random.nextInt(10)).join();
-    final expires = _clock().add(pairingLifetime);
-    _pairing = _PairingCode(code, expires);
-    return PairingCode(code, expires);
-  }
-
-  /// The code the till is showing, if it is still good.
-  PairingCode? get currentPairing {
-    final p = _pairing;
-    if (p == null || !_clock().isBefore(p.expires)) return null;
-    return PairingCode(p.code, p.expires);
-  }
-
-  void closePairing() => _pairing = null;
 
   /// Sign every session of [deviceId] out — the till revoked the device.
   void forgetDevice(int deviceId) =>
@@ -108,15 +91,14 @@ class WaiterLinkServer {
     if (method == 'GET' && _is(path, ['hello'])) {
       return _Reply(HttpStatus.ok, {'wire': waiterWireVersion, 'name': await backend.tillName()});
     }
-    if (method == 'POST' && _is(path, ['pair'])) return _pair(request);
+    // Sign-in is the one call a device the till does not know yet may make.
+    if (method == 'POST' && _is(path, ['sign-in'])) return _signIn(request);
 
-    // Everything below needs a paired, unrevoked device.
+    // Everything below needs a registered, unrevoked device.
     final device = await _device(request);
     if (device is _Reply) return device;
     final paired = device as WaiterDeviceRecord;
     unawaited(backend.touchDevice(paired.id).catchError((_) {}));
-
-    if (method == 'POST' && _is(path, ['sign-in'])) return _signIn(request, paired);
     if (method == 'POST' && _is(path, ['sign-out'])) {
       final token = request.headers.value(sessionHeader);
       if (token != null) _sessions.remove(token);
@@ -151,34 +133,13 @@ class WaiterLinkServer {
     return _Reply(HttpStatus.notFound, _error(WaiterError.notFound));
   }
 
-  Future<_Reply> _pair(HttpRequest request) async {
-    final key = 'pair:${request.connectionInfo?.remoteAddress.address ?? '?'}';
-    if (_lockedOut(key)) {
-      return _Reply(HttpStatus.tooManyRequests, _error(WaiterError.tooManyAttempts));
-    }
-    final body = await _json(request);
-    final code = body['code'];
-    final name = body['device_name'];
-    final p = _pairing;
-    final good =
-        p != null && _clock().isBefore(p.expires) && code is String && code == p.code;
-    if (!good) {
-      _fail(key);
-      return _Reply(HttpStatus.forbidden, _error(WaiterError.badPairingCode));
-    }
-    _pairing = null; // one code, one device
-    _failures.remove(key);
-    final paired = await backend.registerDevice(
-      name is String && name.trim().isNotEmpty ? name.trim() : 'Waiter device',
-    );
-    return _Reply(HttpStatus.ok, {'device_token': paired.token, 'device_id': paired.id});
-  }
-
-  Future<Object> _device(HttpRequest request) async {
+  /// The device behind the request's token: the record, a refusal, or null
+  /// when the request carries no token at all.
+  Future<Object?> _device(HttpRequest request, {bool required = true}) async {
     final header = request.headers.value(HttpHeaders.authorizationHeader) ?? '';
     const scheme = 'Device ';
     if (!header.startsWith(scheme)) {
-      return _Reply(HttpStatus.unauthorized, _error(WaiterError.unpaired));
+      return required ? _Reply(HttpStatus.unauthorized, _error(WaiterError.unpaired)) : null;
     }
     final record = await backend.authenticate(header.substring(scheme.length).trim());
     if (record == null) return _Reply(HttpStatus.unauthorized, _error(WaiterError.unpaired));
@@ -189,14 +150,27 @@ class WaiterLinkServer {
     return record;
   }
 
-  Future<_Reply> _signIn(HttpRequest request, WaiterDeviceRecord device) async {
-    final key = 'pin:${device.id}';
+  /// Name and PIN open a session. A request with no device token is a
+  /// handheld the till has not met: once the person is accepted, the till
+  /// registers the device under the name the handheld gives itself and hands
+  /// the token back with the session. A known token is used as it is; an
+  /// unknown or revoked one is refused, so a revoked phone must sign in afresh
+  /// — and shows up on the till as a new device, where it can be revoked again.
+  Future<_Reply> _signIn(HttpRequest request) async {
+    final known = await _device(request, required: false);
+    if (known is _Reply) return known;
+    final device = known as WaiterDeviceRecord?;
+
+    final key = 'pin:${device?.id ?? 'ip:${request.connectionInfo?.remoteAddress.address ?? '?'}'}';
     if (_lockedOut(key)) {
       return _Reply(HttpStatus.tooManyRequests, _error(WaiterError.tooManyAttempts));
     }
     final body = await _json(request);
+    final username = body['username'];
     final pin = body['pin'];
-    final staff = pin is String && pin.isNotEmpty ? await backend.signIn(pin) : null;
+    final staff = username is String && username.trim().isNotEmpty && pin is String && pin.isNotEmpty
+        ? await backend.signIn(username: username.trim(), pin: pin)
+        : null;
     if (staff == null) {
       _fail(key);
       return _Reply(HttpStatus.forbidden, _error(WaiterError.wrongPin));
@@ -208,9 +182,24 @@ class WaiterLinkServer {
       );
     }
     _failures.remove(key);
+
+    var deviceId = device?.id;
+    String? deviceToken;
+    if (deviceId == null) {
+      final name = body['device_name'];
+      final registered = await backend.registerDevice(
+        name is String && name.trim().isNotEmpty ? name.trim() : 'Waiter device',
+      );
+      deviceId = registered.id;
+      deviceToken = registered.token;
+    }
+
     final token = _token();
-    _sessions[token] = _Session(staff, device.id, _clock());
-    return _Reply(HttpStatus.ok, WaiterSession(token: token, staff: staff).toJson());
+    _sessions[token] = _Session(staff, deviceId, _clock());
+    return _Reply(
+      HttpStatus.ok,
+      WaiterSession(token: token, staff: staff, deviceToken: deviceToken).toJson(),
+    );
   }
 
   _Session? _session(HttpRequest request, WaiterDeviceRecord device) {
@@ -322,18 +311,6 @@ abstract final class WaiterCapability {
   static const cancelLine = 'order.item.delete_before_send';
 }
 
-class PairingCode {
-  const PairingCode(this.code, this.expires);
-  final String code;
-  final DateTime expires;
-}
-
-class _PairingCode {
-  _PairingCode(this.code, this.expires);
-  final String code;
-  final DateTime expires;
-}
-
 class _Session {
   _Session(this.staff, this.deviceId, this.lastUsed);
   final WaiterStaff staff;
@@ -355,7 +332,7 @@ class _Reply {
 // ---------------------------------------------------------------------------
 // What the till implements.
 
-/// A paired handheld, as the till stores it.
+/// A registered handheld, as the till stores it.
 class WaiterDeviceRecord {
   const WaiterDeviceRecord({
     required this.id,
@@ -371,7 +348,7 @@ class WaiterDeviceRecord {
   final DateTime? lastSeenAt;
 }
 
-/// A device just paired, with the token it alone will ever see.
+/// A device just registered, with the token it alone will ever see.
 class WaiterPairedDevice {
   const WaiterPairedDevice({required this.id, required this.token});
   final int id;
@@ -426,8 +403,10 @@ abstract interface class WaiterLinkBackend {
 
   Future<void> touchDevice(int id);
 
-  /// Whoever holds [pin], as the till's own lock screen would find them.
-  Future<WaiterStaff?> signIn(String pin);
+  /// The person [username] names, if [pin] is theirs — matched together, as
+  /// the till's own lock screen matches them; null otherwise, with nothing
+  /// said about which of the two was wrong.
+  Future<WaiterStaff?> signIn({required String username, required String pin});
 
   Future<WaiterMenu> menu();
 

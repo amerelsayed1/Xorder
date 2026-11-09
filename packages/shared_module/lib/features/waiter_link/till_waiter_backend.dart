@@ -86,13 +86,13 @@ class TillWaiterBackend implements WaiterLinkBackend {
     required this._catalog,
     required this._tables,
     required this._taxConfig,
-    required Future<PosStaff?> Function(String pin) signInWithPin,
+    required Future<PosStaff?> Function({required String username, required String pin}) signInAs,
     required this.checks,
     required this.devices,
     this.onSaved,
     String Function()? newTicketId,
     DateTime Function()? clock,
-  }) : _signIn = signInWithPin,
+  }) : _signIn = signInAs,
        _newId = newTicketId ?? const Uuid().v4,
        _clock = clock ?? DateTime.now;
 
@@ -100,7 +100,7 @@ class TillWaiterBackend implements WaiterLinkBackend {
   final Future<Catalog> Function() _catalog;
   final Future<List<DiningTable>> Function() _tables;
   final TaxConfig Function() _taxConfig;
-  final Future<PosStaff?> Function(String pin) _signIn;
+  final Future<PosStaff?> Function({required String username, required String pin}) _signIn;
   final WaiterCheckStore checks;
   final WaiterDeviceStore devices;
 
@@ -147,8 +147,8 @@ class TillWaiterBackend implements WaiterLinkBackend {
   Future<void> touchDevice(int id) => devices.touch(id);
 
   @override
-  Future<WaiterStaff?> signIn(String pin) async {
-    final staff = await _signIn(pin);
+  Future<WaiterStaff?> signIn({required String username, required String pin}) async {
+    final staff = await _signIn(username: username, pin: pin);
     if (staff == null || !staff.isActive) return null;
     return WaiterStaff(
       id: staff.id,

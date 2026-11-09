@@ -1984,8 +1984,7 @@ sealed class AppStrings {
   String get waiterLinkTurnOn;
   String get waiterLinkTurnOff;
   String get waiterLinkAddress;
-  String get waiterPairDevice;
-  String get waiterPairingCodeHelp;
+  String get waiterSignInHelp;
   String get waiterDevicesNone;
   String get waiterDeviceRevoke;
   String get waiterDeviceRevoked;
@@ -7597,7 +7596,7 @@ final class EnStrings extends AppStrings {
   String get waiterDevicesTitle => 'Waiter devices';
   @override
   String get waiterDevicesIntro =>
-      'Waiters take table orders on a phone or tablet paired with this till. '
+      'Waiters take table orders on a phone or tablet that signs in to this till. '
       'The till prices every order and keeps the tables; the handheld never '
       'takes payment.';
   @override
@@ -7615,13 +7614,11 @@ final class EnStrings extends AppStrings {
   @override
   String get waiterLinkAddress => 'Till address';
   @override
-  String get waiterPairDevice => 'Pair a device';
+  String get waiterSignInHelp =>
+      'On the handheld, enter this address, then a waiter\'s name and PIN. The '
+      'first sign-in registers the phone here; remove any you do not recognise.';
   @override
-  String get waiterPairingCodeHelp =>
-      'Enter this code and the till address on the handheld. It works once, '
-      'for ten minutes.';
-  @override
-  String get waiterDevicesNone => 'No devices paired yet.';
+  String get waiterDevicesNone => 'No devices have signed in yet.';
   @override
   String get waiterDeviceRevoke => 'Revoke';
   @override
@@ -13091,7 +13088,7 @@ final class ArStrings extends AppStrings {
   String get waiterDevicesTitle => 'أجهزة الويتر';
   @override
   String get waiterDevicesIntro =>
-      'يأخذ الويتر طلبات الطاولات على هاتف أو تابلت مقترن بهذا الجهاز. '
+      'يأخذ الويتر طلبات الطاولات على هاتف أو تابلت يسجّل الدخول إلى هذا الجهاز. '
       'الجهاز يسعّر كل طلب ويحتفظ بالطاولات، والجهاز المحمول لا يستلم أي دفع.';
   @override
   String get waiterDevicesUnavailable =>
@@ -13107,12 +13104,11 @@ final class ArStrings extends AppStrings {
   @override
   String get waiterLinkAddress => 'عنوان الجهاز';
   @override
-  String get waiterPairDevice => 'إقران جهاز';
+  String get waiterSignInHelp =>
+      'على الجهاز المحمول أدخل هذا العنوان ثم اسم الويتر ورقمه السري. أول تسجيل دخول '
+      'يسجّل الهاتف هنا؛ احذف أي جهاز لا تعرفه.';
   @override
-  String get waiterPairingCodeHelp =>
-      'أدخل هذا الرمز وعنوان الجهاز على الجهاز المحمول. يعمل مرة واحدة لمدة عشر دقائق.';
-  @override
-  String get waiterDevicesNone => 'لا توجد أجهزة مقترنة بعد.';
+  String get waiterDevicesNone => 'لم يسجّل أي جهاز الدخول بعد.';
   @override
   String get waiterDeviceRevoke => 'إلغاء';
   @override

@@ -6,60 +6,87 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 
-/// What this handheld remembers between launches: which till, and the token
-/// that till gave it. Nothing else — no PIN, no session, no money.
-class Pairing {
-  const Pairing({required this.address, required this.token, required this.tillName});
+import 'mode.dart';
 
-  final String address;
-  final String token;
-  final String tillName;
+/// What this handheld remembers between launches: where it signs in (the
+/// till's address, or the restaurant's slug), the last name signed in, and
+/// the device token the server gave it on its first sign-in. Never a PIN,
+/// never a session.
+class SavedConnection {
+  const SavedConnection({required this.target, this.username = '', this.deviceToken, this.serverName = ''});
 
-  Map<String, Object?> toJson() => {'address': address, 'token': token, 'till_name': tillName};
+  /// `192.168.1.20:8787` in the offline flavor, `demo` in the cloud flavor.
+  final String target;
+  final String username;
+  final String? deviceToken;
 
-  static Pairing? fromJson(Object? json) {
+  /// What the server calls itself ("Main till — Maadi"), for the sign-in screen.
+  final String serverName;
+
+  SavedConnection copyWith({String? target, String? username, String? deviceToken, bool clearToken = false, String? serverName}) =>
+      SavedConnection(
+        target: target ?? this.target,
+        username: username ?? this.username,
+        deviceToken: clearToken ? null : (deviceToken ?? this.deviceToken),
+        serverName: serverName ?? this.serverName,
+      );
+
+  Map<String, Object?> toJson() => {
+    'target': target,
+    'username': username,
+    'device_token': ?deviceToken,
+    'server_name': serverName,
+  };
+
+  static SavedConnection? fromJson(Object? json) {
     if (json is! Map) return null;
-    final address = json['address'], token = json['token'];
-    if (address is! String || token is! String || address.isEmpty || token.isEmpty) return null;
-    final name = json['till_name'];
-    return Pairing(address: address, token: token, tillName: name is String ? name : address);
+    final target = json['target'];
+    if (target is! String || target.isEmpty) return null;
+    final username = json['username'], token = json['device_token'], name = json['server_name'];
+    return SavedConnection(
+      target: target,
+      username: username is String ? username : '',
+      deviceToken: token is String && token.isNotEmpty ? token : null,
+      serverName: name is String ? name : '',
+    );
   }
 }
 
-/// Where the pairing is kept.
+/// Where the connection is kept.
 ///
 /// A file in the app's private support folder. **Known gap (WA1):** not the OS
 /// keystore yet — a rooted or jailbroken device could read the token. The
-/// token only opens the PIN screen (every order still needs a waiter's PIN),
-/// and the till revokes it in one tap; moving it to Keystore/Keychain needs a
-/// new plugin and is listed in TECHNICAL as the next step.
-abstract interface class PairingStore {
-  Future<Pairing?> load();
-  Future<void> save(Pairing pairing);
+/// token only identifies the device (every order still needs a waiter's name
+/// and PIN), and the till revokes it in one tap; moving it to
+/// Keystore/Keychain needs a new plugin and is listed in TECHNICAL as the
+/// next step.
+abstract interface class ConnectionStore {
+  Future<SavedConnection?> load();
+  Future<void> save(SavedConnection connection);
   Future<void> clear();
 }
 
-class FilePairingStore implements PairingStore {
-  const FilePairingStore();
+class FileConnectionStore implements ConnectionStore {
+  const FileConnectionStore();
 
-  Future<File> _file() async => File('${(await getApplicationSupportDirectory()).path}/waiter_pairing.json');
+  Future<File> _file() async => File('${(await getApplicationSupportDirectory()).path}/waiter_connection.json');
 
   @override
-  Future<Pairing?> load() async {
+  Future<SavedConnection?> load() async {
     try {
       final file = await _file();
       if (!await file.exists()) return null;
-      return Pairing.fromJson(jsonDecode(await file.readAsString()));
+      return SavedConnection.fromJson(jsonDecode(await file.readAsString()));
     } on Object {
       return null;
     }
   }
 
   @override
-  Future<void> save(Pairing pairing) async {
+  Future<void> save(SavedConnection connection) async {
     final file = await _file();
     await file.parent.create(recursive: true);
-    await file.writeAsString(jsonEncode(pairing.toJson()), flush: true);
+    await file.writeAsString(jsonEncode(connection.toJson()), flush: true);
   }
 
   @override
@@ -72,23 +99,34 @@ class FilePairingStore implements PairingStore {
   }
 }
 
-final pairingStoreProvider = Provider<PairingStore>((_) => const FilePairingStore());
+final connectionStoreProvider = Provider<ConnectionStore>((_) => const FileConnectionStore());
 
-/// How a client is made for an address. Tests swap in a fake.
-typedef ClientFactory = WaiterLinkClient Function(Uri baseUri, String? deviceToken);
+/// How a client is made for a target in this mode. Tests swap in a fake.
+typedef ClientFactory = WaiterClient Function(WaiterMode mode, String target, String? deviceToken);
 
-final clientFactoryProvider = Provider<ClientFactory>(
-  (_) => (uri, token) => WaiterLinkClient(baseUri: uri, deviceToken: token),
-);
+/// The real one: the LAN link to a till, or the same wire served by the
+/// platform at the restaurant's subdomain (POS-BE-033).
+WaiterClient defaultClientFactory(WaiterMode mode, String target, String? deviceToken) => switch (mode) {
+  WaiterMode.offline => WaiterLinkClient(baseUri: WaiterLinkClient.addressToUri(target), deviceToken: deviceToken),
+  WaiterMode.cloud => WaiterLinkClient(
+    baseUri: Uri.https('${target.trim().toLowerCase()}.$cloudDomain', '/api/pos/waiter'),
+    deviceToken: deviceToken,
+  ),
+};
+
+final clientFactoryProvider = Provider<ClientFactory>((_) => defaultClientFactory);
+
+/// How this handheld names itself to the server on its first sign-in.
+String defaultDeviceName(String username) {
+  final kind = Platform.isIOS ? 'iPhone' : (Platform.isAndroid ? 'Android' : Platform.operatingSystem);
+  return '$username · $kind';
+}
 
 enum WaiterPhase {
-  /// Reading the saved pairing.
+  /// Reading the saved connection.
   loading,
 
-  /// Not paired with a till: show the pairing screen.
-  unpaired,
-
-  /// Paired, nobody signed in: show the PIN screen.
+  /// Nobody signed in: the sign-in screen, prefilled with what is remembered.
   signedOut,
 
   /// A waiter is signed in: the floor and checks.
@@ -98,37 +136,38 @@ enum WaiterPhase {
 class WaiterAppState {
   const WaiterAppState({
     this.phase = WaiterPhase.loading,
-    this.pairing,
+    this.connection,
     this.staff,
     this.locale = const Locale('ar'),
   });
 
   final WaiterPhase phase;
-  final Pairing? pairing;
+  final SavedConnection? connection;
   final WaiterStaff? staff;
   final Locale locale;
 
   WaiterAppState copyWith({
     WaiterPhase? phase,
-    Pairing? pairing,
-    bool clearPairing = false,
+    SavedConnection? connection,
+    bool clearConnection = false,
     WaiterStaff? staff,
     bool clearStaff = false,
     Locale? locale,
   }) => WaiterAppState(
     phase: phase ?? this.phase,
-    pairing: clearPairing ? null : (pairing ?? this.pairing),
+    connection: clearConnection ? null : (connection ?? this.connection),
     staff: clearStaff ? null : (staff ?? this.staff),
     locale: locale ?? this.locale,
   );
 }
 
-/// The handheld's one piece of app state: paired or not, who is signed in.
+/// The handheld's one piece of app state: where it signs in, who is signed in.
 class WaiterApp extends Notifier<WaiterAppState> {
-  WaiterLinkClient? _client;
+  WaiterClient? _client;
+  String? _clientTarget;
 
-  /// The client for the paired till. Only valid while paired.
-  WaiterLinkClient get client => _client!;
+  /// The client for the signed-in server. Only valid while signed in.
+  WaiterClient get client => _client!;
 
   @override
   WaiterAppState build() {
@@ -138,45 +177,44 @@ class WaiterApp extends Notifier<WaiterAppState> {
   }
 
   Future<void> _restore() async {
-    final pairing = await ref.read(pairingStoreProvider).load();
-    if (pairing == null) {
-      state = state.copyWith(phase: WaiterPhase.unpaired);
-      return;
-    }
-    _client = ref.read(clientFactoryProvider)(WaiterLinkClient.addressToUri(pairing.address), pairing.token);
-    state = state.copyWith(phase: WaiterPhase.signedOut, pairing: pairing);
+    final saved = await ref.read(connectionStoreProvider).load();
+    state = state.copyWith(phase: WaiterPhase.signedOut, connection: saved);
   }
 
   void toggleLanguage() => state = state.copyWith(
     locale: state.locale.languageCode == 'ar' ? const Locale('en') : const Locale('ar'),
   );
 
-  /// Pair with the till at [address] using the code it shows. Throws
-  /// [WaiterLinkFailure] for the screen to word.
-  Future<void> pair({required String address, required String code, required String deviceName}) async {
-    final uri = WaiterLinkClient.addressToUri(address);
-    final client = ref.read(clientFactoryProvider)(uri, null);
-    try {
-      final tillName = await client.hello();
-      final token = await client.pair(code: code, deviceName: deviceName);
-      final pairing = Pairing(
-        address: '${uri.host}:${uri.port}',
-        token: token,
-        tillName: tillName.isEmpty ? uri.host : tillName,
-      );
-      await ref.read(pairingStoreProvider).save(pairing);
-      _client?.close();
-      _client = client;
-      state = state.copyWith(phase: WaiterPhase.signedOut, pairing: pairing);
-    } on Object {
-      client.close();
-      rethrow;
-    }
-  }
+  /// Sign in at [target] as [username] with [pin]. The first sign-in from
+  /// this phone registers it there; the token that comes back is kept so the
+  /// next sign-in is the same device. Throws [WaiterLinkFailure] for the
+  /// screen to word.
+  Future<void> signIn({required String target, required String username, required String pin}) async {
+    final mode = ref.read(waiterModeProvider);
+    final cleanTarget = target.trim();
+    final saved = state.connection;
+    final sameTarget = saved != null && saved.target == cleanTarget;
+    final token = sameTarget ? saved.deviceToken : null;
 
-  Future<void> signIn(String pin) async {
-    final session = await client.signIn(pin);
-    state = state.copyWith(phase: WaiterPhase.signedIn, staff: session.staff);
+    if (_client == null || _clientTarget != cleanTarget) {
+      _client?.close();
+      _client = ref.read(clientFactoryProvider)(mode, cleanTarget, token);
+      _clientTarget = cleanTarget;
+    }
+    final client = _client!;
+    client.deviceToken = token;
+
+    final serverName = sameTarget && saved.serverName.isNotEmpty ? saved.serverName : await client.hello();
+    final session = await client.signIn(username: username.trim(), pin: pin, deviceName: defaultDeviceName(username.trim()));
+
+    final connection = SavedConnection(
+      target: cleanTarget,
+      username: username.trim(),
+      deviceToken: client.deviceToken,
+      serverName: serverName,
+    );
+    await ref.read(connectionStoreProvider).save(connection);
+    state = state.copyWith(phase: WaiterPhase.signedIn, connection: connection, staff: session.staff);
   }
 
   Future<void> signOut() async {
@@ -184,12 +222,14 @@ class WaiterApp extends Notifier<WaiterAppState> {
     state = state.copyWith(phase: WaiterPhase.signedOut, clearStaff: true);
   }
 
-  Future<void> unpair() async {
+  /// Forget where this phone signs in (and its device token there).
+  Future<void> forget() async {
     await _client?.signOut();
     _client?.close();
     _client = null;
-    await ref.read(pairingStoreProvider).clear();
-    state = state.copyWith(phase: WaiterPhase.unpaired, clearPairing: true, clearStaff: true);
+    _clientTarget = null;
+    await ref.read(connectionStoreProvider).clear();
+    state = state.copyWith(phase: WaiterPhase.signedOut, clearConnection: true, clearStaff: true);
   }
 
   /// What a failure means for where the app should be. Returns true when it
@@ -198,10 +238,12 @@ class WaiterApp extends Notifier<WaiterAppState> {
     if (error is! WaiterLinkFailure) return false;
     switch (error.code) {
       case WaiterError.unpaired || WaiterError.revoked:
-        _client?.close();
-        _client = null;
-        await ref.read(pairingStoreProvider).clear();
-        state = state.copyWith(phase: WaiterPhase.unpaired, clearPairing: true, clearStaff: true);
+        // The server no longer knows this device: the next sign-in registers
+        // it afresh. Target and name are kept; only the token is dropped.
+        _client?.deviceToken = null;
+        final saved = state.connection?.copyWith(clearToken: true);
+        if (saved != null) await ref.read(connectionStoreProvider).save(saved);
+        state = state.copyWith(phase: WaiterPhase.signedOut, connection: saved, clearStaff: true);
         return true;
       case WaiterError.signInRequired:
         state = state.copyWith(phase: WaiterPhase.signedOut, clearStaff: true);

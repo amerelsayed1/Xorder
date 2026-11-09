@@ -36,13 +36,13 @@ void main() {
       catalog: () async => _catalog,
       tables: () async => _tables,
       taxConfig: () => const TaxConfig(),
-      signInWithPin: (pin) async => switch (pin) {
-        '1111' => const PosStaff(
+      signInAs: ({required username, required pin}) async => switch ((username, pin)) {
+        ('mona', '1111') => const PosStaff(
           id: 7,
           name: 'Mona',
           capabilities: {PosCapability.operate, PosCapability.orderItemCancel},
         ),
-        '3333' => const PosStaff(id: 9, name: 'Gone', isActive: false, capabilities: {PosCapability.operate}),
+        ('gone', '3333') => const PosStaff(id: 9, name: 'Gone', isActive: false, capabilities: {PosCapability.operate}),
         _ => null,
       },
       checks: checks,
@@ -78,12 +78,12 @@ void main() {
     });
 
     test('signing in gives the person and what the handheld may show them', () async {
-      final staff = await backend.signIn('1111');
+      final staff = await backend.signIn(username: 'mona', pin: '1111');
       expect(staff!.name, 'Mona');
       expect(staff.can(PosCapability.orderItemCancel), isTrue);
       expect(staff.can(PosCapability.priceOverride), isFalse);
-      expect(await backend.signIn('3333'), isNull, reason: 'an inactive person cannot sign in');
-      expect(await backend.signIn('0000'), isNull);
+      expect(await backend.signIn(username: 'gone', pin: '3333'), isNull, reason: 'an inactive person cannot sign in');
+      expect(await backend.signIn(username: 'mona', pin: '0000'), isNull);
     });
 
     test('the floor shows open checks with their totals', () async {

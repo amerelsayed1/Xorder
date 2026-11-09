@@ -22,7 +22,7 @@ the one `pubspec.lock`. **One codebase, two apps, one mode each** (plan: the wor
 | `apps/xorder_pos_cloud/` | **XOrder POS - Cloud**: `main.dart` + `wiring.dart`, platforms, the cloud sync (`lib/data/cloud/`: outbox drain, `cloud_sync`, bootstrap, provisioning), the encrypted SQLite datastore (`lib/data/local/`), the dashboard signpost, `integration_test/` |
 | `packages/xorder_pos_test_support/` | Fakes, fonts, the PostgreSQL fixture — a dev dependency of every member's tests |
 | `packages/xorder_waiter_link/` | The waiter handheld ↔ till LAN link (waiter-app): wire, client, server. Pure Dart, no dependencies |
-| `apps/xorder_pos_waiter/` | **XOrder Waiter**: the handheld app (Android/iOS). Depends on the link package only, never on `shared_module`; the till serves it from `lib/features/waiter_link/`. Design: `docs/pos/21-waiter-handheld-design.md` |
+| `apps/xorder_pos_waiter/` | **XOrder Waiter**: the handheld app (Android/iOS), **two flavors from one codebase** — `lib/main_offline.dart` signs in to the till on the LAN (address · name · PIN), `lib/main_cloud.dart` to `{slug}.xorder.io` (POS-BE-033, platform half not built). Depends on the link package only, never on `shared_module`; the till serves it from `lib/features/waiter_link/`. Design: `docs/pos/21-waiter-handheld-design.md` |
 
 The apps fix the mode in `runPos(mode:, overrides:)` and bind their own code over shared
 providers (`cloudSyncProvider`, `provisioningRepositoryProvider`, `bootstrapSeedingProvider`,

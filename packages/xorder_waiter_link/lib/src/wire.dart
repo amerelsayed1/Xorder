@@ -140,18 +140,31 @@ class WaiterStaff {
 }
 
 /// A signed-in waiter: who, and the session the till gave them.
+///
+/// [deviceToken] rides along the first time a handheld signs in: the till
+/// registered it as a device on that sign-in and this is the token it keeps
+/// for every later request (WA3: sign-in registers, there is no pairing code).
 class WaiterSession {
-  const WaiterSession({required this.token, required this.staff});
+  const WaiterSession({required this.token, required this.staff, this.deviceToken});
   final String token;
   final WaiterStaff staff;
+  final String? deviceToken;
 
-  Map<String, Object?> toJson() => {'session': token, 'staff': staff.toJson()};
+  Map<String, Object?> toJson() => {
+    'session': token,
+    'staff': staff.toJson(),
+    'device_token': ?deviceToken,
+  };
 
   factory WaiterSession.fromJson(Object? json) {
     final m = _map(json, 'session');
     final token = _str(m['session']);
     if (token.isEmpty) throw const WaiterWireError('session has no token');
-    return WaiterSession(token: token, staff: WaiterStaff.fromJson(m['staff']));
+    return WaiterSession(
+      token: token,
+      staff: WaiterStaff.fromJson(m['staff']),
+      deviceToken: _strOrNull(m['device_token']),
+    );
   }
 }
 
@@ -677,14 +690,11 @@ class WaiterSendRound extends WaiterOp {
 // own language rather than showing the till's.
 
 abstract final class WaiterError {
-  /// No or unknown device token: pair again.
+  /// No or unknown device token: sign in again, which registers the device.
   static const unpaired = 'UNPAIRED';
 
   /// This device was revoked on the till.
   static const revoked = 'DEVICE_REVOKED';
-
-  /// The pairing code is wrong, used or expired.
-  static const badPairingCode = 'PAIRING_CODE_INVALID';
 
   /// No or expired waiter session: sign in again with the PIN.
   static const signInRequired = 'SIGN_IN_REQUIRED';

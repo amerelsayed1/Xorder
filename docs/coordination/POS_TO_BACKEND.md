@@ -116,6 +116,7 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 | POS-BE-029 | Branch view on a cloud till (own branch, per-terminal) | MEDIUM | NO | PROPOSED |
 | POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | **READY** (platform half; till half built, not merged) |
 | **POS-BE-031** | **Online, dashboard-managed licence check (`/license/check`)** | **HIGH** | **NO** | APPROVED (2026-10-07) |
+| **POS-BE-033** | **The waiter wire served by the platform (XOrder Waiter – Cloud flavor)** | **HIGH** | **YES** | PROPOSED (2026-11-09) |
 | *Amd 006* | *Bilingual name snapshot on the wire (`name_ar_snapshot`)* | MEDIUM | NO | PROPOSED (see revision) |
 
 Three of the entries above are **amendments rather than new surface**:
@@ -2273,10 +2274,94 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 
 ---
 
+## POS-BE-033 — The waiter wire served by the platform (XOrder Waiter – Cloud flavor)
+
+**Status:** PROPOSED 2026-11-09 (owner decision: two flavors of the handheld, cloud
+and offline, the mode fixed per build; the cloud flavor signs in with slug, name
+and PIN). Till-side code: the handheld is built and tested against a fake; nothing
+on the platform exists yet.
+
+### What the handheld is, in one paragraph
+
+`apps/xorder_pos_waiter` is a phone app for floor staff: the floor, a table's
+check, add lines, send a round to the kitchen. In the **offline flavor** it talks
+to the till on the LAN over the waiter wire (`packages/xorder_waiter_link`,
+wire v1), and the till prices everything with its `TicketEngine`. In the
+**cloud flavor** there is no till on the LAN to talk to: the restaurant is on
+xorder.io (QR ordering, table management) and the platform holds its tables,
+visits and order rounds. The ask is that **the platform serves the same wire**
+at the restaurant's subdomain, so the handheld's screens, strings and tests are
+one codebase and the only difference between the flavors is the sign-in screen
+and the base URL.
+
+### Base URL and auth
+
+- Base: `https://{slug}.xorder.io/api/pos/waiter` — the handheld appends
+  `/v1/<call>`. The slug is what the waiter types in the "Restaurant" field.
+- A device token in `Authorization: Device <token>` on every call after sign-in;
+  a waiter session in `X-Waiter-Session` after sign-in. Both are opaque strings
+  the platform issues. Sessions idle out after 12 h.
+- No dashboard password ever reaches the phone.
+
+### Calls (wire v1, as the till serves them today)
+
+| Call | Body / reply |
+|---|---|
+| `GET /v1/hello` | `{wire: 1, name: "<restaurant name>"}` — no auth |
+| `POST /v1/sign-in` | `{username, pin, device_name}` (+ `Authorization: Device` when the phone has a token) → `{session, staff: {id, name, capabilities[]}, device_token?}`. **`device_token` is returned only when the request carried none: the platform registers the phone under `device_name` and the handheld keeps the token.** PIN is the POS PIN of POS-BE-024 (PBKDF2, already on `users`); `username` is the staff username. Both matched together; one error for both wrong. Five failures per device (or per IP for an unknown device) → `TOO_MANY_ATTEMPTS` for a minute. Requires the tenant capability `pos.operate`. |
+| `POST /v1/sign-out` | drops the session |
+| `GET /v1/menu` | the public menu shape mapped to `WaiterMenu`: categories, products with `price_minor`, modifier groups (`min_select`, `max_select`, `is_variant`, modifiers with `delta_minor`, `available`, `is_default`). Combos and open-price items left out, as the till does. |
+| `GET /v1/floor` | every active table: `{id, label, area, seats, state: free|open|bill_asked, total_minor, items, guests}`. `open` = an open table visit with a NEW order; `bill_asked` = an open bill request. |
+| `GET /v1/tables/{id}/check` | the visit's running order as a `WaiterCheck`: lines with `stage: draft|sent|voided`, `round`, `version`; totals. |
+| `POST /v1/tables/{id}/ops` | `{version, ops[]}` — `add`, `qty`, `remove`, `note`, `guests`, `send_round` — applied all or none; reply is the priced check; `409 CHECK_CHANGED` with the current check when `version` is stale. |
+
+Error codes are the wire's (`UNPAIRED`, `DEVICE_REVOKED`, `SIGN_IN_REQUIRED`,
+`PIN_WRONG`, `TOO_MANY_ATTEMPTS`, `NOT_PERMITTED`, `CHECK_CHANGED`, `REFUSED`
++ `reason`, `NOT_FOUND`, `TILL_UNAVAILABLE`, `VERSION_MISMATCH`), as
+`packages/xorder_waiter_link/lib/src/wire.dart` lists them.
+
+### What the platform has to add (the cloud half)
+
+1. **A draft round on a table visit.** Today an order round exists only once
+   submitted. The wire's `draft` lines ("not sent yet", editable) need a place:
+   either an unsent round per visit the ops edit, or a per-device draft the
+   platform keeps until `send_round`. Recommendation: one unsent round per
+   visit, shared by every device at the table, which is what the till does.
+2. **Server-side pricing of lines**, from the menu's own prices and modifier
+   deltas. The public QR path trusts the client's `line_total` today; the
+   wire sends no price at all, so the platform must compute it. This is the
+   change that also closes the QR path's pricing gap if it is done once in a
+   service both use.
+3. **A `version` on the visit's order**, bumped on every write, for the
+   compare-and-swap the wire relies on (the till's XORD-044).
+4. **Device registration and revocation** for waiter phones: a `pos_waiter_devices`
+   equivalent per restaurant, listed and revocable in the dashboard's Staff
+   or POS devices page, token stored hashed.
+5. **A served mark per round** (`order_rounds.served_at/served_by`) is wanted by
+   the floor but is not part of this contract; it rides on the existing
+   `docs/FUTURE_PLAN.md` F2 item in `xorder-cloud`.
+
+### Rule that decides which flavor a restaurant uses
+
+A restaurant with the `pos` feature uses the **offline** flavor against its till:
+the till owns the open check, and a second writer in the cloud would make two
+truths for one table. A restaurant without a till uses the **cloud** flavor.
+Neither flavor shows a mode choice; the licence and the plan decide which app
+the restaurant is given.
+
+### Open questions for the platform
+
+- Does a waiter's session count against anything (seats, plan limits)?
+- Should the dashboard's Live board show "which waiter" on a round? The wire
+  carries `staff.id`; the platform can stamp it on the round.
+- Kitchen notification on `send_round`: the same push the QR order uses, or none
+  until kitchen steps (F1) exist?
+
 ## Change log
 
 | Date | Change |
 |---|---|
+| 2026-11-09 | **POS-BE-033 raised: the waiter wire served by the platform**, for the cloud flavor of XOrder Waiter (owner decision: two flavors, mode fixed per build; sign-in with slug, name and PIN). The handheld is built against a fake; the platform half is the proposal above. Nothing on the platform touched. |
 | 2026-08-25 | Initial request set POS-BE-001 … POS-BE-014 raised by Agent 1 as `PROPOSED`. No backend code touched. |
 | 2026-08-26 | POS-BE-015 … POS-BE-018 raised for licensing and on-premises deployment. Client-side deployment modes, licensing and the setup wizard are built and tested against fakes; no backend code touched. |
 | 2026-08-26 | Replies to `BACKEND_TO_POS.md` (A1–A7, BE-A01–BE-A05) recorded. POS-BE-019 … POS-BE-021 raised: error taxonomy, server time, bulk drain. No backend code touched. |

@@ -94,7 +94,7 @@ void main() {
     return container;
   }
 
-  test('a handheld pairs, signs in, seats a table and sends a round the till sees', () async {
+  test('a handheld signs in, is registered, seats a table and sends a round the till sees', () async {
     final c = await till();
     final host = c.read(waiterLinkHostProvider.notifier);
     expect(c.read(waiterLinkHostProvider).available, isTrue);
@@ -106,14 +106,11 @@ void main() {
     addTearDown(client.close);
     expect(await client.hello(), 'Counter — Main');
 
-    host.openPairing();
-    await client.pair(code: c.read(waiterLinkHostProvider).pairing!.code, deviceName: 'Phone 1');
+    final session = await client.signIn(username: 'nour', pin: pin, deviceName: 'Phone 1');
+    expect(session.staff.name, 'Nour');
+    expect(session.deviceToken, isNotEmpty, reason: 'the first sign-in registers the device');
     await host.refreshDevices();
     expect(c.read(waiterLinkHostProvider).devices.single.name, 'Phone 1');
-    expect(c.read(waiterLinkHostProvider).pairing, isNull, reason: 'the code was used');
-
-    final session = await client.signIn(pin);
-    expect(session.staff.name, 'Nour');
 
     final menu = await client.menu();
     expect(menu.products.map((p) => p.id), [101, 102]);
@@ -148,9 +145,7 @@ void main() {
     await host.start();
     final client = WaiterLinkClient(baseUri: Uri.parse('http://127.0.0.1:${c.read(waiterLinkHostProvider).port}'));
     addTearDown(client.close);
-    host.openPairing();
-    await client.pair(code: c.read(waiterLinkHostProvider).pairing!.code, deviceName: 'Phone');
-    await client.signIn(pin);
+    await client.signIn(username: 'nour', pin: pin, deviceName: 'Phone');
 
     final first = await client.apply(tableId: t3.id, version: null, ops: const [WaiterAdd(productId: 101)]);
 
@@ -176,9 +171,7 @@ void main() {
     await host.start();
     final client = WaiterLinkClient(baseUri: Uri.parse('http://127.0.0.1:${c.read(waiterLinkHostProvider).port}'));
     addTearDown(client.close);
-    host.openPairing();
-    await client.pair(code: c.read(waiterLinkHostProvider).pairing!.code, deviceName: 'Lost phone');
-    await client.signIn(pin);
+    await client.signIn(username: 'nour', pin: pin, deviceName: 'Lost phone');
     await host.refreshDevices();
 
     await host.revoke(c.read(waiterLinkHostProvider).devices.single.id);

@@ -36,7 +36,7 @@ class _CheckScreenState extends ConsumerState<CheckScreen> with SingleTickerProv
   String _query = '';
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
-  WaiterLinkClient get _client => ref.read(waiterAppProvider.notifier).client;
+  WaiterClient get _client => ref.read(waiterAppProvider.notifier).client;
 
   @override
   void initState() {
