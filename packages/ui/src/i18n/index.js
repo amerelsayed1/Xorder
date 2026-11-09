@@ -1173,7 +1173,7 @@ const messages = {
             copy: 'Copy', copied: 'Copied', view_all: 'View all', open: 'Open', retry: 'Retry',
             previous: 'Previous', next: 'Next', menu: 'Menu', done: 'Done', more: 'More options',
             enter_fullscreen: 'Enter full screen', exit_fullscreen: 'Exit full screen',
-            saved: 'Saved', unsaved_changes: 'Unsaved changes', confirm: 'Confirm', are_you_sure: 'Are you sure?',
+            saved: 'Saved', save_changes: 'Save changes', unsaved_changes: 'Unsaved changes', confirm: 'Confirm', are_you_sure: 'Are you sure?',
             undo: 'Undo', save_failed: 'Could not save the change.',
             // Alert-dialog titles. The dialog falls back to `common.error`
             // when no title is passed, so every non-failure alert MUST supply
@@ -2964,7 +2964,7 @@ const messages = {
             copy: 'نسخ', copied: 'تم النسخ', view_all: 'عرض الكل', open: 'فتح', retry: 'إعادة المحاولة',
             previous: 'السابق', next: 'التالي', menu: 'القائمة', done: 'تم', more: 'خيارات أخرى',
             enter_fullscreen: 'ملء الشاشة', exit_fullscreen: 'إنهاء ملء الشاشة',
-            saved: 'تم الحفظ', unsaved_changes: 'تغييرات غير محفوظة', confirm: 'تأكيد', are_you_sure: 'هل أنت متأكد؟',
+            saved: 'تم الحفظ', save_changes: 'حفظ التغييرات', unsaved_changes: 'تغييرات غير محفوظة', confirm: 'تأكيد', are_you_sure: 'هل أنت متأكد؟',
             undo: 'تراجع', save_failed: 'تعذّر حفظ التغيير.',
             success: 'تم بنجاح', notice: 'للعلم',
             ok: 'حسناً', error: 'حدث خطأ ما',

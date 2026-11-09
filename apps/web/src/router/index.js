@@ -169,6 +169,9 @@ const restaurantRoutes = [
                 children: [
                     // Profile lives at the bare /settings — see settingsIndexGuard.
                     { path: '', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue'), beforeEnter: settingsIndexGuard },
+                    // Own password: any signed-in tenant user, no capability —
+                    // the server checks only the current password.
+                    { path: 'password', name: 'dashboard.password', component: () => import('../pages/dashboard/settings/PasswordView.vue') },
                     // Branches and dining areas: set up once, so they live here.
                     // The server gates branches with can:branches.* (create also
                     // feature:multi_branch) and areas with feature:table_management
