@@ -222,6 +222,7 @@ for everything still `APPROVED`.**
 | POS-BE-028 | Terminal rename decoupled from identity | **APPROVED** |
 | POS-BE-030 | Bundle withholds `purchase.manage`; cloud tills hide buying and stock | **READY** (platform half, CB-09 slice a) |
 | POS-BE-032 | Financial accounts in `money` (`financial_accounts`, `tender_account_defaults`) — additive, XORD-015 stage 1 | **PROPOSED** (built both sides 2026-10-26, not deployed) |
+| POS-BE-033 | Incoming feed: `GET /api/pos/incoming` + accept / reject online order + table request handled — additive | **PROPOSED** (cloud half built 2026-11-09, not deployed; POS must not integrate) |
 
 Nothing is `BLOCKED`. Every open question from Agent 1's 2026-08-26/28 replies is
 answered below with a decision, not a discussion.
@@ -2370,6 +2371,25 @@ override, transfers between accounts, movements and balances. Those change the �
 idempotency hash and need their own section.
 
 ---
+
+## POS-BE-033 — the till's incoming feed (online orders + table requests) · **PROPOSED**
+
+Feature: `docs/features/pos-incoming-cloud-orders/` (S4). Cloud half **built, not deployed, not READY**; the POS must not integrate until this flips to READY (after the owner deploys cloud `main`). Additive: nothing existing changes shape except one optional key (`rejected`) on the public order-status reply. (Renumbering note: `guest-paging` S5 previously also claimed 033; it is now **POS-BE-034**.)
+
+Device group (`pos.device`, bearer device token). Scope is the token's tenant and the terminal's **own branch**; a row outside it is `404 NOT_FOUND`. While the branch setting `online_orders_on_pos` is off the feed is empty and the three actions answer `403 ONLINE_ORDERS_NOT_ON_POS`.
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /api/pos/incoming?cursor=` | — (optional header `X-App-Version`) | `{data:{events:[…],cursor,has_more}}`; `ETag`/`If-None-Match` → bodyless **304** when nothing changed. No cursor = currently open items (NEW online orders; REQUESTED/SEEN/IN_PROGRESS table requests); with a cursor = every change since, **each exactly once**, including terminal states so other tills clear them. `has_more:true` → read again at once. Bad cursor → `422 INVALID_CURSOR` (re-read without it). Max 100 events per table per read. Dine-in bills of an open table visit are never in the feed. |
+| `POST /api/pos/online-orders/{order}/accept` | `client_request_id` (uuid) | the order event, `state:"accepted"`. Order stays `NEW` with `accepted_at` set (accepted is **not** a status). |
+| `POST /api/pos/online-orders/{order}/reject` | `client_request_id` (uuid), `reason` (≤255) | `state:"rejected"`; order becomes `CANCELLED`; `GET public/restaurants/{slug}/orders/{id}/status` then carries `rejected: true` (the free-text reason is **not** public; showing it to the diner needs an unguessable per-order token — open). |
+| `POST /api/pos/table-requests/{billRequest}/handled` | `client_request_id` (uuid) | `state:"handled"`; request `COMPLETED`. |
+
+Idempotency and races: the same terminal repeating the same `client_request_id` gets the same `200`. First writer wins under a row lock; anyone else gets `409` `ALREADY_ACCEPTED` / `ALREADY_REJECTED` / `ALREADY_HANDLED`; an order no longer `NEW` → `409 ORDER_NOT_PENDING`.
+
+Event shapes: `online_order` {id, code, state `new|accepted|rejected`, order_type, customer_name, customer_phone, address, note, items (as the cloud stored them), total, currency, placed_at, accepted_at, accepted_by_terminal_id, rejected_at, reject_reason, updated_at}; `table_request` {id, state `open|handled|cancelled`, table_id, order_id, note, requested_at, handled_at, updated_at}. The cursor is opaque.
+
+**Not decided / UNVERIFIED:** no cashier-permission check on accept/reject yet (device token only; AC-5 needs the owner's decision on how cloud capabilities map to the POS permission); the till's `app_version` header name is unconfirmed; an online order has no branch until S2 ships, so the feed is empty for pickup/delivery orders until then. Rollout: cloud first (dark), then the POS release, then the per-branch switch.
 
 ## REVISION R1 — order-line bilingual name freeze · **PROPOSED** (amends §006, §010, §023)
 

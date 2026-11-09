@@ -51,6 +51,13 @@ return [
         'SHIFT_ALREADY_OPEN' => 'A shift is already open on this terminal.',
         'SHIFT_NOT_OPEN' => 'No open shift on this terminal.',
         'VALIDATION_FAILED' => 'The request was invalid.',
+        'ALREADY_ACCEPTED' => 'Another till already accepted this order.',
+        'ALREADY_REJECTED' => 'This order was already rejected.',
+        'ALREADY_HANDLED' => 'This request was already handled.',
+        'ORDER_NOT_PENDING' => 'This order is no longer waiting for a decision.',
+        'ONLINE_ORDERS_NOT_ON_POS' => 'Online orders are not managed on the POS for this branch.',
+        'INVALID_CURSOR' => 'The feed cursor was not recognised. Read the feed again without it.',
+        'NOT_FOUND' => 'Not found.',
         'REFUND_EXCEEDS_SOLD' => 'That refund is more than was sold on this ticket.',
         'unknown_item' => 'Unknown item',
         // Default tenders seeded at a POS restaurant's first terminal.

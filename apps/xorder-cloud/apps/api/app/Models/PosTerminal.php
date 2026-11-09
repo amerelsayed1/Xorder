@@ -67,6 +67,7 @@ class PosTerminal extends Model
             'last_catalog_sync_at' => 'datetime',
             'reported_licence_expires_at' => 'datetime',
             'last_licence_check_at' => 'datetime',
+            'last_feed_at' => 'datetime',
         ];
     }
 

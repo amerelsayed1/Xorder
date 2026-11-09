@@ -70,6 +70,9 @@ class Order extends Model
             // Stamped by the server on cancellation; never mass-assignable.
             'cancelled_at' => 'datetime',
             'completed_at' => 'datetime',
+            // POS-BE-033: a till's decision on an online order.
+            'accepted_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'items' => 'array',
             'total' => 'decimal:2',
             // POS columns (Cloud Wave 1) — integer minor units + the client's

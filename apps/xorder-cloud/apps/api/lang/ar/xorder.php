@@ -46,6 +46,13 @@ return [
         'SHIFT_ALREADY_OPEN' => 'هناك وردية مفتوحة بالفعل على هذا الجهاز.',
         'SHIFT_NOT_OPEN' => 'لا توجد وردية مفتوحة على هذا الجهاز.',
         'VALIDATION_FAILED' => 'الطلب غير صالح.',
+        'ALREADY_ACCEPTED' => 'قبلت نقطة بيع أخرى هذا الطلب بالفعل.',
+        'ALREADY_REJECTED' => 'تم رفض هذا الطلب بالفعل.',
+        'ALREADY_HANDLED' => 'تمت معالجة هذا الطلب بالفعل.',
+        'ORDER_NOT_PENDING' => 'هذا الطلب لم يعد بانتظار قرار.',
+        'ONLINE_ORDERS_NOT_ON_POS' => 'الطلبات عبر الإنترنت غير مُدارة من نقطة البيع لهذا الفرع.',
+        'INVALID_CURSOR' => 'لم يتم التعرف على مؤشر الخلاصة. اقرأ الخلاصة من جديد بدونه.',
+        'NOT_FOUND' => 'غير موجود.',
         'REFUND_EXCEEDS_SOLD' => 'قيمة الاسترداد أكبر مما تم بيعه في هذا الطلب.',
         'unknown_item' => 'صنف غير معروف',
         // Default tenders seeded at a POS restaurant's first terminal.

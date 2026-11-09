@@ -245,7 +245,16 @@ class PublicOrderController extends Controller
             return response()->json(['message' => __('xorder.messages.order_not_found')], 404);
         }
 
-        return response()->json(['data' => ['status' => $order->status->value]]);
+        $data = ['status' => $order->status->value];
+
+        // POS-BE-033: a till turned it down. Only the fact is public: the reason is
+        // free text typed by staff and this route is unauthenticated with guessable
+        // ids, so it is not exposed here (additive key).
+        if ($order->rejected_at !== null) {
+            $data['rejected'] = true;
+        }
+
+        return response()->json(['data' => $data]);
     }
 
     /**
