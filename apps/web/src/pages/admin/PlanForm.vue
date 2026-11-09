@@ -85,7 +85,8 @@ function loadOrdering(keys) {
 // bill_requests is not here — it's a dine-in sub-option nested under table ordering.
 // purchasing is standalone (CB-09): ticking it does not tick pos, and a plan
 // may carry it with no till at all.
-const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos', 'purchasing']
+// guest_paging is standalone too: a café pages its QR orders with no till.
+const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos', 'purchasing', 'guest_paging']
 const capabilities = ref([])
 function toggleCapability(key, on) {
     const i = capabilities.value.indexOf(key)

@@ -61,6 +61,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // The POS device credential (POS-BE-011 Option C). Not an auth
             // guard — see the middleware's own comment for why.
             'pos.device' => PosDeviceAuth::class,
+            // The waiter wire's gate (POS-BE-033): slug → tenant, device, session.
+            'waiter' => \App\Http\Middleware\WaiterWire::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

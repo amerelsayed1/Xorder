@@ -88,8 +88,12 @@ const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 .kind-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .kind-go { color: var(--body); font-size: 14px; transition: transform .15s ease, color .15s ease; }
 .kind-card:hover .kind-go { color: var(--p-primary-700); transform: translateX(3px); }
-:global([dir=rtl]) .kind-go { transform: scaleX(-1); }
-:global([dir=rtl]) .kind-card:hover .kind-go { transform: scaleX(-1) translateX(3px); }
+/* Scoped, not `:global(...)`: Vue's scoped compiler drops everything after a
+   `:global(x)` prefix, leaving a bare `[dir=rtl]` rule that mirrored the whole
+   page in Arabic. The scope attribute lands on `.kind-go`, which is what we
+   want, and `[dir=rtl]` stays an ordinary ancestor, as on the other pages. */
+[dir=rtl] .kind-go { transform: scaleX(-1); }
+[dir=rtl] .kind-card:hover .kind-go { transform: scaleX(-1) translateX(3px); }
 
 .kind-list { list-style: none; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line);
     display: flex; flex-direction: column; gap: 8px; }

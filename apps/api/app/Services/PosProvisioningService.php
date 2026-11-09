@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\DeviceToken;
 use App\Support\PairingCode;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -392,12 +393,7 @@ class PosProvisioningService
         // order, a float, a counted drawer, a close.
         $tradedShift = PosShift::query()->withoutGlobalScopes()
             ->where('pos_terminal_id', $terminal->id)
-            ->where(function ($shift) {
-                $shift->whereNotNull('closed_at')
-                    ->orWhereNotNull('closed_by_id')
-                    ->orWhereNotNull('counted_cash_minor')
-                    ->orWhere('opening_float_minor', '>', 0);
-            })
+            ->where(fn ($shift) => $this->shiftTraded($shift))
             ->exists();
 
         $hasHistory = $tradedShift
@@ -416,6 +412,48 @@ class PosProvisioningService
         ]);
 
         $terminal->delete();
+    }
+
+    /**
+     * Add `has_money_history` to a terminal list query: true exactly when
+     * delete() would answer TERMINAL_HAS_HISTORY. XORD-042 — the dashboards
+     * offered Delete on every revoked terminal and learned the answer only
+     * after the owner confirmed.
+     *
+     * One EXISTS per kind of history inside the list query, so a page of
+     * terminals costs one query, not one per row. Global scopes are off for
+     * the same reason as in delete(): the terminal's own rows are the
+     * question, whoever is asking (the Super Admin has no tenant context).
+     *
+     * It sets the select list (`pos_terminals.*` plus the flag): call it
+     * before adding columns of your own, or they are replaced.
+     */
+    public function withMoneyHistory(Builder $query): Builder
+    {
+        $tradedShift = PosShift::query()->withoutGlobalScopes()
+            ->selectRaw('1')
+            ->whereColumn('pos_shifts.pos_terminal_id', 'pos_terminals.id')
+            ->where(fn ($shift) => $this->shiftTraded($shift));
+
+        $order = Order::query()->withoutGlobalScopes()
+            ->selectRaw('1')
+            ->whereColumn('orders.pos_terminal_id', 'pos_terminals.id');
+
+        return $query
+            ->select('pos_terminals.*')
+            ->selectRaw(
+                '(exists ('.$tradedShift->toSql().') or exists ('.$order->toSql().')) as has_money_history',
+                [...$tradedShift->getBindings(), ...$order->getBindings()],
+            );
+    }
+
+    /** A shift that moved money: a float, a count or a close. See delete(). */
+    private function shiftTraded($shift): void
+    {
+        $shift->whereNotNull('closed_at')
+            ->orWhereNotNull('closed_by_id')
+            ->orWhereNotNull('counted_cash_minor')
+            ->orWhere('opening_float_minor', '>', 0);
     }
 
     /**

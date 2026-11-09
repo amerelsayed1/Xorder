@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Models\FinancialAccount;
+use App\Models\TenderType;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -16,7 +17,8 @@ use Illuminate\Validation\Rule;
  * where the money goes. Every id is looked up inside the caller's restaurant.
  * An account may be the default only if it is active and either shared by the
  * whole business or tied to the very branch the default is for; a business-wide
- * default must therefore be a shared account.
+ * default must therefore be a shared account. And its kind must be one the
+ * payment method pays into (`FinancialAccount::KINDS_FOR_TENDER`).
  */
 class SetTenderAccountDefaultRequest extends FormRequest
 {
@@ -65,6 +67,18 @@ class SetTenderAccountDefaultRequest extends FormRequest
 
             if ($account->branch_id !== null && (int) $account->branch_id !== (int) $branchId) {
                 $validator->errors()->add('financial_account_id', __('xorder.validation.account_other_branch'));
+
+                return;
+            }
+
+            // The account's kind must be one this payment method pays into:
+            // cash into a cash account, a card (or external terminal) into a
+            // bank. The method id was already checked against the caller's
+            // restaurant by the rules above.
+            $method = TenderType::find($this->input('tender_type_id'));
+
+            if ($method && ! $account->fitsTender($method->kind)) {
+                $validator->errors()->add('financial_account_id', __('xorder.validation.account_kind_mismatch'));
             }
         }];
     }

@@ -30,6 +30,15 @@ class OrderResource extends JsonResource
             'address' => $this->whenLoaded('customerAddress', fn () => $this->customerAddress?->address),
             'note' => $this->note,
             'source' => $this->source,
+            // Guest paging (additive). The token is deliberately absent: the
+            // dashboard never needs it, and it is the diner's only credential.
+            'pickup_status' => $this->pickup_status?->value,
+            'pickup_ref' => $this->pickup_display_ref,
+            'pickup_followed_at' => $this->pickup_followed_at?->toIso8601String(),
+            'ready_at' => $this->ready_at?->toIso8601String(),
+            'ready_source' => $this->ready_source,
+            'acknowledged_at' => $this->acknowledged_at?->toIso8601String(),
+            'picked_up_at' => $this->picked_up_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

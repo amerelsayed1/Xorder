@@ -50,7 +50,7 @@ class PlanSeeder extends Seeder
                 // customer_tracking→system_ordering).
                 'feature_keys' => [
                     'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
-                    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
+                    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics', 'guest_paging',
                     'dine_in', 'pickup', 'delivery', 'multi_branch',
                 ],
             ],

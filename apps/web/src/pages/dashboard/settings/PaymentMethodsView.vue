@@ -17,7 +17,7 @@ const { canUpdate } = useCaps('settings')
 // Kinds map to a small palette so a scan of the list reads by category rather
 // than only by name — cash rows glow warm, card rows sit blue, etc. Matches
 // the design's per-tile colour classes.
-const TENDER_KINDS = ['cash', 'card', 'external', 'other']
+const TENDER_KINDS = ['cash', 'card', 'wallet', 'external', 'other']
 const KIND_STYLE = {
     cash: { bg: '#FFF1E2', color: '#B85E05' },
     card: { bg: '#EEF2FB', color: '#3656A8' },

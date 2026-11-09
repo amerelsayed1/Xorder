@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Enums\OrderStatus;
+use App\Enums\PickupStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Services\GuestPagingService;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
@@ -140,19 +143,37 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $order->update(['status' => $status]);
+        // One commit: the status flip, the pickup stamp and the alert courtesy
+        // land together or not at all (a paged order must never read COMPLETED
+        // on the queue and PREPARING on the board).
+        DB::transaction(function () use ($request, $order, $status) {
+            $order->update(['status' => $status]);
 
-        // Once an order is acted on (moved out of NEW), its "new order" alert is
-        // no longer new — clear the unread dot so the bell stays trustworthy.
-        // The order_id linkage is stored (as a string) on the notification's
-        // data payload by PublicOrderController when the order is placed.
-        if ($status !== OrderStatus::NEW->value) {
-            Notification::query()
-                ->where('type', 'order.created')
-                ->where('data->order_id', (string) $order->id)
-                ->whereNull('read_at')
-                ->update(['read_at' => Carbon::now()]);
-        }
+            // Guest paging (BR-8): finishing a paged order from the queue means
+            // the diner collected it. Forward-only inside the service (its own
+            // transaction becomes a savepoint here); a no-op if the board
+            // already said so.
+            if ($status === OrderStatus::COMPLETED->value && $order->isPaged()) {
+                app(GuestPagingService::class)->transition(
+                    $order,
+                    PickupStatus::PICKED_UP,
+                    GuestPagingService::SOURCE_DASHBOARD,
+                    $request->user(),
+                );
+            }
+
+            // Once an order is acted on (moved out of NEW), its "new order" alert is
+            // no longer new — clear the unread dot so the bell stays trustworthy.
+            // The order_id linkage is stored (as a string) on the notification's
+            // data payload by PublicOrderController when the order is placed.
+            if ($status !== OrderStatus::NEW->value) {
+                Notification::query()
+                    ->where('type', 'order.created')
+                    ->where('data->order_id', (string) $order->id)
+                    ->whereNull('read_at')
+                    ->update(['read_at' => Carbon::now()]);
+            }
+        });
 
         return response()->json([
             'data' => OrderResource::make($order->fresh()->load('rounds.items')),

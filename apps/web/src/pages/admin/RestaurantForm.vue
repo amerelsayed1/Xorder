@@ -165,7 +165,7 @@ const featureDisplayOrder = [
     'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
     'dine_in', 'pickup', 'delivery',
     'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
-    'multi_branch',
+    'multi_branch', 'guest_paging',
 ]
 
 /** Expand feature keys with their prerequisites (mirrors Feature::resolve). */
@@ -229,7 +229,7 @@ function customOrderingKeys() {
     return [...keys]
 }
 // bill_requests is not here — it's a dine-in sub-option nested under table ordering.
-const customCapabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch']
+const customCapabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'guest_paging']
 const customCapabilities = ref([])
 function toggleCustomCapability(key, on) {
     const i = customCapabilities.value.indexOf(key)
