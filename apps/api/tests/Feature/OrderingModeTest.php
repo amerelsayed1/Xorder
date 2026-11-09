@@ -2,19 +2,18 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\OrderingMode;
 use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class OrderingModeTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private function payload(): array

@@ -2,19 +2,18 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class NotificationTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private function enableSystemOrdering(Restaurant $r): void

@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\GeofenceValidation;
 use App\Rules\MobileNumber;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreBranchRequest extends FormRequest

@@ -120,6 +120,9 @@ class GuestPagingTest extends TestCase
         $r = $this->tenant();
         $admin = User::factory()->restaurantAdmin($r->id)->create();
         $order = $this->pagedOrder($r);
+        // The service never stamps earlier than the order's creation (BR-9), and
+        // the clock below is frozen in the past: backdate the order to match.
+        $order->forceFill(['created_at' => '2026-11-01 00:00:00'])->saveQuietly();
 
         Carbon::setTestNow('2026-11-02 10:00:00');
         $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/pickup", ['status' => 'READY'])
@@ -557,6 +560,8 @@ class GuestPagingTest extends TestCase
         $r = $this->tenant();
         $order = $this->pagedOrder($r);
         $t = $order->pickup_token;
+        // Frozen clock below is in the past; the order must not be newer than it (BR-9).
+        $order->forceFill(['created_at' => '2026-11-01 00:00:00'])->saveQuietly();
 
         Carbon::setTestNow('2026-11-02 10:00:00');
         $this->postJson("/api/public/orders/track/{$t}/follow")->assertOk();

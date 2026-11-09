@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 /**
@@ -23,7 +23,6 @@ use Tests\TestCase;
 class OrderingAvailabilityTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private function withMenu(Restaurant $r): Restaurant

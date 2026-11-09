@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
@@ -11,12 +10,12 @@ use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class OrderTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     /** Order management is gated on the system_ordering feature. */

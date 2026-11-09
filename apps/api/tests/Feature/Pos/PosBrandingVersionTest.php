@@ -4,8 +4,8 @@ namespace Tests\Feature\Pos;
 
 use App\Models\Restaurant;
 use App\Models\User;
-use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 /**
  * XORD-021 — the logo reaches tills.

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\RestaurantStatus;
 use App\Models\Branch;
 use App\Models\DiningArea;
@@ -16,12 +15,12 @@ use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class OrderTableAssociationTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private Restaurant $restaurant;

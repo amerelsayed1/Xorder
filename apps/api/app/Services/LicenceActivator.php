@@ -5,8 +5,9 @@ namespace App\Services;
 use App\Models\PosLicence;
 use App\Models\PosLicenceActivation;
 use App\Support\LicenceKey;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Exchanges a typed activation key for the signed licence file (POS-BE-015 §5).
@@ -133,7 +134,7 @@ class LicenceActivator
             // The device ledger is bookkeeping. If it cannot be read, a paying
             // customer's till is still licensed (fail OPEN) and the failure is
             // logged; refusing here would turn a database fault into an outage.
-            \Illuminate\Support\Facades\Log::warning('Licence seat check skipped', [
+            Log::warning('Licence seat check skipped', [
                 'licence_ref' => $licence->licence_ref,
                 'error' => $e->getMessage(),
             ]);
@@ -228,7 +229,7 @@ class LicenceActivator
                 $device->forceFill(['first_seen_at' => $now, 'last_seen_at' => $now, 'times' => 1])->save();
             }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Licence activation device not recorded', [
+            Log::warning('Licence activation device not recorded', [
                 'licence_ref' => $licence->licence_ref,
                 'error' => $e->getMessage(),
             ]);

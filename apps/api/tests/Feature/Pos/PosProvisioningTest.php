@@ -560,7 +560,9 @@ class PosProvisioningTest extends PosTestCase
     {
         $count = function (): int {
             $n = 0;
-            DB::listen(function () use (&$n) { $n++; });
+            DB::listen(function () use (&$n) {
+                $n++;
+            });
             $this->actingAs($this->owner)->getJson('/api/dashboard/pos/terminals')->assertOk();
 
             return $n;

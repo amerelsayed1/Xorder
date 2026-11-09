@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Public;
 
 use App\Rules\MobileNumber;
+use App\Services\DinerOrderPricing;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreOrderRequest extends FormRequest
@@ -36,7 +37,7 @@ class StoreOrderRequest extends FormRequest
     /**
      * **The server prices every line (XORD-047).** A line names what was
      * ordered — `kind` (item or combo), `menu_item_id` or `combo_id`, and the
-     * `option_ids` chosen — and {@see \App\Services\DinerOrderPricing} reads
+     * `option_ids` chosen — and {@see DinerOrderPricing} reads
      * the price, the names and the labels from the menu. Whatever the phone
      * sends as `name`, `variant`, `options`, `line_total` or `total` is accepted
      * for well-formedness and then IGNORED: it was the hole a modified request

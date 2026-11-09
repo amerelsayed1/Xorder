@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Branch;
+use App\Services\OrderTypeEntitlements;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,7 +27,7 @@ class BranchResource extends JsonResource
             // it, and it costs no query when features are already loaded.
             'entitled_order_types' => $this->when(
                 $request->user()?->restaurant_id !== null,
-                fn () => app(\App\Services\OrderTypeEntitlements::class)->allowed($request->user()->restaurant),
+                fn () => app(OrderTypeEntitlements::class)->allowed($request->user()->restaurant),
             ),
             'address' => $this->address,
             'phone' => $this->phone,

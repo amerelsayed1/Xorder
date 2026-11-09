@@ -2,17 +2,16 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Customer;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class CustomerTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     /**

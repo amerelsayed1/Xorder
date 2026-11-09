@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Support\ContentLanguages;
 use App\Http\Requests\Concerns\NormalizesNumericInput;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 

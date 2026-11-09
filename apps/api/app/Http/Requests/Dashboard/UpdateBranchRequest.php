@@ -3,11 +3,11 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Http\Requests\Concerns\GeofenceValidation;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use App\Rules\MobileNumber;
 use App\Services\BranchEgressIpService;
 use App\Services\OrderTypeEntitlements;
 use App\Support\ContentLanguages;
-use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBranchRequest extends FormRequest

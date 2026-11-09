@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\Feature;
 use App\Enums\OrderingMode;
 use App\Models\Category;
@@ -10,6 +9,7 @@ use App\Models\MenuItem;
 use App\Models\Restaurant;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 /**
@@ -22,7 +22,6 @@ use Tests\TestCase;
 class OrderingModeReconciliationTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     /** Enable exactly the given feature keys on the restaurant. */

@@ -2,17 +2,16 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Models\Restaurant;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class PhoneValidationTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private function passes(mixed $value, ?MobileNumber $rule = null): bool

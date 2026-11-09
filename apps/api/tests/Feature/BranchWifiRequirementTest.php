@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Tests\Concerns\BuildsDinerOrders;
 use App\Enums\RestaurantStatus;
 use App\Models\Branch;
 use App\Models\DiningArea;
@@ -10,6 +9,7 @@ use App\Models\DiningTable;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 /**
@@ -24,7 +24,6 @@ use Tests\TestCase;
 class BranchWifiRequirementTest extends TestCase
 {
     use BuildsDinerOrders;
-
     use RefreshDatabase;
 
     private Restaurant $restaurant;

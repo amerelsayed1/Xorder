@@ -7,6 +7,8 @@ use App\Models\PosLicenceActivation;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -182,7 +184,7 @@ class LicenceActivationsTest extends TestCase
     public function test_an_activation_still_succeeds_if_recording_the_device_fails(): void
     {
         $licence = $this->offline();
-        \Illuminate\Support\Facades\Schema::drop('pos_licence_activations');
+        Schema::drop('pos_licence_activations');
 
         $this->activate($licence['activation_key'], 'fp-till-1')->assertOk();
 
@@ -197,7 +199,7 @@ class LicenceActivationsTest extends TestCase
         $this->actingAs($owner)->getJson("/api/admin/pos/licences/{$licence['data']['id']}/activations")->assertForbidden();
 
         // And nobody signed in at all.
-        \Illuminate\Support\Facades\Auth::forgetGuards();
+        Auth::forgetGuards();
         $this->getJson("/api/admin/pos/licences/{$licence['data']['id']}/activations", ['Authorization' => ''])->assertUnauthorized();
     }
 

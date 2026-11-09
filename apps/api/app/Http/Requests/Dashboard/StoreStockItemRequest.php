@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Support\ContentLanguages;
 use App\Services\UnitCatalog;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 

@@ -3,10 +3,10 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Enums\MenuLayout;
-use App\Support\ContentLanguages;
-use App\Rules\MobileNumber;
 use App\Http\Requests\Concerns\NormalizesNumericInput;
 use App\Http\Requests\Concerns\PreservesDisabledLanguages;
+use App\Rules\MobileNumber;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 

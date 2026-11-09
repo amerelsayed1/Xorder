@@ -10,6 +10,7 @@ use App\Models\DiningTable;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\PosWaiterDevice;
+use App\Models\PosWaiterSession;
 use App\Models\Restaurant;
 use App\Models\TableCheckDraft;
 use App\Models\User;
@@ -223,7 +224,7 @@ class WaiterWireTest extends TestCase
     public function test_a_session_idles_out_after_twelve_hours(): void
     {
         $auth = $this->signIn();
-        \App\Models\PosWaiterSession::query()->update(['last_seen_at' => now()->subHours(13)]);
+        PosWaiterSession::query()->update(['last_seen_at' => now()->subHours(13)]);
 
         $this->getJson($this->url('floor'), $this->headers($auth))
             ->assertUnauthorized()->assertJsonPath('code', 'SIGN_IN_REQUIRED');
@@ -494,7 +495,7 @@ class WaiterWireTest extends TestCase
 
         $this->getJson($this->url('floor'), $this->headers($auth))
             ->assertForbidden()->assertJsonPath('code', 'DEVICE_REVOKED');
-        $this->assertSame(0, \App\Models\PosWaiterSession::count());
+        $this->assertSame(0, PosWaiterSession::count());
     }
 
     public function test_another_restaurant_cannot_see_or_revoke_my_devices(): void

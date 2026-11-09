@@ -13,6 +13,7 @@ use App\Models\PosLicenceActivation;
 use App\Models\PosTerminal;
 use App\Models\Restaurant;
 use App\Services\AuditLogger;
+use App\Services\LicenceActivator;
 use App\Services\LicenceIssuer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -319,7 +320,7 @@ class LicenceController extends Controller
             'locked' => $locked !== [],
             // Whether the count is HELD for this licence, how many devices it
             // covers and how many are in use: "1 of 1 devices".
-            'seats_enforced' => app(\App\Services\LicenceActivator::class)->seatsAreSold($licence),
+            'seats_enforced' => app(LicenceActivator::class)->seatsAreSold($licence),
             'seats' => (int) $licence->max_terminals,
             'in_use' => $rows->count(),
         ]);
