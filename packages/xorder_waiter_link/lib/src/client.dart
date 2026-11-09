@@ -73,7 +73,7 @@ class WaiterLinkClient implements WaiterClient {
   }
 
   /// `http://192.168.1.20:8787` — the till's address on the restaurant LAN —
-  /// or `https://demo.xorder.io/api/pos/waiter` in the cloud flavor; the wire
+  /// or `https://xorder.io/api/pos/waiter/demo` in the cloud flavor; the wire
   /// version and the call's path are appended to whatever path it carries.
   final Uri baseUri;
   @override

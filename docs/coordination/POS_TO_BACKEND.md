@@ -115,8 +115,9 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 | POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED (deferred) |
 | POS-BE-029 | Branch view on a cloud till (own branch, per-terminal) | MEDIUM | NO | PROPOSED |
 | POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | **READY** (platform half; till half built, not merged) |
+| POS-BE-033 | Incoming online orders and table requests on the till (`GET /api/pos/incoming`, accept/reject/handled) | HIGH | NO | PROPOSED (cloud half built, not deployed) |
 | **POS-BE-031** | **Online, dashboard-managed licence check (`/license/check`)** | **HIGH** | **NO** | APPROVED (2026-10-07) |
-| **POS-BE-033** | **The waiter wire served by the platform (XOrder Waiter – Cloud flavor)** | **HIGH** | **YES** | PROPOSED (2026-11-09) |
+| **POS-BE-033** | **The waiter wire served by the platform (XOrder Waiter – Cloud flavor)** | **HIGH** | **YES** | **BUILT, NOT DEPLOYED** (cloud half 2026-11-09; base URL amended: slug in the path) |
 | *Amd 006* | *Bilingual name snapshot on the wire (`name_ar_snapshot`)* | MEDIUM | NO | PROPOSED (see revision) |
 
 Three of the entries above are **amendments rather than new surface**:
@@ -2276,7 +2277,7 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 
 ## POS-BE-033 — The waiter wire served by the platform (XOrder Waiter – Cloud flavor)
 
-**Status:** PROPOSED 2026-11-09 (owner decision: two flavors of the handheld, cloud
+**Status:** PROPOSED 2026-11-09 · **cloud half BUILT 2026-11-09, uncommitted, not deployed, not `READY`** (owner decision: two flavors of the handheld, cloud
 and offline, the mode fixed per build; the cloud flavor signs in with slug, name
 and PIN). Till-side code: the handheld is built and tested against a fake; nothing
 on the platform exists yet.
@@ -2296,7 +2297,7 @@ and the base URL.
 
 ### Base URL and auth
 
-- Base: `https://{slug}.xorder.io/api/pos/waiter` — the handheld appends
+- Base: `https://xorder.io/api/pos/waiter/{slug}` (**amended 2026-11-09: the restaurant is the slug in the path, not a subdomain; `{slug}.xorder.io/api` is not served**) — the handheld appends
   `/v1/<call>`. The slug is what the waiter types in the "Restaurant" field.
 - A device token in `Authorization: Device <token>` on every call after sign-in;
   a waiter session in `X-Waiter-Session` after sign-in. Both are opaque strings
@@ -2361,6 +2362,7 @@ the restaurant is given.
 
 | Date | Change |
 |---|---|
+| 2026-11-09 | **POS-BE-033 cloud half built** (`xorder-cloud`, uncommitted, not deployed): `routes/api.php` `pos/waiter/{slug}/v1/*`, `WaiterWire` middleware, `PosWaiter` controllers, `WaiterCheckService`/`WaiterMenuService`, migration `2026_11_09_000100`, dashboard `waiter-devices` list/revoke; `WaiterWireTest` 31. **Base URL amended to the slug-in-path form**; the handheld follows. Not `READY` until deployed. Open: branch scoping of waiters, order `source` value (`waiter`), kitchen push (same as a QR order). |
 | 2026-11-09 | **POS-BE-033 raised: the waiter wire served by the platform**, for the cloud flavor of XOrder Waiter (owner decision: two flavors, mode fixed per build; sign-in with slug, name and PIN). The handheld is built against a fake; the platform half is the proposal above. Nothing on the platform touched. |
 | 2026-08-25 | Initial request set POS-BE-001 … POS-BE-014 raised by Agent 1 as `PROPOSED`. No backend code touched. |
 | 2026-08-26 | POS-BE-015 … POS-BE-018 raised for licensing and on-premises deployment. Client-side deployment modes, licensing and the setup wizard are built and tested against fakes; no backend code touched. |

@@ -125,8 +125,8 @@ final connectionStoreProvider = Provider<ConnectionStore>((_) => const FileConne
 typedef ClientFactory = WaiterClient Function(WaiterMode mode, String target, String? deviceToken, String? pinnedSha256);
 
 /// The real one: the LAN link to a till, pinned to the certificate the waiter
-/// confirmed, or the same wire served by the platform at the restaurant's
-/// subdomain (POS-BE-033), verified by the platform's certificate authority.
+/// confirmed, or the same wire served by the platform under the restaurant's
+/// slug (POS-BE-033), verified by the platform's certificate authority.
 WaiterClient defaultClientFactory(WaiterMode mode, String target, String? deviceToken, String? pinnedSha256) =>
     switch (mode) {
       WaiterMode.offline => WaiterLinkClient(
@@ -135,7 +135,7 @@ WaiterClient defaultClientFactory(WaiterMode mode, String target, String? device
         pinnedSha256: pinnedSha256,
       ),
       WaiterMode.cloud => WaiterLinkClient(
-        baseUri: Uri.https('${target.trim().toLowerCase()}.$cloudDomain', '/api/pos/waiter'),
+        baseUri: Uri.https(cloudDomain, '/api/pos/waiter/${Uri.encodeComponent(target.trim().toLowerCase())}'),
         deviceToken: deviceToken,
       ),
     };

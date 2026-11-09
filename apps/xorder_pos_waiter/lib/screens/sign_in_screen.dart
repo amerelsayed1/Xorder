@@ -219,8 +219,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         decoration: InputDecoration(
                           labelText: s.targetLabel,
                           hintText: s.targetHint,
-                          suffixText: mode == WaiterMode.cloud ? '.$cloudDomain' : null,
-                          suffixStyle: WaiterText.mono(weight: FontWeight.w500, size: 15, color: WaiterColors.muted),
+                          prefixText: mode == WaiterMode.cloud ? '$cloudDomain/' : null,
+                          prefixStyle: WaiterText.mono(weight: FontWeight.w500, size: 15, color: WaiterColors.muted),
                         ),
                       ),
                       const SizedBox(height: WaiterSpace.md),

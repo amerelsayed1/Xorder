@@ -37,6 +37,11 @@ android {
         }
     }
 
+    // AGP 8+ turns resValue off by default; the flavors' app_name needs it.
+    buildFeatures {
+        resValues = true
+    }
+
     // Two apps from one codebase, the mode fixed per build (owner decision,
     // 2026-11-09). Each flavor has its own id and name so both can sit on one
     // phone; the Dart side is fixed by the matching entry point:

@@ -214,7 +214,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('XOrder Waiter Cloud'), findsOneWidget);
     expect(find.text('Restaurant'), findsOneWidget);
-    expect(find.text('.xorder.io'), findsOneWidget, reason: 'the slug completes to the subdomain');
+    expect(find.text('xorder.io/'), findsOneWidget, reason: 'the slug follows the platform host');
 
     await signIn(tester, target: 'Demo', username: 'mona');
     expect(till.lastMode, WaiterMode.cloud);
@@ -225,7 +225,7 @@ void main() {
 
   test('both flavors reach their server over https; only the offline one carries a pin', () {
     final cloud = defaultClientFactory(WaiterMode.cloud, 'Demo', null, null) as WaiterLinkClient;
-    expect(cloud.baseUri.toString(), 'https://demo.xorder.io/api/pos/waiter');
+    expect(cloud.baseUri.toString(), 'https://xorder.io/api/pos/waiter/demo');
     expect(cloud.pinnedSha256, isNull);
     final offline = defaultClientFactory(WaiterMode.offline, '10.0.0.5', 'tok', 'abc') as WaiterLinkClient;
     expect(offline.baseUri.toString(), 'https://10.0.0.5:8787');

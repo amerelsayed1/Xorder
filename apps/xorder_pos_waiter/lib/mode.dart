@@ -21,9 +21,9 @@ final waiterModeProvider = Provider<WaiterMode>(
   (_) => throw StateError('waiterModeProvider is bound by main_cloud.dart / main_offline.dart'),
 );
 
-/// The platform's domain in the cloud flavor: `demo` signs in at
-/// `https://demo.xorder.io/api/pos/waiter`, the same subdomain the menu and
-/// the dashboard use. A staging build overrides it at compile time.
+/// The platform's host in the cloud flavor: `demo` signs in at
+/// `https://xorder.io/api/pos/waiter/demo` (the restaurant is the slug in the
+/// path, POS-BE-033). A staging build overrides the host at compile time.
 const cloudDomain = String.fromEnvironment('XORDER_CLOUD_DOMAIN', defaultValue: 'xorder.io');
 
 /// The mode, for widgets that only have a [BuildContext] (the strings).
