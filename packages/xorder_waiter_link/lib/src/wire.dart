@@ -723,4 +723,12 @@ abstract final class WaiterError {
 
   /// Wire versions differ; one side must be updated.
   static const versionMismatch = 'VERSION_MISMATCH';
+
+  /// Client-side only (WA4): the till's certificate has not been confirmed
+  /// on this handheld yet; the failure carries it to compare.
+  static const certificateUntrusted = 'CERTIFICATE_UNTRUSTED';
+
+  /// Client-side only (WA4): the till answered with a certificate other than
+  /// the confirmed one.
+  static const certificateChanged = 'CERTIFICATE_CHANGED';
 }

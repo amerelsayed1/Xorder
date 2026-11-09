@@ -1986,6 +1986,8 @@ sealed class AppStrings {
   String get waiterLinkAddress;
   String get waiterSignInHelp;
   String get waiterDevicesNone;
+  String get waiterCertificateTitle;
+  String get waiterCertificateHelp;
   String get waiterDeviceRevoke;
   String get waiterDeviceRevoked;
   String waiterDeviceLastSeen(String when);
@@ -7620,6 +7622,12 @@ final class EnStrings extends AppStrings {
   @override
   String get waiterDevicesNone => 'No devices have signed in yet.';
   @override
+  String get waiterCertificateTitle => 'Link certificate';
+  @override
+  String get waiterCertificateHelp =>
+      'A handheld shows this fingerprint the first time it signs in here. '
+      'Confirm it only if the two match; a different one means another machine is answering.';
+  @override
   String get waiterDeviceRevoke => 'Revoke';
   @override
   String get waiterDeviceRevoked => 'Revoked';
@@ -13109,6 +13117,12 @@ final class ArStrings extends AppStrings {
       'يسجّل الهاتف هنا؛ احذف أي جهاز لا تعرفه.';
   @override
   String get waiterDevicesNone => 'لم يسجّل أي جهاز الدخول بعد.';
+  @override
+  String get waiterCertificateTitle => 'شهادة الاتصال';
+  @override
+  String get waiterCertificateHelp =>
+      'يعرض الجهاز المحمول هذه البصمة عند أول تسجيل دخول هنا. '
+      'أكّدها فقط إذا تطابقت؛ بصمة مختلفة تعني أن جهازًا آخر هو الذي يجيب.';
   @override
   String get waiterDeviceRevoke => 'إلغاء';
   @override

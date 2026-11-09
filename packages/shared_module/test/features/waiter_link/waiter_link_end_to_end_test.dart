@@ -13,6 +13,7 @@ import 'package:shared_module/domain/models/catalog.dart';
 import 'package:shared_module/domain/models/dining_table.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:shared_module/features/waiter_link/waiter_link_host.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 import 'package:xorder_pos_test_support/pg_fixture.dart';
 import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 
@@ -75,6 +76,7 @@ void main() {
         posDbCredentialsProvider.overrideWithValue(InMemoryPosDbCredentials(PgFixture.password)),
         catalogRepositoryProvider.overrideWithValue(_Menu()),
         waiterLinkPortProvider.overrideWithValue(0),
+        secretStoreProvider.overrideWithValue(InMemorySecretStore()),
       ],
     );
     addTearDown(container.dispose);
@@ -102,9 +104,26 @@ void main() {
     final status = c.read(waiterLinkHostProvider);
     expect(status.running, isTrue, reason: '${status.error}');
 
-    final client = WaiterLinkClient(baseUri: Uri.parse('http://127.0.0.1:${status.port}'));
+    // Over TLS, pinned to the certificate the till shows in Settings (WA4).
+    expect(status.certificateSha256, hasLength(64));
+    final client = WaiterLinkClient(
+      baseUri: Uri.parse('https://127.0.0.1:${status.port}'),
+      pinnedSha256: status.certificateSha256,
+    );
     addTearDown(client.close);
     expect(await client.hello(), 'Counter — Main');
+
+    // Without the pin the handshake is refused, and the failure carries the
+    // fingerprint the waiter would compare.
+    final stranger = WaiterLinkClient(baseUri: client.baseUri);
+    addTearDown(stranger.close);
+    try {
+      await stranger.hello();
+      fail('expected the certificate to be refused');
+    } on WaiterLinkUntrustedCertificate catch (e) {
+      expect(e.pinned, isFalse);
+      expect(e.presented.sha256, status.certificateSha256);
+    }
 
     final session = await client.signIn(username: 'nour', pin: pin, deviceName: 'Phone 1');
     expect(session.staff.name, 'Nour');
@@ -143,7 +162,10 @@ void main() {
     final c = await till();
     final host = c.read(waiterLinkHostProvider.notifier);
     await host.start();
-    final client = WaiterLinkClient(baseUri: Uri.parse('http://127.0.0.1:${c.read(waiterLinkHostProvider).port}'));
+    final client = WaiterLinkClient(
+      baseUri: Uri.parse('https://127.0.0.1:${c.read(waiterLinkHostProvider).port}'),
+      pinnedSha256: c.read(waiterLinkHostProvider).certificateSha256,
+    );
     addTearDown(client.close);
     await client.signIn(username: 'nour', pin: pin, deviceName: 'Phone');
 
@@ -169,7 +191,10 @@ void main() {
     final c = await till();
     final host = c.read(waiterLinkHostProvider.notifier);
     await host.start();
-    final client = WaiterLinkClient(baseUri: Uri.parse('http://127.0.0.1:${c.read(waiterLinkHostProvider).port}'));
+    final client = WaiterLinkClient(
+      baseUri: Uri.parse('https://127.0.0.1:${c.read(waiterLinkHostProvider).port}'),
+      pinnedSha256: c.read(waiterLinkHostProvider).certificateSha256,
+    );
     addTearDown(client.close);
     await client.signIn(username: 'nour', pin: pin, deviceName: 'Lost phone');
     await host.refreshDevices();

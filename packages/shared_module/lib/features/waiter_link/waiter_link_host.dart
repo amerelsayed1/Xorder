@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../../data/postgres/postgres_waiter_devices.dart';
 import '../../domain/models/pos_settings.dart';
 import '../../domain/models/shift.dart';
 import 'till_waiter_backend.dart';
+import 'waiter_link_tls.dart';
 
 /// Whether this till can serve waiter handhelds, and what it is doing about it.
 class WaiterLinkStatus {
@@ -21,6 +23,8 @@ class WaiterLinkStatus {
     this.port = defaultWaiterPort,
     this.addresses = const [],
     this.devices = const [],
+    this.certificateSha256,
+    this.certificateNotAfter,
     this.error,
   });
 
@@ -34,6 +38,11 @@ class WaiterLinkStatus {
   final List<String> addresses;
   final List<WaiterDevice> devices;
 
+  /// The fingerprint of the certificate the link serves with — what a waiter
+  /// compares on the handheld's first sign-in (WA4). Null until it is serving.
+  final String? certificateSha256;
+  final DateTime? certificateNotAfter;
+
   /// Why the last start failed (port in use, ...), in the system's words.
   final String? error;
 
@@ -43,6 +52,8 @@ class WaiterLinkStatus {
     int? port,
     List<String>? addresses,
     List<WaiterDevice>? devices,
+    String? certificateSha256,
+    DateTime? certificateNotAfter,
     String? error,
     bool clearError = false,
   }) => WaiterLinkStatus(
@@ -51,6 +62,8 @@ class WaiterLinkStatus {
     port: port ?? this.port,
     addresses: addresses ?? this.addresses,
     devices: devices ?? this.devices,
+    certificateSha256: certificateSha256 ?? this.certificateSha256,
+    certificateNotAfter: certificateNotAfter ?? this.certificateNotAfter,
     error: clearError ? null : (error ?? this.error),
   );
 }
@@ -159,7 +172,14 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
       onSaved: () => unawaited(ref.read(openTicketsProvider.notifier).refresh()),
     );
     try {
-      final http = await HttpServer.bind(InternetAddress.anyIPv4, ref.read(waiterLinkPortProvider));
+      // TLS, always (WA4): the link carries names and PINs, and the LAN is
+      // not a trusted wire. The till's own certificate, pinned by every
+      // handheld on its first sign-in.
+      final identity = await _identity(profile);
+      final context = SecurityContext()
+        ..useCertificateChainBytes(utf8.encode(identity.certificatePem))
+        ..usePrivateKeyBytes(utf8.encode(identity.privateKeyPem));
+      final http = await HttpServer.bindSecure(InternetAddress.anyIPv4, ref.read(waiterLinkPortProvider), context);
       final server = WaiterLinkServer(backend: backend);
       server.attach(http);
       _http = http;
@@ -170,11 +190,31 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
         port: http.port,
         addresses: await _lanAddresses(),
         devices: await devices.all(),
+        certificateSha256: identity.sha256,
+        certificateNotAfter: identity.notAfter,
         clearError: true,
       );
     } on Object catch (e) {
       state = state.copyWith(running: false, error: '$e');
     }
+  }
+
+  /// The certificate this till serves the link with: the one in the secret
+  /// store, or a fresh one when there is none or it is inside its last 60
+  /// days. A renewal changes the fingerprint, which every handheld then asks
+  /// to confirm again — the same margin and the same consequence as the
+  /// installer's database certificate.
+  Future<WaiterLinkIdentity> _identity(TerminalProfile profile) async {
+    final store = ref.read(secretStoreProvider);
+    final kept = WaiterLinkIdentity.fromJson(await store.read(WaiterLinkIdentity.secretKey));
+    if (kept != null && !kept.expiresWithin(const Duration(days: 60))) return kept;
+    final name = [profile.terminalName, profile.branchName]
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .join(' — ');
+    final fresh = await WaiterLinkIdentity.generate(name: name.isEmpty ? 'XOrder POS' : name);
+    await store.write(WaiterLinkIdentity.secretKey, fresh.toJson());
+    return fresh;
   }
 
   /// Re-read the device list: a handheld that just signed in for the first

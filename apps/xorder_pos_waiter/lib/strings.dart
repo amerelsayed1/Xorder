@@ -41,6 +41,14 @@ sealed class WaiterStrings {
   String forgetConfirm(String server);
   String get fillEverything;
 
+  // The till's certificate (WA4)
+  String get certificateTitle;
+  String get certificateCompare;
+  String certificateExpires(String date);
+  String get certificateMatch;
+  String get certificateChanged;
+  String get certificateUntrustedCloud;
+
   // Floor
   String get floorTitle;
   String get tableFree;
@@ -102,6 +110,8 @@ sealed class WaiterStrings {
     WaiterError.checkChanged => checkChangedElsewhere,
     WaiterError.refused => refusal(failure.detail),
     WaiterError.versionMismatch => versionMismatch,
+    WaiterError.certificateChanged => certificateChanged,
+    WaiterError.certificateUntrusted => certificateUntrustedCloud,
     'UNREACHABLE' => unreachable,
     _ => tillProblem,
   };
@@ -173,6 +183,22 @@ class EnWaiterStrings extends WaiterStrings {
   String forgetConfirm(String server) => 'Forget $server on this phone? You will enter it again to sign in.';
   @override
   String get fillEverything => 'Enter all three fields.';
+  @override
+  String get certificateTitle => 'Is this the till?';
+  @override
+  String get certificateCompare =>
+      'The till shows its certificate fingerprint under Settings › Waiter devices. '
+      'Confirm only if it matches this one exactly.';
+  @override
+  String certificateExpires(String date) => 'Valid until $date';
+  @override
+  String get certificateMatch => 'They match';
+  @override
+  String get certificateChanged =>
+      'The till answered with a different certificate than the one confirmed on this phone. '
+      'If the till was set up again, forget it and sign in afresh; otherwise do not continue.';
+  @override
+  String get certificateUntrustedCloud => 'The secure connection to xorder.io could not be verified.';
   @override
   String get floorTitle => 'Tables';
   @override
@@ -346,6 +372,22 @@ class ArWaiterStrings extends WaiterStrings {
   String forgetConfirm(String server) => 'نسيان $server على هذا الهاتف؟ ستدخله من جديد عند تسجيل الدخول.';
   @override
   String get fillEverything => 'أدخل الحقول الثلاثة.';
+  @override
+  String get certificateTitle => 'هل هذا هو جهاز الكاشير؟';
+  @override
+  String get certificateCompare =>
+      'يعرض جهاز الكاشير بصمة شهادته تحت الإعدادات › أجهزة الويتر. '
+      'أكّد فقط إذا تطابقت مع هذه تمامًا.';
+  @override
+  String certificateExpires(String date) => 'صالحة حتى $date';
+  @override
+  String get certificateMatch => 'متطابقتان';
+  @override
+  String get certificateChanged =>
+      'أجاب جهاز الكاشير بشهادة مختلفة عن المؤكدة على هذا الهاتف. '
+      'إن أُعيد إعداد الجهاز، انسَه وسجّل الدخول من جديد؛ وإلا فلا تكمل.';
+  @override
+  String get certificateUntrustedCloud => 'تعذّر التحقق من الاتصال الآمن بـ xorder.io.';
   @override
   String get floorTitle => 'الطاولات';
   @override

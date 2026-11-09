@@ -159,6 +159,16 @@ is kept; a phone the server revoked is told so and simply signs in again, as a n
 overflow menu offers *Forget this till / restaurant*. One error note in a fixed slot: a wrong
 name or PIN is one message ("That name and PIN were not accepted"), never which of the two.
 
+**The till's certificate (offline flavor, WA4).** The link is TLS only; the till serves it with
+a certificate it made itself and shows under Settings › Waiter devices. The very first sign-in
+to a till stops before any name or PIN leaves the phone: a dialog shows the fingerprint the
+till presented (`AB:CD:…`, mono, LTR, selectable, with its expiry) and asks *Is this the till?*
+— **They match** / Cancel. A confirmed fingerprint is kept with the connection and is the only
+certificate the phone will then accept for that address. A till that later answers with a
+different one is refused with "the till answered with a different certificate…"; the only way
+on is *Forget this till* and a fresh comparison. The cloud flavor never shows this dialog: the
+platform's certificate is verified by the phone's trust store.
+
 ### 5.3 Floor
 App bar: **Tables** · staff name (end side) · overflow (language, sign out). Under it a
 one-line **summary strip**: "{open} open · {paying} paying · {free} free" in meta type — the
@@ -242,7 +252,6 @@ start side, **Save** CTA on the end side.
 | D8 | One sign-in shell screen per flavor (address or slug · name · PIN); the pairing code is gone | `screens/sign_in_screen.dart`, `mode.dart`, `main_cloud.dart`, `main_offline.dart` |
 | D9 | New strings: summary strip, "Not sent", "Round n", "Open the menu", "Search", "Tables" (no area) | `strings.dart` |
 
-Out of the design pass, unchanged from WA1 and tracked there: TLS on the link (now **required**
-before a pilot, since name and PIN are the whole gate), keystore token storage, kitchen dockets,
+Out of the design pass, unchanged from WA1 and tracked there: keystore token storage, kitchen dockets,
 an offline queue on the handheld, voiding sent lines, payment. The cloud flavor waits on
 POS-BE-033 and runs against a fake until it is READY.

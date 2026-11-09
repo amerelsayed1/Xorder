@@ -24,7 +24,7 @@ void main() {
       overrides: [
         waiterModeProvider.overrideWithValue(WaiterMode.offline),
         connectionStoreProvider.overrideWithValue(_Remembered()),
-        clientFactoryProvider.overrideWithValue((mode, target, token) => _Client(till)),
+        clientFactoryProvider.overrideWithValue((mode, target, token, pin) => _Client(till)),
       ],
       child: const WaiterApplication(),
     ));

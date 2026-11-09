@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
+
 import 'server.dart' show sessionHeader;
 import 'wire.dart';
 
@@ -36,12 +38,39 @@ abstract interface class WaiterClient {
 /// after those carries both. Failures come back as [WaiterLinkFailure] with
 /// the server's code, so the screen words them in the waiter's language.
 class WaiterLinkClient implements WaiterClient {
+  /// [pinnedSha256] is the till's certificate fingerprint this handheld
+  /// confirmed (lower-case hex). With it, the handshake accepts exactly that
+  /// certificate; without it, a self-signed certificate is refused with
+  /// [WaiterLinkUntrustedCertificate] carrying what was presented, so the
+  /// screen can show the fingerprint for the waiter to compare with the till
+  /// and confirm. Over `https` to a public host (the cloud flavor) the
+  /// platform's trust store decides and no pin is involved.
   WaiterLinkClient({
     required this.baseUri,
     this.deviceToken,
+    this.pinnedSha256,
     HttpClient? httpClient,
     this.timeout = const Duration(seconds: 8),
-  }) : _http = httpClient ?? HttpClient();
+  }) : _http = httpClient ?? _httpClientFor(pinnedSha256) {
+    _http.badCertificateCallback = _judge;
+  }
+
+  static HttpClient _httpClientFor(String? pinned) =>
+      // A pin replaces the trust store: nothing else may vouch for the till.
+      pinned == null ? HttpClient() : HttpClient(context: SecurityContext(withTrustedRoots: false));
+
+  /// The till's certificate fingerprint, confirmed by the waiter.
+  String? pinnedSha256;
+
+  /// What the last refused handshake presented.
+  WaiterCertificate? _refused;
+
+  bool _judge(X509Certificate certificate, String host, int port) {
+    final presented = WaiterCertificate.fromDer(certificate.der, notAfter: certificate.endValidity);
+    if (pinnedSha256 != null && presented.sha256 == pinnedSha256) return true;
+    _refused = presented;
+    return false;
+  }
 
   /// `http://192.168.1.20:8787` — the till's address on the restaurant LAN —
   /// or `https://demo.xorder.io/api/pos/waiter` in the cloud flavor; the wire
@@ -54,11 +83,12 @@ class WaiterLinkClient implements WaiterClient {
   final HttpClient _http;
 
   /// Turn the address a waiter typed into a base URI: a bare host gets the
-  /// default port, a missing scheme gets `http`.
+  /// default port, and the scheme is `https` — the till serves nothing else
+  /// (WA4). A typed `http://` is corrected, not honoured.
   static Uri addressToUri(String address, {int defaultPort = defaultWaiterPort}) {
     var text = address.trim();
-    if (!text.contains('://')) text = 'http://$text';
-    final uri = Uri.parse(text);
+    if (text.contains('://')) text = text.substring(text.indexOf('://') + 3);
+    final uri = Uri.parse('https://$text');
     return uri.replace(port: uri.hasPort ? uri.port : defaultPort, path: '');
   }
 
@@ -169,6 +199,14 @@ class WaiterLinkClient implements WaiterClient {
       );
     } on WaiterLinkFailure {
       rethrow;
+    } on HandshakeException {
+      // A certificate the pin did not vouch for — or, with no pin, any
+      // self-signed one. Reported with what was presented, never retried in
+      // the clear.
+      final refused = _refused;
+      _refused = null;
+      if (refused != null) throw WaiterLinkUntrustedCertificate(refused, pinned: pinnedSha256 != null);
+      throw const WaiterLinkUnreachable();
     } on TimeoutException {
       throw const WaiterLinkUnreachable();
     } on SocketException {
@@ -179,6 +217,37 @@ class WaiterLinkClient implements WaiterClient {
       throw const WaiterLinkFailure(WaiterError.badRequest, 0);
     }
   }
+}
+
+/// A certificate a till presented, as the handheld shows it for comparison.
+class WaiterCertificate {
+  const WaiterCertificate({required this.sha256, this.notAfter});
+
+  factory WaiterCertificate.fromDer(List<int> der, {DateTime? notAfter}) =>
+      WaiterCertificate(sha256: crypto.sha256.convert(der).toString(), notAfter: notAfter);
+
+  /// Lower-case hex, 64 characters, no separators — the till's `LanTls` form.
+  final String sha256;
+  final DateTime? notAfter;
+
+  /// `AB:CD:EF:…`, the shape the till's Settings › Waiter devices prints, so
+  /// the two screens a person holds side by side read the same characters.
+  String get formatted => [
+    for (var i = 0; i + 2 <= sha256.length; i += 2) sha256.substring(i, i + 2),
+  ].join(':').toUpperCase();
+}
+
+/// The handshake was refused over the till's certificate. With [pinned]
+/// false the handheld has never confirmed this till: show [presented] and
+/// ask. With [pinned] true the till answered with a certificate other than
+/// the confirmed one: either it was set up again, or something is in the
+/// middle — say so, and never accept it silently.
+class WaiterLinkUntrustedCertificate extends WaiterLinkFailure {
+  const WaiterLinkUntrustedCertificate(this.presented, {required this.pinned})
+      : super(pinned ? WaiterError.certificateChanged : WaiterError.certificateUntrusted, 0);
+
+  final WaiterCertificate presented;
+  final bool pinned;
 }
 
 /// The port the till listens on unless told otherwise.

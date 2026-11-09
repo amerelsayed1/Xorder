@@ -163,6 +163,19 @@ void main() {
     });
   });
 
+  group('the address', () {
+    test('a typed address becomes an https base with the default port; http is corrected', () {
+      expect(WaiterLinkClient.addressToUri('192.168.1.20').toString(), 'https://192.168.1.20:8787');
+      expect(WaiterLinkClient.addressToUri(' 192.168.1.20:9000 ').toString(), 'https://192.168.1.20:9000');
+      expect(WaiterLinkClient.addressToUri('http://till.local').toString(), 'https://till.local:8787');
+    });
+
+    test('a fingerprint is shown the way the till prints it', () {
+      const cert = WaiterCertificate(sha256: 'ab12cd');
+      expect(cert.formatted, 'AB:12:CD');
+    });
+  });
+
   group('the wire', () {
     test('a menu survives the trip', () {
       final menu = till.theMenu;

@@ -13,7 +13,13 @@ import 'mode.dart';
 /// the device token the server gave it on its first sign-in. Never a PIN,
 /// never a session.
 class SavedConnection {
-  const SavedConnection({required this.target, this.username = '', this.deviceToken, this.serverName = ''});
+  const SavedConnection({
+    required this.target,
+    this.username = '',
+    this.deviceToken,
+    this.serverName = '',
+    this.pinnedSha256,
+  });
 
   /// `192.168.1.20:8787` in the offline flavor, `demo` in the cloud flavor.
   final String target;
@@ -23,31 +29,45 @@ class SavedConnection {
   /// What the server calls itself ("Main till — Maadi"), for the sign-in screen.
   final String serverName;
 
-  SavedConnection copyWith({String? target, String? username, String? deviceToken, bool clearToken = false, String? serverName}) =>
-      SavedConnection(
-        target: target ?? this.target,
-        username: username ?? this.username,
-        deviceToken: clearToken ? null : (deviceToken ?? this.deviceToken),
-        serverName: serverName ?? this.serverName,
-      );
+  /// The till's certificate fingerprint the waiter confirmed on this phone
+  /// (WA4). Offline flavor only; the cloud flavor trusts the platform's
+  /// certificate authority and keeps nothing here.
+  final String? pinnedSha256;
+
+  SavedConnection copyWith({
+    String? target,
+    String? username,
+    String? deviceToken,
+    bool clearToken = false,
+    String? serverName,
+    String? pinnedSha256,
+  }) => SavedConnection(
+    target: target ?? this.target,
+    username: username ?? this.username,
+    deviceToken: clearToken ? null : (deviceToken ?? this.deviceToken),
+    serverName: serverName ?? this.serverName,
+    pinnedSha256: pinnedSha256 ?? this.pinnedSha256,
+  );
 
   Map<String, Object?> toJson() => {
     'target': target,
     'username': username,
     'device_token': ?deviceToken,
     'server_name': serverName,
+    'pinned_sha256': ?pinnedSha256,
   };
 
   static SavedConnection? fromJson(Object? json) {
     if (json is! Map) return null;
     final target = json['target'];
     if (target is! String || target.isEmpty) return null;
-    final username = json['username'], token = json['device_token'], name = json['server_name'];
+    final username = json['username'], token = json['device_token'], name = json['server_name'], pin = json['pinned_sha256'];
     return SavedConnection(
       target: target,
       username: username is String ? username : '',
       deviceToken: token is String && token.isNotEmpty ? token : null,
       serverName: name is String ? name : '',
+      pinnedSha256: pin is String && pin.isNotEmpty ? pin : null,
     );
   }
 }
@@ -102,17 +122,23 @@ class FileConnectionStore implements ConnectionStore {
 final connectionStoreProvider = Provider<ConnectionStore>((_) => const FileConnectionStore());
 
 /// How a client is made for a target in this mode. Tests swap in a fake.
-typedef ClientFactory = WaiterClient Function(WaiterMode mode, String target, String? deviceToken);
+typedef ClientFactory = WaiterClient Function(WaiterMode mode, String target, String? deviceToken, String? pinnedSha256);
 
-/// The real one: the LAN link to a till, or the same wire served by the
-/// platform at the restaurant's subdomain (POS-BE-033).
-WaiterClient defaultClientFactory(WaiterMode mode, String target, String? deviceToken) => switch (mode) {
-  WaiterMode.offline => WaiterLinkClient(baseUri: WaiterLinkClient.addressToUri(target), deviceToken: deviceToken),
-  WaiterMode.cloud => WaiterLinkClient(
-    baseUri: Uri.https('${target.trim().toLowerCase()}.$cloudDomain', '/api/pos/waiter'),
-    deviceToken: deviceToken,
-  ),
-};
+/// The real one: the LAN link to a till, pinned to the certificate the waiter
+/// confirmed, or the same wire served by the platform at the restaurant's
+/// subdomain (POS-BE-033), verified by the platform's certificate authority.
+WaiterClient defaultClientFactory(WaiterMode mode, String target, String? deviceToken, String? pinnedSha256) =>
+    switch (mode) {
+      WaiterMode.offline => WaiterLinkClient(
+        baseUri: WaiterLinkClient.addressToUri(target),
+        deviceToken: deviceToken,
+        pinnedSha256: pinnedSha256,
+      ),
+      WaiterMode.cloud => WaiterLinkClient(
+        baseUri: Uri.https('${target.trim().toLowerCase()}.$cloudDomain', '/api/pos/waiter'),
+        deviceToken: deviceToken,
+      ),
+    };
 
 final clientFactoryProvider = Provider<ClientFactory>((_) => defaultClientFactory);
 
@@ -195,10 +221,11 @@ class WaiterApp extends Notifier<WaiterAppState> {
     final saved = state.connection;
     final sameTarget = saved != null && saved.target == cleanTarget;
     final token = sameTarget ? saved.deviceToken : null;
+    final pinned = sameTarget ? saved.pinnedSha256 : null;
 
     if (_client == null || _clientTarget != cleanTarget) {
       _client?.close();
-      _client = ref.read(clientFactoryProvider)(mode, cleanTarget, token);
+      _client = ref.read(clientFactoryProvider)(mode, cleanTarget, token, pinned);
       _clientTarget = cleanTarget;
     }
     final client = _client!;
@@ -212,9 +239,27 @@ class WaiterApp extends Notifier<WaiterAppState> {
       username: username.trim(),
       deviceToken: client.deviceToken,
       serverName: serverName,
+      pinnedSha256: pinned,
     );
     await ref.read(connectionStoreProvider).save(connection);
     state = state.copyWith(phase: WaiterPhase.signedIn, connection: connection, staff: session.staff);
+  }
+
+  /// The waiter compared [certificate] with the till's screen and said they
+  /// match (WA4). Kept with the connection; the next sign-in goes through a
+  /// client that accepts exactly that certificate.
+  Future<void> trust({required String target, required WaiterCertificate certificate}) async {
+    final cleanTarget = target.trim();
+    final saved = state.connection;
+    final connection = (saved != null && saved.target == cleanTarget ? saved : SavedConnection(target: cleanTarget))
+        .copyWith(pinnedSha256: certificate.sha256);
+    await ref.read(connectionStoreProvider).save(connection);
+    // The client in hand trusted nothing; the next sign-in makes one that
+    // trusts this.
+    _client?.close();
+    _client = null;
+    _clientTarget = null;
+    state = state.copyWith(connection: connection);
   }
 
   Future<void> signOut() async {

@@ -7,6 +7,7 @@ import '../../app/providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../core/ui/widgets/certificate_fingerprint.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../data/postgres/postgres_waiter_devices.dart';
 import 'waiter_link_host.dart';
@@ -109,6 +110,14 @@ class _WaiterDevicesDialogState extends ConsumerState<WaiterDevicesDialog> {
                     ),
                   const SizedBox(height: PosSpace.sm),
                   Text(strings.waiterSignInHelp, style: PosText.ui(size: 12.5, color: pos.body)),
+                  if (status.certificateSha256 case final sha256?) ...[
+                    const SizedBox(height: PosSpace.lg),
+                    MicroLabel(strings.waiterCertificateTitle),
+                    const SizedBox(height: PosSpace.xs),
+                    Text(strings.waiterCertificateHelp, style: PosText.ui(size: 12.5, color: pos.body)),
+                    const SizedBox(height: PosSpace.sm),
+                    CertificateFingerprint(sha256: sha256, notAfter: status.certificateNotAfter),
+                  ],
                 ],
                 const SizedBox(height: PosSpace.lg),
                 Flexible(

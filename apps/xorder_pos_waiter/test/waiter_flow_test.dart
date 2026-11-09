@@ -27,7 +27,7 @@ void main() {
       overrides: [
         waiterModeProvider.overrideWithValue(mode),
         connectionStoreProvider.overrideWithValue(store),
-        clientFactoryProvider.overrideWithValue((mode, target, token) => till.client(mode, target, token)),
+        clientFactoryProvider.overrideWithValue((mode, target, token, pin) => till.client(mode, target, token, pin)),
       ],
       child: const WaiterApplication(),
     ));
@@ -157,6 +157,57 @@ void main() {
     expect(store.saved!.deviceToken, 'device-token');
   });
 
+  testWidgets('the first sign-in to a till shows its fingerprint to compare; confirming pins it', (tester) async {
+    till.certificateSha256 = 'ab12' * 16;
+    await boot(tester);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    expect(find.text('Is this the till?'), findsOneWidget);
+    expect(find.text(('AB:12:' * 16).substring(0, 95)), findsOneWidget, reason: 'the fingerprint as the till prints it');
+    expect(find.text('Valid until 2029-02-11'), findsOneWidget);
+    expect(till.signInTokens, isEmpty, reason: 'no name or PIN left the phone before the till was confirmed');
+
+    await tester.tap(find.byKey(const Key('certificate-cancel')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsWidgets, reason: 'cancelled: still at the door, nothing pinned');
+    expect(store.saved?.pinnedSha256, isNull);
+
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    await tester.tap(find.byKey(const Key('certificate-match')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tables'), findsOneWidget);
+    expect(store.saved!.pinnedSha256, 'ab12' * 16);
+    expect(till.lastPin, 'ab12' * 16, reason: 'the client that signed in was made with the pin');
+  });
+
+  testWidgets('a till answering with a different certificate is refused, not re-asked', (tester) async {
+    till.certificateSha256 = 'ab12' * 16;
+    store.saved = SavedConnection(
+      target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till',
+      pinnedSha256: 'ff00' * 16,
+    );
+    await boot(tester);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    await signIn(tester);
+    expect(find.text('Is this the till?'), findsNothing);
+    expect(find.textContaining('different certificate'), findsOneWidget);
+    expect(store.saved!.pinnedSha256, 'ff00' * 16, reason: 'the old pin stays; only Forget clears it');
+  });
+
+  testWidgets('the cloud flavor never asks about a certificate', (tester) async {
+    till.certificateSha256 = 'ab12' * 16;
+    await boot(tester, mode: WaiterMode.cloud);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    await signIn(tester, target: 'demo', username: 'mona');
+    expect(find.text('Is this the till?'), findsNothing);
+    expect(find.text('The secure connection to xorder.io could not be verified.'), findsOneWidget);
+  });
+
   testWidgets('the cloud flavor signs in with the restaurant, a name and a PIN', (tester) async {
     await boot(tester, mode: WaiterMode.cloud);
     await tester.tap(find.text('English'));
@@ -172,12 +223,14 @@ void main() {
     expect(store.saved!.target, 'Demo');
   });
 
-  test('the cloud flavor reaches the restaurant\'s subdomain over https; the offline flavor the till over http', () {
-    final cloud = defaultClientFactory(WaiterMode.cloud, 'Demo', null) as WaiterLinkClient;
+  test('both flavors reach their server over https; only the offline one carries a pin', () {
+    final cloud = defaultClientFactory(WaiterMode.cloud, 'Demo', null, null) as WaiterLinkClient;
     expect(cloud.baseUri.toString(), 'https://demo.xorder.io/api/pos/waiter');
-    final offline = defaultClientFactory(WaiterMode.offline, '10.0.0.5', 'tok') as WaiterLinkClient;
-    expect(offline.baseUri.toString(), 'http://10.0.0.5:8787');
+    expect(cloud.pinnedSha256, isNull);
+    final offline = defaultClientFactory(WaiterMode.offline, '10.0.0.5', 'tok', 'abc') as WaiterLinkClient;
+    expect(offline.baseUri.toString(), 'https://10.0.0.5:8787');
     expect(offline.deviceToken, 'tok');
+    expect(offline.pinnedSha256, 'abc');
   });
 }
 
@@ -207,11 +260,16 @@ class _FakeTill {
   var lines = <WaiterLine>[];
   int? version;
 
-  WaiterClient client(WaiterMode mode, String target, String? token) {
+  /// The till's certificate; null for a fake that offers no TLS.
+  String? certificateSha256;
+  String? lastPin;
+
+  WaiterClient client(WaiterMode mode, String target, String? token, String? pin) {
     lastMode = mode;
     lastTarget = target;
+    lastPin = pin;
     lastUri = mode == WaiterMode.offline ? WaiterLinkClient.addressToUri(target) : null;
-    return _FakeClient(this, token);
+    return _FakeClient(this, token, pin);
   }
 
   final menu = const WaiterMenu(
@@ -281,21 +339,38 @@ class _FakeTill {
 }
 
 class _FakeClient implements WaiterClient {
-  _FakeClient(this.till, this.deviceToken);
+  _FakeClient(this.till, this.deviceToken, this.pinnedSha256);
 
   final _FakeTill till;
   @override
   String? deviceToken;
+  final String? pinnedSha256;
 
   void _guard() {
     if (till.revoked && deviceToken != null) throw const WaiterLinkFailure(WaiterError.revoked, 401);
   }
 
+  /// What a real client does at the handshake (WA4): a till with a
+  /// certificate is refused unless this phone pinned exactly it.
+  void _handshake() {
+    final cert = till.certificateSha256;
+    if (cert == null) return;
+    if (pinnedSha256 == cert) return;
+    throw WaiterLinkUntrustedCertificate(
+      WaiterCertificate(sha256: cert, notAfter: DateTime.utc(2029, 2, 11)),
+      pinned: pinnedSha256 != null,
+    );
+  }
+
   @override
-  Future<String> hello() async => 'Main till';
+  Future<String> hello() async {
+    _handshake();
+    return 'Main till';
+  }
 
   @override
   Future<WaiterSession> signIn({required String username, required String pin, required String deviceName}) async {
+    _handshake();
     _guard();
     till.signInTokens.add(deviceToken);
     if (username != 'mona' || pin != '1111') throw const WaiterLinkFailure(WaiterError.wrongPin, 403);

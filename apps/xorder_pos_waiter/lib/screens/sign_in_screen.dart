@@ -60,15 +60,27 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _error = null;
     });
     final app = ref.read(waiterAppProvider.notifier);
+    final mode = ref.read(waiterModeProvider);
     try {
-      await app.signIn(target: _target.text, username: _username.text, pin: _pin.text);
-    } on WaiterLinkFailure catch (e) {
-      if (await app.absorb(e)) {
-        // The server forgot this device; the next tap registers it again.
-        if (mounted) setState(() => _error = s.failure(e));
-      } else if (mounted) {
-        setState(() => _error = s.failure(e));
+      // At most twice: once, and once more after the waiter confirmed the
+      // till's certificate (WA4). A second refusal is an error like any other.
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          await app.signIn(target: _target.text, username: _username.text, pin: _pin.text);
+          return;
+        } on WaiterLinkUntrustedCertificate catch (e) {
+          if (e.pinned || mode != WaiterMode.offline || attempt > 0) rethrow;
+          // Not busy while the waiter reads: the question is theirs to take time over.
+          if (mounted) setState(() => _busy = false);
+          final match = await _confirmCertificate(e.presented);
+          if (!match || !mounted) return;
+          setState(() => _busy = true);
+          await app.trust(target: _target.text, certificate: e.presented);
+        }
       }
+    } on WaiterLinkFailure catch (e) {
+      await app.absorb(e); // a forgotten device: the next tap registers it again
+      if (mounted) setState(() => _error = s.failure(e));
     } on FormatException {
       if (mounted) setState(() => _error = s.unreachable);
     } finally {
@@ -79,6 +91,49 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         });
       }
     }
+  }
+
+  /// The fingerprint, for the waiter to hold against the till's screen.
+  Future<bool> _confirmCertificate(WaiterCertificate certificate) async {
+    final s = WaiterStrings.of(context);
+    final notAfter = certificate.notAfter;
+    final until = notAfter == null ? null : '${notAfter.year}-${notAfter.month.toString().padLeft(2, '0')}-${notAfter.day.toString().padLeft(2, '0')}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(s.certificateTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(s.certificateCompare, style: WaiterText.body()),
+            const SizedBox(height: WaiterSpace.md),
+            Container(
+              key: const Key('certificate-fingerprint'),
+              padding: const EdgeInsets.all(WaiterSpace.md),
+              decoration: const BoxDecoration(
+                color: WaiterColors.page,
+                border: Border.fromBorderSide(BorderSide(color: WaiterColors.lineStrong)),
+              ),
+              child: SelectableText(
+                certificate.formatted,
+                textDirection: TextDirection.ltr,
+                style: WaiterText.mono(size: 13, weight: FontWeight.w500, height: 1.5),
+              ),
+            ),
+            if (until != null) ...[
+              const SizedBox(height: WaiterSpace.sm),
+              Text(s.certificateExpires(until), style: WaiterText.meta()),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(key: const Key('certificate-cancel'), onPressed: () => Navigator.pop(context, false), child: Text(s.cancel)),
+          FilledButton(key: const Key('certificate-match'), onPressed: () => Navigator.pop(context, true), child: Text(s.certificateMatch)),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   Future<void> _forget() async {
