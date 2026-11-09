@@ -141,6 +141,13 @@ ids and names). A waiter never chooses a mode; the restaurant is given the app t
 (a restaurant with a till gets Offline, one without gets Cloud — POS-BE-033). There is no
 pairing code (owner decision, 2026-11-09).
 
+**Icons.** Offline carries the official XOrder mark as the till does (orange ring and hand on
+navy `#111827`); Cloud carries the same mark inverted (navy ring on orange `#FF7900`), so the
+two apps are told apart on a home screen at a glance. Masters live in `assets/icons/`; one
+`flutter_launcher_icons-<flavor>.yaml` per flavor regenerates Android (adaptive, per flavor
+source set) and iOS (`AppIcon-<flavor>`; the base `AppIcon` is the Offline set until the iOS
+schemes exist).
+
 ### 5.2 Sign in
 Shell screen, the same in both flavors but for the first field. A `shellCard` panel, max 440
 wide, centred: the XOrder mark, the title, one line of guidance (or, once remembered, the
