@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../../data/postgres/postgres_waiter_devices.dart';
 import '../../domain/models/pos_settings.dart';
 import '../../domain/models/shift.dart';
 import 'till_waiter_backend.dart';
+import 'waiter_link_tls.dart';
 
 /// Whether this till can serve waiter handhelds, and what it is doing about it.
 class WaiterLinkStatus {
@@ -20,8 +22,9 @@ class WaiterLinkStatus {
     this.running = false,
     this.port = defaultWaiterPort,
     this.addresses = const [],
-    this.pairing,
     this.devices = const [],
+    this.certificateSha256,
+    this.certificateNotAfter,
     this.error,
   });
 
@@ -33,8 +36,12 @@ class WaiterLinkStatus {
 
   /// This machine's LAN addresses, for the handheld's "till address" field.
   final List<String> addresses;
-  final PairingCode? pairing;
   final List<WaiterDevice> devices;
+
+  /// The fingerprint of the certificate the link serves with — what a waiter
+  /// compares on the handheld's first sign-in (WA4). Null until it is serving.
+  final String? certificateSha256;
+  final DateTime? certificateNotAfter;
 
   /// Why the last start failed (port in use, ...), in the system's words.
   final String? error;
@@ -44,9 +51,9 @@ class WaiterLinkStatus {
     bool? running,
     int? port,
     List<String>? addresses,
-    PairingCode? pairing,
-    bool clearPairing = false,
     List<WaiterDevice>? devices,
+    String? certificateSha256,
+    DateTime? certificateNotAfter,
     String? error,
     bool clearError = false,
   }) => WaiterLinkStatus(
@@ -54,8 +61,9 @@ class WaiterLinkStatus {
     running: running ?? this.running,
     port: port ?? this.port,
     addresses: addresses ?? this.addresses,
-    pairing: clearPairing ? null : (pairing ?? this.pairing),
     devices: devices ?? this.devices,
+    certificateSha256: certificateSha256 ?? this.certificateSha256,
+    certificateNotAfter: certificateNotAfter ?? this.certificateNotAfter,
     error: clearError ? null : (error ?? this.error),
   );
 }
@@ -109,11 +117,11 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
     await start();
   }
 
-  /// Turn it off. Paired devices stay paired; they reconnect when it is on.
+  /// Turn it off. Registered devices stay registered; they reconnect when it is on.
   Future<void> disable(PosStaff by) async {
     await _remember(false, by);
     await _close();
-    state = state.copyWith(running: false, clearPairing: true);
+    state = state.copyWith(running: false);
   }
 
   Future<void> _remember(bool on, PosStaff by) async {
@@ -155,14 +163,23 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
       catalog: () => ref.read(catalogProvider.future),
       tables: () => ref.read(tablesRepositoryProvider).liveFloor(),
       taxConfig: () => ref.read(taxConfigProvider),
-      signInWithPin: (pin) => ref.read(sessionRepositoryProvider).signIn(pin),
+      // Name and PIN together, as the lock screen matches them (WA3).
+      signInAs: ({required username, required pin}) =>
+          ref.read(sessionRepositoryProvider).signInAs(username: username, pin: pin),
       checks: ParkedTicketsCheckStore(parked),
       devices: PostgresWaiterDeviceStore(devices),
       // The till's own floor catches up now, not at its next 5 s refresh.
       onSaved: () => unawaited(ref.read(openTicketsProvider.notifier).refresh()),
     );
     try {
-      final http = await HttpServer.bind(InternetAddress.anyIPv4, ref.read(waiterLinkPortProvider));
+      // TLS, always (WA4): the link carries names and PINs, and the LAN is
+      // not a trusted wire. The till's own certificate, pinned by every
+      // handheld on its first sign-in.
+      final identity = await _identity(profile);
+      final context = SecurityContext()
+        ..useCertificateChainBytes(utf8.encode(identity.certificatePem))
+        ..usePrivateKeyBytes(utf8.encode(identity.privateKeyPem));
+      final http = await HttpServer.bindSecure(InternetAddress.anyIPv4, ref.read(waiterLinkPortProvider), context);
       final server = WaiterLinkServer(backend: backend);
       server.attach(http);
       _http = http;
@@ -173,6 +190,8 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
         port: http.port,
         addresses: await _lanAddresses(),
         devices: await devices.all(),
+        certificateSha256: identity.sha256,
+        certificateNotAfter: identity.notAfter,
         clearError: true,
       );
     } on Object catch (e) {
@@ -180,28 +199,30 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
     }
   }
 
-  /// Show a fresh pairing code for ten minutes.
-  void openPairing() {
-    final server = _server;
-    if (server == null) return;
-    state = state.copyWith(pairing: server.openPairing());
+  /// The certificate this till serves the link with: the one in the secret
+  /// store, or a fresh one when there is none or it is inside its last 60
+  /// days. A renewal changes the fingerprint, which every handheld then asks
+  /// to confirm again — the same margin and the same consequence as the
+  /// installer's database certificate.
+  Future<WaiterLinkIdentity> _identity(TerminalProfile profile) async {
+    final store = ref.read(secretStoreProvider);
+    final kept = WaiterLinkIdentity.fromJson(await store.read(WaiterLinkIdentity.secretKey));
+    if (kept != null && !kept.expiresWithin(const Duration(days: 60))) return kept;
+    final name = [profile.terminalName, profile.branchName]
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .join(' — ');
+    final fresh = await WaiterLinkIdentity.generate(name: name.isEmpty ? 'XOrder POS' : name);
+    await store.write(WaiterLinkIdentity.secretKey, fresh.toJson());
+    return fresh;
   }
 
-  void closePairing() {
-    _server?.closePairing();
-    state = state.copyWith(clearPairing: true);
-  }
-
+  /// Re-read the device list: a handheld that just signed in for the first
+  /// time appears here without anybody pressing refresh.
   Future<void> refreshDevices() async {
     final devices = _devices;
     if (devices == null) return;
-    // The code is used once; a device that just paired has consumed it.
-    final pairing = _server?.currentPairing;
-    state = state.copyWith(
-      devices: await devices.all(),
-      pairing: pairing,
-      clearPairing: pairing == null,
-    );
+    state = state.copyWith(devices: await devices.all());
   }
 
   Future<void> revoke(int deviceId) async {

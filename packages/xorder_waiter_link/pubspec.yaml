@@ -1,6 +1,7 @@
 # The link between a waiter's handheld and the till that holds the tables
-# (waiter-app, stage WA1). Pure Dart and no dependencies of its own, on
-# purpose: the handheld app depends on this and on Flutter, never on
+# (waiter-app, stage WA1). Pure Dart; its one dependency is `crypto`, for the
+# SHA-256 a handheld pins the till's certificate by (WA4). On purpose nothing
+# more: the handheld app depends on this and on Flutter, never on
 # packages/shared_module, so a phone does not ship PostgreSQL, the encrypted
 # SQLite engine or the desktop screens. The till depends on it too, and serves
 # the same wire it defines.
@@ -18,6 +19,11 @@ environment:
   sdk: ^3.13.0
 
 resolution: workspace
+
+dependencies:
+  # SHA-256 over a certificate's DER: the fingerprint, computed the same way
+  # the till's LanTls computes it, so the two screens agree to the character.
+  crypto: ^3.0.6
 
 dev_dependencies:
   # Run with `flutter test` like every other member; nothing here imports

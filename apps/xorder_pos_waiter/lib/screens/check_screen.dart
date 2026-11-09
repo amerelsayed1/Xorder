@@ -8,12 +8,17 @@ import '../theme.dart';
 import 'item_sheet.dart';
 import 'widgets.dart';
 
-/// One table's check: the menu to add from, the lines, and "send to kitchen".
+/// One table's check: the menu to add from, the lines, and "send to kitchen"
+/// (design §5.4–5.5).
 ///
 /// Every tap is one request: the till applies it with its own ticket rules and
 /// sends back the check it now holds, priced. A table changed on another
 /// device meanwhile comes back as the current check and the waiter redoes the
 /// change (XORD-044) — nothing is merged behind their back.
+///
+/// On a phone the menu and the check are two tabs with a sticky bar under the
+/// menu; on a tablet they sit side by side. The bar never sends: sending is a
+/// decision taken while looking at the lines.
 class CheckScreen extends ConsumerStatefulWidget {
   const CheckScreen({required this.table, super.key});
 
@@ -23,18 +28,26 @@ class CheckScreen extends ConsumerStatefulWidget {
   ConsumerState<CheckScreen> createState() => _CheckScreenState();
 }
 
-class _CheckScreenState extends ConsumerState<CheckScreen> {
+class _CheckScreenState extends ConsumerState<CheckScreen> with SingleTickerProviderStateMixin {
   WaiterCheck? _check;
   String? _error;
   bool _busy = false;
   int? _category;
+  String _query = '';
+  late final TabController _tabs = TabController(length: 2, vsync: this);
 
-  WaiterLinkClient get _client => ref.read(waiterAppProvider.notifier).client;
+  WaiterClient get _client => ref.read(waiterAppProvider.notifier).client;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -129,63 +142,81 @@ class _CheckScreenState extends ConsumerState<CheckScreen> {
     final s = WaiterStrings.of(context);
     final menu = ref.watch(menuProvider);
     final check = _check;
-    final title = '${widget.table.label}${check?.guests != null ? ' · ${s.guests(check!.guests!)}' : ''}';
+    final liveLines = check?.lines.where((l) => l.stage != WaiterLineStage.voided).length ?? 0;
+    final subtitle = dotJoin([widget.table.area, if (check?.guests != null) s.guests(check!.guests!)]);
 
     final Widget body;
     if (_error != null && check == null) {
-      body = Center(
-        child: Padding(
-          padding: const EdgeInsets.all(WaiterSpace.xl),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ErrorNote(_error!),
-            const SizedBox(height: WaiterSpace.md),
-            OutlinedButton(onPressed: _load, child: Text(s.retry)),
-          ]),
-        ),
-      );
+      body = EmptyState(_error!, actionLabel: s.retry, onAction: _load);
     } else if (check == null || !menu.hasValue) {
       body = menu.hasError
-          ? Center(child: ErrorNote(menu.error is WaiterLinkFailure ? s.failure(menu.error! as WaiterLinkFailure) : s.tillProblem))
+          ? EmptyState(
+              menu.error is WaiterLinkFailure ? s.failure(menu.error! as WaiterLinkFailure) : s.tillProblem,
+              actionLabel: s.retry,
+              onAction: () => ref.invalidate(menuProvider),
+            )
           : const Center(child: CircularProgressIndicator());
     } else {
       final menuPane = _MenuPane(
         menu: menu.requireValue,
         category: _category,
+        query: _query,
         onCategory: (c) => setState(() => _category = c),
+        onQuery: (q) => setState(() => _query = q),
         onProduct: (p) => _add(p, menu.requireValue),
         enabled: !_busy,
       );
-      final checkPane = _CheckPane(check: check, busy: _busy, onSend: _send, onLine: _editLine);
       body = LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth >= WaiterSpace.tabletMin
-            ? Row(children: [
-                Expanded(child: menuPane),
-                const VerticalDivider(width: 1),
-                SizedBox(width: 360, child: checkPane),
-              ])
-            : DefaultTabController(
-                length: 2,
-                child: Column(children: [
-                  Material(
-                    color: WaiterColors.surface,
-                    child: TabBar(
-                      labelColor: WaiterColors.ink,
-                      indicatorColor: WaiterColors.accent,
-                      tabs: [
-                        Tab(text: s.menu),
-                        Tab(key: const Key('check-tab'), text: '${s.check} (${check.lines.where((l) => l.stage != WaiterLineStage.voided).length})'),
-                      ],
-                    ),
-                  ),
-                  Expanded(child: TabBarView(children: [menuPane, checkPane])),
-                ]),
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= WaiterSpace.tabletMin) {
+            return Row(children: [
+              Expanded(child: menuPane),
+              const VerticalDivider(width: 1),
+              SizedBox(
+                width: WaiterSpace.checkPane,
+                child: _CheckPane(check: check, busy: _busy, onSend: _send, onLine: _editLine),
               ),
+            ]);
+          }
+          void toCheck() => _tabs.animateTo(1);
+          return Column(children: [
+            Material(
+              color: WaiterColors.surface,
+              child: TabBar(
+                controller: _tabs,
+                tabs: [
+                  Tab(height: WaiterSpace.touch, text: s.menu),
+                  Tab(key: const Key('check-tab'), height: WaiterSpace.touch, text: s.checkTab(liveLines)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabs,
+                children: [
+                  Column(children: [
+                    Expanded(child: menuPane),
+                    if (!check.isEmpty) _CheckBar(check: check, onOpen: toCheck),
+                  ]),
+                  _CheckPane(check: check, busy: _busy, onSend: _send, onLine: _editLine, onOpenMenu: () => _tabs.animateTo(0)),
+                ],
+              ),
+            ),
+          ]);
+        },
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.table.label, style: WaiterText.mono(size: 18, weight: FontWeight.w700)),
+            if (subtitle.isNotEmpty) Text(subtitle, style: WaiterText.meta()),
+          ],
+        ),
         actions: [
           if (check != null)
             IconButton(
@@ -208,7 +239,7 @@ class _CheckScreenState extends ConsumerState<CheckScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, set) => AlertDialog(
           title: Text(s.guestsLabel),
-          content: _Stepper(value: n, onChanged: (v) => set(() => n = v), min: 1),
+          content: QuantityStepper(value: n, onChanged: (v) => set(() => n = v)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
             FilledButton(onPressed: () => Navigator.pop(context, n), child: Text(s.save)),
@@ -224,37 +255,65 @@ class _MenuPane extends StatelessWidget {
   const _MenuPane({
     required this.menu,
     required this.category,
+    required this.query,
     required this.onCategory,
+    required this.onQuery,
     required this.onProduct,
     required this.enabled,
   });
 
   final WaiterMenu menu;
   final int? category;
+  final String query;
   final ValueChanged<int?> onCategory;
+  final ValueChanged<String> onQuery;
   final ValueChanged<WaiterProduct> onProduct;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
-    final products = category == null ? menu.products : menu.inCategory(category!);
-    Widget chip(String label, int? id) => Padding(
-      padding: const EdgeInsetsDirectional.only(end: WaiterSpace.sm),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: category == id,
-        onSelected: (_) => onCategory(id),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        selectedColor: WaiterColors.accentSoft,
-        side: BorderSide(color: category == id ? WaiterColors.accent : WaiterColors.lineStrong),
-        showCheckmark: false,
-      ),
-    );
+    final q = query.trim().toLowerCase();
+    // A search looks across every category: a waiter typing "tea" wants tea,
+    // whichever chip was left selected.
+    final products = [
+      for (final p in q.isEmpty && category != null ? menu.inCategory(category!) : menu.products)
+        if (q.isEmpty || p.name.en.toLowerCase().contains(q) || (p.name.ar?.contains(q) ?? false)) p,
+    ];
+    Widget chip(String label, int? id) {
+      final selected = q.isEmpty && category == id;
+      return Padding(
+        padding: const EdgeInsetsDirectional.only(end: WaiterSpace.sm),
+        child: ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          onSelected: (_) => onCategory(id),
+          side: BorderSide(color: selected ? WaiterColors.accent : WaiterColors.lineStrong, width: selected ? 2 : 1),
+        ),
+      );
+    }
+
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(WaiterSpace.md, WaiterSpace.sm, WaiterSpace.md, 0),
+          child: SizedBox(
+            height: WaiterSpace.touch,
+            child: TextField(
+              key: const Key('menu-search'),
+              onChanged: onQuery,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: s.searchMenu,
+                prefixIcon: const Icon(Icons.search, color: WaiterColors.muted),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: WaiterSpace.md, vertical: WaiterSpace.md),
+              ),
+            ),
+          ),
+        ),
         SizedBox(
-          height: 56,
+          height: WaiterSpace.touch + WaiterSpace.sm,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: WaiterSpace.md, vertical: WaiterSpace.sm),
@@ -265,107 +324,185 @@ class _MenuPane extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(WaiterSpace.md),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 200,
-              mainAxisExtent: 92,
-              crossAxisSpacing: WaiterSpace.sm,
-              mainAxisSpacing: WaiterSpace.sm,
-            ),
-            itemCount: products.length,
-            itemBuilder: (context, i) {
-              final p = products[i];
-              return Material(
-                color: p.available ? WaiterColors.surface : WaiterColors.page,
-                shape: const Border.fromBorderSide(BorderSide(color: WaiterColors.lineStrong)),
-                child: InkWell(
-                  key: Key('product-${p.id}'),
-                  onTap: enabled && p.available ? () => onProduct(p) : null,
-                  child: Padding(
-                    padding: const EdgeInsets.all(WaiterSpace.sm),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            p.name.pick(arabic: s.arabic),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: p.available ? WaiterColors.ink : WaiterColors.muted,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          p.available ? moneyText(menu.currency, p.priceMinor, arabic: s.arabic) : s.unavailable,
-                          style: waiterMono(size: 13, color: p.available ? WaiterColors.body : WaiterColors.muted),
-                        ),
-                      ],
-                    ),
+          child: products.isEmpty
+              ? EmptyState(s.noMatches)
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(WaiterSpace.md, 0, WaiterSpace.md, WaiterSpace.md),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: WaiterSpace.productTileMaxExtent,
+                    mainAxisExtent: WaiterSpace.productTile,
+                    crossAxisSpacing: WaiterSpace.productGutter,
+                    mainAxisSpacing: WaiterSpace.productGutter,
+                  ),
+                  itemCount: products.length,
+                  itemBuilder: (context, i) => _ProductTile(
+                    product: products[i],
+                    currency: menu.currency,
+                    enabled: enabled,
+                    onTap: onProduct,
                   ),
                 ),
-              );
-            },
-          ),
         ),
       ],
     );
   }
 }
 
+class _ProductTile extends StatelessWidget {
+  const _ProductTile({required this.product, required this.currency, required this.enabled, required this.onTap});
+
+  final WaiterProduct product;
+  final WaiterCurrency currency;
+  final bool enabled;
+  final ValueChanged<WaiterProduct> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = WaiterStrings.of(context);
+    final p = product;
+    return Material(
+      color: p.available ? WaiterColors.surface : WaiterColors.page,
+      shape: const Border.fromBorderSide(BorderSide(color: WaiterColors.lineStrong)),
+      child: InkWell(
+        key: Key('product-${p.id}'),
+        onTap: enabled && p.available ? () => onTap(p) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(WaiterSpace.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  p.name.pick(arabic: s.arabic),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: WaiterText.itemTitle(color: p.available ? WaiterColors.ink : WaiterColors.muted),
+                ),
+              ),
+              if (p.available)
+                MoneyText(currency, p.priceMinor, style: WaiterText.price(color: WaiterColors.body))
+              else
+                Text(s.unavailable, style: WaiterText.meta()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Under the menu on a phone: the total, how much is not sent, and the way to
+/// the check. It never sends.
+class _CheckBar extends StatelessWidget {
+  const _CheckBar({required this.check, required this.onOpen});
+
+  final WaiterCheck check;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = WaiterStrings.of(context);
+    final drafts = check.lines.where((l) => l.isDraft).length;
+    final live = check.lines.where((l) => l.stage != WaiterLineStage.voided).length;
+    return BottomBar(
+      padding: const EdgeInsets.symmetric(horizontal: WaiterSpace.lg, vertical: WaiterSpace.sm),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: WaiterSpace.checkBar - 2 * WaiterSpace.sm),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MoneyText(check.currency, check.totalMinor, style: WaiterText.barTotal()),
+                  if (drafts > 0) Text(s.notSentCount(drafts), style: WaiterText.meta(color: WaiterColors.warn)),
+                ],
+              ),
+            ),
+            OutlinedButton(
+              key: const Key('check-bar-open'),
+              onPressed: onOpen,
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: drafts > 0 ? WaiterColors.accent : WaiterColors.lineStrong, width: drafts > 0 ? 2 : 1),
+              ),
+              child: Text(s.checkTab(live)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The lines, grouped: what is not sent yet first, then each round newest
+/// first; then the totals and the one action.
 class _CheckPane extends StatelessWidget {
-  const _CheckPane({required this.check, required this.busy, required this.onSend, required this.onLine});
+  const _CheckPane({required this.check, required this.busy, required this.onSend, required this.onLine, this.onOpenMenu});
 
   final WaiterCheck check;
   final bool busy;
   final VoidCallback onSend;
   final ValueChanged<WaiterLine> onLine;
+  final VoidCallback? onOpenMenu;
 
   @override
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
-    String m(int minor) => moneyText(check.currency, minor, arabic: s.arabic);
+    final drafts = check.lines.where((l) => l.isDraft).toList();
+    final rounds = <int?, List<WaiterLine>>{};
+    for (final l in check.lines) {
+      if (!l.isDraft) (rounds[l.round] ??= []).add(l);
+    }
+    final roundKeys = rounds.keys.toList()
+      ..sort((a, b) => (b ?? 0).compareTo(a ?? 0));
+
     return ColoredBox(
       color: WaiterColors.surface,
       child: Column(
         children: [
           Expanded(
             child: check.lines.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(WaiterSpace.xl),
-                      child: Text(s.emptyCheck, textAlign: TextAlign.center, style: const TextStyle(color: WaiterColors.muted)),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: check.lines.length,
-                    separatorBuilder: (_, _) => const Divider(),
-                    itemBuilder: (context, i) => _LineTile(line: check.lines[i], money: m, onTap: () => onLine(check.lines[i])),
+                ? EmptyState(s.emptyCheck, actionLabel: onOpenMenu == null ? null : s.openMenu, onAction: onOpenMenu)
+                : ListView(
+                    padding: const EdgeInsets.only(bottom: WaiterSpace.md),
+                    children: [
+                      if (drafts.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(WaiterSpace.lg, WaiterSpace.sm, WaiterSpace.lg, 0),
+                          child: SectionHeader(s.notSentHeader, count: drafts.length, color: WaiterColors.warn),
+                        ),
+                        for (final l in drafts) _LineTile(line: l, currency: check.currency, onTap: () => onLine(l)),
+                      ],
+                      for (final r in roundKeys) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(WaiterSpace.lg, WaiterSpace.sm, WaiterSpace.lg, 0),
+                          child: SectionHeader(r == null ? s.voided : s.sent(r), count: rounds[r]!.length),
+                        ),
+                        for (final l in rounds[r]!) _LineTile(line: l, currency: check.currency, onTap: () => onLine(l)),
+                      ],
+                    ],
                   ),
           ),
           const Divider(),
           Padding(
-            padding: const EdgeInsets.all(WaiterSpace.md),
+            padding: const EdgeInsets.fromLTRB(WaiterSpace.lg, WaiterSpace.md, WaiterSpace.lg, WaiterSpace.sm),
             child: Column(
               children: [
-                _TotalRow(s.subtotal, m(check.subtotalMinor)),
-                if (check.discountMinor != 0) _TotalRow(s.discount, m(-check.discountMinor)),
-                if (check.serviceMinor != 0) _TotalRow(s.service, m(check.serviceMinor)),
-                if (check.taxMinor != 0) _TotalRow(s.tax, m(check.taxMinor)),
-                _TotalRow(s.total, m(check.totalMinor), strong: true),
-                const SizedBox(height: WaiterSpace.md),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: FilledButton(
-                    key: const Key('send'),
-                    onPressed: check.hasDraft && !busy ? onSend : null,
-                    child: busy ? const SmallSpinner() : Text(s.sendRound),
-                  ),
-                ),
+                _TotalRow(s.subtotal, check.currency, check.subtotalMinor),
+                if (check.discountMinor != 0) _TotalRow(s.discount, check.currency, -check.discountMinor),
+                if (check.serviceMinor != 0) _TotalRow(s.service, check.currency, check.serviceMinor),
+                if (check.taxMinor != 0) _TotalRow(s.tax, check.currency, check.taxMinor),
+                _TotalRow(s.total, check.currency, check.totalMinor, strong: true),
               ],
+            ),
+          ),
+          BottomBar(
+            child: PrimaryCta(
+              key: const Key('send'),
+              label: s.sendRoundCount(drafts.length),
+              busy: busy,
+              onPressed: drafts.isNotEmpty ? onSend : null,
             ),
           ),
         ],
@@ -375,53 +512,50 @@ class _CheckPane extends StatelessWidget {
 }
 
 class _LineTile extends StatelessWidget {
-  const _LineTile({required this.line, required this.money, required this.onTap});
+  const _LineTile({required this.line, required this.currency, required this.onTap});
 
   final WaiterLine line;
-  final String Function(int) money;
+  final WaiterCurrency currency;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
     final voided = line.stage == WaiterLineStage.voided;
-    final status = switch (line.stage) {
-      WaiterLineStage.draft => s.notSentYet,
-      WaiterLineStage.sent => s.sent(line.round ?? 1),
-      WaiterLineStage.voided => s.voided,
-    };
+    final sent = line.stage == WaiterLineStage.sent;
     final strike = voided ? TextDecoration.lineThrough : null;
+    final ink = voided ? WaiterColors.muted : (sent ? WaiterColors.body : WaiterColors.ink);
     return InkWell(
       onTap: voided ? null : onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: WaiterSpace.touch),
         // Unsent lines are marked: they are the ones the waiter can still change.
         decoration: BoxDecoration(
-          border: BorderDirectional(
-            start: BorderSide(color: line.isDraft ? WaiterColors.accent : Colors.transparent, width: 4),
+          border: Border(
+            bottom: const BorderSide(color: WaiterColors.line),
+            left: BorderSide(color: line.isDraft ? WaiterColors.accent : Colors.transparent, width: 4),
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: WaiterSpace.md, vertical: WaiterSpace.sm),
+        padding: const EdgeInsetsDirectional.fromSTEB(WaiterSpace.md, WaiterSpace.s10, WaiterSpace.lg, WaiterSpace.s10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${line.quantity}×', style: waiterMono(size: 15)),
-            const SizedBox(width: WaiterSpace.sm),
+            SizedBox(width: 36, child: Text('${line.quantity}×', style: WaiterText.mono(size: 15, color: ink))),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(line.name.pick(arabic: s.arabic),
-                      style: TextStyle(fontWeight: FontWeight.w600, color: WaiterColors.ink, decoration: strike)),
+                  Text(line.name.pick(arabic: s.arabic), style: WaiterText.itemTitle(color: ink, decoration: strike)),
                   if (line.modifiers.isNotEmpty)
-                    Text(line.modifiers.map((m) => m.pick(arabic: s.arabic)).join('، '),
-                        style: const TextStyle(fontSize: 12.5, color: WaiterColors.body)),
-                  if (line.note != null)
-                    Text('“${line.note}”', style: const TextStyle(fontSize: 12.5, color: WaiterColors.warn)),
-                  Text(status, style: TextStyle(fontSize: 11.5, color: line.isDraft ? WaiterColors.warn : WaiterColors.muted)),
+                    Text(line.modifiers.map((m) => m.pick(arabic: s.arabic)).join(s.listSeparator), style: WaiterText.meta(color: WaiterColors.body)),
+                  if (line.note != null) Text('“${line.note}”', style: WaiterText.meta(color: WaiterColors.warn)),
+                  if (line.isDraft) Text(s.notSentYet, style: WaiterText.meta(color: WaiterColors.warn)),
+                  if (voided) Text(s.voided, style: WaiterText.meta()),
                 ],
               ),
             ),
-            Text(money(line.totalMinor), style: waiterMono(size: 14).copyWith(decoration: strike)),
+            const SizedBox(width: WaiterSpace.sm),
+            MoneyText(currency, line.totalMinor, style: WaiterText.price(color: ink, decoration: strike)),
           ],
         ),
       ),
@@ -430,35 +564,26 @@ class _LineTile extends StatelessWidget {
 }
 
 class _TotalRow extends StatelessWidget {
-  const _TotalRow(this.label, this.value, {this.strong = false});
+  const _TotalRow(this.label, this.currency, this.minor, {this.strong = false});
   final String label;
-  final String value;
+  final WaiterCurrency currency;
+  final int minor;
   final bool strong;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(children: [
-      Expanded(child: Text(label, style: TextStyle(color: strong ? WaiterColors.ink : WaiterColors.body, fontWeight: strong ? FontWeight.w800 : FontWeight.w400, fontSize: strong ? 17 : 14))),
-      Text(value, style: waiterMono(size: strong ? 18 : 14, weight: strong ? FontWeight.w800 : FontWeight.w600)),
-    ]),
-  );
-}
-
-class _Stepper extends StatelessWidget {
-  const _Stepper({required this.value, required this.onChanged, this.min = 1});
-  final int value;
-  final ValueChanged<int> onChanged;
-  final int min;
-  static const max = 99;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      OutlinedButton(onPressed: value > min ? () => onChanged(value - 1) : null, child: const Icon(Icons.remove)),
-      SizedBox(width: 56, child: Text('$value', textAlign: TextAlign.center, style: waiterMono(size: 22))),
-      OutlinedButton(onPressed: value < max ? () => onChanged(value + 1) : null, child: const Icon(Icons.add)),
-    ],
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: strong ? WaiterText.ui(size: 16, weight: FontWeight.w700) : WaiterText.body(),
+          ),
+        ),
+        MoneyText(currency, minor, style: strong ? WaiterText.total() : WaiterText.price(color: WaiterColors.body)),
+      ],
+    ),
   );
 }

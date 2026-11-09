@@ -27,11 +27,8 @@ void main() {
     await http.close(force: true);
   });
 
-  Future<void> pairAndSignIn({String pin = '1111'}) async {
-    final code = server.openPairing().code;
-    await client.pair(code: code, deviceName: 'Phone 1');
-    await client.signIn(pin);
-  }
+  Future<WaiterSession> signIn({String username = 'mona', String pin = '1111'}) =>
+      client.signIn(username: username, pin: pin, deviceName: 'Phone 1');
 
   Future<String> failureCode(Future<Object?> Function() call) async {
     try {
@@ -42,99 +39,90 @@ void main() {
     fail('expected a WaiterLinkFailure');
   }
 
-  group('pairing', () {
-    test('hello answers before pairing, and names the till', () async {
+  group('devices', () {
+    test('hello answers before any sign-in, and names the till', () async {
       expect(await client.hello(), 'Main till');
     });
 
-    test('nothing past hello without a device token', () async {
-      expect(await failureCode(() => client.signIn('1111')), WaiterError.unpaired);
+    test('nothing past hello and sign-in without a device token', () async {
+      expect(await failureCode(client.floor), WaiterError.unpaired);
     });
 
-    test('the code the till shows pairs one device, once', () async {
-      final code = server.openPairing().code;
-      expect(code, matches(RegExp(r'^\d{6}$')));
-      final token = await client.pair(code: code, deviceName: 'Phone 1');
-      expect(token, isNotEmpty);
+    test('the first sign-in registers the device and hands back its token', () async {
+      final session = await signIn();
+      expect(session.deviceToken, isNotEmpty);
+      expect(client.deviceToken, session.deviceToken);
       expect(till.devices.single.name, 'Phone 1');
 
-      final second = WaiterLinkClient(baseUri: client.baseUri);
-      addTearDown(second.close);
-      expect(
-        await failureCode(() => second.pair(code: code, deviceName: 'Phone 2')),
-        WaiterError.badPairingCode,
-      );
+      // The next sign-in on the same device is not a new device.
+      final again = await signIn();
+      expect(again.deviceToken, isNull);
+      expect(till.devices, hasLength(1));
     });
 
-    test('an expired code is refused', () async {
-      final code = server.openPairing().code;
-      now = now.add(const Duration(minutes: 11));
-      expect(
-        await failureCode(() => client.pair(code: code, deviceName: 'x')),
-        WaiterError.badPairingCode,
-      );
+    test('a revoked device is refused and must sign in afresh, as a new device', () async {
+      await signIn();
+      till.devices.single.revoked = true;
+      expect(await failureCode(client.floor), WaiterError.revoked);
+      expect(await failureCode(() => signIn()), WaiterError.revoked);
+
+      client.deviceToken = null; // what the handheld does on DEVICE_REVOKED
+      final session = await signIn();
+      expect(session.deviceToken, isNotEmpty);
+      expect(till.devices, hasLength(2));
     });
 
-    test('guessing codes is cut off after five tries', () async {
-      server.openPairing();
-      for (var i = 0; i < 5; i++) {
-        await failureCode(() => client.pair(code: '000000', deviceName: 'x'));
-      }
-      final code = server.currentPairing!.code;
-      expect(
-        await failureCode(() => client.pair(code: code, deviceName: 'x')),
-        WaiterError.tooManyAttempts,
-      );
+    test('a token the till never issued is refused', () async {
+      client.deviceToken = 'made-up';
+      expect(await failureCode(() => signIn()), WaiterError.unpaired);
     });
   });
 
   group('signing in', () {
-    test('the right PIN gives a session with the person', () async {
-      await client.pair(code: server.openPairing().code, deviceName: 'Phone');
-      final session = await client.signIn('1111');
+    test('the right name and PIN give a session with the person', () async {
+      final session = await signIn();
       expect(session.staff.name, 'Mona');
       expect(session.staff.can(WaiterCapability.operate), isTrue);
     });
 
-    test('a wrong PIN is refused, and five lock the device out', () async {
-      await client.pair(code: server.openPairing().code, deviceName: 'Phone');
+    test('a wrong PIN, or the right PIN under the wrong name, is refused the same way', () async {
+      expect(await failureCode(() => signIn(pin: '9999')), WaiterError.wrongPin);
+      expect(await failureCode(() => signIn(username: 'viewer', pin: '1111')), WaiterError.wrongPin);
+      expect(till.devices, isEmpty, reason: 'a refused sign-in registers nothing');
+    });
+
+    test('five wrong PINs lock the device out for a minute', () async {
+      await signIn();
       for (var i = 0; i < 5; i++) {
-        expect(await failureCode(() => client.signIn('9999')), WaiterError.wrongPin);
+        expect(await failureCode(() => signIn(pin: '9999')), WaiterError.wrongPin);
       }
-      expect(await failureCode(() => client.signIn('1111')), WaiterError.tooManyAttempts);
+      expect(await failureCode(() => signIn()), WaiterError.tooManyAttempts);
       now = now.add(const Duration(minutes: 2));
-      expect((await client.signIn('1111')).staff.name, 'Mona');
+      expect((await signIn()).staff.name, 'Mona');
+    });
+
+    test('an unknown phone guessing PINs is cut off by its address', () async {
+      for (var i = 0; i < 5; i++) {
+        expect(await failureCode(() => signIn(pin: '9999')), WaiterError.wrongPin);
+      }
+      expect(await failureCode(() => signIn()), WaiterError.tooManyAttempts);
     });
 
     test('someone who may not ring up orders cannot use a handheld', () async {
-      await client.pair(code: server.openPairing().code, deviceName: 'Phone');
-      expect(await failureCode(() => client.signIn('2222')), WaiterError.notPermitted);
+      expect(await failureCode(() => signIn(username: 'viewer', pin: '2222')), WaiterError.notPermitted);
     });
 
-    test('the menu and floor need a signed-in waiter', () async {
-      await client.pair(code: server.openPairing().code, deviceName: 'Phone');
-      expect(await failureCode(client.menu), WaiterError.signInRequired);
-      await client.signIn('1111');
-      expect((await client.menu()).products.single.name.en, 'Koshary');
-      expect((await client.floor()).tables, hasLength(2));
-    });
-
-    test('a session left idle past its limit must sign in again', () async {
-      await pairAndSignIn();
+    test('a session is needed past sign-in, and idles out', () async {
+      await signIn();
+      await client.menu();
       now = now.add(const Duration(hours: 13));
       expect(await failureCode(client.floor), WaiterError.signInRequired);
-    });
-
-    test('a revoked device is refused and its sessions end', () async {
-      await pairAndSignIn();
-      till.devices.single.revoked = true;
-      expect(await failureCode(client.floor), WaiterError.revoked);
     });
   });
 
   group('the check', () {
     test('ops are applied by the till and the priced check comes back', () async {
-      await pairAndSignIn();
+      await signIn();
       final check = await client.apply(
         tableId: 1,
         version: null,
@@ -147,7 +135,7 @@ void main() {
     });
 
     test('a stale version comes back as the current check', () async {
-      await pairAndSignIn();
+      await signIn();
       await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 10)]);
       try {
         await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 10)]);
@@ -158,7 +146,7 @@ void main() {
     });
 
     test('a refused edit says why and saves nothing', () async {
-      await pairAndSignIn();
+      await signIn();
       try {
         await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 99)]);
         fail('expected a refusal');
@@ -170,8 +158,21 @@ void main() {
     });
 
     test('an unknown table is not found', () async {
-      await pairAndSignIn();
+      await signIn();
       expect(await failureCode(() => client.check(404)), WaiterError.notFound);
+    });
+  });
+
+  group('the address', () {
+    test('a typed address becomes an https base with the default port; http is corrected', () {
+      expect(WaiterLinkClient.addressToUri('192.168.1.20').toString(), 'https://192.168.1.20:8787');
+      expect(WaiterLinkClient.addressToUri(' 192.168.1.20:9000 ').toString(), 'https://192.168.1.20:9000');
+      expect(WaiterLinkClient.addressToUri('http://till.local').toString(), 'https://till.local:8787');
+    });
+
+    test('a fingerprint is shown the way the till prints it', () {
+      const cert = WaiterCertificate(sha256: 'ab12cd');
+      expect(cert.formatted, 'AB:12:CD');
     });
   });
 
@@ -269,9 +270,9 @@ class _FakeTill implements WaiterLinkBackend {
   Future<void> touchDevice(int id) async {}
 
   @override
-  Future<WaiterStaff?> signIn(String pin) async => switch (pin) {
-    '1111' => const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
-    '2222' => const WaiterStaff(id: 2, name: 'Viewer'),
+  Future<WaiterStaff?> signIn({required String username, required String pin}) async => switch ((username, pin)) {
+    ('mona', '1111') => const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
+    ('viewer', '2222') => const WaiterStaff(id: 2, name: 'Viewer'),
     _ => null,
   };
 
