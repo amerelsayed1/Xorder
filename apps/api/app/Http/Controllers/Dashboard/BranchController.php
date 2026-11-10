@@ -8,6 +8,7 @@ use App\Http\Requests\Dashboard\UpdateBranchEgressIpsRequest;
 use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
+use App\Models\FinancialAccount;
 use App\Models\PurchaseOrder;
 use App\Models\Restaurant;
 use App\Models\StockMovement;
@@ -96,7 +97,17 @@ class BranchController extends Controller
 
     public function update(UpdateBranchRequest $request, Branch $branch): JsonResponse
     {
-        $branch->update($request->validated());
+        $data = $request->validated();
+
+        // Stored in the till's spelling (`pickup` becomes `takeaway`), and only
+        // when it actually changed: an unchanged list posted back by a form must
+        // not rewrite what the Super Admin wizard stored, or bump the tills.
+        unset($data['supported_order_types']);
+        if ($request->changesOrderTypes()) {
+            $data['supported_order_types'] = $request->requestedOrderTypes();
+        }
+
+        $branch->update($data);
 
         return response()->json([
             'data' => BranchResource::make($branch->fresh()),
@@ -116,6 +127,13 @@ class BranchController extends Controller
             || SupplierInvoice::where('branch_id', $branch->id)->exists()
             || SupplierPayment::where('branch_id', $branch->id)->exists()) {
             return response()->json(['message' => __('xorder.messages.branch_has_purchasing')], 409);
+        }
+
+        // XORD-015: a branch's own cash drawer or bank account points at it with
+        // no cascade, on purpose (deleting the branch must not quietly turn the
+        // account into one the whole business shares). Say why, as above.
+        if (FinancialAccount::where('branch_id', $branch->id)->exists()) {
+            return response()->json(['message' => __('xorder.messages.branch_has_accounts')], 409);
         }
 
         $branch->delete();

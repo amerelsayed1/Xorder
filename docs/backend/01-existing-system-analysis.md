@@ -1,7 +1,7 @@
 # Backend — Existing System Analysis (for the Flutter POS)
 
 **Author:** Agent 2 (Backend) · **Mode:** ANALYSIS-ONLY
-**Repo under analysis:** `~/Projects/Web Application/xorder-new` — `apps/api`
+**Repo under analysis:** `~/Projects/Web Application/xorder-cloud` — `apps/api`
 **Analysed at:** `main` @ `2743c1e` · 2026-08-26
 **Companion docs:** `02-pos-gap-analysis.md` · `03-pos-api-proposal.md` · `04-pos-sync-proposal.md` · `05-database-proposal.md` · `06-implementation-plan.md`
 

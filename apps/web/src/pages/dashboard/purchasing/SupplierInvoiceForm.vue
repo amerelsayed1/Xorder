@@ -255,13 +255,13 @@ function back() {
 
 <template>
     <div class="space-y-5">
-        <button type="button" class="flex items-center gap-1.5 text-sm" style="color:var(--muted)" @click="back">
+        <button type="button" class="back" @click="back">
             <Icon name="chevronDown" :size="16" class="rotate-90 rtl:-rotate-90" />{{ t('purchasing.invoices_title') }}
         </button>
 
         <div>
             <h1 class="page-title">{{ isEdit ? t('purchasing.edit_invoice') : t('purchasing.new_invoice') }}</h1>
-            <p class="page-sub">{{ t('purchasing.variance_hint') }}</p>
+            <p class="page-sub" style="color:var(--body)">{{ t('purchasing.variance_hint') }}</p>
         </div>
 
         <ErrorState v-if="failed" :message="t('common.error')" @retry="load" />
@@ -284,21 +284,21 @@ function back() {
                         <FormError :errors="errors" field="branch_id" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.invoice_number') }}</span>
                         <input v-model="form.number" class="input mono" dir="ltr" maxlength="64" autocomplete="off" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.invoice_number_hint') }}</span>
+                        <span class="text-xs" style="color:var(--body)">{{ t('purchasing.invoice_number_hint') }}</span>
                         <FormError :errors="errors" field="number" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.purchase_order') }}</span>
                         <select v-model="form.purchase_order_id" class="input" :disabled="!form.supplier_id || !form.branch_id">
                             <option value="">{{ t('purchasing.no_purchase_order') }}</option>
                             <option v-for="o in orders" :key="o.id" :value="o.id">{{ o.reference }} · {{ t('purchasing.status.' + o.status) }}</option>
                         </select>
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.purchase_order_hint') }}</span>
+                        <span class="text-xs" style="color:var(--body)">{{ t('purchasing.purchase_order_hint') }}</span>
                         <FormError :errors="errors" field="purchase_order_id" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.issued_at') }}</span>
                         <input v-model="form.issued_at" type="date" class="input" dir="ltr" />
                         <FormError :errors="errors" field="issued_at" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.due_at') }}</span>
                         <input v-model="form.due_at" type="date" class="input" dir="ltr" @input="dueTouched = true" />
-                        <span v-if="!dueTouched" class="text-xs" style="color:var(--muted)">{{ t('purchasing.due_hint', { n: terms }) }}</span>
+                        <span v-if="!dueTouched" class="text-xs" style="color:var(--body)">{{ t('purchasing.due_hint', { n: terms }) }}</span>
                         <FormError :errors="errors" field="due_at" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('purchasing.notes') }}</span>
@@ -329,14 +329,14 @@ function back() {
                         <FormError :errors="errors" field="tax_minor" /></label>
                     <label v-else class="block"><span class="label">{{ t('purchasing.tax_included_rate') }}</span>
                         <input v-model="form.tax_rate" class="input mono" dir="ltr" inputmode="decimal" data-en-digits placeholder="14" autocomplete="off" />
-                        <span v-if="preview" class="text-xs" style="color:var(--muted)">{{ t('purchasing.tax_worked_out', { amount: show(preview.tax_minor) }) }}</span>
+                        <span v-if="preview" class="text-xs" style="color:var(--body)">{{ t('purchasing.tax_worked_out', { amount: show(preview.tax_minor) }) }}</span>
                         <FormError :errors="errors" field="tax_rate_bp" /></label>
                 </div>
 
                 <div v-else class="space-y-3">
-                    <p class="text-sm" style="color:var(--muted)">{{ t('purchasing.lines_optional_hint') }}</p>
+                    <p class="text-sm" style="color:var(--body)">{{ t('purchasing.lines_optional_hint') }}</p>
                     <FormError :errors="errors" field="lines" />
-                    <div v-for="(l, i) in form.lines" :key="l.key" class="rounded-lg border p-3 grid grid-cols-2 sm:grid-cols-[2fr_1fr_1fr_1fr_auto] gap-3 items-start" style="border-color:var(--line)">
+                    <div v-for="(l, i) in form.lines" :key="l.key" class="line-box grid grid-cols-2 sm:grid-cols-[2fr_1fr_1fr_1fr_auto] gap-3 items-start">
                         <label class="block col-span-2 sm:col-span-1"><span class="label">{{ t('purchasing.line_description') }}</span>
                             <input v-model="l.description" class="input" maxlength="200" />
                             <FormError :errors="errors" :field="`lines.${i}.description`" /></label>
@@ -352,7 +352,7 @@ function back() {
                         <div class="block">
                             <span class="label">{{ t('purchasing.line_total') }}</span>
                             <div class="flex items-center justify-between gap-2 py-2">
-                                <span class="mono" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
+                                <span class="mono line-total">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
                                 <button type="button" class="icon-btn" :title="t('purchasing.remove_line')" :aria-label="t('purchasing.remove_line')" @click="removeLine(i)"><Icon name="close" :size="16" /></button>
                             </div>
                         </div>
@@ -360,23 +360,25 @@ function back() {
                     <button type="button" class="btn btn-ghost btn-sm" @click="addLine"><Icon name="plus" :size="15" />{{ t('purchasing.add_line') }}</button>
                 </div>
 
-                <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal_derived') }}</span><span class="mono">{{ preview ? show(preview.subtotal_minor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ preview ? show(preview.tax_minor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ preview ? show(preview.total_minor) : '—' }}</span></div>
-                    <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.preview_note') }}</p>
+                <div class="totals-wrap form-totals">
+                    <div class="totals">
+                        <div class="totals-row"><span>{{ t('purchasing.subtotal_derived') }}</span><span class="mono">{{ preview ? show(preview.subtotal_minor) : '—' }}</span></div>
+                        <div class="totals-row"><span>{{ t('purchasing.tax') }}</span><span class="mono">{{ preview ? show(preview.tax_minor) : '—' }}</span></div>
+                        <div class="totals-row totals-grand"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ preview ? show(preview.total_minor) : '—' }}</span></div>
+                        <p class="totals-note">{{ t('purchasing.preview_note') }}</p>
+                    </div>
                 </div>
 
-                <div v-if="linked" class="rounded-lg p-3 text-sm space-y-1" style="background:var(--page)">
+                <div v-if="linked" class="line-box text-sm space-y-1">
                     <div class="font-medium" style="color:var(--ink)">{{ t('purchasing.against_order') }} <span class="mono" dir="ltr">{{ linked.reference }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_total') }}</span><span class="mono">{{ show(linked.received_total_minor) }}</span></div>
-                    <div v-if="variance !== null" class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.variance') }}</span>
-                        <span class="mono" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--amber)'">{{ show(variance) }}</span></div>
-                    <p class="text-xs" style="color:var(--muted)">{{ t('purchasing.variance_hint') }}</p>
+                    <div class="flex justify-between gap-3"><span style="color:var(--body)">{{ t('purchasing.received_total') }}</span><span class="mono">{{ show(linked.received_total_minor) }}</span></div>
+                    <div v-if="variance !== null" class="flex justify-between gap-3"><span style="color:var(--body)">{{ t('purchasing.variance') }}</span>
+                        <span class="mono" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--p-primary-800)'">{{ show(variance) }}</span></div>
+                    <p class="text-xs" style="color:var(--body)">{{ t('purchasing.variance_hint') }}</p>
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2">
+            <div class="form-actions">
                 <button type="button" class="btn btn-ghost" :disabled="saving" @click="back">{{ t('common.cancel') }}</button>
                 <button type="submit" class="btn btn-accent" :disabled="saving">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
@@ -386,3 +388,24 @@ function back() {
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.back { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-size: 14.5px; font-weight: 500; color: var(--body); }
+.back:hover { color: var(--p-primary-700); }
+.note { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.5; }
+.note > i { margin-top: 3px; flex: none; }
+.totals-wrap { display: flex; justify-content: flex-end; padding: 16px 20px 20px; border-top: 1px solid var(--line); background: var(--page); }
+.totals { width: 100%; max-width: 340px; }
+.totals-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px; color: var(--body); }
+.totals-row .mono { color: var(--ink); }
+.totals-grand { align-items: baseline; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--ink); }
+.totals-grand .mono { font-size: 26px; line-height: 1.1; }
+.line-box { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--page); }
+.form-totals { border: 1px solid var(--line); border-radius: 12px; }
+.totals-note { margin-top: 8px; font-size: 13.5px; color: var(--body); }
+.form-actions { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px; }
+.form-actions .btn { min-height: 44px; }
+@media (max-width: 639px) { .form-actions .btn { flex: 1 1 auto; justify-content: center; } }
+.line-total { color: var(--ink); font-weight: 600; }
+</style>

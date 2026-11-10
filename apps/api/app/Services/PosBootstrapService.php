@@ -9,11 +9,13 @@ use App\Models\Category;
 use App\Models\Charge;
 use App\Models\Customer;
 use App\Models\DiningTable;
+use App\Models\FinancialAccount;
 use App\Models\MenuItem;
 use App\Models\OptionGroup;
 use App\Models\PosLicence;
 use App\Models\PosTerminal;
 use App\Models\TaxRule;
+use App\Models\TenderAccountDefault;
 use App\Models\TenderType;
 use App\Models\User;
 use App\Support\PosPin;
@@ -76,6 +78,11 @@ class PosBootstrapService
                 'exponent' => $currency->exponent(),
                 'timezone' => $restaurant->localTimezone(),
                 'default_language' => $restaurant->default_language->value,
+                // XORD-005 (new key): whether the menu is written in both
+                // languages. With default_language it tells the till which
+                // name fields to ask for. Additive: an older till ignores it,
+                // and a till that never receives it keeps its own setting.
+                'bilingual' => $restaurant->bilingual !== false,
             ],
             'branches' => $branches
                 ->map(fn ($b) => [
@@ -126,6 +133,23 @@ class PosBootstrapService
                     ->map(fn ($t) => [
                         'id' => $t->id, 'name' => $t->name, 'kind' => $t->kind,
                         'is_active' => $t->is_active, 'sort_order' => $t->sort_order,
+                    ])->values()->all(),
+                // XORD-015 (PROPOSED contract, see BACKEND_TO_POS.md): the
+                // business's money accounts and which one each payment method
+                // pays into per branch (branch_id null = business-wide). Both
+                // are additive; a till that predates them ignores the keys.
+                // Inactive accounts ride along so a till can retire its copy.
+                'financial_accounts' => FinancialAccount::orderBy('sort_order')->orderBy('id')->get()
+                    ->map(fn ($a) => [
+                        'id' => $a->id, 'name' => $a->name, 'kind' => $a->kind,
+                        'currency' => $a->currency, 'branch_id' => $a->branch_id,
+                        'reference_label' => $a->reference_label,
+                        'is_active' => $a->is_active, 'sort_order' => $a->sort_order,
+                    ])->values()->all(),
+                'tender_account_defaults' => TenderAccountDefault::orderBy('tender_type_id')->orderBy('branch_key')->get()
+                    ->map(fn ($d) => [
+                        'tender_type_id' => $d->tender_type_id, 'branch_id' => $d->branch_id,
+                        'financial_account_id' => $d->financial_account_id,
                     ])->values()->all(),
             ],
             'invoice' => $this->invoiceConfig($restaurant),

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Branch;
+use App\Services\OrderTypeEntitlements;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,6 +22,13 @@ class BranchResource extends JsonResource
             // client can iterate without a null guard.
             'code' => $this->code,
             'supported_order_types' => $this->supported_order_types ?? [],
+            // XORD-002: what the subscription lets this branch switch on, so the
+            // form offers exactly that. Only the dashboard's own request needs
+            // it, and it costs no query when features are already loaded.
+            'entitled_order_types' => $this->when(
+                $request->user()?->restaurant_id !== null,
+                fn () => app(OrderTypeEntitlements::class)->allowed($request->user()->restaurant),
+            ),
             'address' => $this->address,
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,

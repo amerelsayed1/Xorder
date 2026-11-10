@@ -15,10 +15,12 @@ use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class OrderTableAssociationTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     private Restaurant $restaurant;
@@ -65,7 +67,7 @@ class OrderTableAssociationTest extends TestCase
     private function orderPayload(array $extra = []): array
     {
         return array_merge([
-            'items' => [['name' => 'Latte', 'qty' => 1, 'line_total' => 50]],
+            'items' => $this->dinerItems([['name' => 'Latte', 'qty' => 1, 'line_total' => 50]]),
             'total' => 50,
         ], $extra);
     }
@@ -109,7 +111,7 @@ class OrderTableAssociationTest extends TestCase
 
         $secondId = $this->postJson('/api/public/restaurants/cafe/orders', $this->orderPayload([
             'session_token' => $secondSession->session_token,
-            'items' => [['name' => 'Cake', 'qty' => 2, 'line_total' => 80]],
+            'items' => $this->dinerItems([['name' => 'Cake', 'qty' => 2, 'line_total' => 80]]),
             'total' => 80,
         ]))->assertCreated()->json('data.id');
 

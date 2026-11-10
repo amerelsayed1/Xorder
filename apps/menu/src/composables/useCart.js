@@ -106,6 +106,24 @@ export function useCart(slug = '') {
         return Number.isFinite(number) ? number : 0
     }
 
+    /**
+     * The ids of the options (or combo choices) picked on a cart line — what
+     * the order names so the server prices it (XORD-047). The labels and the
+     * price the cart shows are still worked out here, for display only.
+     */
+    function getLineOptionIds(line) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        const ids = []
+        groups.forEach((g, gi) => {
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            selectedIndexes(line.groups[gi]).forEach((oi) => {
+                const id = pool[oi]?.id
+                if (id != null) ids.push(id)
+            })
+        })
+        return ids
+    }
+
     function selectedIndexes(value) {
         if (value == null) return []
         return Array.isArray(value) ? value : [value]
@@ -171,6 +189,7 @@ export function useCart(slug = '') {
         getLineOptions,
         getLineVariant,
         getLineExtras,
+        getLineOptionIds,
         calculateLinePrice,
     }
 }

@@ -6,7 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import Icon from '@xorder/ui/Icon.vue'
-import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 
@@ -121,102 +121,215 @@ const filters = computed(() => [
     ['ARCHIVED', t('common.archived')],
 ])
 const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
+
+// Display-only helpers for the "Ends" column (same maths as RestaurantDetails).
+const daysLeft = (r) => r.subscription_end_date
+    ? Math.ceil((new Date(r.subscription_end_date) - new Date()) / 86400000)
+    : null
+const daysTone = (n) => (n < 0 || n <= 7 ? 'badge-red' : n <= 30 ? 'badge-amber' : 'badge-gray')
 </script>
 
 <template>
     <div class="space-y-5">
-        <div class="flex items-start justify-between gap-3">
+        <!-- Header -->
+        <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('nav.restaurants') }}</h1>
-                <p class="page-sub">{{ t('admin.restaurants_subtitle') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('admin.restaurants_subtitle') }}</p>
             </div>
-            <RouterLink :to="{ name: 'admin.restaurants.create' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('admin.create_restaurant') }}</RouterLink>
+            <RouterLink :to="{ name: 'admin.restaurants.create' }" class="btn btn-accent cta"><Icon name="plus" :size="16" />{{ t('admin.create_restaurant') }}</RouterLink>
         </div>
 
-        <!-- Toolbar -->
+        <!-- Toolbar: search + status filter with counts -->
         <div class="flex flex-wrap items-center gap-3">
-            <input v-model="search" :placeholder="t('admin.search_restaurants')" class="input" style="max-width:340px" />
-            <div class="segmented overflow-x-auto">
-                <button v-for="[val, label] in filters" :key="val" :class="{ active: status === val }" @click="status = val">
-                    {{ label }}<span v-if="countFor(val) != null" style="opacity:.6"> ({{ countFor(val) }})</span>
+            <div class="search">
+                <Icon name="search" :size="16" class="search-ico" aria-hidden="true" />
+                <input v-model="search" type="search" :placeholder="t('admin.search_restaurants')" :aria-label="t('admin.search_restaurants')" class="input search-input" />
+            </div>
+            <div class="segmented seg overflow-x-auto" role="group" :aria-label="t('common.status')">
+                <button v-for="[val, label] in filters" :key="val" type="button" :class="{ active: status === val }" :aria-pressed="status === val" @click="status = val">
+                    {{ label }}<span v-if="countFor(val) != null" class="seg-count">{{ countFor(val) }}</span>
                 </button>
             </div>
         </div>
 
-        <!-- Table -->
-        <div class="card overflow-x-auto">
-            <table class="w-full text-sm" style="min-width:720px">
-                <thead>
-                    <tr class="text-start" style="color:var(--muted)">
-                        <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
-                        <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('admin.restaurant') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('restaurant.subscription') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('nav.items') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('admin.created') }}</th>
-                        <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <TableSkeleton v-if="loading" :cols="7" />
-                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</td></tr>
-                    <tr v-for="(r, idx) in loading ? [] : rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
-                        :style="{ borderColor: 'var(--line)', opacity: r.status === 'ARCHIVED' ? 0.6 : 1 }"
-                        @click="router.push({ name: 'admin.restaurants.show', params: { id: r.id } })">
-                        <td class="px-5 py-3" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
-                        <td class="px-5 py-3">
-                            <div class="flex items-center gap-3">
-                                <span class="grid place-items-center text-white font-semibold flex-shrink-0"
-                                    style="width:38px;height:38px;border-radius:9px;font-family:var(--font-display)"
-                                    :style="{ background: avatarColor(r) }">{{ initial(r) }}</span>
-                                <div>
-                                    <div class="font-medium" style="color:var(--ink)">{{ restaurantName(r) }}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-3 py-3"><StatusBadge :value="r.status" /></td>
-                        <td class="px-3 py-3"><span class="badge" :class="subBadge(r.subscription_status)">{{ subLabel(r) }}</span></td>
-                        <td class="px-3 py-3 font-medium" style="color:var(--ink)">{{ r.menu_items_count ?? '—' }}</td>
-                        <td class="px-3 py-3" style="color:var(--body)">{{ fmtDate(r.created_at) }}</td>
-                        <td class="px-5 py-3 text-end whitespace-nowrap" @click.stop>
-                            <div class="inline-flex items-center gap-2">
-                                <RouterLink :to="{ name: 'admin.restaurants.show', params: { id: r.id } }" class="btn btn-ghost" style="padding:5px 11px;font-size:12px">{{ t('nav.qr') }}</RouterLink>
-                                <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id: r.id } }" class="btn btn-ghost" style="padding:5px 11px;font-size:12px">{{ t('common.edit') }}</RouterLink>
+        <!-- List -->
+        <div class="card list-card">
+            <div class="list-scroll">
+                <div class="list-inner">
+                    <div class="r-grid r-head" aria-hidden="true">
+                        <span class="c-idx">#</span>
+                        <span class="c-name">{{ t('admin.restaurant') }}</span>
+                        <span class="c-status">{{ t('common.status') }}</span>
+                        <span class="c-sub">{{ t('restaurant.subscription') }}</span>
+                        <span class="c-ends">{{ t('admin.end_date') }}</span>
+                        <span class="c-items">{{ t('nav.items') }}</span>
+                        <span class="c-created">{{ t('admin.created') }}</span>
+                        <span class="c-act">{{ t('common.actions') }}</span>
+                    </div>
+
+                    <!-- Loading: skeleton rows that mirror the final row -->
+                    <div v-if="loading" aria-hidden="true">
+                        <div v-for="n in 6" :key="n" class="r-grid r-row">
+                            <span class="c-idx"><Skeleton w="18px" h="12px" /></span>
+                            <span class="c-name flex items-center gap-3"><Skeleton w="38px" h="38px" rounded="50%" /><Skeleton w="55%" h="13px" /></span>
+                            <span class="c-status"><Skeleton w="72px" h="22px" rounded="999px" /></span>
+                            <span class="c-sub"><Skeleton w="110px" h="22px" rounded="999px" /></span>
+                            <span class="c-ends"><Skeleton w="90px" h="13px" /></span>
+                            <span class="c-items"><Skeleton w="26px" h="13px" /></span>
+                            <span class="c-created"><Skeleton w="80px" h="13px" /></span>
+                            <span class="c-act"><Skeleton w="150px" h="30px" rounded="9px" /></span>
+                        </div>
+                    </div>
+
+                    <!-- Empty -->
+                    <div v-else-if="!rows.length" class="empty">
+                        <span class="empty-ico"><Icon name="building" :size="22" /></span>
+                        <p>{{ t('admin.no_restaurants') }}</p>
+                        <RouterLink :to="{ name: 'admin.restaurants.create' }" class="btn btn-accent btn-sm"><Icon name="plus" :size="14" />{{ t('admin.create_restaurant') }}</RouterLink>
+                    </div>
+
+                    <ul v-else>
+                        <li v-for="(r, idx) in rows" :key="r.id" class="r-grid r-row r-link" :class="{ 'is-archived': r.status === 'ARCHIVED' }"
+                            @click="router.push({ name: 'admin.restaurants.show', params: { id: r.id } })">
+                            <span class="c-idx num">{{ (meta?.from || 1) + idx }}</span>
+                            <span class="c-name flex items-center gap-3 min-w-0">
+                                <span class="initial">{{ initial(r) }}</span>
+                                <span class="min-w-0">
+                                    <RouterLink :to="{ name: 'admin.restaurants.show', params: { id: r.id } }" class="row-name block truncate" @click.stop>{{ restaurantName(r) }}</RouterLink>
+                                    <span v-if="r.slug" class="slug mono block truncate">{{ r.slug }}</span>
+                                </span>
+                            </span>
+                            <span class="c-status"><StatusBadge :value="r.status" /></span>
+                            <span class="c-sub">
+                                <span class="badge" :class="subBadge(r.subscription_status)">{{ subLabel(r) }}</span>
+                                <span v-if="r.subscription_status !== 'ACTIVE' && r.subscription_plan" class="plan-line block truncate">{{ r.subscription_plan }}</span>
+                            </span>
+                            <span class="c-ends">
+                                <template v-if="r.subscription_end_date">
+                                    <span class="end-date block">{{ fmtDate(r.subscription_end_date) }}</span>
+                                    <span class="badge" :class="daysTone(daysLeft(r))">
+                                        {{ daysLeft(r) >= 0 ? t('admin.days_left', { n: daysLeft(r) }) : t('admin.expired_ago', { n: -daysLeft(r) }) }}
+                                    </span>
+                                </template>
+                                <span v-else class="dash">—</span>
+                            </span>
+                            <span class="c-items num"><strong>{{ r.menu_items_count ?? '—' }}</strong><span class="only-sm"> {{ t('nav.items') }}</span></span>
+                            <span class="c-created">{{ fmtDate(r.created_at) }}</span>
+                            <span class="c-act" @click.stop>
+                                <RouterLink :to="{ name: 'admin.restaurants.show', params: { id: r.id } }" class="btn btn-ghost btn-sm act">{{ t('nav.qr') }}</RouterLink>
+                                <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id: r.id } }" class="btn btn-ghost btn-sm act">{{ t('common.edit') }}</RouterLink>
                                 <button
                                     v-if="r.status !== 'ARCHIVED'"
+                                    type="button"
                                     @click="archiveRestaurant(r)"
                                     :disabled="archiving === r.id"
-                                    class="btn btn-ghost"
-                                    style="padding:5px 11px;font-size:12px"
+                                    class="btn btn-ghost btn-sm act"
                                 >{{ archiving === r.id ? t('admin.archiving') : t('common.archive') }}</button>
                                 <button
                                     v-else
+                                    type="button"
                                     @click="hardDeleteRestaurant(r)"
                                     :disabled="deleting === r.id"
-                                    class="icon-btn icon-btn-danger"
+                                    class="icon-btn icon-btn-danger act-icon"
                                     :title="t('admin.delete_restaurant')"
                                     :aria-label="t('admin.delete_restaurant')"
                                 ><Icon name="trash" :size="16" /></button>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
         <div v-if="meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
-            <p class="text-sm" style="color:var(--muted)">
+            <p class="text-sm" style="color:var(--body)">
                 {{ t('common.showing_range', { from: meta.from, to: meta.to, total: meta.total }) }}
             </p>
             <div class="inline-flex items-center gap-2">
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
+                <button class="btn btn-ghost btn-sm pager" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
                     {{ t('common.previous') }}
                 </button>
-                <span class="text-sm" style="color:var(--muted)">{{ meta.current_page }} / {{ meta.last_page }}</span>
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
+                <span class="text-sm" style="color:var(--body)">{{ meta.current_page }} / {{ meta.last_page }}</span>
+                <button class="btn btn-ghost btn-sm pager" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
                     {{ t('common.next') }}
                 </button>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from theme variables only. Badge text is re-tinted for contrast
+   on the soft backgrounds (the shared classes are too light on white). */
+.badge.badge-amber { color: var(--p-primary-800); }
+.badge.badge-gray { color: var(--body); }
+.badge.badge-indigo { color: var(--p-primary-800); }
+
+.cta { min-height: 44px; }
+
+.search { position: relative; flex: 1 1 260px; max-width: 360px; }
+.search-ico { position: absolute; inset-inline-start: 13px; top: 50%; transform: translateY(-50%); color: var(--body); pointer-events: none; }
+.search-input { margin-top: 0; padding-inline-start: 38px; min-height: 44px; }
+.seg button { color: var(--body); min-height: 38px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.seg button.active { color: var(--ink); }
+.seg-count { font-size: 12.5px; font-weight: 600; background: var(--card); color: var(--body); border-radius: 20px; padding: 0 7px; line-height: 20px; }
+.seg button.active .seg-count { background: var(--accent-soft); color: var(--p-primary-800); }
+
+.list-card { overflow: hidden; }
+.list-scroll { overflow-x: auto; }
+.list-inner { min-width: 980px; }
+.r-grid { display: grid; align-items: center; column-gap: 14px; padding: 0 20px;
+    grid-template-columns: 30px minmax(0, 2.2fr) 112px minmax(0, 1.5fr) minmax(0, 1.2fr) 64px 118px auto; }
+.r-head { padding-block: 11px; background: var(--page); border-bottom: 1px solid var(--line);
+    font-size: 12.5px; font-weight: 600; color: var(--body); }
+.r-row { padding-block: 12px; min-height: 64px; border-top: 1px solid var(--line); }
+ul > .r-row:first-child { border-top: none; }
+.r-link { cursor: pointer; transition: background .15s; }
+.r-link:hover { background: var(--page); }
+.r-link:hover .row-name { color: var(--p-primary-700); }
+.c-act { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.c-items, .c-idx { text-align: end; }
+.c-items { color: var(--body); }
+.c-items strong { color: var(--ink); }
+.c-created { color: var(--body); font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; }
+.c-idx { color: var(--body); font-size: 14px; }
+.only-sm { display: none; }
+
+.row-name { font-size: 15px; font-weight: 600; color: var(--ink); }
+.slug { font-size: 12.5px; color: var(--body); }
+.initial { width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--p-primary-700); font-weight: 700; font-size: 15px; font-family: var(--font-display); }
+.is-archived .initial { background: var(--gray-soft); color: var(--body); }
+.is-archived .row-name { color: var(--body); }
+.plan-line { font-size: 12.5px; color: var(--body); margin-top: 3px; }
+.end-date { font-size: 13.5px; color: var(--ink); margin-bottom: 3px; }
+.dash { color: var(--body); }
+.act { min-height: 34px; }
+.act-icon { width: 34px; height: 34px; color: var(--red); }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 20px; text-align: center; color: var(--body); }
+.empty-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--p-primary-700); }
+
+/* Phone: each restaurant becomes a stacked card-like row, no horizontal scroll. */
+@media (max-width: 820px) {
+    .list-inner { min-width: 0; }
+    .r-head { display: none; }
+    .r-grid { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: 8px; padding: 14px 16px; align-items: start;
+        grid-template-areas: "name name status" "sub ends ends" "items created created" "act act act"; }
+    .r-row { min-height: 0; }
+    .c-idx { display: none; }
+    .c-name { grid-area: name; }
+    .c-status { grid-area: status; }
+    .c-sub { grid-area: sub; }
+    .c-ends { grid-area: ends; text-align: end; }
+    .c-items { grid-area: items; text-align: start; }
+    .c-created { grid-area: created; text-align: end; }
+    .c-act { grid-area: act; justify-content: flex-start; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+    .only-sm { display: inline; }
+    .act { min-height: 44px; }
+    .act-icon { width: 44px; height: 44px; }
+    .search { max-width: none; flex-basis: 100%; }
+}
+</style>

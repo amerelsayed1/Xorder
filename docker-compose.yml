@@ -1,10 +1,14 @@
+# Project name pins the container/volume/network prefix to `xorder` whatever the
+# folder is called (volumes become xorder_pgdata and xorder_storage-data).
+name: xorder
+
 services:
   # PHP-FPM application container
   app:
     build:
       context: .
       target: app
-    image: qrmenu-app
+    image: xorder-app
     # Stable, unique DNS name so the web container's nginx (fastcgi_pass
     # xorder-app:9000) resolves it unambiguously — matches the co-host deploy.
     container_name: xorder-app
@@ -29,7 +33,7 @@ services:
 
   # Laravel scheduler — daily subscription expiry + warnings.
   scheduler:
-    image: qrmenu-app
+    image: xorder-app
     env_file: apps/api/.env.docker
     environment:
       RUN_MIGRATIONS: "false"
@@ -49,7 +53,7 @@ services:
     build:
       context: .
       target: web
-    image: qrmenu-web
+    image: xorder-web
     depends_on:
       - app
     ports:

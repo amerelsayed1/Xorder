@@ -77,6 +77,9 @@ class Restaurant extends Model
         'tax_registration_number',
         'review_thank_you_ar',
         'review_thank_you_en',
+        // Guest paging: which order types get a tracking QR/link (null =
+        // GuestPagingService::DEFAULT_ORDER_TYPES).
+        'guest_paging_order_types',
     ];
 
     protected function casts(): array
@@ -101,6 +104,7 @@ class Restaurant extends Model
             'subscription_end_date' => 'date',
             'pos_config_version' => 'integer',
             'pos_invoice_config' => 'array',
+            'guest_paging_order_types' => 'array',
         ];
     }
 
@@ -303,6 +307,26 @@ class Restaurant extends Model
         }
 
         return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/t/'.$token;
+    }
+
+    /**
+     * Guest paging: the order-tracking page a receipt QR or the success screen
+     * points at (/menu/o/{token}). Same host rules as tableUrl(); the till
+     * receives the menu base through bootstrap and appends `o/{token}` itself.
+     */
+    public function trackingUrl(string $token): string
+    {
+        $domain = config('platform.menu_domain');
+
+        if ($domain) {
+            $scheme = config('platform.menu_secure', true) ? 'https' : 'http';
+            $port = config('platform.menu_port');
+            $portPart = $port ? ":{$port}" : '';
+
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu/o/{$token}";
+        }
+
+        return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/o/'.$token;
     }
 
     /**

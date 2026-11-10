@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ReceiptProfile extends Model
 {
-    use Auditable, BelongsToRestaurant;
+    use Auditable, BelongsToRestaurant, NormalizesPhoneNumbers;
 
     /** Every column the dashboard form authors. `revision` is server-managed. */
     protected $fillable = [

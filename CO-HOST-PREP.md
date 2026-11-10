@@ -2,7 +2,7 @@
 
 > **Goal:** prepare this repo so Xorder can run on the **same VPS as Operix and
 > Rakeeza**, behind Operix's existing nginx, **without touching** Operix or Rakeeza.
-> This file is a work-list for a Claude CLI session opened in `xorder-new/`.
+> This file is a work-list for a Claude CLI session opened in `xorder-cloud/`.
 > It mirrors the proven Rakeeza co-host setup, adapted to Xorder's monorepo +
 > subdomain architecture.
 

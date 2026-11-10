@@ -21,7 +21,8 @@ class PosTerminalController extends Controller
 
     public function index(): JsonResponse
     {
-        $terminals = PosTerminal::with('branch:id,name_en,name_ar,code')
+        $terminals = $this->service
+            ->withMoneyHistory(PosTerminal::with('branch:id,name_en,name_ar,code'))
             ->orderByDesc('id')
             ->get();
 

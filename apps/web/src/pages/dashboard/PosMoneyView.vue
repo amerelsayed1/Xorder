@@ -39,7 +39,7 @@ const joinList = (parts) => parts.join(listSep.value)
 // The order types a till offers as tabs. Free text on the POS wire (the branch's
 // own list is the gate), so this is the vocabulary, not a server enum.
 const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery', 'drive_thru']
-const TENDER_KINDS = ['cash', 'card', 'external', 'other']
+const TENDER_KINDS = ['cash', 'card', 'wallet', 'external', 'other']
 
 const taxes = ref([])
 const charges = ref([])
@@ -402,7 +402,7 @@ async function reactivateTender(row) {
                 </div>
 
                 <div v-if="loading" class="set-card-body">
-                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 44px"></div>
+                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 56px"></div>
                 </div>
                 <div v-else-if="!taxes.length" class="set-empty">
                     <span class="set-empty-title">{{ t('pos_money.taxes_none') }}</span>
@@ -441,7 +441,7 @@ async function reactivateTender(row) {
                 </div>
 
                 <div v-if="loading" class="set-card-body">
-                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 44px"></div>
+                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 56px"></div>
                 </div>
                 <div v-else-if="!charges.length" class="set-empty">
                     <span class="set-empty-title">{{ t('pos_money.charges_none') }}</span>
@@ -485,7 +485,7 @@ async function reactivateTender(row) {
                 </div>
 
                 <div v-if="loading" class="set-card-body">
-                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 44px"></div>
+                    <div v-for="n in 2" :key="n" class="set-skel" style="height: 56px"></div>
                 </div>
                 <div v-else-if="!tenders.length" class="set-empty">
                     <span class="set-empty-title">{{ t('pos_money.tenders_none') }}</span>
@@ -509,7 +509,7 @@ async function reactivateTender(row) {
                             <button v-else-if="canUpdate" type="button" class="set-btn set-btn-sm" @click="reactivateTender(r)">{{ t('pos_money.reactivate') }}</button>
                         </div>
                     </div>
-                    <p class="set-empty-hint" style="padding: 0 18px 14px">{{ t('pos_money.tenders_never_deleted') }}</p>
+                    <p class="set-list-foot">{{ t('pos_money.tenders_never_deleted') }}</p>
                 </div>
             </section>
         </template>
@@ -543,33 +543,33 @@ async function reactivateTender(row) {
 
                 <p v-if="taxHint" class="rounded-lg p-3 text-sm" style="background:var(--accent-soft);color:var(--ink)">{{ taxHint }}</p>
 
-                <div class="block">
-                    <span class="label">{{ t('pos_money.applies_to') }}</span>
-                    <p class="page-sub" style="margin:2px 0 8px">{{ t('pos_money.applies_hint') }}</p>
+                <div class="set-group">
+                    <span class="set-group-title">{{ t('pos_money.applies_to') }}</span>
+                    <p class="set-help">{{ t('pos_money.applies_hint') }}</p>
 
-                    <p class="text-xs" style="color:var(--muted)">{{ t('pos_money.applies_order_types') }}</p>
-                    <div class="flex flex-wrap gap-3 mt-1.5 mb-3">
-                        <label v-for="tp in ORDER_TYPES" :key="tp" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                            <input type="checkbox" class="h-4 w-4" :checked="taxForm.scope.order_types.includes(tp)" @change="toggleIn(taxForm.scope.order_types, tp)" />
+                    <p class="set-help">{{ t('pos_money.applies_order_types') }}</p>
+                    <div class="set-check-wrap">
+                        <label v-for="tp in ORDER_TYPES" :key="tp" class="set-check">
+                            <input type="checkbox" :checked="taxForm.scope.order_types.includes(tp)" @change="toggleIn(taxForm.scope.order_types, tp)" />
                             {{ t('order_type.' + tp) }}
                         </label>
                     </div>
 
                     <template v-if="branches.length > 1">
-                        <p class="text-xs" style="color:var(--muted)">{{ t('pos_money.applies_branches') }}</p>
-                        <div class="flex flex-wrap gap-3 mt-1.5 mb-3">
-                            <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                                <input type="checkbox" class="h-4 w-4" :checked="taxForm.scope.branch_ids.includes(b.id)" @change="toggleIn(taxForm.scope.branch_ids, b.id)" />
+                        <p class="set-help">{{ t('pos_money.applies_branches') }}</p>
+                        <div class="set-check-wrap">
+                            <label v-for="b in branches" :key="b.id" class="set-check">
+                                <input type="checkbox" :checked="taxForm.scope.branch_ids.includes(b.id)" @change="toggleIn(taxForm.scope.branch_ids, b.id)" />
                                 {{ branchName(b.id) }}
                             </label>
                         </div>
                     </template>
 
                     <template v-if="categories.length">
-                        <p class="text-xs" style="color:var(--muted)">{{ t('pos_money.applies_categories') }}</p>
-                        <div class="flex flex-wrap gap-3 mt-1.5">
-                            <label v-for="c in categories" :key="c.id" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                                <input type="checkbox" class="h-4 w-4" :checked="taxForm.scope.category_ids.includes(c.id)" @change="toggleIn(taxForm.scope.category_ids, c.id)" />
+                        <p class="set-help">{{ t('pos_money.applies_categories') }}</p>
+                        <div class="set-check-wrap">
+                            <label v-for="c in categories" :key="c.id" class="set-check">
+                                <input type="checkbox" :checked="taxForm.scope.category_ids.includes(c.id)" @change="toggleIn(taxForm.scope.category_ids, c.id)" />
                                 {{ categoryName(c.id) }}
                             </label>
                         </div>
@@ -578,7 +578,7 @@ async function reactivateTender(row) {
                     <!-- Item-level scoping isn't authored here, but a rule that
                          already has one must keep it — saying so beats silently
                          re-saving a narrower rule than the owner can see. -->
-                    <p v-if="taxForm.scope.extra.item_ids?.length" class="text-xs mt-3" style="color:var(--muted)">
+                    <p v-if="taxForm.scope.extra.item_ids?.length" class="set-help">
                         {{ t('pos_money.applies_items_kept', { n: taxForm.scope.extra.item_ids.length }) }}
                     </p>
                     <FormError :errors="taxErrors" field="applies_to" />
@@ -590,7 +590,7 @@ async function reactivateTender(row) {
                     <FormError :errors="taxErrors" field="sort_order" />
                 </label>
 
-                <div class="flex gap-3 pt-1">
+                <div class="set-form-actions">
                     <button type="submit" class="btn btn-accent" :disabled="taxSaving || !taxForm.name || !taxBpValid">{{ taxSaving ? t('common.saving') : t('common.save') }}</button>
                     <button type="button" class="btn btn-ghost" @click="taxModal = false">{{ t('common.cancel') }}</button>
                 </div>
@@ -633,27 +633,27 @@ async function reactivateTender(row) {
                         <button type="button" class="switch" :class="{ on: chargeForm.taxable }" @click="chargeForm.taxable = !chargeForm.taxable"></button>
                         {{ t('pos_money.taxable') }}
                     </label>
-                    <p class="page-sub" style="margin-top:4px">{{ t('pos_money.taxable_hint') }}</p>
+                    <p class="set-help">{{ t('pos_money.taxable_hint') }}</p>
                     <FormError :errors="chargeErrors" field="taxable" />
                 </div>
 
-                <div class="block">
-                    <span class="label">{{ t('pos_money.applies_to') }}</span>
-                    <p class="page-sub" style="margin:2px 0 8px">{{ t('pos_money.applies_hint') }}</p>
+                <div class="set-group">
+                    <span class="set-group-title">{{ t('pos_money.applies_to') }}</span>
+                    <p class="set-help">{{ t('pos_money.applies_hint') }}</p>
 
-                    <p class="text-xs" style="color:var(--muted)">{{ t('pos_money.applies_order_types') }}</p>
-                    <div class="flex flex-wrap gap-3 mt-1.5 mb-3">
-                        <label v-for="tp in ORDER_TYPES" :key="tp" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                            <input type="checkbox" class="h-4 w-4" :checked="chargeForm.scope.order_types.includes(tp)" @change="toggleIn(chargeForm.scope.order_types, tp)" />
+                    <p class="set-help">{{ t('pos_money.applies_order_types') }}</p>
+                    <div class="set-check-wrap">
+                        <label v-for="tp in ORDER_TYPES" :key="tp" class="set-check">
+                            <input type="checkbox" :checked="chargeForm.scope.order_types.includes(tp)" @change="toggleIn(chargeForm.scope.order_types, tp)" />
                             {{ t('order_type.' + tp) }}
                         </label>
                     </div>
 
                     <template v-if="branches.length > 1">
-                        <p class="text-xs" style="color:var(--muted)">{{ t('pos_money.applies_branches') }}</p>
-                        <div class="flex flex-wrap gap-3 mt-1.5">
-                            <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
-                                <input type="checkbox" class="h-4 w-4" :checked="chargeForm.scope.branch_ids.includes(b.id)" @change="toggleIn(chargeForm.scope.branch_ids, b.id)" />
+                        <p class="set-help">{{ t('pos_money.applies_branches') }}</p>
+                        <div class="set-check-wrap">
+                            <label v-for="b in branches" :key="b.id" class="set-check">
+                                <input type="checkbox" :checked="chargeForm.scope.branch_ids.includes(b.id)" @change="toggleIn(chargeForm.scope.branch_ids, b.id)" />
                                 {{ branchName(b.id) }}
                             </label>
                         </div>
@@ -667,7 +667,7 @@ async function reactivateTender(row) {
                     <FormError :errors="chargeErrors" field="sort_order" />
                 </label>
 
-                <div class="flex gap-3 pt-1">
+                <div class="set-form-actions">
                     <button type="submit" class="btn btn-accent" :disabled="chargeSaving || !chargeForm.name || !chargeValueValid">{{ chargeSaving ? t('common.saving') : t('common.save') }}</button>
                     <button type="button" class="btn btn-ghost" @click="chargeModal = false">{{ t('common.cancel') }}</button>
                 </div>
@@ -688,7 +688,7 @@ async function reactivateTender(row) {
                     <select v-model="tenderForm.kind" class="input">
                         <option v-for="k in TENDER_KINDS" :key="k" :value="k">{{ t('pos_money.tender_kind.' + k) }}</option>
                     </select>
-                    <p class="page-sub" style="margin-top:4px">{{ t('pos_money.tender_kind_hint') }}</p>
+                    <p class="set-help">{{ t('pos_money.tender_kind_hint') }}</p>
                     <FormError :errors="tenderErrors" field="kind" />
                 </label>
 
@@ -697,7 +697,7 @@ async function reactivateTender(row) {
                         <button type="button" class="switch" :class="{ on: tenderForm.is_active }" @click="tenderForm.is_active = !tenderForm.is_active"></button>
                         {{ t('common.active') }}
                     </label>
-                    <p class="page-sub" style="margin-top:4px">{{ t('pos_money.tender_active_hint') }}</p>
+                    <p class="set-help">{{ t('pos_money.tender_active_hint') }}</p>
                     <FormError :errors="tenderErrors" field="is_active" />
                 </div>
 
@@ -707,7 +707,7 @@ async function reactivateTender(row) {
                     <FormError :errors="tenderErrors" field="sort_order" />
                 </label>
 
-                <div class="flex gap-3 pt-1">
+                <div class="set-form-actions">
                     <button type="submit" class="btn btn-accent" :disabled="tenderSaving || !tenderForm.name">{{ tenderSaving ? t('common.saving') : t('common.save') }}</button>
                     <button type="button" class="btn btn-ghost" @click="tenderModal = false">{{ t('common.cancel') }}</button>
                 </div>

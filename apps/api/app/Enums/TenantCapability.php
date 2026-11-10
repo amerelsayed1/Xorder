@@ -122,6 +122,29 @@ enum TenantCapability: string
     */
     case PURCHASE_MANAGE = 'purchase.manage';
 
+    /*
+    | Which order types a branch offers (XORD-002). The spelling is the
+    | owner's; it has more dots than the rest of this enum, which is fine:
+    | resource() is strtok on the FIRST dot ("pos"), so it groups with the POS
+    | verbs and implies pos.operate like them, and action() is the remainder.
+    | Owners hold it by default (RESTAURANT_ADMIN bypass); a role gets it only
+    | by being given it. Not in legacyManageMap, which is keyed on exact values.
+    */
+    case POS_ORDER_TYPES_MANAGE = 'pos.settings.order_types.manage';
+
+    /*
+    | The business's money accounts and where each payment method pays into
+    | (XORD-015). ONE live verb, deliberately not `settings.update`: a person
+    | who may rename a payment method must not also be able to redirect the
+    | money. It has no `.view` of its own: reading the account list rides on
+    | settings.view (the payment-method editor already needs it) and
+    | implies() returns SETTINGS_VIEW, because the accounts live in Settings.
+    | It must never join legacyManageMap. It is the
+    | till's own string (xorder-pos permissions.dart `finance.accounts`).
+    | Owners hold it by default; a role gets it only by being given it.
+    */
+    case FINANCE_ACCOUNTS = 'finance.accounts';
+
     /** @return list<string> */
     public static function values(): array
     {
@@ -173,6 +196,12 @@ enum TenantCapability: string
         // (agreed as A1). Every other pos verb implies it; it implies nothing.
         if ($this->resource() === 'pos') {
             return $this === self::POS_OPERATE ? null : self::POS_OPERATE;
+        }
+
+        // finance.accounts has no `.view` of its own; the accounts live in
+        // Settings, so managing them implies being able to open Settings.
+        if ($this === self::FINANCE_ACCOUNTS) {
+            return self::SETTINGS_VIEW;
         }
 
         return self::tryFrom($this->resource().'.view');

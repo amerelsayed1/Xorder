@@ -26,6 +26,8 @@ class OrderResource extends JsonResource
             'customer_id' => $this->customer_id,
             'table_id' => $this->table_id,
             'table_visit_id' => $this->table_visit_id,
+            // XORD-048: the table's label, so the list row says "T3" as well.
+            'table_label' => $this->whenLoaded('table', fn () => $this->table?->label),
             'rounds' => OrderRoundResource::collection($this->whenLoaded('rounds')),
             'order_type' => $this->order_type,
             'address' => $this->whenLoaded('customerAddress', fn () => $this->customerAddress?->address),
@@ -46,6 +48,40 @@ class OrderResource extends JsonResource
             'cancellation_reason' => $this->cancellation_reason,
             'cancelled_at' => $this->cancelled_at?->toIso8601String(),
             'cancelled_by_name' => $this->whenLoaded('canceller', fn () => $this->canceller?->name),
+            // XORD-048: the receipt's facts, on the details request only (it
+            // loads `payments`). Stored values, never recomputed; a field the
+            // order does not have is null, so a diner order shows no till,
+            // cashier or payment.
+            $this->mergeWhen($this->resource->relationLoaded('payments'), fn () => [
+                'invoice_number' => $this->invoice_number,
+                'terminal_name' => $this->posTerminal?->name,
+                'cashier_name' => $this->actingUser?->name,
+                'dining_area' => $this->diningArea ? [
+                    'name_ar' => $this->diningArea->name_ar,
+                    'name_en' => $this->diningArea->name_en,
+                ] : null,
+                'subtotal_minor' => $this->subtotal_minor,
+                'discount_minor' => $this->discount_minor,
+                'charges_minor' => $this->charges_minor,
+                'tax_minor' => $this->tax_minor,
+                'total_minor' => $this->total_minor,
+                'refunded_minor' => $this->refunded_minor,
+                'payments' => $this->payments->map(fn ($p) => [
+                    'tender_name' => $p->tenderType?->name,
+                    'tender_kind' => $p->tenderType?->kind,
+                    'amount_minor' => $p->amount_minor,
+                    'received_at' => $p->received_at?->toIso8601String(),
+                ])->values(),
+            ]),
+            // Guest paging (additive). The token is deliberately absent: the
+            // dashboard never needs it, and it is the diner's only credential.
+            'pickup_status' => $this->pickup_status?->value,
+            'pickup_ref' => $this->pickup_display_ref,
+            'pickup_followed_at' => $this->pickup_followed_at?->toIso8601String(),
+            'ready_at' => $this->ready_at?->toIso8601String(),
+            'ready_source' => $this->ready_source,
+            'acknowledged_at' => $this->acknowledged_at?->toIso8601String(),
+            'picked_up_at' => $this->picked_up_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

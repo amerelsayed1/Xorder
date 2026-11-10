@@ -3,7 +3,7 @@
 **Status: `BUILT — slices a–e; on feature branches, not merged to main, not
 deployed`.** Written 2026-09-12 by `xorder-cloud`, on the owner's "go CB-09",
 and reviewed by the owner the same day. On branch `feat/cb-09-purchasing` in
-xorder-new: slice a is committed as `dd9a530` (§13), slice b as `bcb092c` (§14)
+xorder-cloud: slice a is committed as `dd9a530` (§13), slice b as `bcb092c` (§14)
 and slice c as `3c4181e` (§15). On 2026-09-13 the owner said **"finish all
 phases"**. That was the go for slices c and d, and it **decides D11** (build
 short-close on the platform, §15) and **D12** (build stock adjustments on the
@@ -33,7 +33,7 @@ own short-close and stock entries are separate items of theirs.
    each. The first run is slice a only.
 
 Paths: *POS* = `xorder-pos/lib/…`, *MIG* = `xorder-pos/lib/data/postgres/migrations.dart`,
-*API* = `xorder-new/apps/api/…`, *WEB* = `xorder-new/apps/web/src/…`. Every
+*API* = `xorder-cloud/apps/api/…`, *WEB* = `xorder-cloud/apps/web/src/…`. Every
 till claim was checked by reading the till's working tree on 2026-09-12. That
 tree has other sessions' uncommitted edits, `migrations.dart` among them, so
 line numbers may drift. Nothing was run.
@@ -857,7 +857,7 @@ Found while reading. None of it is fixed here, because xorder-pos belongs to
 
 ## 13. Slice a as built (2026-09-12)
 
-Branch `feat/cb-09-purchasing` in xorder-new. Committed as `dd9a530`; not
+Branch `feat/cb-09-purchasing` in xorder-cloud. Committed as `dd9a530`; not
 deployed.
 
 **Built:** `Feature::PURCHASING` (standalone); `TenantCapability::PURCHASE_MANAGE`
@@ -923,7 +923,7 @@ to a plan that carries it. That's an owner call if wanted.
 
 ## 14. Slice b as built (2026-09-12)
 
-Branch `feat/cb-09-purchasing` in xorder-new, on top of `dd9a530`.
+Branch `feat/cb-09-purchasing` in xorder-cloud, on top of `dd9a530`.
 Committed as `bcb092c`; not deployed. Built on the owner's "go slice b". A first
 session started it and was cut off; this one reviewed its drafts, finished
 them and built the rest.
@@ -1083,7 +1083,7 @@ amounts and references sit in `.mono dir="ltr"` spans.
 
 ## 15. Slice c as built (2026-09-13)
 
-Branch `feat/cb-09-purchasing` in xorder-new, on top of `bcb092c`.
+Branch `feat/cb-09-purchasing` in xorder-cloud, on top of `bcb092c`.
 Uncommitted and not deployed; the coordinator verifies and commits. Built on
 the owner's **"finish all phases"** (2026-09-13), which is also the owner's
 answer to **D11: build short-close on the platform.**
@@ -1338,7 +1338,7 @@ browser**: that needs a dashboard login.
 
 ## 16. Slice d as built (2026-09-13)
 
-Branch `feat/cb-09-purchasing` in xorder-new, on top of `3c4181e`.
+Branch `feat/cb-09-purchasing` in xorder-cloud, on top of `3c4181e`.
 Uncommitted and not deployed; the coordinator verifies and commits. This is
 the last platform slice.
 

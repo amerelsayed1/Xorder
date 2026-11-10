@@ -57,7 +57,17 @@ class LicenceController extends Controller
             ], $code === 'licence_revoked' ? 403 : 404);
         }
 
-        $this->activator->markActivated($licence, $request->input('fingerprint'));
+        // A local licence sells a number of devices; a new one is refused once
+        // they are all in use. 409, not 403: the key is fine and nothing about
+        // it is revoked, so a till must not say "revoked". `code` is what the
+        // till reads.
+        if ($this->activator->activate($licence, $request->input('fingerprint')) === 'licence_seats_full') {
+            return response()->json([
+                'message' => __('xorder.errors.licence_seats_full', ['seats' => (int) $licence->max_terminals]),
+                'code' => 'licence_seats_full',
+                'seats' => (int) $licence->max_terminals,
+            ], 409);
+        }
 
         // The signed file, plus two things that are not part of it and that
         // LicenseFile.tryParse is free to ignore: where this till takes its

@@ -49,6 +49,16 @@ enum Feature: string
      */
     case PURCHASING = 'purchasing';
 
+    /**
+     * Guest paging (docs/features/guest-paging): the diner's phone replaces
+     * the counter pager. Gates the pickup board, the public tracking page and
+     * the prep-time report via `feature:guest_paging`. Standalone — a café
+     * with no till pages its QR orders, a till-only client pages its receipts.
+     * Sold, not inherited: absent from defaultSet(), so it resolves to FALSE
+     * for every existing tenant; a fresh install seeds it on Restaurant Pro.
+     */
+    case GUEST_PAGING = 'guest_paging';
+
     /** @return list<string> */
     public static function values(): array
     {

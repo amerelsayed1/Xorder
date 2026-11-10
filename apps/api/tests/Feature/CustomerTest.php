@@ -6,10 +6,12 @@ use App\Models\Customer;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class CustomerTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     /**
@@ -22,7 +24,7 @@ class CustomerTest extends TestCase
         // Restaurant B takes a guest order, which upserts a directory customer.
         $rB = Restaurant::factory()->withOrdering()->create();
         $this->postJson("/api/public/restaurants/{$rB->slug}/orders", [
-            'items' => [['name' => 'Burger', 'qty' => 1, 'line_total' => 100]],
+            'items' => $this->dinerItems([['name' => 'Burger', 'qty' => 1, 'line_total' => 100]]),
             'total' => 100,
             'customer_name' => 'Bravo Guest',
             'customer_phone' => '+201112223334',

@@ -9,6 +9,7 @@ import ErrorState from '@xorder/ui/ErrorState.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import SettingsHeader from './SettingsHeader.vue'
+import FinancialAccountsPanel from './FinancialAccountsPanel.vue'
 
 const { t } = useI18n()
 const { canUpdate } = useCaps('settings')
@@ -16,7 +17,7 @@ const { canUpdate } = useCaps('settings')
 // Kinds map to a small palette so a scan of the list reads by category rather
 // than only by name — cash rows glow warm, card rows sit blue, etc. Matches
 // the design's per-tile colour classes.
-const TENDER_KINDS = ['cash', 'card', 'external', 'other']
+const TENDER_KINDS = ['cash', 'card', 'wallet', 'external', 'other']
 const KIND_STYLE = {
     cash: { bg: '#FFF1E2', color: '#B85E05' },
     card: { bg: '#EEF2FB', color: '#3656A8' },
@@ -25,6 +26,13 @@ const KIND_STYLE = {
 }
 
 const tab = ref('methods')
+// How many active accounts the Accounts tab holds; the panel reports it once
+// it has loaded, so the tab can show a number before anyone opens it.
+const accountCount = ref(null)
+// The Accounts panel loads three lists, so it is mounted the first time the tab
+// is opened rather than on every visit to Payment methods. It stays mounted
+// afterwards (v-show) so switching back and forth does not refetch.
+const accountsOpened = ref(false)
 const rows = ref([])
 const loading = ref(true)
 const failed = ref(false)
@@ -220,45 +228,54 @@ function summary(row) {
             </template>
         </SettingsHeader>
 
-        <!-- Tab strip (methods / accounts). The accounts tab is a placeholder
-             until the backend model lands, so it renders a soft "coming soon"
-             card rather than fake rows. -->
-        <div class="pm-tabs">
-            <button class="pm-tab" :class="{ on: tab === 'methods' }" @click="tab = 'methods'">
+        <!-- Tab strip (methods / accounts). The Accounts tab (XORD-015) is its own
+             panel, mounted the first time the tab is opened. -->
+        <div class="pm-tabs" role="tablist">
+            <button class="pm-tab" role="tab" :aria-selected="tab === 'methods'" :class="{ on: tab === 'methods' }" @click="tab = 'methods'">
                 {{ t('pos_payment_methods.tab_methods') }}
                 <span class="pm-tab-count mono">{{ t('pos_payment_methods.enabled_of', { on: activeCount, total: rows.length }) }}</span>
             </button>
-            <button class="pm-tab" :class="{ on: tab === 'accounts' }" @click="tab = 'accounts'">
+            <button class="pm-tab" role="tab" :aria-selected="tab === 'accounts'" :class="{ on: tab === 'accounts' }" @click="tab = 'accounts'; accountsOpened = true">
                 {{ t('pos_payment_methods.tab_accounts') }}
-                <span class="pm-tab-count mono">—</span>
+                <span class="pm-tab-count mono">{{ accountCount ?? '—' }}</span>
             </button>
         </div>
 
         <template v-if="tab === 'methods'">
             <ErrorState v-if="failed" @retry="load" />
-            <div v-else-if="loading" class="card" style="height:280px"></div>
+            <div v-else-if="loading" class="card pm-skel" aria-hidden="true">
+                <div v-for="n in 4" :key="n" class="set-skel" style="height: 56px"></div>
+            </div>
             <template v-else>
-                <div v-if="!rows.length" class="card p-8 text-center" style="color:var(--muted)">
-                    {{ t('pos_money.tenders_none') }}
+                <div v-if="!rows.length" class="card set-empty">
+                    <span class="set-empty-title">{{ t('pos_money.tenders_none') }}</span>
+                    <span class="set-empty-hint">{{ t('pos_money.tenders_empty_hint') }}</span>
+                    <button v-if="canUpdate" type="button" class="btn btn-accent" style="margin-top: 8px" @click="openCreate">
+                        <Icon name="plus" :size="16" />{{ t('pos_payment_methods.new_method') }}
+                    </button>
                 </div>
                 <div v-else class="card pm-list">
                     <div v-for="row in rows" :key="row.id" class="pm-row">
                         <!-- Header row: tile, name+summary, actions, toggle -->
                         <div class="pm-row-head">
-                            <div class="pm-tile" :style="{ background: row.is_active ? KIND_STYLE[row.kind]?.bg : '#F4F1EC', color: row.is_active ? KIND_STYLE[row.kind]?.color : '#B5ADA2' }">{{ abbr(row) }}</div>
+                            <div class="pm-tile" :class="row.is_active ? 'k-' + (row.kind || 'other') : 'off'" aria-hidden="true">{{ abbr(row) }}</div>
                             <div class="pm-name-col">
                                 <div class="pm-name" :class="{ dim: !row.is_active }">{{ row.name }}</div>
-                                <div class="pm-summary">{{ summary(row) }}</div>
+                                <div class="pm-summary">
+                                    {{ summary(row) }}
+                                    <span v-if="!row.is_active" class="set-chip"><span class="dot"></span>{{ t('common.inactive') }}</span>
+                                </div>
                             </div>
-                            <button v-if="canUpdate" class="pm-settings" @click="openInline(row)">
+                            <button v-if="canUpdate" class="pm-settings" :aria-expanded="openId === row.id" @click="openInline(row)">
                                 {{ t('pos_payment_methods.method_settings') }}
-                                <Icon name="chevronDown" :size="14" :style="{ transform: openId === row.id ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }" />
+                                <Icon name="chevronDown" :size="14" aria-hidden="true" :style="{ transform: openId === row.id ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }" />
                             </button>
                             <!-- Row-level delete. The server soft-deletes (flips
                                  is_active) so past payments still resolve their
                                  tender FK — the confirm copy makes that clear. -->
                             <button
                                 v-if="canUpdate && row.is_active"
+                                type="button"
                                 class="pm-icon-btn pm-icon-danger"
                                 :title="t('common.delete')"
                                 :aria-label="t('common.delete')"
@@ -266,8 +283,10 @@ function summary(row) {
                             ><Icon name="trash" :size="16" /></button>
                             <button
                                 v-if="canUpdate"
+                                type="button"
                                 class="pm-toggle"
                                 role="switch"
+                                :aria-label="row.name"
                                 :aria-checked="row.is_active"
                                 :disabled="busyId === row.id"
                                 @click="toggle(row)"
@@ -280,7 +299,7 @@ function summary(row) {
                         <div v-if="openId === row.id" class="pm-body">
                             <div class="pm-fields">
                                 <label class="pm-field">
-                                    <span class="pm-label">{{ t('pos_payment_methods.method_name') }} <span style="color:var(--red)">*</span></span>
+                                    <span class="pm-label">{{ t('pos_payment_methods.method_name') }} <span class="pm-req">*</span></span>
                                     <input v-model="draft.name" class="input" maxlength="60" />
                                 </label>
                                 <label class="pm-field">
@@ -319,23 +338,17 @@ function summary(row) {
             </template>
         </template>
 
-        <template v-else>
-            <div class="card pm-soon">
-                <div class="pm-soon-ico"><Icon name="wallet" :size="22" /></div>
-                <div class="pm-soon-title">{{ t('pos_payment_methods.accounts_soon_title') }}</div>
-                <p class="pm-soon-body">{{ t('pos_payment_methods.accounts_soon_body') }}</p>
-            </div>
-        </template>
+        <FinancialAccountsPanel v-if="accountsOpened" v-show="tab === 'accounts'" :methods="rows" @count="accountCount = $event" />
 
         <!-- Create modal: uses the same shell as other settings modals, styled
              to match the design's card. Edits go inline instead of here. -->
         <transition name="pm-modal">
             <div v-if="showModal" class="pm-modal-backdrop" @click.self="showModal = false">
-                <div class="pm-modal">
+                <div class="pm-modal" role="dialog" aria-modal="true" :aria-label="t('pos_payment_methods.new_method')">
                     <div class="pm-modal-head">{{ t('pos_payment_methods.new_method') }}</div>
                     <div class="pm-modal-body">
                         <label class="pm-field">
-                            <span class="pm-label">{{ t('pos_payment_methods.method_name') }} <span style="color:var(--red)">*</span></span>
+                            <span class="pm-label">{{ t('pos_payment_methods.method_name') }} <span class="pm-req">*</span></span>
                             <input v-model="modalForm.name" class="input" maxlength="60" :placeholder="t('pos_money.tender_name_placeholder')" />
                             <span v-if="modalErrors.name" class="pm-err">{{ Array.isArray(modalErrors.name) ? modalErrors.name[0] : modalErrors.name }}</span>
                         </label>
@@ -364,7 +377,7 @@ function summary(row) {
         </transition>
 
         <transition name="pm-toast">
-            <div v-if="toast" class="pm-toast">
+            <div v-if="toast" class="pm-toast" role="status" aria-live="polite">
                 <span class="pm-toast-dot" :class="{ bad: toastBad }"></span>
                 <span>{{ toast }}</span>
             </div>
@@ -373,174 +386,198 @@ function summary(row) {
 </template>
 
 <style scoped>
-.pm { display: flex; flex-direction: column; gap: 20px; }
+/* Colours come from the shared theme variables and the PrimeVue primary scale. */
+.pm { display: flex; flex-direction: column; gap: 18px; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ── Tab strip ──────────────────────────────────────────────────── */
 .pm-tabs {
-    display: flex; gap: 4px; overflow-x: auto;
-    box-shadow: inset 0 -1px 0 #E8E2D9;
+    display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
+    box-shadow: inset 0 -1px 0 var(--line);
     margin-bottom: -4px;
 }
+.pm-tabs::-webkit-scrollbar { display: none; }
 .pm-tab {
     flex: none; display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 14px 12px; background: transparent; border: 0;
+    min-height: 44px; padding: 10px 14px; background: transparent; border: 0;
     border-bottom: 2px solid transparent;
-    font-family: inherit; font-size: 14px; font-weight: 500;
+    font-family: inherit; font-size: 14.5px; font-weight: 500;
     color: var(--body); cursor: pointer; white-space: nowrap;
 }
-.pm-tab.on { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+.pm-tab.on { border-bottom-color: var(--accent); color: var(--ink); font-weight: 700; }
 .pm-tab:hover { color: var(--ink); }
+.pm-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
 .pm-tab-count {
-    font-size: 11.5px; font-weight: 600; padding: 1px 7px;
+    font-size: 12.5px; font-weight: 600; padding: 1px 8px;
     border-radius: 999px; background: var(--gray-soft); color: var(--body);
 }
 
 /* ── Method list ────────────────────────────────────────────────── */
 .pm-list { overflow: hidden; }
-.pm-row { border-bottom: 1px solid var(--line); }
+.pm-skel { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.pm-row { border-bottom: 1px solid var(--line); transition: background .15s; }
 .pm-row:last-child { border-bottom: 0; }
+.pm-row:hover { background: var(--page); }
 
 .pm-row-head {
     display: flex; align-items: center; gap: 14px;
-    padding: 14px 18px; flex-wrap: wrap;
+    padding: 12px 18px; flex-wrap: wrap; min-height: 68px;
 }
-/* Coloured category tile — the abbreviation reads by kind at a glance. */
+/* Category tile: the letter reads by kind at a glance. Kind is also written
+   out in the summary line, so colour is never the only cue. */
 .pm-tile {
     flex: none; width: 40px; height: 40px; border-radius: 10px;
     display: grid; place-items: center;
-    font-size: 13px; font-weight: 700;
+    font-size: 14px; font-weight: 700;
 }
+.pm-tile.k-cash { background: var(--green-soft); color: var(--green); }
+.pm-tile.k-card { background: var(--accent-soft); color: var(--p-primary-800); }
+.pm-tile.k-external { background: var(--ink); color: var(--card); }
+.pm-tile.k-other, .pm-tile.off { background: var(--gray-soft); color: var(--body); }
 .pm-name-col { flex: 1 1 180px; min-width: 0; }
-.pm-name { font-size: 14.5px; font-weight: 600; color: var(--ink); }
-.pm-name.dim { color: var(--muted); }
-.pm-summary { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.pm-name { font-size: 15.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-name.dim { color: var(--body); }
+.pm-summary { margin-top: 3px; font-size: 13px; color: var(--body); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .pm-settings {
-    white-space: nowrap; height: 34px; padding: 0 10px;
+    white-space: nowrap; min-height: 40px; padding: 0 12px;
     border: 0; border-radius: 8px; background: transparent;
     display: inline-flex; align-items: center; gap: 6px;
-    font-family: inherit; font-size: 13px; font-weight: 500; color: var(--body);
+    font-family: inherit; font-size: 14px; font-weight: 500; color: var(--body);
     cursor: pointer; transition: background .15s;
 }
 .pm-settings:hover { background: var(--gray-soft); color: var(--ink); }
+.pm-settings:focus-visible, .pm-icon-btn:focus-visible, .pm-toggle:focus-visible, .pm-danger:focus-visible,
+.pm-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .pm-icon-btn {
     display: grid; place-items: center;
-    width: 34px; height: 34px; flex: none;
+    width: 40px; height: 40px; flex: none;
     border: 0; border-radius: 8px; background: transparent;
     color: var(--body); cursor: pointer; transition: background .15s, color .15s;
 }
 .pm-icon-btn:hover { background: var(--gray-soft); color: var(--ink); }
-.pm-icon-danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red); }
+.pm-icon-danger:hover { background: var(--red-soft); color: var(--red); }
 
 .pm-toggle {
-    display: inline-flex; align-items: center; gap: 8px;
-    border: 0; background: transparent; padding: 4px 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 44px; min-height: 44px;
+    border: 0; background: transparent; padding: 0;
     cursor: pointer; flex: none;
 }
 .pm-toggle:disabled { cursor: default; opacity: .6; }
 .pm-track {
-    position: relative; width: 36px; height: 20px; border-radius: 999px;
-    background: #D6CFC4; transition: background .15s; flex: none;
+    position: relative; width: 40px; height: 23px; border-radius: 999px;
+    background: var(--muted); transition: background .15s; flex: none;
 }
-.pm-track.on { background: #2F7D4F; }
+.pm-track.on { background: var(--green); }
+/* Logical offset so the knob sits on the start side when off and the end side
+   when on, in both writing directions. */
 .pm-knob {
-    position: absolute; top: 2px; right: 2px;
-    width: 16px; height: 16px; border-radius: 50%; background: #fff;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
-    transition: right .15s;
+    position: absolute; top: 2px; inset-inline-start: 2px;
+    width: 19px; height: 19px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+    transition: inset-inline-start .15s;
 }
-.pm-track.on .pm-knob { right: 18px; }
+.pm-track.on .pm-knob { inset-inline-start: 19px; }
 
 /* ── Inline expand body ────────────────────────────────────────── */
 .pm-body {
-    padding: 4px 18px 18px 18px;
-    /* Align the body with the name column, not the tile — mirrors the
-       design's `margin-right:54px` in RTL. */
+    padding: 16px 18px 18px;
+    /* Align the body with the name column, not the tile. */
     margin-inline-start: 54px;
     display: flex; flex-direction: column; gap: 16px;
-    background: #FBFAF8;
+    background: var(--page);
     border-top: 1px solid var(--line);
 }
-.pm-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.pm-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .pm-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .pm-field-narrow { max-width: 240px; }
-.pm-label { font-size: 13px; font-weight: 600; color: var(--body); }
-.pm-hint { font-size: 12px; color: var(--muted); }
-.pm-err { font-size: 12.5px; color: var(--red); }
+.pm-label { font-size: 13.5px; font-weight: 600; color: var(--body); }
+.pm-req { color: var(--red); }
+.pm-hint { font-size: 13px; color: var(--body); }
+.pm-err { font-size: 13px; color: var(--red); }
 
 .pm-seg {
     display: flex; background: var(--gray-soft); border-radius: 10px;
     padding: 3px; gap: 2px; overflow-x: auto;
 }
 .pm-seg-btn {
-    flex: 1; white-space: nowrap; height: 36px; padding: 0 12px;
+    flex: 1; white-space: nowrap; min-height: 40px; padding: 0 12px;
     border: 0; border-radius: 8px; background: transparent;
-    font-family: inherit; font-size: 12.5px; font-weight: 500;
+    font-family: inherit; font-size: 13.5px; font-weight: 500;
     color: var(--body); cursor: pointer;
     transition: background .15s, color .15s, box-shadow .15s;
 }
-.pm-seg-btn.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.pm-seg-btn.on { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
 
-.pm-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pm-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--line); }
 .pm-spacer { flex: 1; }
 .pm-danger {
     display: inline-flex; align-items: center; gap: 6px;
-    height: 34px; padding: 0 10px; border: 0; border-radius: 8px;
+    min-height: 40px; padding: 0 12px; border: 0; border-radius: 8px;
     background: transparent; color: var(--red);
-    font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
 }
-.pm-danger:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.pm-danger:hover { background: var(--red-soft); }
 
-.pm-footnote { font-size: 12.5px; color: var(--muted); margin: 0; }
-
-/* ── "Coming soon" placeholder ─────────────────────────────────── */
-.pm-soon {
-    padding: 48px 24px; display: flex; flex-direction: column;
-    align-items: center; text-align: center; gap: 10px;
-}
-.pm-soon-ico {
-    width: 48px; height: 48px; border-radius: 12px;
-    background: var(--accent-soft); color: var(--accent);
-    display: grid; place-items: center;
-}
-.pm-soon-title { font-size: 15px; font-weight: 700; color: var(--ink); }
-.pm-soon-body { max-width: 420px; font-size: 13.5px; color: var(--muted); margin: 0; }
+.pm-footnote { font-size: 13px; line-height: 1.6; color: var(--body); margin: 0; }
 
 /* ── Create modal ──────────────────────────────────────────────── */
 .pm-modal-backdrop {
     position: fixed; inset: 0; background: rgba(31, 27, 22, .4);
     z-index: 20; display: flex; align-items: center; justify-content: center;
-    padding: 20px;
+    padding: 16px;
 }
 .pm-modal {
-    width: 100%; max-width: 460px; background: var(--card);
-    border-radius: 16px; box-shadow: 0 20px 50px rgba(31, 27, 22, .25);
+    width: 100%; max-width: 460px; max-height: 90vh; display: flex; flex-direction: column;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 15px; box-shadow: 0 20px 50px rgba(31, 27, 22, .25);
     overflow: hidden;
 }
 .pm-modal-head {
     padding: 18px 20px; border-bottom: 1px solid var(--line);
-    font-size: 16px; font-weight: 700; color: var(--ink);
+    font-size: 17px; font-weight: 700; color: var(--ink);
 }
-.pm-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.pm-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
 .pm-modal-foot {
-    display: flex; gap: 8px; padding: 14px 20px;
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px;
     border-top: 1px solid var(--line); background: var(--page);
 }
 .pm-modal-enter-from, .pm-modal-leave-to { opacity: 0; }
 .pm-modal-enter-active, .pm-modal-leave-active { transition: opacity .15s; }
 
 /* ── Toast ─────────────────────────────────────────────────────── */
+/* Centred with logical insets + auto margins so it is correct in RTL too. */
 .pm-toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: 24px; inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100% - 32px);
     z-index: 15; display: flex; align-items: center; gap: 10px;
     padding: 12px 16px; background: var(--ink); color: #fff;
     border-radius: 12px; box-shadow: 0 10px 30px rgba(31, 27, 22, .25);
-    font-size: 13.5px;
+    font-size: 14px;
 }
-.pm-toast-dot { width: 8px; height: 8px; border-radius: 50%; background: #5BBE82; flex: none; }
-.pm-toast-dot.bad { background: #E3A29D; }
-.pm-toast-enter-from, .pm-toast-leave-to { opacity: 0; transform: translate(-50%, 10px); }
+.pm-toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-soft); flex: none; }
+.pm-toast-dot.bad { background: var(--red-soft); }
+.pm-toast-enter-from, .pm-toast-leave-to { opacity: 0; transform: translateY(10px); }
 .pm-toast-enter-active, .pm-toast-leave-active { transition: opacity .18s, transform .18s; }
+
+/* ── Phone ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    /* tile + name + switch on the first line; "Settings" and delete beneath. */
+    .pm-row-head {
+        display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 4px 12px;
+        grid-template-areas: "tile name toggle" ". set del";
+        padding-inline: 14px; align-items: center;
+    }
+    .pm-tile { grid-area: tile; }
+    .pm-name-col { grid-area: name; }
+    .pm-toggle { grid-area: toggle; }
+    .pm-settings { grid-area: set; justify-self: start; min-height: 44px; margin-inline-start: -12px; }
+    .pm-icon-btn { grid-area: del; justify-self: end; width: 44px; height: 44px; }
+    .pm-body { margin-inline-start: 0; padding-inline: 14px; }
+    .pm-seg-btn, .pm-danger { min-height: 44px; }
+    .pm-actions .btn { flex: 1 1 auto; min-height: 44px; }
+    .pm-modal-foot .btn { flex: 1 1 auto; min-height: 44px; }
+    .pm-skel { padding-inline: 14px; }
+}
 </style>

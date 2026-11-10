@@ -2,11 +2,15 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateCategoryRequest extends FormRequest
 {
+    use PreservesDisabledLanguages;
+
     public function authorize(): bool
     {
         return $this->user()?->can('menu.update') ?? false;
@@ -43,10 +47,7 @@ class UpdateCategoryRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (($this->has('name_ar') || $this->has('name_en'))
-                && blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.category_name_still_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.category_name_still_required', partial: true);
         });
     }
 }

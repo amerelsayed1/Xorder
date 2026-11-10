@@ -8,16 +8,18 @@ use App\Models\MenuItem;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class OrderingModeTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     private function payload(): array
     {
         return [
-            'items' => [['name' => 'X', 'qty' => 1, 'options' => [], 'line_total' => 50]],
+            'items' => $this->dinerItems([['name' => 'X', 'qty' => 1, 'options' => [], 'line_total' => 50]]),
             'total' => 50,
             'customer_name' => 'Amer',
             'customer_phone' => '+201234567890',

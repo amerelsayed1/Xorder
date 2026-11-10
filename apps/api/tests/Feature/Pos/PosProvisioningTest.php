@@ -471,6 +471,122 @@ class PosProvisioningTest extends PosTestCase
         $this->assertDatabaseMissing('pos_shifts', ['id' => $shift]);
     }
 
+    // ------------------------------------- XORD-042: list says what delete will do
+
+    /** A provisioned terminal through the dashboard, the way an owner makes one. */
+    private function provisionTerminal(string $name): int
+    {
+        return $this->actingAs($this->owner)
+            ->postJson('/api/dashboard/pos/terminals', ['name' => $name, 'branch_id' => $this->branch->id])
+            ->assertCreated()
+            ->json('data.id');
+    }
+
+    private function shiftOn(int $terminalId, array $columns): void
+    {
+        DB::table('pos_shifts')->insert(array_merge([
+            'restaurant_id' => $this->restaurant->id,
+            'branch_id' => $this->branch->id,
+            'pos_terminal_id' => $terminalId,
+            'client_transaction_id' => (string) Str::uuid(),
+            'opened_at' => now(),
+            'received_at' => now(),
+            'opening_float_minor' => 0,
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], $columns));
+    }
+
+    /** @return array<string,bool|null> terminal name => has_money_history */
+    private function historyFlags(): array
+    {
+        return collect($this->actingAs($this->owner)->getJson('/api/dashboard/pos/terminals')
+            ->assertOk()->json('data'))
+            ->mapWithKeys(fn ($t) => [$t['name'] => $t['has_money_history'] ?? null])
+            ->all();
+    }
+
+    /**
+     * The flag is the delete rule read in advance: an order, or a shift that
+     * moved money (float, count or close), and nothing else — an empty open
+     * shift is the test-pairing leftover delete() removes.
+     */
+    public function test_the_terminal_list_says_which_terminals_have_money_history(): void
+    {
+        $this->provisionTerminal('Unused');
+        $this->shiftOn($this->provisionTerminal('Empty shift'), []);
+        $this->shiftOn($this->provisionTerminal('Float'), ['opening_float_minor' => 5000]);
+        $this->shiftOn($this->provisionTerminal('Closed'), ['closed_at' => now(), 'status' => 'closed']);
+        $this->shiftOn($this->provisionTerminal('Counted'), ['counted_cash_minor' => 0]);
+        DB::table('orders')->insert([
+            'restaurant_id' => $this->restaurant->id,
+            'pos_terminal_id' => $this->provisionTerminal('Sold'),
+            'items' => '[]',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame([
+            'Sold' => true,
+            'Counted' => true,
+            'Closed' => true,
+            'Float' => true,
+            'Empty shift' => false,
+            'Unused' => false,
+        ], $this->historyFlags());
+    }
+
+    /** The page decides from the flag, so the flag must agree with delete(). */
+    public function test_the_flag_agrees_with_what_delete_answers(): void
+    {
+        $kept = $this->provisionTerminal('Kept');
+        $this->shiftOn($kept, ['opening_float_minor' => 5000]);
+        $gone = $this->provisionTerminal('Gone');
+        $this->shiftOn($gone, []);
+
+        foreach ([$kept, $gone] as $id) {
+            $this->actingAs($this->owner)->postJson("/api/dashboard/pos/terminals/{$id}/revoke")->assertOk();
+        }
+        $this->assertSame(['Gone' => false, 'Kept' => true], $this->historyFlags());
+
+        $this->actingAs($this->owner)->deleteJson("/api/dashboard/pos/terminals/{$kept}")
+            ->assertStatus(422)->assertJsonPath('code', 'TERMINAL_HAS_HISTORY');
+        $this->actingAs($this->owner)->deleteJson("/api/dashboard/pos/terminals/{$gone}")->assertOk();
+    }
+
+    /** One query for the whole page, not one per terminal. */
+    public function test_the_flag_costs_the_same_queries_for_one_terminal_or_many(): void
+    {
+        $count = function (): int {
+            $n = 0;
+            DB::listen(function () use (&$n) {
+                $n++;
+            });
+            $this->actingAs($this->owner)->getJson('/api/dashboard/pos/terminals')->assertOk();
+
+            return $n;
+        };
+
+        $this->shiftOn($this->provisionTerminal('One'), ['opening_float_minor' => 5000]);
+        $one = $count();
+        foreach (['Two', 'Three', 'Four'] as $name) {
+            $this->shiftOn($this->provisionTerminal($name), ['opening_float_minor' => 5000]);
+        }
+
+        $this->assertSame($one, $count());
+    }
+
+    /** Responses that do not compute it keep their shape. */
+    public function test_provisioning_response_does_not_carry_the_flag(): void
+    {
+        $data = $this->actingAs($this->owner)
+            ->postJson('/api/dashboard/pos/terminals', ['name' => 'New', 'branch_id' => $this->branch->id])
+            ->assertCreated()->json('data');
+
+        $this->assertArrayNotHasKey('has_money_history', $data);
+    }
+
     // --------------------------------------------------- seat enforcement
 
     /** Give the tenant a plan that buys exactly $seats terminals. */

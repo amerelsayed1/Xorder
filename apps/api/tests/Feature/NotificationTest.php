@@ -8,10 +8,12 @@ use App\Models\Restaurant;
 use App\Models\User;
 use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class NotificationTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     private function enableSystemOrdering(Restaurant $r): void
@@ -22,7 +24,7 @@ class NotificationTest extends TestCase
     private function orderPayload(): array
     {
         return [
-            'items' => [['name' => 'Burger', 'qty' => 1, 'options' => [], 'line_total' => 80]],
+            'items' => $this->dinerItems([['name' => 'Burger', 'qty' => 1, 'options' => [], 'line_total' => 80]]),
             'total' => 80,
             'customer_name' => 'Amer',
             'customer_phone' => '+201234567890',

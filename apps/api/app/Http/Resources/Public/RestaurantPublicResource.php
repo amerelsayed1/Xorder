@@ -73,6 +73,8 @@ class RestaurantPublicResource extends JsonResource
             'ordering_mode' => $mode?->value,
             'order_types' => $this->availableOrderTypes(),
             'internal_reviews' => (bool) $this->hasFeature('internal_reviews'),
+            // Guest paging: lets the menu SPA offer "track my order" after checkout.
+            'guest_paging' => (bool) $this->hasFeature('guest_paging'),
             'review_public_url' => SafeUrl::forLink($this->review_public_url),
             'review_thank_you' => app()->getLocale() === 'ar'
                 ? ($this->review_thank_you_ar ?: $this->review_thank_you_en)

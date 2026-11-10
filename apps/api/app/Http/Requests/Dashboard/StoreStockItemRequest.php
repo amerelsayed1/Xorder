@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Services\UnitCatalog;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -64,9 +65,7 @@ class StoreStockItemRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (blank($this->input('name_en')) && blank($this->input('name_ar'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.stock_item_name_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.stock_item_name_required');
         });
     }
 

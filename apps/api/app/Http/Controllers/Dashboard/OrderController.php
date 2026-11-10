@@ -3,17 +3,20 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Enums\OrderStatus;
+use App\Enums\PickupStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Services\GuestPagingService;
 use App\Support\CsvSafe;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -53,7 +56,6 @@ class OrderController extends Controller
         $tz = $restaurant->localTimezone();
 
         $query = $this->withListRelations($this->scopedQuery($request, $restaurant)())
-            ->with('table:id,label')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->latest();
 
@@ -177,6 +179,7 @@ class OrderController extends Controller
                 'canceller:id,name',
                 'completer:id,name',
                 'actingUser:id,name',
+                'table:id,label',
             ])
             ->withSum('payments', 'amount_minor');
     }
@@ -231,6 +234,26 @@ class OrderController extends Controller
         ]);
     }
 
+    /**
+     * XORD-048: one order as its receipt read — invoice number, till, cashier,
+     * table, the money breakdown and each payment. Loaded here and not on the
+     * list, so the list never pays for payments it does not show. Another
+     * restaurant's order is a 404 through the tenant scope on the binding.
+     */
+    public function show(Order $order): JsonResponse
+    {
+        $order = $this->withListRelations(Order::whereKey($order->id))
+            ->with([
+                'posTerminal:id,name',
+                'diningArea:id,name_ar,name_en',
+                'payments' => fn ($q) => $q->orderBy('id'),
+                'payments.tenderType:id,name,kind',
+            ])
+            ->firstOrFail();
+
+        return response()->json(['data' => OrderResource::make($order)]);
+    }
+
     public function updateStatus(Request $request, Order $order): JsonResponse
     {
         $request->validate([
@@ -258,50 +281,68 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // Who, when and why travel with the CANCELLED state: stamped when an
-        // order becomes cancelled, cleared when a cancellation is corrected,
-        // so they always describe the order as it stands now. Set outside
-        // $fillable on purpose — the server decides them, not the payload.
-        $order->status = OrderStatus::from($status);
-        if ($status === OrderStatus::CANCELLED->value) {
-            $reason = trim((string) $request->input('reason', ''));
-            if ($order->isDirty('status')) {
-                $order->cancelled_at = Carbon::now();
-                $order->cancelled_by = $request->user()->id;
+        // One commit: the status flip, the pickup stamp and the alert courtesy
+        // land together or not at all (a paged order must never read COMPLETED
+        // on the queue and PREPARING on the board).
+        DB::transaction(function () use ($request, $order, $status) {
+            // Who, when and why travel with the CANCELLED state: stamped when an
+            // order becomes cancelled, cleared when a cancellation is corrected,
+            // so they always describe the order as it stands now. Set outside
+            // $fillable on purpose — the server decides them, not the payload.
+            $order->status = OrderStatus::from($status);
+            if ($status === OrderStatus::CANCELLED->value) {
+                $reason = trim((string) $request->input('reason', ''));
+                if ($order->isDirty('status')) {
+                    $order->cancelled_at = Carbon::now();
+                    $order->cancelled_by = $request->user()->id;
+                }
+                if ($request->has('reason') || $order->isDirty('status')) {
+                    $order->cancellation_reason = $reason !== '' ? $reason : null;
+                }
+            } else {
+                $order->cancelled_at = null;
+                $order->cancelled_by = null;
+                $order->cancellation_reason = null;
             }
-            if ($request->has('reason') || $order->isDirty('status')) {
-                $order->cancellation_reason = $reason !== '' ? $reason : null;
+            // The completion twin: stamped on becoming COMPLETED, cleared when a
+            // completion is corrected away, so "time to complete" never measures
+            // a state the order has left.
+            if ($status === OrderStatus::COMPLETED->value) {
+                if ($order->isDirty('status')) {
+                    $order->completed_at = Carbon::now();
+                    $order->completed_by = $request->user()->id;
+                }
+            } else {
+                $order->completed_at = null;
+                $order->completed_by = null;
             }
-        } else {
-            $order->cancelled_at = null;
-            $order->cancelled_by = null;
-            $order->cancellation_reason = null;
-        }
-        // The completion twin: stamped on becoming COMPLETED, cleared when a
-        // completion is corrected away, so "time to complete" never measures
-        // a state the order has left.
-        if ($status === OrderStatus::COMPLETED->value) {
-            if ($order->isDirty('status')) {
-                $order->completed_at = Carbon::now();
-                $order->completed_by = $request->user()->id;
-            }
-        } else {
-            $order->completed_at = null;
-            $order->completed_by = null;
-        }
-        $order->save();
+            $order->save();
 
-        // Once an order is acted on (moved out of NEW), its "new order" alert is
-        // no longer new — clear the unread dot so the bell stays trustworthy.
-        // The order_id linkage is stored (as a string) on the notification's
-        // data payload by PublicOrderController when the order is placed.
-        if ($status !== OrderStatus::NEW->value) {
-            Notification::query()
-                ->where('type', 'order.created')
-                ->where('data->order_id', (string) $order->id)
-                ->whereNull('read_at')
-                ->update(['read_at' => Carbon::now()]);
-        }
+            // Guest paging (BR-8): finishing a paged order from the queue means
+            // the diner collected it. Forward-only inside the service (its own
+            // transaction becomes a savepoint here); a no-op if the board
+            // already said so.
+            if ($status === OrderStatus::COMPLETED->value && $order->isPaged()) {
+                app(GuestPagingService::class)->transition(
+                    $order,
+                    PickupStatus::PICKED_UP,
+                    GuestPagingService::SOURCE_DASHBOARD,
+                    $request->user(),
+                );
+            }
+
+            // Once an order is acted on (moved out of NEW), its "new order" alert is
+            // no longer new — clear the unread dot so the bell stays trustworthy.
+            // The order_id linkage is stored (as a string) on the notification's
+            // data payload by PublicOrderController when the order is placed.
+            if ($status !== OrderStatus::NEW->value) {
+                Notification::query()
+                    ->where('type', 'order.created')
+                    ->where('data->order_id', (string) $order->id)
+                    ->whereNull('read_at')
+                    ->update(['read_at' => Carbon::now()]);
+            }
+        });
 
         return response()->json([
             'data' => OrderResource::make($this->withListRelations(Order::whereKey($order->id))->firstOrFail()),

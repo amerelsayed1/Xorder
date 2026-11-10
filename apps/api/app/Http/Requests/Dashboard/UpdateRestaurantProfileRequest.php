@@ -3,7 +3,10 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Enums\MenuLayout;
+use App\Http\Requests\Concerns\NormalizesNumericInput;
+use App\Http\Requests\Concerns\PreservesDisabledLanguages;
 use App\Rules\MobileNumber;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -14,9 +17,22 @@ use Illuminate\Validation\Rule;
  */
 class UpdateRestaurantProfileRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+    use PreservesDisabledLanguages;
+
     public function authorize(): bool
     {
         return $this->user()?->can('settings.update') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'minimum_order',
+        ];
     }
 
     public function rules(): array
@@ -68,9 +84,10 @@ class UpdateRestaurantProfileRequest extends FormRequest
             // NOT NULL, so it can be changed but never cleared.
             'brand_color' => ['sometimes', 'required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'menu_layout' => ['sometimes', 'required', Rule::enum(MenuLayout::class)],
-            // secondary_color, default_language and the ordering channel
-            // (ordering_mode) stay Super-Admin-only: the public menu does not
-            // use a second colour yet, and the other two follow the plan. Any
+            // secondary_color, the content languages (bilingual,
+            // default_language) and the ordering channel (ordering_mode) stay
+            // Super-Admin-only (owner decision 2026-11-07 for the languages:
+            // one setting for the whole business, set by the platform). Any
             // such keys in the payload are ignored (never reach
             // ->update(validated())).
         ];
@@ -79,15 +96,10 @@ class UpdateRestaurantProfileRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if ($this->has('name_ar') || $this->has('name_en')) {
-                if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                    // Report on the default-language name field — the one the
-                    // profile form always renders — so single-language
-                    // restaurants see the error instead of a silent failure.
-                    $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                    $validator->errors()->add("name_{$lang}", __('xorder.validation.restaurant_name_still_required'));
-                }
-            }
+            // On the field the profile form renders for the restaurant's content
+            // languages — read BEFORE any language change in this same request
+            // takes effect, which is what the form on screen was showing.
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.restaurant_name_still_required', partial: true, primaryWhenBilingual: true);
         });
     }
 }

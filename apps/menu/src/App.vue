@@ -57,8 +57,10 @@ const tableAreaName = computed(() => {
     if (!a) return ''
     return isAr.value ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)
 })
-const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, getLineVariant, getLineExtras, calculateLinePrice } = useCart(slug)
+const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, getLineVariant, getLineExtras, getLineOptionIds, calculateLinePrice } = useCart(slug)
 const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, lastOrderId, customer, buildOrderData, sendToWhatsApp } = useOrder()
+// The server's reason when it refused the order (XORD-047), shown instead of success.
+const orderError = ref('')
 const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
 const { remember: rememberPendingReview, resolveClosedOrder } = useReviewPrompt(slug)
 
@@ -333,6 +335,13 @@ function submitOrder(details) {
     lastOrderId.value = null
     const snapshot = {
         items: cart.value.map(line => ({
+            // What was ordered, by id: the server prices the line from these
+            // and names it (XORD-047). The fields below are display text the
+            // server ignores; they stay for the WhatsApp message's sake.
+            kind: line.kind === 'combo' ? 'combo' : 'item',
+            menu_item_id: line.kind === 'combo' ? undefined : line.ref.id,
+            combo_id: line.kind === 'combo' ? line.ref.id : undefined,
+            option_ids: getLineOptionIds(line),
             name: localize(line.ref),
             qty: line.qty,
             // Size/portion travels on its own so the dashboard can show it next
@@ -350,10 +359,14 @@ function submitOrder(details) {
         note: details.note || null,
         order_type: orderType.value || null,
         session_token: sessionToken.value || undefined,
+        lang: locale.value === 'en' ? 'en' : 'ar',
     }
     // System / both modes persist a durable order record; WhatsApp / both modes
     // open the WhatsApp handoff. Fire-and-forget so window.open stays inside the
     // user gesture; the order code fills into the success dialog when it lands.
+    // Kept so a refused order can be put back in the basket (XORD-047).
+    const placed = cart.value.slice()
+    orderError.value = ''
     if (usesSystem.value) {
         postOrder(slug, snapshot)
             .then(res => {
@@ -362,7 +375,15 @@ function submitOrder(details) {
                 // Stash it so its close, on the diner's next visit, invites feedback.
                 if (lastOrderId.value) rememberPendingReview(lastOrderId.value)
             })
-            .catch(() => { /* WhatsApp handoff still carries the order in 'both' mode */ })
+            .catch((err) => {
+                // In 'both' mode the WhatsApp handoff still carries the order.
+                // System-only, the server's answer is all there is: an order it
+                // refused (an old tab, an item gone) must not be shown as
+                // received, and the diner keeps the basket to try again.
+                if (usesWhatsapp.value) return
+                orderError.value = err?.response?.data?.message || t('order_not_placed_hint')
+                cart.value = placed
+            })
     } else if (usesWhatsapp.value) {
         // WhatsApp-only: no order is recorded, but still save the customer so the
         // restaurant keeps its directory across every ordering type.
@@ -552,6 +573,7 @@ function updateUserField(field, value) {
                 :reopenUrl="lastOrderUrl"
                 :orderCode="lastOrderCode"
                 :viaWhatsapp="usesWhatsapp"
+                :errorMessage="orderError"
                 :t="t"
                 @close="closeOrderSuccess"
             />

@@ -18,6 +18,9 @@
         </include>
     </source>
     <php>
+        <!-- The whole suite boots one process; the CLI default of 128M is exhausted
+             part-way through, so `php artisan test` (and CI) need headroom. -->
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

@@ -2,15 +2,32 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Http\Requests\Concerns\NormalizesNumericInput;
 use App\Http\Requests\Concerns\OptionDiscountValidation;
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreMenuItemRequest extends FormRequest
 {
+    use NormalizesNumericInput;
+
     public function authorize(): bool
     {
         return $this->user()?->can('menu.create') ?? false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function numericInputKeys(): array
+    {
+        return [
+            'price',
+            'discounted_price',
+            'option_groups.*.options.*.price',
+            'option_groups.*.options.*.discounted_price',
+        ];
     }
 
     public function rules(): array
@@ -21,7 +38,8 @@ class StoreMenuItemRequest extends FormRequest
             // category must belong to THIS restaurant (never trust the id blindly).
             'category_id' => [
                 'required',
-                Rule::exists('categories', 'id')->where('restaurant_id', $restaurantId),
+                // whereNull: Rule::exists() does not skip soft-deleted rows (XORD-014).
+                Rule::exists('categories', 'id')->where('restaurant_id', $restaurantId)->whereNull('deleted_at'),
             ],
             'name_ar' => ['nullable', 'string', 'max:150'],
             'name_en' => ['nullable', 'string', 'max:150'],
@@ -59,13 +77,8 @@ class StoreMenuItemRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                // Attach to the restaurant's default-language name field — that's
-                // the one the form always renders (a single-language menu only
-                // shows its default), so the error is actually visible.
-                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
-                $validator->errors()->add("name_{$lang}", __('xorder.validation.item_name_required'));
-            }
+            // On the field the form actually renders: the enabled language's.
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.item_name_required', primaryWhenBilingual: true);
 
             OptionDiscountValidation::checkItemGroups($this, $validator);
         });

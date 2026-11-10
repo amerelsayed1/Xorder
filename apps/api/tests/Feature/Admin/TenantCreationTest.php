@@ -377,6 +377,40 @@ class TenantCreationTest extends TestCase
         $this->assertDatabaseHas('pos_terminals', ['id' => $terminal['id']]);
     }
 
+    /**
+     * XORD-042: the tenant page reads the delete rule in advance. The Super
+     * Admin has no tenant context, so the flag must not depend on one.
+     */
+    public function test_the_tenant_terminal_list_says_which_terminals_have_money_history(): void
+    {
+        [$restaurant, $branch] = $this->tenantWithBranch();
+        $sa = $this->superAdmin();
+
+        $make = fn (string $name) => $this->actingAs($sa)
+            ->postJson("/api/admin/restaurants/{$restaurant->id}/terminals", ['name' => $name, 'branch_id' => $branch->id])
+            ->assertCreated()->json('data.id');
+
+        $make('Clean');
+        $traded = $make('Traded');
+        $shift = new PosShift;
+        $shift->forceFill([
+            'opened_at' => now(),
+            'restaurant_id' => $restaurant->id,
+            'branch_id' => $branch->id,
+            'pos_terminal_id' => $traded,
+            'client_transaction_id' => (string) Str::uuid(),
+            'status' => 'open',
+            'opening_float_minor' => 20000,
+        ])->save();
+
+        $flags = collect($this->actingAs($sa)->getJson("/api/admin/restaurants/{$restaurant->id}/terminals")
+            ->assertOk()->json('data'))
+            ->mapWithKeys(fn ($t) => [$t['name'] => $t['has_money_history'] ?? null])
+            ->all();
+
+        $this->assertSame(['Traded' => true, 'Clean' => false], $flags);
+    }
+
     public function test_a_terminal_of_another_tenant_cannot_be_deleted_through_this_tenant(): void
     {
         [$mine] = $this->tenantWithBranch('mine');

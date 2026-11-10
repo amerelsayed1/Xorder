@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 /**
@@ -21,6 +22,7 @@ use Tests\TestCase;
  */
 class OrderingAvailabilityTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     private function withMenu(Restaurant $r): Restaurant
@@ -56,7 +58,7 @@ class OrderingAvailabilityTest extends TestCase
         $this->withMenu(Restaurant::factory()->create(['slug' => 'view-only']));
 
         $this->postJson('/api/public/restaurants/view-only/orders', [
-            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => 10]],
+            'items' => $this->dinerItems([['name' => 'Item', 'qty' => 1, 'line_total' => 10]]),
             'total' => 10,
         ])->assertStatus(422);
     }
@@ -95,7 +97,7 @@ class OrderingAvailabilityTest extends TestCase
         // Enforced server-side: a stale menu tab must not post into a closed
         // kitchen just because its UI was rendered before the pause.
         $this->postJson('/api/public/restaurants/paused-post/orders', [
-            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => 10]],
+            'items' => $this->dinerItems([['name' => 'Item', 'qty' => 1, 'line_total' => 10]]),
             'total' => 10,
         ])
             ->assertStatus(422)

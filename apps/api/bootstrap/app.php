@@ -7,6 +7,7 @@ use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\PosDeviceAuth;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\WaiterWire;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -61,6 +62,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // The POS device credential (POS-BE-011 Option C). Not an auth
             // guard — see the middleware's own comment for why.
             'pos.device' => PosDeviceAuth::class,
+            // The waiter wire's gate (POS-BE-033): slug → tenant, device, session.
+            'waiter' => WaiterWire::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

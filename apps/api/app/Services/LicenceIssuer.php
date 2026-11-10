@@ -130,7 +130,13 @@ class LicenceIssuer
                 'restaurant_id' => $original->restaurant_id,
                 'kind' => $original->kind,
                 'enforcement' => $original->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
-                'customer_name' => $original->customer_name,
+                // The business NAME of an offline customer may be corrected at
+                // renewal (it is what the till prints); the identifier the till
+                // configures itself with may not (a different one is a
+                // different licence). A cloud licence has neither.
+                'customer_name' => $original->isOffline()
+                    ? (filled($data['customer_name'] ?? null) ? trim((string) $data['customer_name']) : $original->customer_name)
+                    : $original->customer_name,
                 'customer_slug' => $original->customer_slug,
                 'key_hash' => $key ? LicenceKey::hash($key) : $original->key_hash,
                 'key_last_four' => $key ? LicenceKey::lastFour($key) : $original->key_last_four,
@@ -139,6 +145,10 @@ class LicenceIssuer
                 // licence issued before keys were kept.
                 'key_encrypted' => $key ?? $original->key_encrypted,
                 'created_by_id' => $actor?->id,
+                // Installed on a machine already, and a renewal keeps the key:
+                // the new row must not read "never installed" because it is new.
+                // A rotated key is a different key and starts with none.
+                'activated_at' => $key === null ? $original->activated_at : null,
                 'licence_ref' => 'LIC-PENDING-'.Str::random(20),
                 'payload' => '',
                 'signature' => '',
@@ -160,7 +170,7 @@ class LicenceIssuer
             'properties' => $this->auditProperties($licence) + [
                 'superseded' => $original->licence_ref,
                 'key_rotated' => $key !== null,
-            ],
+            ] + $this->changesBetween($original, $licence),
         ]);
 
         return ['licence' => $licence, 'key' => $key];
@@ -355,6 +365,15 @@ class LicenceIssuer
             ?? $original?->{$field}
             ?? $fallback;
 
+        // For the fields where blank is a real answer (no plan, no limit, no
+        // note), a key PRESENT in the body wins even when it is null: that is
+        // how a renewal clears one. A key left out still inherits. (`??` alone
+        // could not tell "clear it" from "say nothing", so an upgrade to
+        // unlimited users was impossible.)
+        $clearable = fn (string $field, mixed $fallback = null) => array_key_exists($field, $data)
+            ? $data[$field]
+            : ($original?->{$field} ?? $fallback);
+
         // Sold outright. The stored term becomes the sentinel, so every date
         // comparison downstream — grace, warning, the till's own expiry check —
         // keeps working on a licence that simply never arrives at its end. See
@@ -362,28 +381,80 @@ class LicenceIssuer
         $lifetime = (bool) ($data['lifetime'] ?? $original?->lifetime ?? false);
 
         return [
-            'plan_id' => $inherit('plan_id', null),
+            'plan_id' => $clearable('plan_id'),
             'issued_at' => Carbon::parse($inherit('issued_at', 'now')),
             'expires_at' => $lifetime
                 ? Carbon::parse(PosLicence::LIFETIME_EXPIRES_AT)
                 : Carbon::parse($inherit('expires_at', null)),
             'lifetime' => $lifetime,
-            'contact_name' => $inherit('contact_name', null),
-            'contact_email' => $inherit('contact_email', null),
-            'contact_phone' => $inherit('contact_phone', null),
+            'contact_name' => $clearable('contact_name'),
+            'contact_email' => $clearable('contact_email'),
+            'contact_phone' => $clearable('contact_phone'),
             'grace_days' => $inherit('grace_days', $defaults['grace_days'] ?? 14),
             'warn_days' => $inherit('warn_days', $defaults['warn_days'] ?? 30),
             'max_terminals' => $inherit('max_terminals', $defaults['max_terminals'] ?? 1),
             // Null = unlimited. Correct for cloud, where the platform counts
             // staff against the plan server-side instead.
-            'max_users' => $data['max_users'] ?? $original?->max_users,
-            'max_offline_days' => $data['max_offline_days'] ?? $original?->max_offline_days,
+            'max_users' => $clearable('max_users'),
+            'max_offline_days' => $clearable('max_offline_days'),
             'features' => array_values($inherit('features', [])),
             'modes' => array_values($inherit('modes', ['cloud'])),
             'branch_ids' => array_values($inherit('branch_ids', [])),
             'fingerprints' => array_values($inherit('fingerprints', [])),
-            'notes' => $data['notes'] ?? $original?->notes,
+            'notes' => $clearable('notes'),
         ];
+    }
+
+    /**
+     * What a renewal changed against the licence it replaces, for the audit row.
+     *
+     * Renewal is how a licence is upgraded, so "who gave this client more
+     * terminals, and when" has to be answerable. Commercial values are recorded
+     * from/to. Contact details, notes and device fingerprints are recorded as
+     * NAMES only: they are personal or identify machines, and the fact that they
+     * changed is what an audit needs.
+     *
+     * @return array{changes: array<string, array{from: mixed, to: mixed}>, changed_private: list<string>}
+     */
+    private function changesBetween(PosLicence $from, PosLicence $to): array
+    {
+        $norm = fn (mixed $v) => is_array($v) ? array_values(array_unique(array_map('strval', $v))) : $v;
+        $sorted = function (mixed $v) use ($norm) {
+            $v = $norm($v);
+            if (is_array($v)) {
+                sort($v);
+            }
+
+            return $v;
+        };
+
+        $changes = [];
+        $scalar = ['plan_id', 'lifetime', 'grace_days', 'warn_days', 'max_terminals', 'max_users', 'max_offline_days', 'customer_name'];
+        foreach ($scalar as $field) {
+            if ($from->{$field} != $to->{$field}) {
+                $changes[$field] = ['from' => $from->{$field}, 'to' => $to->{$field}];
+            }
+        }
+        if (! $to->lifetime && $from->expires_at?->toIso8601String() !== $to->expires_at?->toIso8601String()) {
+            $changes['expires_at'] = ['from' => $from->lifetime ? 'lifetime' : $from->expires_at?->toIso8601String(), 'to' => $to->expires_at?->toIso8601String()];
+        }
+        foreach (['features', 'modes', 'branch_ids'] as $field) {
+            if ($sorted($from->{$field}) !== $sorted($to->{$field})) {
+                $changes[$field] = ['from' => $sorted($from->{$field}), 'to' => $sorted($to->{$field})];
+            }
+        }
+
+        $private = [];
+        foreach (['contact_name', 'contact_email', 'contact_phone', 'notes'] as $field) {
+            if ((string) $from->{$field} !== (string) $to->{$field}) {
+                $private[] = $field;
+            }
+        }
+        if ($sorted($from->fingerprints) !== $sorted($to->fingerprints)) {
+            $private[] = 'fingerprints';
+        }
+
+        return ['changes' => $changes, 'changed_private' => $private];
     }
 
     /** @return array<string,mixed> */

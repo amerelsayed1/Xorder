@@ -6,10 +6,12 @@ use App\Models\Restaurant;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
+use Tests\Concerns\BuildsDinerOrders;
 use Tests\TestCase;
 
 class PhoneValidationTest extends TestCase
 {
+    use BuildsDinerOrders;
     use RefreshDatabase;
 
     private function passes(mixed $value, ?MobileNumber $rule = null): bool
@@ -66,7 +68,7 @@ class PhoneValidationTest extends TestCase
         Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
 
         $this->postJson('/api/public/restaurants/demo/orders', [
-            'items' => [['name' => 'Pizza', 'qty' => 1, 'options' => [], 'line_total' => 80]],
+            'items' => $this->dinerItems([['name' => 'Pizza', 'qty' => 1, 'options' => [], 'line_total' => 80]]),
             'total' => 80,
             'customer_name' => 'Amer',
             'customer_phone' => '123',
@@ -78,7 +80,7 @@ class PhoneValidationTest extends TestCase
         $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
 
         $this->postJson('/api/public/restaurants/demo/orders', [
-            'items' => [['name' => 'Pizza', 'qty' => 1, 'options' => [], 'line_total' => 80]],
+            'items' => $this->dinerItems([['name' => 'Pizza', 'qty' => 1, 'options' => [], 'line_total' => 80]]),
             'total' => 80,
             'customer_name' => 'Amer',
             'customer_phone' => '٠١٠١٢٣٤٥٦٧٨',

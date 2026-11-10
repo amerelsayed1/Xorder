@@ -198,7 +198,15 @@ async function destroyTerminal(terminal) {
         await api.delete(`api/dashboard/pos/terminals/${terminal.id}`)
         rows.value = rows.value.filter((x) => x.id !== terminal.id)
     } catch (err) {
-        alert(err.response?.data?.message || t('common.error'))
+        // Traded since the list loaded: show the kept note from now on.
+        if (err.response?.data?.code === 'TERMINAL_HAS_HISTORY') {
+            rows.value = rows.value.map((x) =>
+                x.id === terminal.id ? { ...x, has_money_history: true } : x)
+        }
+        alert({
+            title: t('pos_terminals.delete_refused'),
+            message: err.response?.data?.message || t('common.error'),
+        })
     }
 }
 </script>
@@ -222,6 +230,9 @@ async function destroyTerminal(terminal) {
         <div class="set-empty">
             <span class="set-empty-title">{{ t('pos_terminals.none') }}</span>
             <span class="set-empty-hint">{{ t('pos_terminals.subtitle') }}</span>
+            <button v-if="canWrite" type="button" class="set-btn-primary" style="margin-top: 8px" @click="openCreate">
+                <Icon name="plus" :size="15" />{{ t('pos_terminals.add') }}
+            </button>
         </div>
     </div>
 
@@ -278,9 +289,17 @@ async function destroyTerminal(terminal) {
                     :title="t('pos_terminals.revoke')" :aria-label="t('pos_terminals.revoke')" @click="revoke(r)">
                     <Icon name="trash" :size="16" />
                 </button>
-                <button v-if="canWrite && r.state === 'revoked'" type="button" class="set-btn set-btn-danger" @click="destroyTerminal(r)">
+                <!-- XORD-042: the list says whether delete() would refuse, so a
+                     terminal that traded shows why it stays instead of a
+                     button that can only fail. Unknown (an older response)
+                     keeps the button; the server is the boundary either way. -->
+                <button v-if="canWrite && r.state === 'revoked' && r.has_money_history !== true" type="button" class="set-btn set-btn-danger" @click="destroyTerminal(r)">
                     {{ t('pos_terminals.delete') }}
                 </button>
+                <span v-else-if="r.state === 'revoked' && r.has_money_history === true" class="set-fact-label"
+                    :title="t('pos_terminals.kept_history_help')">
+                    {{ t('pos_terminals.kept_history') }}
+                </span>
             </div>
         </div>
     </div>
@@ -309,11 +328,11 @@ async function destroyTerminal(terminal) {
                     <option value="dynamic">{{ t('pos_terminals.sync.dynamic') }}</option>
                     <option value="manual">{{ t('pos_terminals.sync.manual') }}</option>
                 </select>
-                <p class="text-xs mt-1" style="color:var(--muted)">{{ t('pos_terminals.sync_hint') }}</p>
+                <p class="set-help" style="margin-top: 4px">{{ t('pos_terminals.sync_hint') }}</p>
                 <FormError :errors="errors" field="sync_policy" />
             </label>
 
-            <div class="flex gap-3 pt-1">
+            <div class="set-form-actions">
                 <button type="submit" class="btn btn-accent" :disabled="saving || !form.name || !form.branch_id">{{ t('common.create') }}</button>
                 <button type="button" class="btn btn-ghost" @click="creating = false">{{ t('common.cancel') }}</button>
             </div>

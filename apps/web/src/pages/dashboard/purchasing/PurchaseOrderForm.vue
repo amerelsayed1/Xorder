@@ -197,13 +197,13 @@ function back() {
 
 <template>
     <div class="space-y-5">
-        <button type="button" class="flex items-center gap-1.5 text-sm" style="color:var(--muted)" @click="back">
+        <button type="button" class="back" @click="back">
             <Icon name="chevronDown" :size="16" class="rotate-90 rtl:-rotate-90" />{{ t('purchasing.orders_title') }}
         </button>
 
         <div>
             <h1 class="page-title">{{ isEdit ? t('purchasing.edit_order') : t('purchasing.new_order') }}</h1>
-            <p v-if="isEdit && original" class="page-sub"><span class="mono" dir="ltr">{{ t('purchasing.draft_ref', { id: original.id }) }}</span></p>
+            <p v-if="isEdit && original" class="page-sub" style="color:var(--body)"><span class="mono" dir="ltr">{{ t('purchasing.draft_ref', { id: original.id }) }}</span></p>
         </div>
 
         <ErrorState v-if="failed" :message="t('common.error')" @retry="load" />
@@ -217,7 +217,7 @@ function back() {
                             <option value="" disabled>{{ t('purchasing.pick_supplier') }}</option>
                             <option v-for="s in supplierOptions" :key="s.id" :value="s.id">{{ nameOf(s) }}{{ retired(s) }}</option>
                         </select>
-                        <span v-if="supplierRetired" class="text-xs" style="color:var(--amber)">{{ t('purchasing.supplier_retired_note') }}</span>
+                        <span v-if="supplierRetired" class="text-xs" style="color:var(--p-primary-800)">{{ t('purchasing.supplier_retired_note') }}</span>
                         <FormError :errors="errors" field="supplier_id" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.branch') }}</span>
                         <select v-model="form.branch_id" class="input">
@@ -236,13 +236,13 @@ function back() {
 
             <div class="card p-5 space-y-3">
                 <div class="flex items-center justify-between gap-3">
-                    <h2 class="font-semibold" style="color:var(--ink)">{{ t('purchasing.lines') }}</h2>
+                    <h2 class="card-title">{{ t('purchasing.lines') }}</h2>
                     <button type="button" class="btn btn-ghost btn-sm" @click="addLine"><Icon name="plus" :size="15" />{{ t('purchasing.add_line') }}</button>
                 </div>
                 <FormError :errors="errors" field="lines" />
-                <p v-if="!form.lines.length" class="text-sm" style="color:var(--muted)">{{ t('purchasing.no_lines_yet') }}</p>
+                <p v-if="!form.lines.length" class="text-sm" style="color:var(--body)">{{ t('purchasing.no_lines_yet') }}</p>
 
-                <div v-for="(l, i) in form.lines" :key="l.key" class="rounded-lg border p-3 space-y-3" style="border-color:var(--line)">
+                <div v-for="(l, i) in form.lines" :key="l.key" class="line-box space-y-3">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label class="block"><span class="label">{{ t('purchasing.line_stock_item') }}</span>
                             <select v-model="l.stock_item_id" class="input" @change="onItemChange(l)">
@@ -252,7 +252,7 @@ function back() {
                             <FormError :errors="errors" :field="`lines.${i}.stock_item_id`" /></label>
                         <label class="block"><span class="label">{{ t('purchasing.line_description') }}</span>
                             <input v-model="l.description" class="input" maxlength="200" :placeholder="l.stock_item_id ? nameOf(itemOf(l.stock_item_id)) : ''" />
-                            <span v-if="l.stock_item_id" class="text-xs" style="color:var(--muted)">{{ t('purchasing.line_description_hint') }}</span>
+                            <span v-if="l.stock_item_id" class="text-xs" style="color:var(--body)">{{ t('purchasing.line_description_hint') }}</span>
                             <FormError :errors="errors" :field="`lines.${i}.description`" /></label>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 items-start">
@@ -274,22 +274,24 @@ function back() {
                         <div class="block">
                             <span class="label">{{ t('purchasing.line_total') }}</span>
                             <div class="flex items-center justify-between gap-2 py-2">
-                                <span class="mono" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
+                                <span class="mono line-total">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
                                 <button type="button" class="icon-btn" :title="t('purchasing.remove_line')" :aria-label="t('purchasing.remove_line')" @click="removeLine(i)"><Icon name="close" :size="16" /></button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal') }}</span><span class="mono">{{ show(preview.subtotal_minor) }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ show(preview.tax_minor) }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ show(preview.total_minor) }}</span></div>
-                    <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.preview_note') }}</p>
+                <div class="totals-wrap form-totals">
+                    <div class="totals">
+                        <div class="totals-row"><span>{{ t('purchasing.subtotal') }}</span><span class="mono">{{ show(preview.subtotal_minor) }}</span></div>
+                        <div class="totals-row"><span>{{ t('purchasing.tax') }}</span><span class="mono">{{ show(preview.tax_minor) }}</span></div>
+                        <div class="totals-row totals-grand"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ show(preview.total_minor) }}</span></div>
+                        <p class="totals-note">{{ t('purchasing.preview_note') }}</p>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2">
+            <div class="form-actions">
                 <button type="button" class="btn btn-ghost" :disabled="saving" @click="back">{{ t('common.cancel') }}</button>
                 <button type="submit" class="btn btn-accent" :disabled="saving">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
@@ -299,3 +301,23 @@ function back() {
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Presentation only: theme variables and the PrimeVue primary scale; no new hex values. */
+.back { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-size: 14.5px; font-weight: 500; color: var(--body); }
+.back:hover { color: var(--p-primary-700); }
+.totals-wrap { display: flex; justify-content: flex-end; padding: 16px 20px 20px; border-top: 1px solid var(--line); background: var(--page); }
+.totals { width: 100%; max-width: 340px; }
+.totals-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px; color: var(--body); }
+.totals-row .mono { color: var(--ink); }
+.totals-grand { align-items: baseline; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--ink); }
+.totals-grand .mono { font-size: 26px; line-height: 1.1; }
+.line-box { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--page); }
+.form-totals { border: 1px solid var(--line); border-radius: 12px; }
+.totals-note { margin-top: 8px; font-size: 13.5px; color: var(--body); }
+.form-actions { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px; }
+.form-actions .btn { min-height: 44px; }
+@media (max-width: 639px) { .form-actions .btn { flex: 1 1 auto; justify-content: center; } }
+.line-total { color: var(--ink); font-weight: 600; }
+.card-title { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: var(--ink); }
+</style>

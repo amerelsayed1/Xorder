@@ -107,6 +107,10 @@ class LandingContent extends Model
                 'no_commission_label' => $bi('No commission on orders', 'بدون عمولة على الطلبات'),
                 'ready_label' => $bi('QR menu ready to share', 'قائمة QR جاهزة للمشاركة'),
                 'whatsapp_label' => $bi('Chat on WhatsApp', 'تواصل عبر واتساب'),
+                // Header "Login" link. Hidden until a target URL is set (owners
+                // sign in on their own subdomain, so there is no single default).
+                'login_label' => $bi('Login', 'تسجيل الدخول'),
+                'login_link' => '',
             ],
 
             'proof' => [
@@ -194,6 +198,39 @@ class LandingContent extends Model
                 ),
                 'button' => $bi('Open Live Demo', 'افتح العرض الحي'),
                 'restaurant_slug' => 'mahsoub-restaurnt',
+                // Optional demo tabs, one per venue type. Empty = a single demo
+                // from restaurant_slug (no tab bar). Each: key, label{en,ar}, restaurant_slug.
+                'tabs' => [],
+            ],
+
+            // Product showcase blocks (dashboard, WhatsApp order).
+            'showcase' => [
+                'dashboard' => [
+                    'title' => $bi('Everything under your control', 'كل شيء تحت سيطرتك'),
+                    'text' => $bi(
+                        'Update prices, hide items and manage branches and languages from one simple dashboard.',
+                        'حدّث الأسعار وأخفِ الأصناف وأدر الفروع واللغات من لوحة تحكم واحدة بسيطة.'
+                    ),
+                ],
+                'whatsapp' => [
+                    'title' => $bi('Orders arrive on your WhatsApp', 'الطلبات تصلك على واتساب'),
+                    'text' => $bi(
+                        'Your customer chooses and orders; you receive the full order details on WhatsApp, with no extra app.',
+                        'عميلك يختار ويطلب، وتصلك تفاصيل الطلب كاملة على واتساب دون أي تطبيق إضافي.'
+                    ),
+                ],
+            ],
+
+            // "Why Xorder" versus printed menus.
+            'why_us' => [
+                'title' => $bi('Why a digital menu?', 'لماذا القائمة الرقمية؟'),
+                'sub' => $bi('Modern advantages over traditional printed menus.', 'مزايا حديثة مقارنة بالقوائم المطبوعة التقليدية.'),
+                'items' => [
+                    ['icon' => '🖨️', 'text' => $bi('Cut printing and reprinting costs', 'وفّر تكاليف الطباعة وإعادة الطباعة')],
+                    ['icon' => '✋', 'text' => $bi('Contactless service and faster ordering', 'خدمة بدون لمس وطلبات أسرع')],
+                    ['icon' => '🌱', 'text' => $bi('Less paper and plastic', 'ورق وبلاستيك أقل')],
+                    ['icon' => '⚡', 'text' => $bi('Change a price once, it is live everywhere', 'غيّر السعر مرة واحدة ويتحدث في كل مكان')],
+                ],
             ],
 
             'steps' => [

@@ -71,18 +71,21 @@ async function submit() {
 
 <template>
     <div class="max-w-2xl">
-        <RouterLink :to="{ name: 'dashboard.staff' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('team.back_to_staff') }}</RouterLink>
-        <h1 class="page-title my-3">{{ isEdit ? t('team.edit_staff') : t('team.add_staff') }}</h1>
+        <RouterLink :to="{ name: 'dashboard.staff' }" class="back-link">{{ backArrow }} {{ t('team.back_to_staff') }}</RouterLink>
+        <h1 class="page-title mt-2 mb-4">{{ isEdit ? t('team.edit_staff') : t('team.add_staff') }}</h1>
 
-        <div v-if="generatedPassword" class="card p-5 mb-4" style="border-color:var(--green);background:var(--green-soft)">
-            <p class="font-medium" style="color:var(--green)">{{ t('team.generated_password') }}</p>
-            <p class="mono text-2xl mt-1" style="color:var(--ink)" dir="ltr">{{ generatedPassword }}</p>
-            <p class="text-sm mt-1" style="color:var(--green)">{{ t('team.generated_password_note') }}</p>
-            <RouterLink :to="{ name: 'dashboard.staff' }" class="btn btn-dark mt-3">{{ t('common.done') }} {{ forwardArrow }}</RouterLink>
+        <!-- Shown once: hold the page until it has been read -->
+        <div v-if="generatedPassword" class="card p-5 mb-4 pw-done" role="status">
+            <p class="font-semibold" style="color:var(--green)">{{ t('team.generated_password') }}</p>
+            <p class="mono text-2xl mt-2 pw-value" style="color:var(--ink)" dir="ltr">{{ generatedPassword }}</p>
+            <p class="text-sm mt-2" style="color:var(--green)">{{ t('team.generated_password_note') }}</p>
+            <RouterLink :to="{ name: 'dashboard.staff' }" class="btn btn-dark act-btn mt-4">{{ t('common.done') }} {{ forwardArrow }}</RouterLink>
         </div>
 
         <form v-if="!generatedPassword" @submit.prevent="submit" class="space-y-5">
-            <div class="card p-6 space-y-4">
+            <!-- Who -->
+            <section class="card p-5 sm:p-6 space-y-4" aria-labelledby="sf-who">
+                <h2 id="sf-who" class="h-card">{{ t('team.sec_account') }}</h2>
                 <label class="block"><span class="label">{{ t('team.name') }}</span>
                     <input v-model="form.name" class="input" />
                     <FormError :errors="errors" field="name" /></label>
@@ -90,14 +93,18 @@ async function submit() {
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block"><span class="label">{{ t('team.username') }}</span>
                         <input v-model="form.username" type="text" dir="ltr" autocapitalize="none" spellcheck="false" class="input" />
-                        <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('team.username_hint') }}</span>
+                        <span class="hint">{{ t('team.username_hint') }}</span>
                         <FormError :errors="errors" field="username" /></label>
                     <label class="block"><span class="label">{{ t('team.email') }}</span>
                         <input v-model="form.email" type="email" class="input" dir="ltr" />
-                        <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('team.email_hint') }}</span>
+                        <span class="hint">{{ t('team.email_hint') }}</span>
                         <FormError :errors="errors" field="email" /></label>
                 </div>
+            </section>
 
+            <!-- What they may do -->
+            <section class="card p-5 sm:p-6 space-y-4" aria-labelledby="sf-access">
+                <h2 id="sf-access" class="h-card">{{ t('team.sec_access') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block"><span class="label">{{ t('team.role') }}</span>
                         <select v-model="form.role_id" class="input">
@@ -110,19 +117,41 @@ async function submit() {
                             <option value="SUSPENDED">{{ t('status.SUSPENDED') }}</option>
                         </select></label>
                 </div>
+            </section>
 
-                <label v-if="!isEdit" class="block"><span class="label">{{ t('team.password') }}</span>
-                    <div class="flex gap-2 mt-1.5">
-                        <input v-model="form.password" type="text" dir="ltr" class="input" style="margin-top:0" :placeholder="t('team.password_hint')" />
-                        <button type="button" @click="generatePassword" class="btn btn-ghost whitespace-nowrap">{{ t('admin.generate_password') }}</button>
+            <!-- Sign-in (new users only) -->
+            <section v-if="!isEdit" class="card p-5 sm:p-6 space-y-3" aria-labelledby="sf-pw">
+                <h2 id="sf-pw" class="h-card">{{ t('team.sec_signin') }}</h2>
+                <label class="block"><span class="label">{{ t('team.password') }}</span>
+                    <div class="flex flex-wrap gap-2 mt-1.5">
+                        <input v-model="form.password" type="text" dir="ltr" class="input flex-1" style="margin-top:0;min-width:200px" :placeholder="t('team.password_hint')" />
+                        <button type="button" @click="generatePassword" class="btn btn-ghost act-btn whitespace-nowrap">{{ t('admin.generate_password') }}</button>
                     </div>
                     <FormError :errors="errors" field="password" /></label>
-            </div>
+            </section>
 
-            <div class="flex justify-end gap-2">
-                <RouterLink :to="{ name: 'dashboard.staff' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : (isEdit ? t('admin.save_changes') : t('team.add_staff')) }}</button>
+            <div class="action-bar">
+                <RouterLink :to="{ name: 'dashboard.staff' }" class="btn btn-ghost act-btn">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving" class="btn btn-accent act-btn">{{ saving ? t('common.saving') : (isEdit ? t('admin.save_changes') : t('team.add_staff')) }}</button>
             </div>
         </form>
     </div>
 </template>
+
+<style scoped>
+/* Colours come from the shared theme variables only. */
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.hint { display: block; font-size: 13.5px; color: var(--body); margin-top: 5px; line-height: 1.5; }
+.pw-done { border-color: var(--green); background: var(--green-soft); }
+.pw-value { overflow-wrap: anywhere; user-select: all; }
+.act-btn { min-height: 44px; justify-content: center; }
+
+/* Sticky save row */
+.action-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px;
+    padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, .05); }
+@media (max-width: 640px) {
+    .action-bar .act-btn { flex: 1 1 0; }
+}
+</style>

@@ -39,7 +39,7 @@ class RestaurantTerminalController extends Controller
 
     public function index(Restaurant $restaurant): JsonResponse
     {
-        $terminals = PosTerminal::query()
+        $terminals = $this->service->withMoneyHistory(PosTerminal::query())
             ->where('restaurant_id', $restaurant->id)
             ->with('branch:id,name_en,name_ar,code')
             ->orderByDesc('id')

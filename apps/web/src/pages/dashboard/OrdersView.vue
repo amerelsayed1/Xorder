@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
+import { formatMinor, currencyExponent } from '../../lib/money.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
@@ -59,6 +60,20 @@ const updating = ref(null)
 const newIds = ref(new Set())
 const readAt = ref(null) // when the list was last read from the server
 const receiptOrder = ref(null) // order shown in the bill/receipt sheet, or null
+
+// XORD-048: the sheet opens at once with the list row, then swaps in the
+// details request — invoice number, till, cashier, table, the money breakdown
+// and payments, as the cashier's receipt carried them. If that request fails
+// the row's own fields stay on screen.
+async function openReceipt(order) {
+    receiptOrder.value = order
+    try {
+        const { data } = await api.get(`api/dashboard/orders/${order.id}`)
+        if (receiptOrder.value?.id === order.id) receiptOrder.value = data.data
+    } catch {
+        // Keep the list row; the sheet still shows what it has.
+    }
+}
 let pollTimer, offTick, searchTimer
 
 const filtersActive = computed(() => !!statusFilter.value || !!typeFilter.value || !!query.value.trim()
@@ -295,6 +310,22 @@ function handledLine(order) {
     return parts.join(' · ')
 }
 
+// The sheet's figures: stored minor units with the order's own currency.
+function sheetMoney(order, minor, { negative = false } = {}) {
+    return formatMinor(negative ? -minor : minor, currencyExponent(order.currency), currencyLabel(order.currency, locale.value))
+}
+const hasMinor = (v) => v != null && Number(v) !== 0
+// "T3 · Terrace": the table with its dining area, in the dashboard language.
+function tableLine(order) {
+    const a = order.dining_area
+    const area = a ? (locale.value === 'ar' ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)) : ''
+    return [order.table_label, area].filter(Boolean).join(' · ')
+}
+function fmtDateTime(iso) {
+    if (!iso) return ''
+    return new Date(iso).toLocaleString(locale.value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function fmtClock(iso) {
     if (!iso) return ''
     return new Date(iso).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
@@ -314,19 +345,19 @@ function fmtTime(iso) {
     <div class="space-y-5">
         <!-- Header -->
         <div class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-3">
+            <div class="min-w-0">
+                <div class="flex items-center gap-3 flex-wrap">
                     <h1 class="page-title">{{ t('orders.title') }}</h1>
-                    <span class="live-pill"><span class="live-dot"></span>{{ t('orders.live') }}</span>
+                    <span class="live-pill"><span class="live-dot" aria-hidden="true"></span>{{ t('orders.live') }}</span>
                 </div>
-                <p class="page-sub">{{ t('orders.subtitle') }}</p>
+                <p class="page-sub" style="color:var(--body)">{{ t('orders.subtitle') }}</p>
             </div>
-            <div class="flex items-center gap-2">
-                <div class="relative" style="width:270px;max-width:100%">
+            <div class="flex items-center gap-2 flex-wrap head-tools">
+                <div class="relative search-box">
                     <span class="search-ico"><Icon name="search" :size="17" /></span>
-                    <input v-model="query" :placeholder="t('orders.search_placeholder')" class="input" style="margin-top:0;padding-inline-start:38px" />
+                    <input v-model="query" :placeholder="t('orders.search_placeholder')" :aria-label="t('orders.search_placeholder')" class="input" style="margin-top:0;padding-inline-start:38px;min-height:44px" />
                 </div>
-                <button class="btn btn-ghost" :disabled="loading" @click="load()">
+                <button class="btn btn-ghost touch" :disabled="loading" @click="load()">
                     <Icon name="refresh" :size="16" />{{ t('orders.refresh') }}
                 </button>
             </div>
@@ -355,155 +386,160 @@ function fmtTime(iso) {
         </div>
 
         <!-- The day at a glance. Unfiltered on purpose — these describe the
-             restaurant's day, not whatever the toolbar is currently showing. -->
-        <div class="metric-grid">
-            <div class="stat">
-                <div class="stat-label">{{ t('orders.m_new') }}</div>
+             restaurant's day, not whatever the toolbar is currently showing.
+             New orders lead and lights up when one is waiting. -->
+        <section class="metric-grid" :aria-label="t('orders.subtitle')">
+            <div class="stat metric" :class="{ 'metric-hot': metrics && metrics.new_orders > 0 }">
+                <div class="stat-label"><i class="pi pi-bell me-1.5" aria-hidden="true"></i>{{ t('orders.m_new') }}</div>
                 <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.new_orders }}</template></div>
                 <div class="stat-hint">{{ t('orders.m_new_hint') }}</div>
             </div>
-            <div class="stat">
+            <div class="stat metric">
                 <div class="stat-label">{{ t('orders.m_today') }}</div>
                 <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.orders_today }}</template></div>
                 <div class="stat-hint">{{ t('orders.m_since_midnight') }}</div>
             </div>
-            <div class="stat">
+            <div class="stat metric">
                 <div class="stat-label">{{ t('orders.m_completed') }}</div>
                 <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.completed_today }}</template></div>
                 <div class="stat-hint">{{ t('orders.status.COMPLETED') }}</div>
             </div>
-            <div class="stat">
+            <div class="stat metric">
                 <div class="stat-label">{{ t('orders.m_sales') }}</div>
                 <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="90px" /><template v-else>{{ metrics.sales_today }}</template></div>
                 <div class="stat-hint">{{ salesCurrency }}</div>
             </div>
-        </div>
+        </section>
 
         <div class="card overflow-hidden">
             <!-- Toolbar: status tabs carry live counts, type tabs narrow further -->
             <div class="orders-toolbar">
-                <div class="segmented tabs">
-                    <button :class="{ active: statusFilter === '' }" @click="setFilter('')">
+                <div class="segmented tabs" role="group" :aria-label="t('common.status')">
+                    <button type="button" :class="{ active: statusFilter === '' }" :aria-pressed="statusFilter === ''" @click="setFilter('')">
                         {{ t('common.all') }}
                         <span v-if="statusCount('all') !== null" class="tab-count">{{ statusCount('all') }}</span>
                     </button>
-                    <button v-for="s in STATUSES" :key="s" :class="{ active: statusFilter === s }" @click="setFilter(s)">
+                    <button v-for="s in STATUSES" :key="s" type="button" :class="{ active: statusFilter === s }" :aria-pressed="statusFilter === s" @click="setFilter(s)">
                         {{ t('orders.status.' + s) }}
-                        <span v-if="statusCount(s) !== null" class="tab-count">{{ statusCount(s) }}</span>
+                        <span v-if="statusCount(s) !== null" class="tab-count" :class="{ 'tab-count-hot': s === 'NEW' && statusCount(s) > 0 }">{{ statusCount(s) }}</span>
                     </button>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-sm" style="color:var(--muted)">{{ t('orders.type') }}</span>
-                    <div class="segmented tabs">
-                        <button :class="{ active: typeFilter === '' }" @click="setTypeFilter('')">{{ t('common.all') }}</button>
-                        <button v-for="ty in ORDER_TYPES" :key="ty" :class="{ active: typeFilter === ty }" @click="setTypeFilter(ty)">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm" style="color:var(--body)">{{ t('orders.type') }}</span>
+                    <div class="segmented tabs" role="group" :aria-label="t('orders.type')">
+                        <button type="button" :class="{ active: typeFilter === '' }" :aria-pressed="typeFilter === ''" @click="setTypeFilter('')">{{ t('common.all') }}</button>
+                        <button v-for="ty in ORDER_TYPES" :key="ty" type="button" :class="{ active: typeFilter === ty }" :aria-pressed="typeFilter === ty" @click="setTypeFilter(ty)">
                             {{ t('order_type.' + ty) }}
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Table -->
+            <!-- Table on wide screens; each row folds into a card on a phone -->
             <div class="overflow-x-auto">
-                <table class="w-full text-sm" style="min-width:900px">
+                <table class="w-full text-sm orders-table">
                     <thead>
                         <tr class="orders-head">
-                            <th class="px-5 py-3 text-start">{{ t('orders.order') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('orders.items') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('orders.type') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('orders.customer') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('orders.time') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('orders.total') }}</th>
-                            <th class="px-3 py-3 text-start">{{ t('common.status') }}</th>
-                            <th class="px-5 py-3 text-end">{{ t('common.actions') }}</th>
+                            <th class="text-start">{{ t('orders.order') }}</th>
+                            <th class="text-start">{{ t('orders.items') }}</th>
+                            <th class="text-start">{{ t('orders.type') }}</th>
+                            <th class="text-start">{{ t('orders.customer') }}</th>
+                            <th class="text-start">{{ t('orders.time') }}</th>
+                            <th class="text-start">{{ t('orders.total') }}</th>
+                            <th class="text-start">{{ t('common.status') }}</th>
+                            <th class="text-end">{{ t('common.actions') }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         <template v-if="loading">
-                            <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
-                                <td v-for="c in 8" :key="c" class="px-5 py-4"><Skeleton h="14px" :w="c === 8 ? '60%' : '80%'" /></td>
+                            <tr v-for="n in 6" :key="'sk' + n" class="sk-row">
+                                <td v-for="c in 8" :key="c"><Skeleton h="16px" :w="c === 8 ? '60%' : '80%'" /></td>
                             </tr>
                         </template>
                         <!-- v-else so a pending filter switch shows only the shimmer,
                              never the previous filter's rows underneath it. -->
                         <template v-else-if="rows.length">
-                            <tr v-for="order in rows" :key="order.id" class="orders-row" :class="{ 'order-row-new': newIds.has(order.id) }">
-                                <td class="px-5 py-3 whitespace-nowrap cell-code">
+                            <tr v-for="order in rows" :key="order.id" class="orders-row"
+                                :class="{ 'order-row-new': newIds.has(order.id), 'row-pending': order.status === 'NEW' }">
+                                <td class="c-code whitespace-nowrap cell-code">
                                     {{ order.code }}
                                     <div v-if="branchName(order)" class="cell-sub">{{ branchName(order) }}</div>
                                 </td>
-                                <td class="px-3 py-3 cell-items">
+                                <td class="c-items cell-items">
                                     <div class="cell-strong truncate">{{ itemSummary(order) }}</div>
                                     <div class="cell-sub">{{ t('orders.items_n', { n: itemCount(order) }) }}</div>
                                 </td>
-                                <td class="px-3 py-3 whitespace-nowrap">
+                                <td class="c-type whitespace-nowrap">
                                     <span v-if="order.order_type" class="type-tag">
-                                        <span class="type-dot" :class="'type-' + order.order_type"></span>{{ orderTypeLabel(order) }}
+                                        <span class="type-dot" :class="'type-' + order.order_type" aria-hidden="true"></span>{{ orderTypeLabel(order) }}
                                     </span>
-                                    <span v-else style="color:var(--muted)">—</span>
+                                    <span v-else style="color:var(--body)">—</span>
                                     <!-- Where it was rung up, when that is not the QR
                                          menu. A till sale and a diner's phone order look
                                          identical in every other column, and they are not
                                          the same thing to a manager reading this list. -->
                                     <span v-if="order.source === 'pos'" class="src-tag">{{ t('order_source.pos') }}</span>
+                                    <span v-if="order.table_label" class="src-tag">{{ order.table_label }}</span>
                                 </td>
-                                <td class="px-3 py-3">
+                                <td class="c-cust">
                                     <button v-if="canOpenCustomer(order)" type="button" class="cust-link cell-strong" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
                                     <div v-else class="cell-strong">{{ order.customer_name || '—' }}</div>
                                     <div v-if="order.customer_phone" class="cell-sub cell-phone"><bdi dir="ltr">{{ order.customer_phone }}</bdi></div>
                                 </td>
-                                <td class="px-3 py-3 whitespace-nowrap">
+                                <td class="c-time whitespace-nowrap">
                                     <div class="cell-strong tabular">{{ fmtClock(order.created_at) }}</div>
                                     <div class="cell-sub">{{ fmtTime(order.created_at) }}</div>
                                 </td>
-                                <td class="px-3 py-3 whitespace-nowrap cell-total">
+                                <td class="c-total whitespace-nowrap cell-total">
                                     {{ order.total }} <span class="cell-cur">{{ currencyLabel(order.currency, locale) }}</span>
                                     <div v-if="order.payment_status" class="cell-sub">
                                         <span class="pay-tag" :class="PAYMENT_BADGE[order.payment_status]">{{ t('orders.payment.' + order.payment_status) }}</span>
                                     </div>
                                 </td>
-                                <td class="px-3 py-3">
+                                <td class="c-status">
                                     <span class="badge" :class="badgeClass[order.status]"><span class="dot"></span>{{ t('orders.status.' + order.status) }}</span>
                                     <div v-if="handledLine(order)" class="cell-sub">{{ handledLine(order) }}</div>
                                 </td>
-                                <td class="px-5 py-3 text-end whitespace-nowrap">
+                                <td class="c-actions text-end whitespace-nowrap">
                                     <div class="inline-flex items-center gap-2">
                                         <template v-if="canUpdate">
                                             <!-- The move-forward action is the one staff reach for all day, so it
                                                  keeps its label. Cancel is rare and destructive: it stays available
                                                  but shrinks to an icon rather than crowding the row. -->
                                             <button v-if="advanceActions(order).includes('COMPLETED')"
-                                                class="btn btn-accent btn-sm"
+                                                class="btn btn-accent btn-sm act"
                                                 :disabled="updating === order.id" @click="setStatus(order, 'COMPLETED')">
                                                 <Icon name="check" :size="14" />{{ t(actionLabel.COMPLETED) }}
                                             </button>
                                             <button v-if="advanceActions(order).includes('CANCELLED')"
-                                                type="button" class="icon-btn icon-btn-danger"
+                                                type="button" class="icon-btn icon-btn-danger act-icon"
                                                 :title="t('orders.cancel_order')" :aria-label="t('orders.cancel_order')"
                                                 :disabled="updating === order.id" @click="setStatus(order, 'CANCELLED')">
-                                                <Icon name="close" :size="15" />
+                                                <Icon name="close" :size="16" />
                                             </button>
                                         </template>
-                                        <button type="button" class="btn btn-ghost btn-sm" @click="receiptOrder = order">
+                                        <button type="button" class="btn btn-ghost btn-sm act" @click="openReceipt(order)">
                                             <Icon name="receipt" :size="14" />{{ t('orders.details') }}
                                         </button>
                                     </div>
                                 </td>
                             </tr>
                         </template>
-                        <tr v-else-if="failed === 'plan'">
-                            <td colspan="8" class="px-6 py-14 text-center text-sm" style="color:var(--muted)">{{ t('orders.not_in_plan') }}</td>
+                        <tr v-else-if="failed === 'plan'" class="state-row">
+                            <td colspan="8" class="px-6 py-14 text-center text-sm" style="color:var(--body)">
+                                <i class="pi pi-lock block mb-2" style="font-size:22px" aria-hidden="true"></i>{{ t('orders.not_in_plan') }}
+                            </td>
                         </tr>
-                        <tr v-else-if="failed">
+                        <tr v-else-if="failed" class="state-row">
                             <td colspan="8" class="px-6 py-6"><ErrorState @retry="load()" /></td>
                         </tr>
-                        <tr v-else>
+                        <tr v-else class="state-row">
                             <td colspan="8" class="px-6 py-14">
                                 <div class="empty">
-                                    <div class="empty-mark"></div>
+                                    <div class="empty-mark"><Icon name="receipt" :size="22" /></div>
                                     <div class="empty-title">{{ filtersActive ? t('orders.no_match_title') : t('orders.none') }}</div>
                                     <p v-if="filtersActive" class="empty-body">{{ t('orders.no_match_body') }}</p>
-                                    <button v-if="filtersActive" class="btn btn-accent" @click="resetFilters">{{ t('orders.reset') }}</button>
+                                    <button v-if="filtersActive" class="btn btn-accent touch" @click="resetFilters">{{ t('orders.reset') }}</button>
                                 </div>
                             </td>
                         </tr>
@@ -516,13 +552,13 @@ function fmtTime(iso) {
             <div class="orders-foot">
                 <span v-if="meta">{{ t('orders.showing_count', { n: rows.length, total: meta.total }) }}</span>
                 <span v-else></span>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
                     <template v-if="meta && meta.last_page > 1">
-                        <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
+                        <button class="btn btn-ghost btn-sm touch" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
                             {{ t('common.previous') }}
                         </button>
                         <span class="tabular">{{ meta.current_page }} / {{ meta.last_page }}</span>
-                        <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
+                        <button class="btn btn-ghost btn-sm touch" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
                             {{ t('common.next') }}
                         </button>
                     </template>
@@ -532,28 +568,42 @@ function fmtTime(iso) {
         </div>
 
         <!-- Bill / receipt sheet -->
-        <Dialog v-if="receiptOrder" :title="receiptOrder.code" :subtitle="t('orders.receipt')" @close="receiptOrder = null">
+        <Dialog v-if="receiptOrder" :title="receiptOrder.invoice_number || receiptOrder.code"
+            :subtitle="receiptOrder.invoice_number ? `${receiptOrder.code} · ${t('orders.receipt')}` : t('orders.receipt')"
+            @close="receiptOrder = null">
             <div class="receipt">
                 <div class="receipt-meta">
                     <div class="receipt-meta-row">
-                        <span style="color:var(--muted)">{{ t('orders.time') }}</span>
-                        <span style="color:var(--ink)">{{ fmtTime(receiptOrder.created_at) }}</span>
+                        <span style="color:var(--body)">{{ t('orders.time') }}</span>
+                        <span style="color:var(--ink)">{{ fmtDateTime(receiptOrder.created_at) }} · {{ fmtTime(receiptOrder.created_at) }}</span>
                     </div>
                     <div v-if="receiptOrder.order_type" class="receipt-meta-row">
-                        <span style="color:var(--muted)">{{ t('orders.type') }}</span>
+                        <span style="color:var(--body)">{{ t('orders.type') }}</span>
                         <span class="badge badge-type">{{ orderTypeLabel(receiptOrder) }}</span>
                     </div>
+                    <div v-if="tableLine(receiptOrder)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_table') }}</span>
+                        <span style="color:var(--ink)">{{ tableLine(receiptOrder) }}</span>
+                    </div>
                     <div class="receipt-meta-row">
-                        <span style="color:var(--muted)">{{ t('orders.customer') }}</span>
+                        <span style="color:var(--body)">{{ t('orders.customer') }}</span>
                         <span style="color:var(--ink)">{{ receiptOrder.customer_name || '—' }}</span>
                     </div>
                     <div class="receipt-meta-row">
-                        <span style="color:var(--muted)">{{ t('common.status') }}</span>
+                        <span style="color:var(--body)">{{ t('common.status') }}</span>
                         <span class="badge" :class="badgeClass[receiptOrder.status]">{{ t('orders.status.' + receiptOrder.status) }}</span>
                     </div>
                     <div v-if="branchName(receiptOrder)" class="receipt-meta-row">
                         <span style="color:var(--muted)">{{ t('orders.branch') }}</span>
                         <span style="color:var(--ink)">{{ branchName(receiptOrder) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.cashier_name" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.sheet_cashier') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.cashier_name }}</span>
+                    </div>
+                    <div v-if="receiptOrder.terminal_name" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.sheet_till') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.terminal_name }}</span>
                     </div>
                     <div v-if="receiptOrder.payment_status" class="receipt-meta-row">
                         <span style="color:var(--muted)">{{ t('orders.payment_label') }}</span>
@@ -591,60 +641,120 @@ function fmtTime(iso) {
                 </div>
 
                 <div v-if="receiptOrder.note" class="receipt-note">
-                    <span style="color:var(--muted)">{{ t('orders.note') }}:</span> {{ receiptOrder.note }}
+                    <span style="color:var(--body)">{{ t('orders.note') }}:</span> {{ receiptOrder.note }}
                 </div>
 
                 <div class="receipt-divider"></div>
+
+                <div v-if="receiptOrder.subtotal_minor != null" class="receipt-meta receipt-sums">
+                    <div class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_subtotal') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.subtotal_minor) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.discount_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_discount') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.discount_minor, { negative: true }) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.charges_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_service') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.charges_minor) }}</span>
+                    </div>
+                    <div v-if="receiptOrder.tax_minor != null" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_tax') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.tax_minor) }}</span>
+                    </div>
+                </div>
 
                 <div class="receipt-total">
                     <span>{{ t('orders.total') }}</span>
                     <span>{{ receiptOrder.total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
                 </div>
+
+                <div v-if="receiptOrder.payments?.length || hasMinor(receiptOrder.refunded_minor)" class="receipt-meta receipt-payments">
+                    <div v-for="(p, i) in receiptOrder.payments" :key="i" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ p.tender_name || t('orders.sheet_payment') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, p.amount_minor) }}</span>
+                    </div>
+                    <div v-if="hasMinor(receiptOrder.refunded_minor)" class="receipt-meta-row">
+                        <span style="color:var(--body)">{{ t('orders.sheet_refunded') }}</span>
+                        <span style="color:var(--ink)">{{ sheetMoney(receiptOrder, receiptOrder.refunded_minor, { negative: true }) }}</span>
+                    </div>
+                </div>
             </div>
         </Dialog>
     </div>
+
 </template>
 
 <style scoped>
+/* Colours come only from the shared theme variables and the PrimeVue primary
+   scale; nothing here introduces a new hex value. */
+.touch { min-height: 44px; }
+
 /* Header */
 .live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 20px;
-    background: var(--green-soft); color: var(--green); font-size: 12.5px; font-weight: 600; }
+    background: var(--green-soft); color: var(--green); font-size: 13px; font-weight: 600; }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.head-tools { flex: 1 1 320px; justify-content: flex-end; }
+.search-box { flex: 1 1 200px; max-width: 320px; }
 .search-ico { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 12px;
-    color: var(--muted); pointer-events: none; display: flex; }
+    color: var(--body); pointer-events: none; display: flex; }
 
 /* Day figures */
-.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
-.stat-hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.metric { min-width: 0; padding: 16px 18px; }
+.metric .stat-label { color: var(--body); font-size: 14.5px; }
+.metric .stat-num { font-size: clamp(26px, 7vw, 34px); overflow-wrap: anywhere; min-height: 34px; }
+.stat-hint { font-size: 13.5px; color: var(--body); margin-top: 6px; }
+/* A pending order turns the lead tile into an accent block. */
+.metric-hot { background: var(--accent-soft); border-color: var(--accent); }
+.metric-hot .stat-label { color: var(--ink); font-weight: 700; }
 
 /* Toolbar */
-.orders-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
-    padding: 13px 16px; border-bottom: 1px solid var(--line); }
-.tabs button { display: inline-flex; align-items: center; gap: 7px; }
-.tab-count { font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 0 6px; border-radius: 20px;
-    background: var(--line); color: var(--muted); }
-.tabs button.active .tab-count { background: var(--accent); color: #fff; }
+.orders-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.tabs { max-width: 100%; overflow-x: auto; }
+.tabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; white-space: nowrap; font-size: 14.5px; }
+.tab-count { font-size: 12.5px; font-weight: 700; line-height: 1.6; padding: 0 7px; border-radius: 20px;
+    background: var(--line); color: var(--ink); }
+.tabs button.active .tab-count { background: var(--accent); color: var(--ink); }
+.tab-count-hot { background: var(--accent); color: var(--ink); }
 
 /* Table */
-.orders-head th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
-    color: var(--muted); background: var(--page); border-bottom: 1px solid var(--line); }
-.orders-row { border-top: 1px solid var(--line); vertical-align: top; }
+.orders-table { min-width: 900px; border-collapse: collapse; }
+.orders-table th, .orders-table td { padding: 12px; }
+.orders-table th:first-child, .orders-table td:first-child { padding-inline-start: 20px; }
+.orders-table th:last-child, .orders-table td:last-child { padding-inline-end: 20px; }
+.orders-head th { font-size: 12.5px; font-weight: 600; letter-spacing: .2px;
+    color: var(--body); background: var(--page); border-bottom: 1px solid var(--line); }
+.orders-row { border-top: 1px solid var(--line); vertical-align: top; transition: background .15s; }
 .orders-row:first-child { border-top: 0; }
 .orders-row:hover { background: var(--page); }
-.cell-strong { font-weight: 600; color: var(--ink); }
-.cell-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.sk-row { border-top: 1px solid var(--line); }
+.sk-row td { padding-block: 16px; }
+/* Waiting orders carry a bar on the start edge, so they are findable by shape
+   as well as by the status label. */
+.orders-row td:first-child { border-inline-start: 4px solid transparent; }
+.row-pending td:first-child { border-inline-start-color: var(--accent); }
+
+.cell-strong { font-weight: 600; color: var(--ink); font-size: 15px; }
+.cell-sub { font-size: 13px; color: var(--body); margin-top: 2px; }
 /* A phone number broken across two lines stops looking like a phone number. */
 .cell-phone { white-space: nowrap; text-align: start; }
-.cell-code { font-weight: 600; color: var(--body); font-variant-numeric: tabular-nums; }
-.cell-items { max-width: 210px; }
+.cell-code { font-weight: 700; color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+.cell-items { max-width: 240px; }
 .cell-items .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cell-total { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
-.cell-cur { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.cell-total { font-weight: 700; color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+.cell-cur { font-weight: 500; color: var(--body); font-size: 13px; }
 .tabular { font-variant-numeric: tabular-nums; }
+.act { min-height: 44px; }
+/* Ink on orange keeps the one-tap action legible at counter distance. */
+.act.btn-accent { color: var(--ink); }
+.act-icon { width: 44px; height: 44px; }
 
-/* Order type: a coloured dot rather than a fourth badge competing with status */
-.type-tag { display: inline-flex; align-items: center; gap: 7px; color: var(--body); }
-.type-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+/* Order type: a coloured dot beside the label (the label carries the meaning) */
+.type-tag { display: inline-flex; align-items: center; gap: 7px; color: var(--body); font-size: 14.5px; }
+.type-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 .type-delivery { background: var(--accent); }
 .type-pickup { background: var(--gray); }
 .type-dine_in { background: var(--green); }
@@ -656,57 +766,60 @@ function fmtTime(iso) {
     margin-inline-start: 8px;
     padding: 1px 7px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.6;
-    color: var(--muted);
-    background: var(--surface-2, rgba(127, 127, 127, .12));
+    color: var(--body);
+    background: var(--gray-soft);
     vertical-align: middle;
 }
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
-.empty-mark { width: 52px; height: 52px; border-radius: 15px; border: 1px dashed var(--line); background: var(--page); }
+.empty-mark { width: 52px; height: 52px; border-radius: 15px; border: 1px dashed var(--line); background: var(--page);
+    display: grid; place-items: center; color: var(--body); }
 .empty-title { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: var(--ink); }
-.empty-body { font-size: 14px; color: var(--muted); max-width: 340px; }
+.empty-body { font-size: 14.5px; color: var(--body); max-width: 340px; }
 
 /* Footer strip */
 .orders-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; background: var(--page); border-top: 1px solid var(--line);
-    font-size: 13px; color: var(--muted); }
+    font-size: 13.5px; color: var(--body); }
 
-.btn-cancel { color: var(--red); }
-/* Neutral badge for the order type inside the receipt sheet. */
-.badge-type { background: var(--card); border: 1px solid var(--line); color: var(--body); }
 /* Customer name → directory record. Looks like text until hovered. */
-.cust-link { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-align: start; }
-.cust-link:hover { color: var(--accent); text-decoration: underline; }
+.cust-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; text-align: start; }
+.cust-link:hover { color: var(--p-primary-700); text-decoration: underline; }
 /* Order line: quantity leads (inline-start), name follows — isolated so the
    Latin "3×" never gets reordered next to an Arabic name. */
-.order-item { display: flex; align-items: baseline; gap: 6px; }
-.order-item-qty { flex: none; font-weight: 700; color: var(--accent-dark); unicode-bidi: isolate; }
+.order-item-qty { flex: none; font-weight: 700; color: var(--p-primary-800); unicode-bidi: isolate; }
+/* Neutral badge for the order type inside the receipt sheet. */
+.badge-type { background: var(--card); border: 1px solid var(--line); color: var(--body); }
+
 /* Bill / receipt sheet */
 .receipt-meta { display: flex; flex-direction: column; gap: 8px; }
-.receipt-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.receipt-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14.5px; }
 .receipt-divider { height: 1px; background: var(--line); margin: 16px 0; }
+.receipt-sums { margin-bottom: 12px; }
+.receipt-payments { margin-top: 12px; }
 .receipt-items { display: flex; flex-direction: column; gap: 10px; }
-.receipt-line { display: flex; align-items: baseline; gap: 8px; }
+.receipt-line { display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
 .receipt-line-name { flex: 1 1 auto; color: var(--body); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .receipt-line-title { color: var(--ink); display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
 /* The chosen size/portion — a chip so it reads as one thing with the name,
    never as an add-on. */
-.receipt-variant { font-size: 12px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft);
+.receipt-variant { font-size: 12.5px; font-weight: 600; color: var(--p-primary-800); background: var(--accent-soft);
     padding: 1px 7px; border-radius: 10px; }
-.receipt-line-sub { font-size: 12.5px; color: var(--muted); }
-.receipt-line-note { color: var(--body); }
+.receipt-line-sub { font-size: 13.5px; color: var(--body); }
+.receipt-line-note { color: var(--ink); }
 .receipt-line-total { flex: none; font-weight: 600; color: var(--ink); unicode-bidi: isolate; }
-.receipt-note { margin-top: 14px; font-size: 13px; color: var(--body); }
+.receipt-note { margin-top: 14px; font-size: 14px; color: var(--body); }
 .receipt-total { display: flex; align-items: center; justify-content: space-between;
-    font-size: 16px; font-weight: 700; color: var(--ink); }
+    font-size: 17px; font-weight: 700; color: var(--ink); }
+
 /* Briefly highlight a just-arrived order. */
 .order-row-new { animation: order-flash 5s ease-out; }
 @keyframes order-flash {
-    0% { background: var(--accent-soft, #fdebd0); }
+    0% { background: var(--accent-soft); }
     100% { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .order-row-new { animation: none; } }
@@ -718,4 +831,36 @@ function fmtTime(iso) {
 [dir=rtl] .date-sep { transform: scaleX(-1); }
 .pay-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; margin-top: 3px; }
 .receipt-cancel-by { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* Phone: every order becomes a card. Code and status on the first line, the
+   items under them, then type/time, customer, and the total beside the actions, so
+   the one-tap "Received" button is never off-screen. */
+@media (max-width: 760px) {
+    .orders-table { min-width: 0; display: block; }
+    .orders-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .orders-table tbody { display: block; }
+    .orders-table tbody tr, .orders-table tbody td { display: block; }
+    .orders-table td { padding: 0; }
+    .orders-table td:first-child, .orders-table td:last-child { padding-inline: 0; }
+    .orders-table .state-row td { padding: 40px 16px; }
+    .orders-table .sk-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
+    .orders-table .orders-row {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "code status" "items items" "type time" "cust cust" "total actions";
+        gap: 8px 12px; align-items: center; padding: 14px 16px;
+        border-inline-start: 4px solid transparent;
+    }
+    .orders-table .orders-row.row-pending { border-inline-start-color: var(--accent); }
+    .orders-table .orders-row td:first-child { border-inline-start: 0; }
+    .c-code { grid-area: code; }
+    .c-status { grid-area: status; justify-self: end; }
+    .c-items { grid-area: items; max-width: none; }
+    .c-items .truncate { white-space: normal; }
+    .c-type { grid-area: type; }
+    .c-cust { grid-area: cust; min-width: 0; }
+    .c-time { grid-area: time; text-align: end; }
+    .c-total { grid-area: total; }
+    .c-actions { grid-area: actions; }
+    .orders-toolbar { padding: 12px; }
+}
 </style>

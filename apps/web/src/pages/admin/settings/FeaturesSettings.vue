@@ -39,48 +39,65 @@ async function uploadImage(item, i, event) {
 <template>
     <!-- FEATURES -->
     <AdminSection :title="t('landing_admin.sec_features')" open>
-        <div class="space-y-3">
+        <div class="set-group">
             <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.features.title.en" v-model:ar="content.features.title.ar" />
             <BiField :label="t('landing_admin.l_section_subtitle')" textarea v-model:en="content.features.sub.en" v-model:ar="content.features.sub.ar" />
         </div>
-        <div class="flex items-center justify-between mt-5 mb-3">
-            <span class="label">{{ t('landing_admin.feature_cards') }}</span>
+        <div class="set-sub-head">
+            <h3 class="h-card" style="font-size:15px">{{ t('landing_admin.feature_cards') }}</h3>
             <button class="btn btn-ghost btn-sm" @click="addFeature">{{ t('landing_admin.add_card') }}</button>
         </div>
-        <p v-if="uploadError" class="lp-err text-sm mb-2" style="color: var(--red);">{{ uploadError }}</p>
-        <div class="space-y-3">
-            <div v-for="(f, i) in content.features.items" :key="i"
-                class="rounded-xl p-3 flex items-start gap-3" style="background: var(--page); border: 1px solid var(--line);">
-                <!-- Image thumbnail / uploader. Falls back to the emoji icon when no image. -->
-                <label class="shrink-0 cursor-pointer relative block" style="width:72px;height:72px;" :title="t('landing_admin.feature_image')">
-                    <span v-if="f.image" class="block w-full h-full rounded-lg bg-center bg-cover"
-                        :style="{ backgroundImage: `url(${f.image})`, border: '1px solid var(--line)' }"></span>
-                    <span v-else class="grid place-items-center w-full h-full rounded-lg text-2xl"
-                        style="background: var(--card); border: 1px dashed var(--line);">{{ f.icon || '🖼️' }}</span>
-                    <span v-if="uploadingIndex === i" class="absolute inset-0 grid place-items-center rounded-lg text-xs"
-                        style="background: rgba(0,0,0,.5); color:#fff;">{{ t('common.saving') }}</span>
-                    <input type="file" accept="image/*" class="hidden" @change="(e) => uploadImage(f, i, e)" />
-                </label>
-
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-2">
+        <p v-if="uploadError" class="set-err mb-3" role="alert">{{ uploadError }}</p>
+        <p v-if="!content.features.items.length" class="set-empty">{{ t('landing_admin.empty_items') }}</p>
+        <div v-else class="space-y-3">
+            <div v-for="(f, i) in content.features.items" :key="i" class="set-item">
+                <div class="set-item-head">
+                    <div class="flex items-center gap-3 min-w-0">
+                    <label class="thumb" :title="t('landing_admin.feature_image')">
+                        <span v-if="f.image" class="thumb-img" :style="{ backgroundImage: `url(${f.image})` }"></span>
+                        <span v-else class="thumb-empty">
+                            <template v-if="f.icon">{{ f.icon }}</template>
+                            <i v-else class="pi pi-image" aria-hidden="true" />
+                        </span>
+                        <span class="thumb-up" aria-hidden="true"><i class="pi pi-upload" /></span>
+                        <span v-if="uploadingIndex === i" class="thumb-busy">{{ t('common.saving') }}</span>
+                        <input type="file" accept="image/*" class="sr-only" :aria-label="t('landing_admin.feature_image')" @change="(e) => uploadImage(f, i, e)" />
+                    </label>
                         <!-- Icon only matters as the fallback when there's no image. -->
                         <template v-if="!f.image">
-                            <span class="label">{{ t('landing_admin.icon') }}</span>
-                            <input v-model="f.icon" class="input" style="width: 60px; text-align: center;" maxlength="4" />
+                            <label class="flex items-center gap-2"><span class="label">{{ t('landing_admin.icon') }}</span>
+                                <input v-model="f.icon" class="input icon-field" maxlength="4" /></label>
                         </template>
                         <button v-else type="button" class="btn btn-ghost btn-sm" @click="f.image = ''">{{ t('landing_admin.remove_image') }}</button>
                     </div>
-                    <BiField :label="t('landing_admin.l_title')" v-model:en="f.title.en" v-model:ar="f.title.ar" />
-                    <BiField :label="t('landing_admin.l_text')" class="mt-2" textarea v-model:en="f.text.en" v-model:ar="f.text.ar" />
+                    <div class="set-item-actions">
+                        <button class="icon-btn" :disabled="i === 0" :aria-label="t('landing_admin.move_up')" @click="move(content.features.items, i, -1)"><i class="pi pi-arrow-up" aria-hidden="true" /></button>
+                        <button class="icon-btn" :disabled="i === content.features.items.length - 1" :aria-label="t('landing_admin.move_down')" @click="move(content.features.items, i, 1)"><i class="pi pi-arrow-down" aria-hidden="true" /></button>
+                        <button class="icon-btn icon-btn-danger" :aria-label="t('landing_admin.remove')" @click="removeAt(content.features.items, i)"><i class="pi pi-trash" aria-hidden="true" /></button>
+                    </div>
                 </div>
-
-                <div class="flex flex-col gap-1 shrink-0">
-                    <button class="icon-btn" :disabled="i === 0" @click="move(content.features.items, i, -1)">↑</button>
-                    <button class="icon-btn" :disabled="i === content.features.items.length - 1" @click="move(content.features.items, i, 1)">↓</button>
-                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.features.items, i)">✕</button>
+                <div class="set-group">
+                    <BiField :label="t('landing_admin.l_title')" v-model:en="f.title.en" v-model:ar="f.title.ar" />
+                    <BiField :label="t('landing_admin.l_text')" textarea v-model:en="f.text.en" v-model:ar="f.text.ar" />
                 </div>
             </div>
         </div>
     </AdminSection>
 </template>
+
+<style scoped>
+/* Image / icon tile for a card. The emoji (if any) is user data; with neither
+   image nor icon a neutral image glyph shows. */
+.thumb { position: relative; display: block; flex: none; width: 64px; height: 64px; cursor: pointer; }
+.thumb-img { display: block; width: 100%; height: 100%; border-radius: 10px; border: 1px solid var(--line);
+    background-position: center; background-size: cover; }
+.thumb-empty { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 10px; font-size: 26px;
+    background: var(--card); border: 1px dashed var(--muted); color: var(--body); }
+.thumb:hover .thumb-empty, .thumb:hover .thumb-img { border-color: var(--accent); }
+.thumb:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.thumb-up { position: absolute; inset-block-end: -6px; inset-inline-end: -6px; width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--ink); color: var(--card); font-size: 11px; }
+.thumb-busy { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 10px; font-size: 12px;
+    background: var(--ink); color: var(--card); opacity: .85; }
+.icon-field { width: 64px; text-align: center; margin-top: 0; }
+</style>

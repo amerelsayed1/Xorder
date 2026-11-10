@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,6 +33,16 @@ use Illuminate\Support\Carbon;
  */
 class PosLicence extends Model
 {
+    use NormalizesPhoneNumbers;
+
+    /**
+     * The only phone column on a licence. It is a contact detail, not a signed
+     * claim, so folding Arabic digits here never touches the signed payload.
+     *
+     * @var list<string>
+     */
+    protected array $phoneFields = ['contact_phone'];
+
     /**
      * Descriptive columns only.
      *

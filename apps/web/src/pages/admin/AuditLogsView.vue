@@ -72,76 +72,76 @@ const catLabel = (cat) => t(`audit.cat.${cat}`) === `audit.cat.${cat}` ? cat : t
 </script>
 
 <template>
-    <div class="portal theme-indigo">
-        <div class="max-w-5xl mx-auto px-5 py-7 space-y-5">
-            <!-- Header -->
-            <div>
-                <h1 class="page-title">{{ t('audit.title') }}</h1>
-                <p class="page-sub">{{ t('audit.subtitle', { n: total }) }}</p>
-            </div>
-
-            <!-- Filters -->
-            <div class="card p-4 space-y-3">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <label class="block">
-                        <span class="label">{{ t('audit.tenant') }}</span>
-                        <select v-model="filters.restaurant_id" class="input" @change="applyFilters">
-                            <option value="">{{ t('audit.all_tenants') }}</option>
-                            <option v-for="tn in opts.tenants" :key="tn.id" :value="tn.id">{{ tn.name }}</option>
-                        </select>
-                    </label>
-                    <label class="block">
-                        <span class="label">{{ t('audit.client') }}</span>
-                        <select v-model="filters.actor_id" class="input" @change="applyFilters">
-                            <option value="">{{ t('audit.all_clients') }}</option>
-                            <option v-for="ac in opts.actors" :key="ac.id" :value="ac.id">
-                                {{ ac.name }}<template v-if="ac.role"> — {{ roleLabel(ac.role) }}</template>
-                            </option>
-                        </select>
-                    </label>
-                    <label class="block">
-                        <span class="label">{{ t('audit.category') }}</span>
-                        <select v-model="filters.category" class="input" @change="applyFilters">
-                            <option value="">{{ t('audit.all_categories') }}</option>
-                            <option v-for="c in opts.categories" :key="c" :value="c">{{ catLabel(c) }}</option>
-                        </select>
-                    </label>
-                    <label class="block">
-                        <span class="label">{{ t('audit.from') }}</span>
-                        <input v-model="filters.from" type="date" class="input" @change="applyFilters" />
-                    </label>
-                    <label class="block">
-                        <span class="label">{{ t('audit.to') }}</span>
-                        <input v-model="filters.to" type="date" class="input" @change="applyFilters" />
-                    </label>
-                    <label class="block">
-                        <span class="label">{{ t('audit.details') }}</span>
-                        <input v-model="filters.search" class="input" :placeholder="t('audit.search')" @keyup.enter="applyFilters" />
-                    </label>
-                </div>
-                <div class="flex justify-end">
-                    <button class="btn btn-ghost btn-sm" @click="clearFilters"><Icon name="x" :size="14" />{{ t('audit.clear') }}</button>
-                </div>
-            </div>
-
-            <!-- Daily log files — the trail is stored as one file per day -->
-            <ActivityFilesPanel :active-date="activeDay" @select="showDay" />
-
-            <!-- Feed -->
-            <div class="card p-4">
-                <AuditLogList :rows="rows" :loading="loading" :show-tenant="true" />
-            </div>
-
-            <!-- Pagination -->
-            <div v-if="lastPage > 1" class="flex items-center justify-center gap-3">
-                <button class="btn btn-ghost btn-sm" :disabled="page <= 1 || loading" @click="load(page - 1)">‹</button>
-                <span class="text-sm" style="color:var(--muted)">{{ page }} / {{ lastPage }}</span>
-                <button class="btn btn-ghost btn-sm" :disabled="page >= lastPage || loading" @click="load(page + 1)">›</button>
-            </div>
+    <div class="space-y-5">
+        <!-- Header -->
+        <div>
+            <h1 class="page-title">{{ t('audit.title') }}</h1>
+            <p class="page-sub" style="color:var(--body)">{{ t('audit.subtitle', { n: total }) }}</p>
         </div>
+
+        <!-- Filters: who/where first, then when, then free text -->
+        <section class="card p-4 space-y-3" role="search" :aria-label="t('audit.title')">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <label class="block">
+                    <span class="label">{{ t('audit.tenant') }}</span>
+                    <select v-model="filters.restaurant_id" class="input fld" @change="applyFilters">
+                        <option value="">{{ t('audit.all_tenants') }}</option>
+                        <option v-for="tn in opts.tenants" :key="tn.id" :value="tn.id">{{ tn.name }}</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('audit.client') }}</span>
+                    <select v-model="filters.actor_id" class="input fld" @change="applyFilters">
+                        <option value="">{{ t('audit.all_clients') }}</option>
+                        <option v-for="ac in opts.actors" :key="ac.id" :value="ac.id">
+                            {{ ac.name }}<template v-if="ac.role"> — {{ roleLabel(ac.role) }}</template>
+                        </option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('audit.category') }}</span>
+                    <select v-model="filters.category" class="input fld" @change="applyFilters">
+                        <option value="">{{ t('audit.all_categories') }}</option>
+                        <option v-for="c in opts.categories" :key="c" :value="c">{{ catLabel(c) }}</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('audit.from') }}</span>
+                    <input v-model="filters.from" type="date" class="input fld" @change="applyFilters" />
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('audit.to') }}</span>
+                    <input v-model="filters.to" type="date" class="input fld" @change="applyFilters" />
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('audit.details') }}</span>
+                    <input v-model="filters.search" class="input fld" :placeholder="t('audit.search')" @keyup.enter="applyFilters" />
+                </label>
+            </div>
+            <div class="flex justify-end">
+                <button type="button" class="btn btn-ghost btn-sm clear" @click="clearFilters"><Icon name="close" :size="14" />{{ t('audit.clear') }}</button>
+            </div>
+        </section>
+
+        <!-- Daily log files — the trail is stored as one file per day -->
+        <ActivityFilesPanel :active-date="activeDay" @select="showDay" />
+
+        <!-- Feed -->
+        <section class="card p-4" :aria-busy="loading" :aria-label="t('audit.title')">
+            <AuditLogList :rows="rows" :loading="loading" :show-tenant="true" />
+        </section>
+
+        <!-- Pagination -->
+        <nav v-if="lastPage > 1" class="flex items-center justify-center gap-3" :aria-label="t('audit.title')">
+            <button type="button" class="btn btn-ghost pager" :disabled="page <= 1 || loading" :aria-label="t('common.previous')" @click="load(page - 1)">‹</button>
+            <span class="text-sm" style="color:var(--body)">{{ page }} / {{ lastPage }}</span>
+            <button type="button" class="btn btn-ghost pager" :disabled="page >= lastPage || loading" :aria-label="t('common.next')" @click="load(page + 1)">›</button>
+        </nav>
     </div>
 </template>
 
 <style scoped>
-.btn-sm { padding: 5px 11px; font-size: 12px; }
+.fld { min-height: 44px; }
+.clear { min-height: 36px; }
+.pager { min-width: 44px; min-height: 44px; justify-content: center; font-size: 18px; }
 </style>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Support\ContentLanguages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -42,9 +43,7 @@ class StoreCategoryRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.category_name_required'));
-            }
+            ContentLanguages::checkName($this, $validator, 'xorder.validation.category_name_required');
         });
     }
 }
