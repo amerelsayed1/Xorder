@@ -30,6 +30,13 @@ void main() {
   Future<WaiterSession> signIn({String username = 'mona', String pin = '1111'}) =>
       client.signIn(username: username, pin: pin, deviceName: 'Phone 1');
 
+  /// Signed in with a shift started: what working tables needs.
+  Future<WaiterSession> signInOnShift() async {
+    final session = await signIn();
+    await client.startShift();
+    return session;
+  }
+
   Future<String> failureCode(Future<Object?> Function() call) async {
     try {
       await call();
@@ -122,7 +129,7 @@ void main() {
 
   group('the check', () {
     test('ops are applied by the till and the priced check comes back', () async {
-      await signIn();
+      await signInOnShift();
       final check = await client.apply(
         tableId: 1,
         version: null,
@@ -135,7 +142,7 @@ void main() {
     });
 
     test('a stale version comes back as the current check', () async {
-      await signIn();
+      await signInOnShift();
       await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 10)]);
       try {
         await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 10)]);
@@ -146,7 +153,7 @@ void main() {
     });
 
     test('a refused edit says why and saves nothing', () async {
-      await signIn();
+      await signInOnShift();
       try {
         await client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 99)]);
         fail('expected a refusal');
@@ -158,8 +165,56 @@ void main() {
     });
 
     test('an unknown table is not found', () async {
-      await signIn();
+      await signInOnShift();
       expect(await failureCode(() => client.check(404)), WaiterError.notFound);
+    });
+  });
+
+  group('the shift clock', () {
+    test('tables need an open shift; the menu does not', () async {
+      final session = await signIn();
+      expect(session.shift, isNull);
+      expect(await failureCode(client.floor), WaiterError.shiftRequired);
+      expect(await failureCode(() => client.check(1)), WaiterError.shiftRequired);
+      expect(
+        await failureCode(() => client.apply(tableId: 1, version: null, ops: const [WaiterAdd(productId: 10)])),
+        WaiterError.shiftRequired,
+      );
+      expect(till.lastOps, isNull, reason: 'nothing reached the till');
+      await client.menu();
+      expect(await client.shift(), isNull);
+    });
+
+    test('start opens a shift once; finish closes it and tables close with it', () async {
+      await signIn();
+      final started = await client.startShift();
+      expect(started.isOpen, isTrue);
+      expect((await client.startShift()).id, started.id, reason: 'a second start is the same shift');
+      expect((await client.floor()).tables, hasLength(2));
+
+      final finished = await client.finishShift();
+      expect(finished.id, started.id);
+      expect(finished.endedAt, isNotNull);
+      expect(await client.shift(), isNull);
+      expect(await failureCode(client.floor), WaiterError.shiftRequired);
+      expect(await failureCode(client.finishShift), WaiterError.noOpenShift);
+    });
+
+    test("signing in again shows the shift that is still open, and the till's times", () async {
+      await signIn();
+      final started = await client.startShift();
+      await client.signOut();
+      final again = await signIn();
+      expect(again.shift!.id, started.id, reason: 'signing out does not finish a shift');
+      expect(again.shift!.startedAt, till.shiftStart);
+    });
+
+    test('a shift survives the trip in UTC', () {
+      final shift = WaiterShift(id: 3, startedAt: DateTime.utc(2026, 11, 9, 8), endedAt: DateTime.utc(2026, 11, 9, 16, 30));
+      final back = WaiterShift.fromJson(shift.toJson());
+      expect(back.startedAt, shift.startedAt);
+      expect(back.length(DateTime.utc(2030)), const Duration(hours: 8, minutes: 30));
+      expect(WaiterShift.fromJson({'id': 1, 'started_at': '2026-11-09T08:00:00Z'}).isOpen, isTrue);
     });
   });
 
@@ -284,6 +339,23 @@ class _FakeTill implements WaiterLinkBackend {
 
   @override
   Future<WaiterMenu> menu() async => theMenu;
+
+  final shifts = <int, WaiterShift>{};
+  final shiftStart = DateTime.utc(2026, 11, 9, 17);
+  var _shiftIds = 0;
+
+  @override
+  Future<WaiterShift?> openShift(int staffId) async => shifts[staffId];
+
+  @override
+  Future<WaiterShift> startShift(WaiterStaff staff, WaiterDeviceRecord device) async =>
+      shifts[staff.id] ??= WaiterShift(id: ++_shiftIds, startedAt: shiftStart);
+
+  @override
+  Future<WaiterShift?> finishShift(WaiterStaff staff, WaiterDeviceRecord device) async {
+    final open = shifts.remove(staff.id);
+    return open == null ? null : WaiterShift(id: open.id, startedAt: open.startedAt, endedAt: shiftStart.add(const Duration(hours: 8)));
+  }
 
   @override
   Future<WaiterFloor> floor() async => const WaiterFloor(

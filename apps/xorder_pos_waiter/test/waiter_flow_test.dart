@@ -77,6 +77,56 @@ void main() {
     expect(find.text('الدفعة 1'), findsOneWidget);
   });
 
+  testWidgets('no shift open: the start screen, then the floor once it is started', (tester) async {
+    till.shift = null;
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    expect(find.text('ابدأ ورديتك'), findsOneWidget, reason: 'tables wait for the shift');
+    expect(find.text('T1'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('shift-start')));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNotNull);
+    expect(find.text('الطاولات'), findsOneWidget);
+    expect(find.text('T1'), findsOneWidget);
+    expect(find.textContaining('في الوردية منذ'), findsOneWidget);
+  });
+
+  testWidgets('finishing the shift asks first, records it, and closes the floor', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    toEnglish(tester);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('On shift since'), findsOneWidget);
+    expect(find.textContaining('2h 05m'), findsOneWidget, reason: 'how long so far');
+
+    await tester.tap(find.byKey(const Key('shift-finish')));
+    await tester.pumpAndSettle();
+    expect(find.text('Finish your shift?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNotNull, reason: 'cancel finishes nothing');
+
+    await tester.tap(find.byKey(const Key('shift-finish')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('shift-finish-confirm')));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNull);
+    expect(till.finished, hasLength(1));
+    expect(find.textContaining('Shift finished: 2h 05m'), findsOneWidget);
+    expect(find.text('Start your shift'), findsOneWidget);
+  });
+
+  testWidgets('a shift finished on another handheld sends this one back to the start screen', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    expect(find.text('T1'), findsOneWidget);
+    till.shift = null;
+    await tester.tap(find.byKey(const Key('table-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('ابدأ ورديتك'), findsOneWidget);
+  });
+
   testWidgets('a picked item is marked selected in the menu, with how many are on the check', (tester) async {
     await boot(tester);
     await signIn(tester, target: '10.0.0.5', username: 'mona');
@@ -290,6 +340,11 @@ class _FakeTill {
   var lines = <WaiterLine>[];
   int? version;
 
+  /// The waiter's open shift; most tests start on shift.
+  WaiterShift? shift = WaiterShift(id: 1, startedAt: DateTime.now().subtract(const Duration(hours: 2, minutes: 5)));
+  var shiftIds = 1;
+  final finished = <WaiterShift>[];
+
   /// The till's certificate; null for a fake that offers no TLS.
   String? certificateSha256;
   String? lastPin;
@@ -414,7 +469,27 @@ class _FakeClient implements WaiterClient {
       token: 's',
       staff: const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
       deviceToken: issued,
+      shift: till.shift,
     );
+  }
+
+  void _onShift() {
+    if (till.shift == null) throw const WaiterLinkFailure(WaiterError.shiftRequired, 403);
+  }
+
+  @override
+  Future<WaiterShift?> shift() async => till.shift;
+
+  @override
+  Future<WaiterShift> startShift() async => till.shift ??= WaiterShift(id: ++till.shiftIds, startedAt: DateTime.now());
+
+  @override
+  Future<WaiterShift> finishShift() async {
+    final open = till.shift;
+    if (open == null) throw const WaiterLinkFailure(WaiterError.noOpenShift, 409);
+    till.shift = null;
+    till.finished.add(open);
+    return WaiterShift(id: open.id, startedAt: open.startedAt, endedAt: DateTime.now());
   }
 
   @override
@@ -426,6 +501,7 @@ class _FakeClient implements WaiterClient {
   @override
   Future<WaiterFloor> floor() async {
     _guard();
+    _onShift();
     return const WaiterFloor(currency: _egp, tables: [
       WaiterTable(id: 1, label: 'T1', seats: 4),
       WaiterTable(id: 2, label: 'T2', seats: 2),
@@ -433,11 +509,16 @@ class _FakeClient implements WaiterClient {
   }
 
   @override
-  Future<WaiterCheck> check(int tableId) async => till.check;
+  Future<WaiterCheck> check(int tableId) async {
+    _onShift();
+    return till.check;
+  }
 
   @override
-  Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops}) async =>
-      till.apply(ops);
+  Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops}) async {
+    _onShift();
+    return till.apply(ops);
+  }
 
   @override
   void close() {}

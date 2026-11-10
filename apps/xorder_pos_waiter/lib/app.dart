@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'mode.dart';
 import 'screens/floor_screen.dart';
+import 'screens/shift_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -35,7 +36,7 @@ class WaiterApplication extends ConsumerWidget {
         home: switch (app.phase) {
           WaiterPhase.loading => const Scaffold(body: Center(child: CircularProgressIndicator())),
           WaiterPhase.signedOut => const SignInScreen(),
-          WaiterPhase.signedIn => const FloorScreen(),
+          WaiterPhase.signedIn => app.shift == null ? const ShiftStartScreen() : const FloorScreen(),
         },
       ),
     );

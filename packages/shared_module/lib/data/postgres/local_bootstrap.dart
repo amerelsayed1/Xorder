@@ -1048,6 +1048,10 @@ class LocalBootstrap {
     // revoked device stays on record.
     'GRANT SELECT, INSERT, UPDATE ON pos_waiter_devices TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_waiter_devices_id_seq TO "$role"',
+    // Waiter shifts (migration 66): the till opens and closes them for the
+    // handheld. No DELETE: the rows are the time record.
+    'GRANT SELECT, INSERT, UPDATE ON pos_waiter_shifts TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_waiter_shifts_id_seq TO "$role"',
     // Tax rules and charges, cached where pricing can reach them.
     'GRANT SELECT, INSERT, UPDATE ON pos_money_config TO "$role"',
     // So the in-app migrator can see the schema is current and do nothing,

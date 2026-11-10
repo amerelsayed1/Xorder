@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/core/money/money.dart';
 import 'package:shared_module/data/postgres/postgres_parked_tickets.dart';
 import 'package:shared_module/data/postgres/postgres_waiter_devices.dart';
+import 'package:shared_module/data/postgres/postgres_waiter_shifts.dart';
 import 'package:shared_module/domain/models/catalog.dart';
 import 'package:shared_module/domain/models/dining_table.dart';
 import 'package:shared_module/domain/models/permissions.dart';
@@ -16,6 +17,7 @@ import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 void main() {
   late _MemoryChecks checks;
   late TillWaiterBackend backend;
+  late _MemoryShifts shifts;
   var saved = 0;
   var ids = 0;
 
@@ -29,6 +31,7 @@ void main() {
 
   setUp(() {
     checks = _MemoryChecks();
+    shifts = _MemoryShifts();
     saved = 0;
     ids = 0;
     backend = TillWaiterBackend(
@@ -47,6 +50,7 @@ void main() {
       },
       checks: checks,
       devices: _NoDevices(),
+      shifts: shifts,
       onSaved: () => saved++,
       newTicketId: () => 'ticket-${++ids}',
       clock: () => DateTime(2026, 11, 9, 21),
@@ -240,6 +244,63 @@ void main() {
       expect(await apply(99, null, const [WaiterAdd(productId: 11)]), isA<WaiterNoTable>());
     });
   });
+
+  group('the shift clock', () {
+    test('start opens one shift, a second start returns it, finish closes it', () async {
+      expect(await backend.openShift(waiter.id), isNull);
+      final started = await backend.startShift(waiter, device);
+      expect(started.isOpen, isTrue);
+      expect((await backend.startShift(waiter, device)).id, started.id, reason: 'never two open shifts');
+      expect((await backend.openShift(waiter.id))!.id, started.id);
+
+      final finished = await backend.finishShift(waiter, device);
+      expect(finished!.id, started.id);
+      expect(finished.isOpen, isFalse);
+      expect(await backend.openShift(waiter.id), isNull);
+      expect(await backend.finishShift(waiter, device), isNull, reason: 'nothing open to finish');
+      expect(shifts.rows.single.startedDevice, '1', reason: 'the device is recorded');
+    });
+
+    test("one waiter's shift is theirs alone", () async {
+      await backend.startShift(waiter, device);
+      expect(await backend.openShift(noCancel.id), isNull);
+    });
+  });
+}
+
+class _MemoryShifts implements WaiterShiftStore {
+  final rows = <WaiterShiftRecord>[];
+  var _now = DateTime.utc(2026, 11, 9, 18);
+
+  @override
+  Future<WaiterShiftRecord?> open(int staffId) async =>
+      rows.where((r) => r.staffId == staffId && r.isOpen).firstOrNull;
+
+  @override
+  Future<WaiterShiftRecord> start(int staffId, {int? deviceId}) async {
+    final existing = await open(staffId);
+    if (existing != null) return existing;
+    final row = WaiterShiftRecord(id: rows.length + 1, staffId: staffId, startedAt: _now, startedDevice: '$deviceId');
+    rows.add(row);
+    return row;
+  }
+
+  @override
+  Future<WaiterShiftRecord?> finish(int staffId, {int? deviceId}) async {
+    final existing = await open(staffId);
+    if (existing == null) return null;
+    _now = _now.add(const Duration(hours: 8));
+    final closed = WaiterShiftRecord(
+      id: existing.id,
+      staffId: staffId,
+      startedAt: existing.startedAt,
+      endedAt: _now,
+      startedDevice: existing.startedDevice,
+      endedDevice: '$deviceId',
+    );
+    rows[rows.indexOf(existing)] = closed;
+    return closed;
+  }
 }
 
 // ---------------------------------------------------------------------------

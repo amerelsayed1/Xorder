@@ -5078,6 +5078,36 @@ const posMigrations = <PosMigration>[
       ON pos_waiter_devices (business_id, branch_id)
     ''',
   ]),
+  // A waiter's working shifts, clocked on the handheld (waiter shift clock).
+  // A waiter must have one open to work tables; finishing stamps `ended_at`.
+  // One open shift per person, held by a partial unique index, so two
+  // handhelds starting at once cannot open two. Rows are never deleted: the
+  // back office reads them as the time record.
+  //
+  // Additive: a new table. The SQLite counterpart is in `sqliteUpgrades`.
+  PosMigration(66, 'waiter shifts clocked on the handheld', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_waiter_shifts (
+      id                bigserial   PRIMARY KEY,
+      business_id       bigint      NOT NULL REFERENCES pos_businesses(id) ON DELETE CASCADE,
+      branch_id         bigint      REFERENCES pos_branches(id),
+      user_id           bigint      NOT NULL REFERENCES pos_users(id),
+      started_device_id bigint      REFERENCES pos_waiter_devices(id),
+      ended_device_id   bigint      REFERENCES pos_waiter_devices(id),
+      started_at        timestamptz NOT NULL DEFAULT now(),
+      ended_at          timestamptz,
+      CONSTRAINT pos_waiter_shifts_ends_after_start CHECK (ended_at IS NULL OR ended_at >= started_at)
+    )
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_waiter_shifts_one_open
+      ON pos_waiter_shifts (user_id) WHERE ended_at IS NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_waiter_shifts_business_idx
+      ON pos_waiter_shifts (business_id, branch_id, started_at)
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

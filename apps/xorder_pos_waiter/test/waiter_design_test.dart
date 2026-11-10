@@ -176,7 +176,11 @@ class _Client implements WaiterClient {
   Future<String> hello() async => 'Main till';
   @override
   Future<WaiterSession> signIn({required String username, required String pin, required String deviceName}) async =>
-      const WaiterSession(token: 's', staff: WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}));
+      WaiterSession(
+        token: 's',
+        staff: const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
+        shift: WaiterShift(id: 1, startedAt: DateTime.now().subtract(const Duration(hours: 2))),
+      );
   @override
   Future<void> signOut() async {}
   @override
@@ -188,6 +192,12 @@ class _Client implements WaiterClient {
   @override
   Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops}) async =>
       till.check(tableId);
+  @override
+  Future<WaiterShift?> shift() async => null;
+  @override
+  Future<WaiterShift> startShift() async => WaiterShift(id: 1, startedAt: DateTime.now());
+  @override
+  Future<WaiterShift> finishShift() async => throw const WaiterLinkFailure(WaiterError.noOpenShift, 409);
   @override
   void close() {}
 }

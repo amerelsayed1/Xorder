@@ -164,12 +164,17 @@ class WaiterAppState {
     this.phase = WaiterPhase.loading,
     this.connection,
     this.staff,
+    this.shift,
     this.locale = const Locale('ar'),
   });
 
   final WaiterPhase phase;
   final SavedConnection? connection;
   final WaiterStaff? staff;
+
+  /// The signed-in waiter's open shift. Null while signed in means the start
+  /// screen: tables are worked on the clock.
+  final WaiterShift? shift;
   final Locale locale;
 
   WaiterAppState copyWith({
@@ -178,11 +183,15 @@ class WaiterAppState {
     bool clearConnection = false,
     WaiterStaff? staff,
     bool clearStaff = false,
+    WaiterShift? shift,
+    bool clearShift = false,
     Locale? locale,
   }) => WaiterAppState(
     phase: phase ?? this.phase,
     connection: clearConnection ? null : (connection ?? this.connection),
     staff: clearStaff ? null : (staff ?? this.staff),
+    // Who is signed in owns the shift: clearing them clears it.
+    shift: clearShift || clearStaff ? null : (shift ?? this.shift),
     locale: locale ?? this.locale,
   );
 }
@@ -242,7 +251,33 @@ class WaiterApp extends Notifier<WaiterAppState> {
       pinnedSha256: pinned,
     );
     await ref.read(connectionStoreProvider).save(connection);
-    state = state.copyWith(phase: WaiterPhase.signedIn, connection: connection, staff: session.staff);
+    state = state.copyWith(
+      phase: WaiterPhase.signedIn,
+      connection: connection,
+      staff: session.staff,
+      shift: session.shift,
+      clearShift: session.shift == null,
+    );
+  }
+
+  /// Start the waiter's shift: the floor opens. Throws [WaiterLinkFailure].
+  Future<void> startShift() async {
+    final shift = await client.startShift();
+    state = state.copyWith(shift: shift);
+  }
+
+  /// Finish the open shift and return it, closed. The start screen follows.
+  /// One already finished elsewhere ends here too, with nothing to return.
+  Future<WaiterShift?> finishShift() async {
+    try {
+      final shift = await client.finishShift();
+      state = state.copyWith(clearShift: true);
+      return shift;
+    } on WaiterLinkFailure catch (e) {
+      if (e.code != WaiterError.noOpenShift) rethrow;
+      state = state.copyWith(clearShift: true);
+      return null;
+    }
   }
 
   /// The waiter compared [certificate] with the till's screen and said they
@@ -292,6 +327,11 @@ class WaiterApp extends Notifier<WaiterAppState> {
         return true;
       case WaiterError.signInRequired:
         state = state.copyWith(phase: WaiterPhase.signedOut, clearStaff: true);
+        return true;
+      case WaiterError.shiftRequired:
+        // Finished on another handheld (or by the server): back to the start
+        // screen rather than a floor that refuses every tap.
+        state = state.copyWith(clearShift: true);
         return true;
     }
     return false;

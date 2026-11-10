@@ -114,6 +114,27 @@ class WaiterLinkServer {
     if (method == 'GET' && _is(path, ['menu'])) {
       return _Reply(HttpStatus.ok, (await backend.menu()).toJson());
     }
+
+    // The shift clock: one open shift per waiter, whichever device.
+    if (method == 'GET' && _is(path, ['shift'])) {
+      return _Reply(HttpStatus.ok, {'shift': (await backend.openShift(session.staff.id))?.toJson()});
+    }
+    if (method == 'POST' && _is(path, ['shift', 'start'])) {
+      final shift = await backend.startShift(session.staff, paired);
+      return _Reply(HttpStatus.ok, {'shift': shift.toJson()});
+    }
+    if (method == 'POST' && _is(path, ['shift', 'finish'])) {
+      final shift = await backend.finishShift(session.staff, paired);
+      return shift == null
+          ? _Reply(HttpStatus.conflict, _error(WaiterError.noOpenShift))
+          : _Reply(HttpStatus.ok, {'shift': shift.toJson()});
+    }
+
+    // Tables are worked on the clock: no open shift, no floor.
+    if (await backend.openShift(session.staff.id) == null) {
+      return _Reply(HttpStatus.forbidden, _error(WaiterError.shiftRequired));
+    }
+
     if (method == 'GET' && _is(path, ['floor'])) {
       return _Reply(HttpStatus.ok, (await backend.floor()).toJson());
     }
@@ -198,7 +219,12 @@ class WaiterLinkServer {
     _sessions[token] = _Session(staff, deviceId, _clock());
     return _Reply(
       HttpStatus.ok,
-      WaiterSession(token: token, staff: staff, deviceToken: deviceToken).toJson(),
+      WaiterSession(
+        token: token,
+        staff: staff,
+        deviceToken: deviceToken,
+        shift: await backend.openShift(staff.id),
+      ).toJson(),
     );
   }
 
@@ -414,6 +440,16 @@ abstract interface class WaiterLinkBackend {
 
   /// The table's check, empty for a free table; null for no such table.
   Future<WaiterCheck?> check(int tableId);
+
+  /// [staffId]'s open shift, or null.
+  Future<WaiterShift?> openShift(int staffId);
+
+  /// Open a shift for [staff] now, on [device]; return the open one instead
+  /// if there already is one.
+  Future<WaiterShift> startShift(WaiterStaff staff, WaiterDeviceRecord device);
+
+  /// Close [staff]'s open shift now and return it; null when none is open.
+  Future<WaiterShift?> finishShift(WaiterStaff staff, WaiterDeviceRecord device);
 
   /// Apply [ops] to the table's check, all or none, as [staff], and save it if
   /// the table is still at [expectedVersion] (null: the waiter saw it free).

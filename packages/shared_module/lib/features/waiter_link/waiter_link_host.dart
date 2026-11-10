@@ -10,6 +10,7 @@ import '../../core/config/deployment.dart';
 import '../../data/postgres/pos_database.dart';
 import '../../data/postgres/postgres_parked_tickets.dart';
 import '../../data/postgres/postgres_waiter_devices.dart';
+import '../../data/postgres/postgres_waiter_shifts.dart';
 import '../../domain/models/pos_settings.dart';
 import '../../domain/models/shift.dart';
 import 'till_waiter_backend.dart';
@@ -148,6 +149,12 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
       businessId: context.businessId,
       branchId: context.branchId,
     );
+    final shifts = PostgresWaiterShifts(
+      database: database,
+      config: config,
+      businessId: context.businessId,
+      branchId: context.branchId,
+    );
     final parked = PostgresParkedTickets(
       database: database,
       config: config,
@@ -168,6 +175,7 @@ class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
           ref.read(sessionRepositoryProvider).signInAs(username: username, pin: pin),
       checks: ParkedTicketsCheckStore(parked),
       devices: PostgresWaiterDeviceStore(devices),
+      shifts: PostgresWaiterShiftStore(shifts),
       // The till's own floor catches up now, not at its next 5 s refresh.
       onSaved: () => unawaited(ref.read(openTicketsProvider.notifier).refresh()),
     );
