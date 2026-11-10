@@ -137,7 +137,7 @@ class _ShiftHistoryFrameState extends ConsumerState<ShiftHistoryFrame> {
       children: [
         Text(widget.blurb, style: PosText.ui(size: 13.5, color: context.pos.body)),
         const SizedBox(height: PosSpace.lg),
-        _PeriodBar(period: widget.period, range: range, keyPrefix: widget.paneKey),
+        HistoryPeriodBar(period: widget.period, range: range, keyPrefix: widget.paneKey),
         const SizedBox(height: PosSpace.md),
         Wrap(
           spacing: PosSpace.sm,
@@ -189,11 +189,16 @@ class _ShiftHistoryFrameState extends ConsumerState<ShiftHistoryFrame> {
 ///
 /// Selection is a border, as everywhere in this design: ink and two pixels
 /// for the chosen period, a resting line for the rest. No tint.
-class _PeriodBar extends ConsumerWidget {
-  const _PeriodBar({
+///
+/// Public since People › Waiter shifts: that pane has the dates and none of
+/// [ShiftHistoryFrame]'s till, cashier and status filters, and a second copy
+/// of these chips would be the first to drift.
+class HistoryPeriodBar extends ConsumerWidget {
+  const HistoryPeriodBar({
     required this.period,
     required this.range,
     required this.keyPrefix,
+    super.key,
   });
 
   final StateProvider<FinancePeriod> period;

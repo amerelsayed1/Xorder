@@ -1,36 +1,12 @@
 import '../../core/config/deployment.dart';
 import '../sql/row_reads.dart';
 import '../sql/sql.dart';
+import '../../domain/models/waiter_shift.dart';
+import '../../domain/repositories/repositories.dart' show WaiterShiftReader;
 
-/// One waiter shift, clocked on the handheld (migration 66).
-class WaiterShiftRecord {
-  const WaiterShiftRecord({
-    required this.id,
-    required this.staffId,
-    required this.startedAt,
-    this.staffName,
-    this.endedAt,
-    this.startedDevice,
-    this.endedDevice,
-  });
-
-  final int id;
-  final int staffId;
-
-  /// Filled by the back-office listing ([PostgresWaiterShifts.between]).
-  final String? staffName;
-  final DateTime startedAt;
-  final DateTime? endedAt;
-
-  /// The handhelds' names, for the listing.
-  final String? startedDevice;
-  final String? endedDevice;
-
-  bool get isOpen => endedAt == null;
-
-  /// How long it ran, or has run so far at [now].
-  Duration length(DateTime now) => (endedAt ?? now).difference(startedAt);
-}
+// The record moved to the domain so the back office can read it without
+// reaching into this file; exported so the waiter link's imports stand.
+export '../../domain/models/waiter_shift.dart' show WaiterShiftRecord;
 
 /// `pos_waiter_shifts`, on either engine: the waiter shift clock.
 ///
@@ -38,7 +14,7 @@ class WaiterShiftRecord {
 /// `pos_waiter_shifts_one_open`; [start] returns the open one instead of
 /// opening a second, so two handhelds tapping at once agree. The times are the
 /// database's clock, the same for every handheld on the branch.
-class PostgresWaiterShifts {
+class PostgresWaiterShifts implements WaiterShiftReader {
   PostgresWaiterShifts({
     required SqlDatabase database,
     required this.config,
@@ -101,6 +77,7 @@ class PostgresWaiterShifts {
   /// This branch's shifts that overlap [from]–[to] (still-open ones included),
   /// newest first, with the waiter's and handhelds' names: the back office's
   /// time record.
+  @override
   Future<List<WaiterShiftRecord>> between(DateTime from, DateTime to) async {
     final rows = await _db.query(
       config,
