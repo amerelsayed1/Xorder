@@ -318,6 +318,8 @@ class WaiterWireTest extends TestCase
         $check->assertJsonPath('version', 1)
             ->assertJsonPath('lines.0.stage', 'draft')
             ->assertJsonPath('lines.0.qty', 2)
+            // The handheld marks what is on the check in its menu by this id.
+            ->assertJsonPath('lines.0.product_id', $this->coffee->id)
             ->assertJsonPath('lines.0.total_minor', 2000)
             ->assertJsonPath('subtotal_minor', 2000)
             ->assertJsonPath('total_minor', 2000);
@@ -413,6 +415,7 @@ class WaiterWireTest extends TestCase
         $check = $this->ops($auth, [['op' => 'send']], 1)->assertOk();
 
         $check->assertJsonPath('lines.0.stage', 'sent')
+            ->assertJsonPath('lines.0.product_id', $this->coffee->id)
             ->assertJsonPath('lines.0.round', 1)
             ->assertJsonPath('rounds_sent', 1)
             ->assertJsonPath('total_minor', 2000)
