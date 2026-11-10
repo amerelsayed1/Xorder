@@ -133,6 +133,13 @@ void main() {
 
     final menu = await client.menu();
     expect(menu.products.map((p) => p.id), [101, 102]);
+
+    // Tables are worked on the clock: refused until the shift starts, which
+    // the till records in its own database.
+    expect(session.shift, isNull);
+    await expectLater(client.floor(), throwsA(isA<WaiterLinkFailure>().having((e) => e.code, 'code', WaiterError.shiftRequired)));
+    final shift = await client.startShift();
+    expect(shift.isOpen, isTrue);
     final floor = await client.floor();
     expect(floor.tables.single.state, WaiterTableState.free);
 
@@ -168,6 +175,7 @@ void main() {
     );
     addTearDown(client.close);
     await client.signIn(username: 'nour', pin: pin, deviceName: 'Phone');
+    await client.startShift();
 
     final first = await client.apply(tableId: t3.id, version: null, ops: const [WaiterAdd(productId: 101)]);
 
