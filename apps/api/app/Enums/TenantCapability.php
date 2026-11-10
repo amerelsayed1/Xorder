@@ -23,19 +23,6 @@ namespace App\Enums;
  */
 enum TenantCapability: string
 {
-    /**
-     * The live board — the at-a-glance floor screen combining the order queue,
-     * open bill requests and table occupancy.
-     *
-     * Its own capability rather than a side effect of tables.view, because
-     * "works the live screen" and "administers the table layout" are different
-     * jobs: a waiter needs the first without the second, and gating the board on
-     * tables.view forced the Tables and Dining Areas sections into their sidebar
-     * alongside it. Acting on what the board shows still needs the matching
-     * verb (orders.update to advance an order, tables.update to close a visit).
-     */
-    case LIVE_VIEW = 'live.view';
-
     // Live order queue — raised by diners, progressed by staff.
     case ORDERS_VIEW = 'orders.view';
     case ORDERS_UPDATE = 'orders.update';
@@ -170,7 +157,7 @@ enum TenantCapability: string
     public function group(): string
     {
         return match ($this->resource()) {
-            'live', 'orders', 'bills' => 'operations',
+            'orders', 'bills' => 'operations',
             'pos' => 'pos',
             'menu' => 'menu',
             'tables', 'branches' => 'place',

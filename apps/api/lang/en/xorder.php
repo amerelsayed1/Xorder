@@ -81,6 +81,7 @@ return [
         'refund_not_found' => 'Refund not found.',
         'receipt_profile_stale' => 'Somebody else saved this receipt profile while you were editing. Reload to see their version.',
         'order_updated' => 'Order updated.',
+        'whatsapp_order_needs_phone' => 'Please enter your phone number so the restaurant can confirm your order on WhatsApp.',
         'order_transition_invalid' => 'That order status change is not allowed.',
         // Guest paging
         'pickup_updated' => 'Pickup status updated.',
@@ -387,7 +388,7 @@ return [
         'items' => 'Items', 'total' => 'Total', 'currency' => 'Currency', 'status' => 'Status',
         'payment' => 'Payment', 'handled_by' => 'Handled by', 'closed_at' => 'Completed / cancelled at',
         'minutes_to_complete' => 'Minutes to complete', 'cancellation_reason' => 'Cancellation reason', 'note' => 'Note',
-        'status_NEW' => 'New', 'status_COMPLETED' => 'Completed', 'status_CANCELLED' => 'Cancelled',
+        'status_PENDING' => 'Pending', 'status_NEW' => 'New', 'status_COMPLETED' => 'Completed', 'status_CANCELLED' => 'Cancelled',
         'source_system' => 'Online', 'source_whatsapp' => 'WhatsApp', 'source_pos' => 'Till',
         'type_dine_in' => 'Dine-in', 'type_pickup' => 'Pickup', 'type_takeaway' => 'Pickup', 'type_take_away' => 'Pickup', 'type_delivery' => 'Delivery',
     ],

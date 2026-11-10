@@ -221,6 +221,8 @@ class ReportService
         $tz = $this->timezone($restaurant);
 
         return Order::query()
+            // A pending WhatsApp order is not a sale until it is accepted.
+            ->where('status', '!=', OrderStatus::PENDING->value)
             ->when(! ($filters['include_cancelled'] ?? false),
                 fn ($q) => $q->where('status', '!=', OrderStatus::CANCELLED->value))
             ->when(! empty($filters['branch_id']), fn ($q) => $q->where('branch_id', (int) $filters['branch_id']))

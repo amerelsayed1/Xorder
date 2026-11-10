@@ -73,7 +73,8 @@ class OrderingModeReconciliationTest extends TestCase
 
     public function test_order_pipeline_honours_the_coerced_mode(): void
     {
-        // WhatsApp-only plan → mode coerced to whatsapp → no order record created.
+        // WhatsApp-only plan → mode coerced to whatsapp → the order is recorded
+        // PENDING until an employee accepts it (live-board-to-pos D6).
         $wa = Restaurant::factory()->create(['slug' => 'nosys', 'ordering_mode' => OrderingMode::SYSTEM]);
         $this->grant($wa, ['whatsapp_ordering']);
         $cat = Category::factory()->for($wa)->create(['is_active' => true]);
@@ -85,7 +86,9 @@ class OrderingModeReconciliationTest extends TestCase
         $this->postJson('/api/public/restaurants/nosys/orders', [
             'items' => $this->dinerItems([['name' => 'Item', 'qty' => 1, 'line_total' => 10]]),
             'total' => 10,
-        ])->assertStatus(422);
+            'customer_phone' => '+201234567890',
+        ])->assertCreated();
+        $this->assertDatabaseHas('orders', ['restaurant_id' => $wa->id, 'source' => 'whatsapp', 'status' => 'PENDING']);
 
         // Plan grants system ordering → mode records the order, tagged system.
         $sys = Restaurant::factory()->create(['slug' => 'hassys', 'ordering_mode' => OrderingMode::SYSTEM]);

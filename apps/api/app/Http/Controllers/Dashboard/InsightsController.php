@@ -143,7 +143,8 @@ class InsightsController extends Controller
         // Bucketed in PHP rather than with date(created_at) in SQL, because the
         // column is UTC and the bucket must be local — the same approach
         // ReportService takes. Only the timestamp column is fetched.
-        $orderRows = Order::where('created_at', '>=', now($tz)->subDays(27)->startOfDay())
+        $orderRows = Order::where('status', '!=', OrderStatus::PENDING->value)
+            ->where('created_at', '>=', now($tz)->subDays(27)->startOfDay())
             ->pluck('created_at')
             ->groupBy(fn (Carbon $at) => $at->copy()->setTimezone($tz)->toDateString())
             ->map->count();
@@ -178,7 +179,7 @@ class InsightsController extends Controller
         return [
             'views_today' => (int) ($viewRows[$today]->views ?? 0),
             'views_14d' => (int) $viewRows->sum('views'),
-            'orders_total' => Order::count(),
+            'orders_total' => Order::where('status', '!=', OrderStatus::PENDING->value)->count(),
             'orders_new' => Order::where('status', OrderStatus::NEW)->count(),
             'orders_14d' => $current14,
             'daily' => $series,
@@ -269,7 +270,7 @@ class InsightsController extends Controller
     {
         $counts = [];
 
-        Order::where('status', '!=', OrderStatus::CANCELLED->value)
+        Order::whereNotIn('status', [OrderStatus::CANCELLED->value, OrderStatus::PENDING->value])
             ->select('items')
             ->chunk(500, function ($orders) use (&$counts) {
                 foreach ($orders as $order) {

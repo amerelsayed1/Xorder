@@ -451,17 +451,17 @@ Route::prefix('dashboard')
         });
 
         /*
-        | Order management — open to a restaurant holding EITHER system_ordering
-        | (Restaurant Pro: online orders land here) OR pos (a till's sales land
-        | here too, as channel=pos rows). WhatsApp-only plans hand orders off
-        | to WhatsApp and have no durable order queue to manage; a plan with the
-        | POS paid for the till and must see what it rang up (S2-1, 16 Oct
+        | Order management — open to a restaurant holding system_ordering
+        | (Restaurant Pro: online orders land here), pos (a till's sales land
+        | here too, as channel=pos rows) OR whatsapp_ordering (its orders land
+        | here PENDING until staff accept or reject them: live-board-to-pos
+        | D6/D13). A plan with the POS paid for the till and must see what it rang up (S2-1, 16 Oct
         | 2026). Deliberately NOT behind subscription.writable: a restaurant
         | whose subscription just expired must still be able to process the
         | orders that already came in.
         */
-        Route::middleware('feature:system_ordering|pos')->group(function () {
-            // orders.read = orders.view OR live.view (see AppServiceProvider).
+        Route::middleware('feature:system_ordering|pos|whatsapp_ordering')->group(function () {
+            // orders.read = orders.view (see AppServiceProvider).
             Route::middleware('can:orders.read')->group(function () {
                 Route::get('orders', [DashboardOrderController::class, 'index']);
                 Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
@@ -472,6 +472,11 @@ Route::prefix('dashboard')
             });
             Route::middleware('can:orders.update')
                 ->patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+            // A WhatsApp order arrives PENDING; staff accept or reject it here.
+            Route::middleware('can:orders.update')->group(function () {
+                Route::post('orders/{order}/accept', [DashboardOrderController::class, 'accept'])->whereNumber('order');
+                Route::post('orders/{order}/reject', [DashboardOrderController::class, 'reject'])->whereNumber('order');
+            });
         });
 
         /*
@@ -493,8 +498,7 @@ Route::prefix('dashboard')
         */
         Route::middleware('feature:table_management')->group(function () {
             // Live floor grid: occupancy + active-order + open-request signals
-            // per table. Sits OUTSIDE the tables.view group on purpose — nested
-            // it would inherit that gate and live.view could never reach it.
+            // per table.
             Route::middleware('can:tables.live')->get('tables/live', [TableController::class, 'live']);
 
             Route::middleware('can:tables.view')->group(function () {
@@ -553,7 +557,7 @@ Route::prefix('dashboard')
         | available even when the subscription lapsed; the status write is gated.
         */
         Route::middleware('feature:bill_requests')->group(function () {
-            // bills.read = bills.view OR live.view.
+            // bills.read = bills.view.
             Route::middleware('can:bills.read')->group(function () {
                 Route::get('bill-requests', [BillRequestController::class, 'index']);
                 Route::get('bill-requests/new-count', [BillRequestController::class, 'newCount']);

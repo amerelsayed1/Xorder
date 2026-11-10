@@ -92,7 +92,7 @@ class StatsController extends Controller
         $tz = $restaurant->localTimezone();
         $day = Carbon::now($tz)->subDays($daysAgo);
 
-        $rows = Order::whereNot('status', OrderStatus::CANCELLED)
+        $rows = Order::whereNotIn('status', [OrderStatus::CANCELLED->value, OrderStatus::PENDING->value])
             ->whereBetween('created_at', [
                 $day->copy()->startOfDay()->utc(),
                 $day->copy()->endOfDay()->utc(),

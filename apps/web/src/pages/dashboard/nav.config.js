@@ -35,10 +35,9 @@ export const DASHBOARD_NAV = [
         key: 'main', labelKey: 'nav.section_main', section: true,
         children: [
             { key: 'home', labelKey: 'nav.dashboard', icon: 'pi pi-th-large', to: { name: 'dashboard.home' }, end: true },
-            { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', featureAny: ['bill_requests', 'system_ordering', 'table_management'], capability: 'live.view' },
             // The queue holds online orders AND the till's sales, so a plan with
-            // either feature gets the entry (the API gate is the same any-of).
-            { key: 'orders', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, badgeKey: 'orders', featureAny: ['system_ordering', 'pos'], capability: 'orders.view' },
+            // any of these features gets the entry (the API gate is the same any-of).
+            { key: 'orders', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, badgeKey: 'orders', featureAny: ['system_ordering', 'pos', 'whatsapp_ordering'], capability: 'orders.view' },
             { key: 'tables', labelKey: 'nav.tables', icon: 'pi pi-table', to: { name: 'dashboard.tables' }, feature: 'table_management', capability: 'tables.view' },
         ],
     },

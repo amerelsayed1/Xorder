@@ -25,13 +25,13 @@ return new class extends Migration
                 continue;
             }
 
-            if (in_array(TenantCapability::LIVE_VIEW->value, $caps, true)) {
+            if (in_array('live.view', $caps, true)) {
                 continue;
             }
 
             DB::table('roles')->where('id', $role->id)->update([
                 // expand() re-sorts into enum order, keeping stored JSON stable.
-                'capabilities' => json_encode(TenantCapability::expand([...$caps, TenantCapability::LIVE_VIEW->value])),
+                'capabilities' => json_encode(TenantCapability::expand([...$caps, 'live.view'])),
             ]);
         }
     }
@@ -46,7 +46,7 @@ return new class extends Migration
             }
 
             DB::table('roles')->where('id', $role->id)->update([
-                'capabilities' => json_encode(array_values(array_diff($caps, [TenantCapability::LIVE_VIEW->value]))),
+                'capabilities' => json_encode(array_values(array_diff($caps, ['live.view']))),
             ]);
         }
     }

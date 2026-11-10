@@ -1,7 +1,7 @@
 // One shared heartbeat + notification store for the dashboard.
 //
 // Replaces the several independent polling loops that used to live in
-// DashboardLayout / LiveBoardView / OrdersView. A single
+// DashboardLayout / OrdersView. A single
 // visibility-aware timer hits the consolidated /dashboard/pulse endpoint with
 // an If-None-Match header, so an idle tab's poll is a bare 304 with no body,
 // and a backgrounded tab doesn't poll at all. Views subscribe to `tick` to
@@ -13,6 +13,8 @@ import api from '@xorder/api-client/api.js'
 export const useRealtime = defineStore('realtime', () => {
     // Badge counts (null = the plan doesn't have that feature, so never shown).
     const newOrders = ref(0)
+    // WhatsApp orders waiting for Accept / Reject.
+    const pendingOrders = ref(0)
     const newRequests = ref(0)
     const unread = ref(0)
     const latestId = ref(0)
@@ -47,6 +49,7 @@ export const useRealtime = defineStore('realtime', () => {
             etag = res.headers?.etag || etag
             const d = res.data?.data || {}
             if (d.new_orders != null) newOrders.value = d.new_orders
+            if (d.pending_orders != null) pendingOrders.value = d.pending_orders
             if (d.new_requests != null) newRequests.value = d.new_requests
             unread.value = d.unread_notifications ?? unread.value
             latestId.value = d.latest_notification_id ?? latestId.value
@@ -95,7 +98,7 @@ export const useRealtime = defineStore('realtime', () => {
     }
 
     return {
-        newOrders, newRequests, unread, latestId, notifications, listLoading,
+        newOrders, pendingOrders, newRequests, unread, latestId, notifications, listLoading,
         start, stop, pulse, onTick, fetchNotifications, markRead, markAllRead,
     }
 })

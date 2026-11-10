@@ -29,9 +29,9 @@ function openCustomer(order) {
     if (canOpenCustomer(order)) router.push({ name: 'dashboard.customer', params: { id: order.customer_id } })
 }
 
-const STATUSES = ['NEW', 'COMPLETED', 'CANCELLED']
+const STATUSES = ['PENDING', 'NEW', 'COMPLETED', 'CANCELLED']
 const ORDER_TYPES = ['dine_in', 'pickup', 'delivery']
-const badgeClass = { NEW: 'badge-amber', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
+const badgeClass = { PENDING: 'badge-indigo', NEW: 'badge-amber', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
 // Order type is nullable (older orders / QR-menu-only branches have none).
 const orderTypeLabel = (order) => order.order_type ? t('order_type.' + order.order_type) : '—'
 // Which statuses each status can move to, rendered as per-row action buttons.
@@ -234,6 +234,50 @@ function goToPage(nextPage) {
     load()
 }
 
+// A WhatsApp order arrives PENDING: Accept makes it a normal order, Reject
+// cancels it. The server decides; a second tap or a second employee is a no-op.
+async function decide(order, verb) {
+    const payload = {}
+    if (verb === 'reject') {
+        const reason = await confirmWithInput({
+            title: t('orders.reject_title'),
+            message: t('orders.reject_message'),
+            confirmText: t('orders.reject'),
+            cancelText: t('common.back'),
+            danger: true,
+            inputLabel: t('orders.cancel_reason_label'),
+            inputPlaceholder: t('orders.reject_reason_ph'),
+        })
+        if (reason === null) return
+        payload.reason = reason
+    }
+    updating.value = order.id
+    try {
+        await ensureCsrf()
+        const { data } = await api.post(`api/dashboard/orders/${order.id}/${verb}`, payload)
+        const i = rows.value.findIndex((r) => r.id === order.id)
+        if (i !== -1) rows.value[i] = data.data
+        toast(data.message || t('common.saved'))
+        await load({ silent: true })
+    } catch (err) {
+        alert(t('orders.update_failed'))
+    } finally {
+        updating.value = null
+    }
+}
+
+// After a decision the employee taps this to tell the customer on WhatsApp
+// (no message is sent by the platform). Only for a WhatsApp order that has a
+// number and has been decided.
+function messageUrl(order) {
+    if (order.source !== 'whatsapp' || !['NEW', 'CANCELLED'].includes(order.status)) return null
+    const digits = String(order.customer_phone || '').replace(/[^0-9]/g, '')
+    if (!digits) return null
+    const key = order.status === 'CANCELLED' ? 'orders.wa_rejected' : 'orders.wa_accepted'
+    const text = t(key, { name: order.customer_name || '', code: order.code })
+    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+}
+
 async function setStatus(order, status) {
     const payload = { status }
     if (status === 'CANCELLED') {
@@ -421,7 +465,7 @@ function fmtTime(iso) {
                     </button>
                     <button v-for="s in STATUSES" :key="s" type="button" :class="{ active: statusFilter === s }" :aria-pressed="statusFilter === s" @click="setFilter(s)">
                         {{ t('orders.status.' + s) }}
-                        <span v-if="statusCount(s) !== null" class="tab-count" :class="{ 'tab-count-hot': s === 'NEW' && statusCount(s) > 0 }">{{ statusCount(s) }}</span>
+                        <span v-if="statusCount(s) !== null" class="tab-count" :class="{ 'tab-count-hot': (s === 'NEW' || s === 'PENDING') && statusCount(s) > 0 }">{{ statusCount(s) }}</span>
                     </button>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
@@ -460,7 +504,7 @@ function fmtTime(iso) {
                              never the previous filter's rows underneath it. -->
                         <template v-else-if="rows.length">
                             <tr v-for="order in rows" :key="order.id" class="orders-row"
-                                :class="{ 'order-row-new': newIds.has(order.id), 'row-pending': order.status === 'NEW' }">
+                                :class="{ 'order-row-new': newIds.has(order.id), 'row-pending': order.status === 'NEW' || order.status === 'PENDING' }">
                                 <td class="c-code whitespace-nowrap cell-code">
                                     {{ order.code }}
                                     <div v-if="branchName(order)" class="cell-sub">{{ branchName(order) }}</div>
@@ -506,6 +550,17 @@ function fmtTime(iso) {
                                             <!-- The move-forward action is the one staff reach for all day, so it
                                                  keeps its label. Cancel is rare and destructive: it stays available
                                                  but shrinks to an icon rather than crowding the row. -->
+                                            <template v-if="order.status === 'PENDING'">
+                                                <button class="btn btn-accent btn-sm act"
+                                                    :disabled="updating === order.id" @click="decide(order, 'accept')">
+                                                    <Icon name="check" :size="14" />{{ t('orders.accept') }}
+                                                </button>
+                                                <button type="button" class="icon-btn icon-btn-danger act-icon"
+                                                    :title="t('orders.reject')" :aria-label="t('orders.reject')"
+                                                    :disabled="updating === order.id" @click="decide(order, 'reject')">
+                                                    <Icon name="close" :size="16" />
+                                                </button>
+                                            </template>
                                             <button v-if="advanceActions(order).includes('COMPLETED')"
                                                 class="btn btn-accent btn-sm act"
                                                 :disabled="updating === order.id" @click="setStatus(order, 'COMPLETED')">
@@ -518,6 +573,8 @@ function fmtTime(iso) {
                                                 <Icon name="close" :size="16" />
                                             </button>
                                         </template>
+                                        <a v-if="messageUrl(order)" :href="messageUrl(order)" target="_blank" rel="noopener"
+                                            class="btn btn-ghost btn-sm act">{{ t('orders.message_customer') }}</a>
                                         <button type="button" class="btn btn-ghost btn-sm act" @click="openReceipt(order)">
                                             <Icon name="receipt" :size="14" />{{ t('orders.details') }}
                                         </button>

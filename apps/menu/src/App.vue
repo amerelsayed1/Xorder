@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, reactive, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
-import { postOrder, saveCustomer } from './api.js'
+import { postOrder } from './api.js'
 import { track } from './lib/analytics.js'
 import { warm } from './lib/prefetch.js'
 import { useLocale } from './composables/useLocale'
@@ -195,10 +195,13 @@ const bilingual = computed(() => restaurant.value?.bilingual !== false)
 const orderingMode = computed(() => restaurant.value?.ordering_mode || 'both')
 const usesWhatsapp = computed(() => orderingMode.value !== 'system')
 const usesSystem = computed(() => orderingMode.value !== 'whatsapp')
+// WhatsApp-only: the order is recorded PENDING and the restaurant messages the
+// diner back once an employee accepts it, so there is no handoff at checkout.
+const pendingOrder = computed(() => orderingMode.value === 'whatsapp')
 // A WhatsApp handoff needs a number; a system-only menu does not. A resolved
 // order type is also required so a dine-in-only menu can't place a table-less
 // order from the general link (see orderTypes below).
-const canOrder = computed(() => cartCount.value > 0 && !!orderType.value && (!usesWhatsapp.value || !!waDigits.value))
+const canOrder = computed(() => cartCount.value > 0 && !!orderType.value && (!usesWhatsapp.value || pendingOrder.value || !!waDigits.value))
 
 // Order type. Driven by the restaurant's enabled features (pickup/delivery);
 // at a scanned table it is dine-in only. Older payloads without order_types
@@ -367,7 +370,7 @@ function submitOrder(details) {
     // Kept so a refused order can be put back in the basket (XORD-047).
     const placed = cart.value.slice()
     orderError.value = ''
-    if (usesSystem.value) {
+    if (usesSystem.value || pendingOrder.value) {
         postOrder(slug, snapshot)
             .then(res => {
                 lastOrderCode.value = res?.data?.code || ''
@@ -380,22 +383,13 @@ function submitOrder(details) {
                 // System-only, the server's answer is all there is: an order it
                 // refused (an old tab, an item gone) must not be shown as
                 // received, and the diner keeps the basket to try again.
-                if (usesWhatsapp.value) return
+                if (usesWhatsapp.value && !pendingOrder.value) return
                 orderError.value = err?.response?.data?.message || t('order_not_placed_hint')
                 cart.value = placed
             })
-    } else if (usesWhatsapp.value) {
-        // WhatsApp-only: no order is recorded, but still save the customer so the
-        // restaurant keeps its directory across every ordering type.
-        saveCustomer(slug, {
-            customer_name: details.name || null,
-            customer_phone: details.phone || null,
-            customer_email: details.email || null,
-            customer_address: details.address || null,
-        }).catch(() => { /* best-effort; must never block the WhatsApp handoff */ })
     }
 
-    if (usesWhatsapp.value) {
+    if (usesWhatsapp.value && !pendingOrder.value) {
         sendToWhatsApp(orderData, waDigits.value, t)
     }
     track('menu_order_submitted', { slug, total: snapshot.total, items: cartCount.value })
@@ -518,7 +512,7 @@ function updateUserField(field, value) {
                 :cartCount="cartCount"
                 :cartTotal="cartTotal"
                 :canOrder="canOrder"
-                :viaWhatsapp="usesWhatsapp"
+                :viaWhatsapp="usesWhatsapp && !pendingOrder"
                 :isSubmitting="submittingOrder"
                 :orderType="orderType"
                 :orderTypes="orderTypes"
@@ -572,7 +566,8 @@ function updateUserField(field, value) {
                 :isOpen="orderSuccess"
                 :reopenUrl="lastOrderUrl"
                 :orderCode="lastOrderCode"
-                :viaWhatsapp="usesWhatsapp"
+                :viaWhatsapp="usesWhatsapp && !pendingOrder"
+                :pending="pendingOrder"
                 :errorMessage="orderError"
                 :t="t"
                 @close="closeOrderSuccess"

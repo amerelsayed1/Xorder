@@ -201,63 +201,42 @@ class CapabilityVerbsTest extends TestCase
         );
     }
 
-    // ------------------------------------------------------------ live board
+    // --------------------------------------------- live board (retired)
 
     /**
-     * The live board is its own permission: it reads orders, bills and the
-     * table grid, but must not drag table administration along with it.
+     * live-board-to-pos D9/D11: `live.view` no longer exists. The three reads it
+     * used to unlock now need their own view capability and nothing else.
      */
-    public function test_live_view_reaches_the_boards_three_reads(): void
+    public function test_each_board_read_needs_its_own_view_capability(): void
     {
         $this->enableFeatures(['system_ordering', 'bill_requests', 'table_management']);
 
-        $actor = $this->actor([Cap::LIVE_VIEW]);
+        $orders = $this->actor([Cap::ORDERS_VIEW]);
+        $this->actingAs($orders)->getJson('/api/dashboard/orders')->assertOk();
+        $this->actingAs($orders)->getJson('/api/dashboard/bill-requests')->assertForbidden();
+        $this->actingAs($orders)->getJson('/api/dashboard/tables/live')->assertForbidden();
 
-        $this->actingAs($actor)->getJson('/api/dashboard/orders')->assertOk();
-        $this->actingAs($actor)->getJson('/api/dashboard/bill-requests')->assertOk();
-        $this->actingAs($actor)->getJson('/api/dashboard/tables/live')->assertOk();
+        $bills = $this->actor([Cap::BILLS_VIEW]);
+        $this->actingAs($bills)->getJson('/api/dashboard/bill-requests')->assertOk();
+        $this->actingAs($bills)->getJson('/api/dashboard/orders')->assertForbidden();
     }
 
-    /** …but not the table administration endpoints behind the same feature. */
-    public function test_live_view_does_not_grant_table_administration(): void
+    /** A role row that still carries the removed value (before the migration ran) grants nothing. */
+    public function test_a_stale_live_view_value_in_a_role_grants_nothing(): void
     {
         $this->enableFeatures(['system_ordering', 'bill_requests', 'table_management']);
 
-        $actor = $this->actor([Cap::LIVE_VIEW]);
+        $role = new Role(['name' => 'Stale']);
+        $role->forceFill([
+            'restaurant_id' => $this->restaurant->id,
+            'capabilities' => ['live.view'],
+            'is_system' => false,
+        ])->save();
+        $actor = User::factory()->staff($this->restaurant->id, $role->id)->create();
 
-        // The Tables and Dining Areas sections stay closed.
-        $this->actingAs($actor)->getJson('/api/dashboard/tables')->assertForbidden();
-        $this->actingAs($actor)->getJson('/api/dashboard/dining-areas')->assertForbidden();
-        $this->actingAs($actor)
-            ->postJson('/api/dashboard/tables', ['label' => 'T9', 'dining_area_id' => 1])
-            ->assertForbidden();
-    }
-
-    /** Seeing the board is not acting on it — writes still need their verb. */
-    public function test_live_view_alone_cannot_advance_an_order(): void
-    {
-        $this->enableFeatures(['system_ordering']);
-
-        $order = new Order([
-            'status' => 'NEW', 'items' => [['name' => 'x', 'qty' => 1, 'line_total' => 5]],
-            'total' => 5, 'currency' => 'EGP', 'order_type' => 'pickup', 'source' => 'system',
-        ]);
-        $order->restaurant_id = $this->restaurant->id;
-        $order->save();
-
-        $this->actingAs($this->actor([Cap::LIVE_VIEW]))
-            ->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'PREPARING'])
-            ->assertForbidden();
-    }
-
-    /** A role that already had orders.view keeps its board reads unchanged. */
-    public function test_orders_view_still_reads_orders_without_live_view(): void
-    {
-        $this->enableFeatures(['system_ordering']);
-
-        $this->actingAs($this->actor([Cap::ORDERS_VIEW]))
-            ->getJson('/api/dashboard/orders')
-            ->assertOk();
+        $this->actingAs($actor)->getJson('/api/dashboard/orders')->assertForbidden();
+        $this->actingAs($actor)->getJson('/api/dashboard/bill-requests')->assertForbidden();
+        $this->actingAs($actor)->getJson('/api/dashboard/tables/live')->assertForbidden();
     }
 
     // ------------------------------------------------- deploy-window aliases

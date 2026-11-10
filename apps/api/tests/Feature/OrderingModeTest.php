@@ -50,12 +50,14 @@ class OrderingModeTest extends TestCase
             ->assertJsonPath('data.restaurant.ordering_mode', 'whatsapp');
     }
 
-    public function test_whatsapp_only_mode_rejects_a_system_order(): void
+    public function test_whatsapp_mode_records_the_order_as_pending(): void
     {
+        // live-board-to-pos D6: a WhatsApp checkout is recorded (it used to be
+        // refused), but PENDING until an employee accepts it.
         $r = $this->withMenu(Restaurant::factory()->withOrdering()->create(['slug' => 'wa', 'ordering_mode' => OrderingMode::WHATSAPP]));
 
-        $this->postJson('/api/public/restaurants/wa/orders', $this->payload())->assertStatus(422);
-        $this->assertDatabaseCount('orders', 0);
+        $this->postJson('/api/public/restaurants/wa/orders', $this->payload())->assertCreated();
+        $this->assertDatabaseHas('orders', ['restaurant_id' => $r->id, 'source' => 'whatsapp', 'status' => 'PENDING']);
     }
 
     public function test_system_mode_records_order_tagged_system(): void

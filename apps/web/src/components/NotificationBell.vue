@@ -16,7 +16,7 @@ const btn = ref(null)
 // icon. The API already sends a localized title/body, so the bell only styles.
 const ROUTE_BY_TYPE = {
     'order.created': 'dashboard.orders',
-    'bill_request.created': 'dashboard.live',
+    'bill_request.created': 'dashboard.home',
     'review.created': 'dashboard.reviews',
     'subscription.expiring': 'dashboard.profile',
 }

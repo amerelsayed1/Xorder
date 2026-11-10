@@ -35,6 +35,13 @@ class PulseController extends Controller
             ? Order::where('status', OrderStatus::NEW)->count()
             : null;
 
+        // WhatsApp orders wait here until staff accept them; counted for any plan
+        // with an order queue, since a WhatsApp-only plan has no system_ordering.
+        $pendingOrders = ($restaurant?->hasFeature('system_ordering') || $restaurant?->hasFeature('whatsapp_ordering') || $restaurant?->hasFeature('pos'))
+            && $user->can('orders.view')
+            ? Order::where('status', OrderStatus::PENDING)->count()
+            : null;
+
         $newRequests = $restaurant?->hasFeature('bill_requests') && $user->can('bills.view')
             ? BillRequest::where('status', BillRequestStatus::REQUESTED->value)->count()
             : null;
@@ -46,6 +53,7 @@ class PulseController extends Controller
 
         $payload = [
             'new_orders' => $newOrders,
+            'pending_orders' => $pendingOrders,
             'new_requests' => $newRequests,
             'unread_notifications' => $unread,
             'latest_notification_id' => (int) $latestId,

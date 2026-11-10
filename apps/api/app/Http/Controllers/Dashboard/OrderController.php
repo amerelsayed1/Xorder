@@ -9,6 +9,7 @@ use App\Http\Resources\OrderResource;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Services\AuditLogger;
 use App\Services\GuestPagingService;
 use App\Support\CsvSafe;
 use Closure;
@@ -218,7 +219,9 @@ class OrderController extends Controller
             'counts' => $counts,
             'metrics' => [
                 'new_orders' => Order::where('status', OrderStatus::NEW)->count(),
-                'orders_today' => Order::where('created_at', '>=', $dayStart)->count(),
+                'pending_orders' => Order::where('status', OrderStatus::PENDING)->count(),
+                'orders_today' => Order::where('created_at', '>=', $dayStart)
+                    ->where('status', '!=', OrderStatus::PENDING->value)->count(),
                 'completed_today' => (clone $completedToday)->count(),
                 'sales_today' => number_format((float) $completedToday->sum('total'), 2, '.', ''),
                 'currency' => $restaurant->currency?->value,
@@ -230,7 +233,80 @@ class OrderController extends Controller
     public function newCount(): JsonResponse
     {
         return response()->json([
-            'data' => ['new_orders' => Order::where('status', OrderStatus::NEW)->count()],
+            'data' => [
+                'new_orders' => Order::where('status', OrderStatus::NEW)->count(),
+                // WhatsApp orders waiting for Accept / Reject.
+                'pending_orders' => Order::where('status', OrderStatus::PENDING)->count(),
+            ],
+        ]);
+    }
+
+    /**
+     * Accept a pending WhatsApp order: it becomes a normal NEW order. Safe to
+     * repeat (a second tap, or two staff at once, finds it already NEW and
+     * changes nothing); an order that was rejected or already handled is a 422.
+     */
+    public function accept(Request $request, Order $order): JsonResponse
+    {
+        return $this->decide($request, $order, OrderStatus::NEW);
+    }
+
+    /** Reject a pending WhatsApp order: it is cancelled, with an optional reason. */
+    public function reject(Request $request, Order $order): JsonResponse
+    {
+        $request->validate(['reason' => ['sometimes', 'nullable', 'string', 'max:255']]);
+
+        return $this->decide($request, $order, OrderStatus::CANCELLED);
+    }
+
+    private function decide(Request $request, Order $order, OrderStatus $to): JsonResponse
+    {
+        $ok = DB::transaction(function () use ($request, $order, $to) {
+            // Lock the row so two simultaneous decisions cannot both win; the
+            // loser re-reads the new status below. (lockForUpdate is a no-op on
+            // SQLite, so the race is only exercised on PostgreSQL.)
+            $locked = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status === $to) {
+                return true; // already decided the same way: no-op
+            }
+            if ($locked->status !== OrderStatus::PENDING) {
+                return false;
+            }
+
+            $locked->status = $to;
+            if ($to === OrderStatus::CANCELLED) {
+                $reason = trim((string) $request->input('reason', ''));
+                $locked->cancelled_at = Carbon::now();
+                $locked->cancelled_by = $request->user()->id;
+                $locked->cancellation_reason = $reason !== '' ? $reason : null;
+            }
+            $locked->save();
+
+            AuditLogger::record('order.'.($to === OrderStatus::NEW ? 'accepted' : 'rejected'), [
+                'restaurant_id' => $locked->restaurant_id,
+                'actor' => $request->user(),
+                'auditable' => $locked,
+                'description' => sprintf('WhatsApp order %s %s', $locked->code(), $to === OrderStatus::NEW ? 'accepted' : 'rejected'),
+            ]);
+
+            // Decided: its "new order" alert is no longer unread.
+            Notification::query()
+                ->where('type', 'order.created')
+                ->where('data->order_id', (string) $locked->id)
+                ->whereNull('read_at')
+                ->update(['read_at' => Carbon::now()]);
+
+            return true;
+        });
+
+        if (! $ok) {
+            return response()->json(['message' => __('xorder.messages.order_transition_invalid')], 422);
+        }
+
+        return response()->json([
+            'data' => OrderResource::make($this->withListRelations(Order::whereKey($order->id))->firstOrFail()),
+            'message' => __('xorder.messages.order_updated'),
         ]);
     }
 
@@ -270,6 +346,14 @@ class OrderController extends Controller
         if ($order->table_visit_id !== null && $order->tableVisit?->status->value === 'OPEN') {
             return response()->json([
                 'message' => __('xorder.messages.close_table_visit_instead'),
+            ], 422);
+        }
+
+        // A pending WhatsApp order is decided with Accept / Reject only, so the
+        // alert, the audit entry and the idempotency all go through one path.
+        if ($order->status === OrderStatus::PENDING) {
+            return response()->json([
+                'message' => __('xorder.messages.order_transition_invalid'),
             ], 422);
         }
 

@@ -37,7 +37,7 @@ class PickupBoardController extends Controller
         $orders = Order::query()
             ->whereNotNull('pickup_token')
             ->where('created_at', '>=', $dayStart)
-            ->where('status', '!=', OrderStatus::CANCELLED->value)
+            ->whereNotIn('status', [OrderStatus::CANCELLED->value, OrderStatus::PENDING->value])
             ->where(fn ($q) => $q
                 ->where('pickup_status', '!=', PickupStatus::PICKED_UP->value)
                 ->orWhere('picked_up_at', '>=', $linger))

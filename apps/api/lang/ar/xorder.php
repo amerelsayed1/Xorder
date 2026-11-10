@@ -76,6 +76,7 @@ return [
         'refund_not_found' => 'لم يتم العثور على الاسترداد.',
         'receipt_profile_stale' => 'قام شخص آخر بحفظ بيانات الفاتورة أثناء تعديلك. أعد التحميل لعرض نسخته.',
         'order_updated' => 'تم تحديث الطلب.',
+        'whatsapp_order_needs_phone' => 'يرجى إدخال رقم هاتفك ليؤكد المطعم طلبك عبر واتساب.',
         'order_transition_invalid' => 'تغيير حالة الطلب هذا غير مسموح به.',
         // Guest paging
         'pickup_updated' => 'تم تحديث حالة الاستلام.',
@@ -372,7 +373,7 @@ return [
         'items' => 'عدد الأصناف', 'total' => 'الإجمالي', 'currency' => 'العملة', 'status' => 'الحالة',
         'payment' => 'الدفع', 'handled_by' => 'بواسطة', 'closed_at' => 'وقت الإتمام / الإلغاء',
         'minutes_to_complete' => 'دقائق حتى الإتمام', 'cancellation_reason' => 'سبب الإلغاء', 'note' => 'ملاحظة',
-        'status_NEW' => 'جديد', 'status_COMPLETED' => 'مكتمل', 'status_CANCELLED' => 'ملغى',
+        'status_PENDING' => 'بانتظار التأكيد', 'status_NEW' => 'جديد', 'status_COMPLETED' => 'مكتمل', 'status_CANCELLED' => 'ملغى',
         'source_system' => 'أونلاين', 'source_whatsapp' => 'واتساب', 'source_pos' => 'الكاشير',
         'type_dine_in' => 'داخل المكان', 'type_pickup' => 'استلام', 'type_takeaway' => 'استلام', 'type_take_away' => 'استلام', 'type_delivery' => 'توصيل',
     ],

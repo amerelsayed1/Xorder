@@ -63,13 +63,18 @@ class PublicOrderController extends Controller
             return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
         }
 
-        // WhatsApp-only restaurants take orders through WhatsApp, not the system,
-        // so there is no order record to create here.
-        if (! $mode->usesSystem()) {
-            return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
-        }
+        // A WhatsApp restaurant's order is recorded too (live-board-to-pos D6),
+        // but as PENDING: it is not a real order until an employee accepts it,
+        // so it stays out of the kitchen, the badge, sales and reports.
+        $pending = $mode->usesWhatsapp();
 
         $data = $request->validated();
+
+        // The restaurant answers a WhatsApp order by messaging the diner
+        // (live-board-to-pos D15), so it cannot be taken without a number.
+        if ($pending && blank($data['customer_phone'] ?? null)) {
+            return response()->json(['message' => __('xorder.messages.whatsapp_order_needs_phone')], 422);
+        }
 
         // Priced here, from the menu, before anything is written (XORD-047).
         // The phone's line_total and total are discarded: they were how a
@@ -110,8 +115,10 @@ class PublicOrderController extends Controller
             // silent failure behind the diner's success dialog.
             unset($data['session_token'], $data['customer_email'], $data['customer_address'], $data['address_label']);
 
-            $order = DB::transaction(function () use ($data, $restaurant, $mode, $customer, $address, $request) {
-                $session = $this->resolveTableSession(
+            $order = DB::transaction(function () use ($data, $restaurant, $mode, $pending, $customer, $address, $request) {
+                // A pending WhatsApp order never joins a table visit: there is
+                // no seated bill for it to be merged into.
+                $session = $pending ? null : $this->resolveTableSession(
                     $restaurant->id,
                     $request->input('session_token'),
                     $request->ip(),
@@ -131,7 +138,7 @@ class PublicOrderController extends Controller
 
                 if ($order === null) {
                     $order = new Order($data + [
-                        'status' => OrderStatus::NEW->value,
+                        'status' => ($pending ? OrderStatus::PENDING : OrderStatus::NEW)->value,
                         'currency' => $restaurant->currency->value,
                         'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
                     ]);
@@ -153,7 +160,7 @@ class PublicOrderController extends Controller
                     // success screen can open the page at once. Never a round
                     // of a seated table — that is served, not collected.
                     $paging = app(GuestPagingService::class);
-                    if ($paging->isEligible($restaurant, $order->order_type, $session?->table_visit_id !== null)) {
+                    if (! $pending && $paging->isEligible($restaurant, $order->order_type, $session?->table_visit_id !== null)) {
                         $order->pickup_token = GuestPagingService::generateToken();
                         $order->pickup_status = PickupStatus::PREPARING->value;
                     }

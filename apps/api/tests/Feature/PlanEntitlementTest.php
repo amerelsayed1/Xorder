@@ -87,14 +87,19 @@ class PlanEntitlementTest extends TestCase
         $this->assertFalse($resolved['system_ordering']);
     }
 
-    public function test_orders_route_requires_system_ordering(): void
+    public function test_orders_route_requires_an_ordering_feature(): void
     {
         $r = Restaurant::factory()->create();
         $admin = User::factory()->restaurantAdmin($r->id)->create();
 
-        // WhatsApp-only: no system_ordering → order management is hidden.
-        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'whatsapp_ordering' => true]);
+        // No ordering feature at all → order management is hidden.
+        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true]);
         $this->actingAs($admin)->getJson('/api/dashboard/orders')->assertStatus(403);
+
+        // WhatsApp-only: its orders arrive PENDING and are accepted or rejected
+        // here (live-board-to-pos D6), so the queue is open to it too.
+        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'whatsapp_ordering' => true]);
+        $this->actingAs($admin->fresh())->getJson('/api/dashboard/orders')->assertOk();
 
         // Grant system_ordering → the queue opens up. A fresh admin instance
         // avoids the cached restaurant.features relation from the first request.

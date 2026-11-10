@@ -4,6 +4,12 @@ namespace App\Enums;
 
 enum OrderStatus: string
 {
+    /**
+     * A WhatsApp order waiting for an employee to accept or reject it. Not yet
+     * a real order: never in the kitchen queue, the "new" badge, sales or
+     * reports. Only creation sets it; nothing moves back to it.
+     */
+    case PENDING = 'PENDING';
     case NEW = 'NEW';
     case COMPLETED = 'COMPLETED';
     case CANCELLED = 'CANCELLED';
@@ -28,8 +34,9 @@ enum OrderStatus: string
         }
 
         return match ($this) {
+            self::PENDING => in_array($to, [self::NEW, self::CANCELLED], true),
             self::NEW => in_array($to, [self::COMPLETED, self::CANCELLED], true),
-            self::COMPLETED, self::CANCELLED => $to !== self::NEW,
+            self::COMPLETED, self::CANCELLED => ! in_array($to, [self::NEW, self::PENDING], true),
         };
     }
 }

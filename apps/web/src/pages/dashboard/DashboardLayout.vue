@@ -46,8 +46,12 @@ const role = computed(() => auth.isRestaurantAdmin ? t('roles.restaurant_admin')
 // kitchen notices.
 const newOrders = computed(() => rt.newOrders)
 const newRequests = computed(() => rt.newRequests)
+const pendingOrders = computed(() => rt.pendingOrders)
+// What staff must look at: new orders plus WhatsApp orders awaiting a decision.
+const attention = computed(() => newOrders.value + pendingOrders.value)
 const prevCount = ref(null) // null until the first poll — never alert on load
 const prevRequests = ref(null)
+const prevPending = ref(null)
 const toast = ref(null)
 let toastTimer, alarm, offTick
 let notifyReady = false
@@ -59,6 +63,10 @@ function onPulse(d) {
     if (d.new_orders != null) {
         if (prevCount.value !== null && d.new_orders > prevCount.value) announce(d.new_orders - prevCount.value, 'order')
         prevCount.value = d.new_orders
+    }
+    if (d.pending_orders != null) {
+        if (prevPending.value !== null && d.pending_orders > prevPending.value) announce(d.pending_orders - prevPending.value, 'order')
+        prevPending.value = d.pending_orders
     }
     if (d.new_requests != null) {
         if (prevRequests.value !== null && d.new_requests > prevRequests.value) announce(d.new_requests - prevRequests.value, 'request')
@@ -130,11 +138,11 @@ function goOrders() {
 
 function goRequests() {
     toast.value = null
-    router.push({ name: 'dashboard.live' })
+    router.push({ name: 'dashboard.home' })
 }
 
 // Tab-title badge, e.g. "(3) Mahsoub" — cleared when the count is zero.
-watch(newOrders, (n) => {
+watch(attention, (n) => {
     document.title = n > 0 ? `(${n}) ${baseTitle}` : baseTitle
 })
 
@@ -253,7 +261,7 @@ function onReadOnlyBlocked() {
 const nav = computed(() => buildDashboardNav({
     features: r.value?.features || [],
     can: auth.can,
-    badges: { orders: newOrders.value, requests: newRequests.value, live: newOrders.value + newRequests.value },
+    badges: { orders: attention.value, requests: newRequests.value },
 }))
 </script>
 

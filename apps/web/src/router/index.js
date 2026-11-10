@@ -121,7 +121,9 @@ const restaurantRoutes = [
             // lands, and it degrades to whatever the user may actually see.
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
             { path: 'plan', name: 'dashboard.plan', component: () => import('../pages/dashboard/PlanView.vue'), meta: { capability: 'settings.view' } },
-            { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue'), meta: { capability: 'live.view' } },
+            // The Live board was retired (live-board-to-pos): live work is in the POS.
+            // Old bookmarks and links land on the home page.
+            { path: 'live', redirect: { name: 'dashboard.home' } },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue'), meta: { capability: 'analytics.view' } },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue'), meta: { capability: 'orders.view' } },
             { path: 'reviews', name: 'dashboard.reviews', component: () => import('../pages/dashboard/ReviewsView.vue'), meta: { capability: 'reviews.view' } },

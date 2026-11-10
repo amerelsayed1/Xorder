@@ -148,19 +148,15 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('branches.list', fn (User $user) => $user->holdsTenantCapability(TenantCapability::BRANCHES_VIEW)
             || $user->holdsTenantCapability(TenantCapability::TABLES_VIEW));
 
-        // The live board reads three resources at once. Rather than granting
-        // live.view the three section capabilities — which would drag Orders,
-        // Bill requests and Tables back into the sidebar and defeat the point —
-        // each read surface accepts either its own view or live.view.
-        //
-        // Derived, so they never appear as checkboxes: the role editor offers
-        // "Live board" once, not three near-duplicates.
-        $orLive = fn (TenantCapability $own) => fn (User $user) => $user->holdsTenantCapability($own)
-            || $user->holdsTenantCapability(TenantCapability::LIVE_VIEW);
+        // The dashboard's Live board and its `live.view` capability were retired
+        // (live-board-to-pos D1/D7/D9): live work is done in the POS. These
+        // read abilities keep their names because routes use them; each now
+        // needs only its own view capability.
+        $reads = fn (TenantCapability $own) => fn (User $user) => $user->holdsTenantCapability($own);
 
-        Gate::define('orders.read', $orLive(TenantCapability::ORDERS_VIEW));
-        Gate::define('bills.read', $orLive(TenantCapability::BILLS_VIEW));
-        Gate::define('tables.live', $orLive(TenantCapability::TABLES_VIEW));
+        Gate::define('orders.read', $reads(TenantCapability::ORDERS_VIEW));
+        Gate::define('bills.read', $reads(TenantCapability::BILLS_VIEW));
+        Gate::define('tables.live', $reads(TenantCapability::TABLES_VIEW));
     }
 
     /**
