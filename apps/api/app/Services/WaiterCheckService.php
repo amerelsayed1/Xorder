@@ -492,6 +492,7 @@ class WaiterCheckService
             foreach ($sent['rows'] as $i => $row) {
                 $out[] = [
                     'key' => 's'.$row['item']->id,
+                    'product_id' => $row['item']->menu_item_id === null ? null : (int) $row['item']->menu_item_id,
                     'name' => ['en' => (string) ($row['item']->name_en ?: $row['item']->name), 'ar' => $row['item']->name_ar],
                     'qty' => (int) $row['item']->quantity,
                     'total_minor' => $priced['lines'][$i]['line_total_minor'],
@@ -505,6 +506,7 @@ class WaiterCheckService
                 $p = $priced['lines'][$sent['count'] + $j];
                 $out[] = [
                     'key' => $line['key'],
+                    'product_id' => (int) $line['menu_item_id'],
                     'name' => ['en' => (string) ($p['name_en'] ?: $p['name']), 'ar' => $p['name_ar']],
                     'qty' => $line['qty'],
                     'total_minor' => $p['line_total_minor'],

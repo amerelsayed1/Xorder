@@ -77,6 +77,7 @@ return [
         'menu_option_choice_invalid' => 'Please check the choices for an item in your order.',
         'order_not_found' => 'Order not found.',
         'waiter_device_not_found' => 'Waiter device not found.',
+        'waiter_shift_range_too_long' => 'Pick a range of one year or less.',
         'refund_not_found' => 'Refund not found.',
         'receipt_profile_stale' => 'Somebody else saved this receipt profile while you were editing. Reload to see their version.',
         'order_updated' => 'Order updated.',
