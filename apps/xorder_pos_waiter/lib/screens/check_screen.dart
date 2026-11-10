@@ -164,6 +164,7 @@ class _CheckScreenState extends ConsumerState<CheckScreen> with SingleTickerProv
         onCategory: (c) => setState(() => _category = c),
         onQuery: (q) => setState(() => _query = q),
         onProduct: (p) => _add(p, menu.requireValue),
+        onCheck: _onCheck(check),
         enabled: !_busy,
       );
       body = LayoutBuilder(
@@ -231,6 +232,18 @@ class _CheckScreenState extends ConsumerState<CheckScreen> with SingleTickerProv
     );
   }
 
+  /// How many of each product are on the check (voided lines aside), so the
+  /// menu shows what the waiter has already picked for this table.
+  static Map<int, int> _onCheck(WaiterCheck check) {
+    final counts = <int, int>{};
+    for (final l in check.lines) {
+      final id = l.productId;
+      if (id == null || l.stage == WaiterLineStage.voided) continue;
+      counts[id] = (counts[id] ?? 0) + l.quantity;
+    }
+    return counts;
+  }
+
   Future<void> _editGuests(WaiterCheck check) async {
     final s = WaiterStrings.of(context);
     var n = check.guests ?? widget.table.seats ?? 2;
@@ -259,6 +272,7 @@ class _MenuPane extends StatelessWidget {
     required this.onCategory,
     required this.onQuery,
     required this.onProduct,
+    required this.onCheck,
     required this.enabled,
   });
 
@@ -268,6 +282,9 @@ class _MenuPane extends StatelessWidget {
   final ValueChanged<int?> onCategory;
   final ValueChanged<String> onQuery;
   final ValueChanged<WaiterProduct> onProduct;
+
+  /// Product id → quantity already on the check.
+  final Map<int, int> onCheck;
   final bool enabled;
 
   @override
@@ -338,6 +355,7 @@ class _MenuPane extends StatelessWidget {
                   itemBuilder: (context, i) => _ProductTile(
                     product: products[i],
                     currency: menu.currency,
+                    onCheck: onCheck[products[i].id] ?? 0,
                     enabled: enabled,
                     onTap: onProduct,
                   ),
@@ -349,10 +367,20 @@ class _MenuPane extends StatelessWidget {
 }
 
 class _ProductTile extends StatelessWidget {
-  const _ProductTile({required this.product, required this.currency, required this.enabled, required this.onTap});
+  const _ProductTile({
+    required this.product,
+    required this.currency,
+    required this.onCheck,
+    required this.enabled,
+    required this.onTap,
+  });
 
   final WaiterProduct product;
   final WaiterCurrency currency;
+
+  /// How many of this product are on the check; above zero the tile reads as
+  /// selected — accent fill, emphasised border and the count.
+  final int onCheck;
   final bool enabled;
   final ValueChanged<WaiterProduct> onTap;
 
@@ -360,30 +388,52 @@ class _ProductTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
     final p = product;
-    return Material(
-      color: p.available ? WaiterColors.surface : WaiterColors.page,
-      shape: const Border.fromBorderSide(BorderSide(color: WaiterColors.lineStrong)),
-      child: InkWell(
-        key: Key('product-${p.id}'),
-        onTap: enabled && p.available ? () => onTap(p) : null,
-        child: Padding(
-          padding: const EdgeInsets.all(WaiterSpace.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  p.name.pick(arabic: s.arabic),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: WaiterText.itemTitle(color: p.available ? WaiterColors.ink : WaiterColors.muted),
+    final selected = onCheck > 0;
+    return Semantics(
+      selected: selected,
+      child: Material(
+        color: selected ? WaiterColors.accentSoft : (p.available ? WaiterColors.surface : WaiterColors.page),
+        shape: Border.fromBorderSide(
+          BorderSide(color: selected ? WaiterColors.accent : WaiterColors.lineStrong, width: selected ? 2 : 1),
+        ),
+        child: InkWell(
+          key: Key('product-${p.id}'),
+          onTap: enabled && p.available ? () => onTap(p) : null,
+          child: Padding(
+            padding: EdgeInsets.all(selected ? WaiterSpace.md - 1 : WaiterSpace.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          p.name.pick(arabic: s.arabic),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: WaiterText.itemTitle(color: p.available ? WaiterColors.ink : WaiterColors.muted),
+                        ),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: WaiterSpace.sm),
+                        Container(
+                          key: Key('product-${p.id}-count'),
+                          color: WaiterColors.accent,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          child: Text('$onCheck×', style: WaiterText.mono(size: 13, weight: FontWeight.w700, color: WaiterColors.ink)),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              if (p.available)
-                MoneyText(currency, p.priceMinor, style: WaiterText.price(color: WaiterColors.body))
-              else
-                Text(s.unavailable, style: WaiterText.meta()),
-            ],
+                if (p.available)
+                  MoneyText(currency, p.priceMinor, style: WaiterText.price(color: WaiterColors.body))
+                else
+                  Text(s.unavailable, style: WaiterText.meta()),
+              ],
+            ),
           ),
         ),
       ),

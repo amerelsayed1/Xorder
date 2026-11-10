@@ -75,6 +75,34 @@ void main() {
     expect(find.text('الدفعة 1'), findsOneWidget);
   });
 
+  testWidgets('a picked item is marked selected in the menu, with how many are on the check', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    await tester.tap(find.byKey(const Key('table-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('product-11-count')), findsNothing, reason: 'nothing is picked yet');
+
+    await tester.tap(find.byKey(const Key('product-11')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('product-11-count')), matching: find.text('1×')), findsOneWidget);
+    expect(find.byKey(const Key('product-10-count')), findsNothing, reason: 'only the picked item is marked');
+
+    await tester.tap(find.byKey(const Key('product-11')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('product-11-count')), matching: find.text('2×')), findsOneWidget,
+        reason: 'the count follows the check');
+
+    // Sending keeps the mark: the item is still on this table's check.
+    await tester.tap(find.byKey(const Key('check-tab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('send')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('المنيو'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('product-11-count')), findsOneWidget);
+  });
+
   testWidgets('a remembered till and name need only the PIN; the same device signs in again', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
@@ -320,14 +348,15 @@ class _FakeTill {
           final p = menu.products.firstWhere((p) => p.id == op.productId);
           lines = [
             ...lines,
-            WaiterLine(key: 'k${lines.length}', name: p.name, quantity: op.quantity, totalMinor: p.priceMinor * op.quantity),
+            WaiterLine(key: 'k${lines.length}', name: p.name, quantity: op.quantity, totalMinor: p.priceMinor * op.quantity,
+                productId: p.id),
           ];
         case WaiterSendRound():
           lines = [
             for (final l in lines)
               l.isDraft
                   ? WaiterLine(key: l.key, name: l.name, quantity: l.quantity, totalMinor: l.totalMinor,
-                      stage: WaiterLineStage.sent, round: 1)
+                      stage: WaiterLineStage.sent, round: 1, productId: l.productId)
                   : l,
           ];
         default:

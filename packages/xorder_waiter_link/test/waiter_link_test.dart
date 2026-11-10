@@ -207,6 +207,12 @@ void main() {
     test('an unknown table state reads as free rather than failing', () {
       expect(WaiterTable.fromJson({'id': 1, 'label': 'T1', 'state': 'odd'}).state, WaiterTableState.free);
     });
+
+    test("a line carries its product id, and a line without one still reads", () {
+      const line = WaiterLine(key: 'k1', name: WaiterName('Tea'), quantity: 2, totalMinor: 6000, productId: 11);
+      expect(WaiterLine.fromJson(line.toJson()).productId, 11);
+      expect(WaiterLine.fromJson({'key': 'k2', 'name': {'en': 'Tea'}, 'qty': 1, 'total_minor': 3000}).productId, isNull);
+    });
   });
 }
 

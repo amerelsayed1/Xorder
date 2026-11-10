@@ -466,10 +466,16 @@ class WaiterLine {
     this.note,
     this.stage = WaiterLineStage.draft,
     this.round,
+    this.productId,
   });
 
   /// The till's line key: what [WaiterOp]s name the line by.
   final String key;
+
+  /// The menu product this line was rung up from, so the handheld can mark
+  /// what is already on the check. Optional on the wire: an older till or
+  /// server leaves it out, and nothing is marked.
+  final int? productId;
   final WaiterName name;
   final int quantity;
   final int totalMinor;
@@ -489,6 +495,7 @@ class WaiterLine {
     if (note != null) 'note': note,
     'stage': stage.wire,
     if (round != null) 'round': round,
+    if (productId != null) 'product_id': productId,
   };
 
   factory WaiterLine.fromJson(Object? json) {
@@ -502,6 +509,7 @@ class WaiterLine {
       note: _strOrNull(m['note']),
       stage: WaiterLineStage.parse(m['stage']),
       round: _intOrNull(m['round']),
+      productId: _intOrNull(m['product_id']),
     );
   }
 }

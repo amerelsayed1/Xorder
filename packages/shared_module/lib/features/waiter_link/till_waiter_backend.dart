@@ -449,6 +449,7 @@ class TillWaiterBackend implements WaiterLinkBackend {
                 ? WaiterLineStage.voided
                 : (line.stage == LineStage.draft ? WaiterLineStage.draft : WaiterLineStage.sent),
             round: line.roundNumber,
+            productId: line.product.id,
           ),
       ],
     );
