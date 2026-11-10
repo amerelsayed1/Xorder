@@ -86,14 +86,25 @@ class WaiterWireTest extends TestCase
         return "/api/pos/waiter/{$slug}/v1/{$path}";
     }
 
-    /** @return array{device: string, session: string} */
-    private function signIn(string $slug = 'alpha', string $username = 'amer'): array
+    /**
+     * Signs in and, unless told not to, starts the waiter's shift: tables are
+     * worked on the clock (WaiterShiftTest covers the clock itself).
+     *
+     * @return array{device: string, session: string}
+     */
+    private function signIn(string $slug = 'alpha', string $username = 'amer', bool $startShift = true): array
     {
         $res = $this->postJson($this->url('sign-in', $slug), [
             'username' => $username, 'pin' => '1234', 'device_name' => 'Amer · Android',
         ])->assertOk();
 
-        return ['device' => $res->json('device_token'), 'session' => $res->json('session')];
+        $auth = ['device' => $res->json('device_token'), 'session' => $res->json('session')];
+
+        if ($startShift) {
+            $this->postJson($this->url('shift/start', $slug), [], $this->headers($auth))->assertOk();
+        }
+
+        return $auth;
     }
 
     /** @param array{device: string, session: string} $auth */

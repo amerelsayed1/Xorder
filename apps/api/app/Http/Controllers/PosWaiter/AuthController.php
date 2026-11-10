@@ -11,6 +11,7 @@ use App\Models\PosWaiterDevice;
 use App\Models\PosWaiterSession;
 use App\Models\Restaurant;
 use App\Models\User;
+use App\Services\WaiterShiftService;
 use App\Support\PosPin;
 use App\Support\WaiterToken;
 use Illuminate\Http\JsonResponse;
@@ -121,6 +122,10 @@ class AuthController extends Controller
             'last_seen_at' => now(),
         ])->save();
 
+        // The waiter's open shift, whichever device started it; omitted when
+        // none (they start one before the floor opens).
+        $shift = app(WaiterShiftService::class)->open($restaurant, $user);
+
         return response()->json([
             'session' => $sessionToken,
             'staff' => [
@@ -128,9 +133,11 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'capabilities' => $user->tenantCapabilities(),
             ],
-        ] + ($deviceToken !== null ? ['device_token' => $deviceToken] : []));
+        ] + ($deviceToken !== null ? ['device_token' => $deviceToken] : [])
+          + ($shift !== null ? ['shift' => $shift->toWire()] : []));
     }
 
+    /** Signing out ends the session only; an open shift stays open. */
     public function signOut(Request $request): JsonResponse
     {
         /** @var Restaurant $restaurant */
