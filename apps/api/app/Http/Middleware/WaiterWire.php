@@ -9,6 +9,7 @@ use App\Models\PosWaiterDevice;
 use App\Models\PosWaiterSession;
 use App\Models\Restaurant;
 use App\Models\User;
+use App\Services\WaiterShiftService;
 use App\Support\TenantContext;
 use App\Support\WaiterToken;
 use Closure;
@@ -20,7 +21,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   waiter:public   slug → restaurant, entitlement   (hello, sign-in)
  *   waiter:device   + a registered, unrevoked device (sign-out)
- *   waiter:session  + a signed-in waiter on that device (everything else)
+ *   waiter:session  + a signed-in waiter on that device (menu, shift clock)
+ *   waiter:shift    + that waiter has an open shift (floor, check, ops):
+ *                   tables are worked on the clock, else SHIFT_REQUIRED (403)
  *
  * The tenant comes ONLY from the slug in the path, is pinned for the request
  * and released in `finally` (the public-path pattern). Device and session rows
@@ -57,8 +60,13 @@ class WaiterWire
                 $device = $this->device($request, $restaurant);
                 $request->attributes->set('waiter_device', $device);
 
-                if ($depth === 'session') {
+                if ($depth === 'session' || $depth === 'shift') {
                     $this->session($request, $restaurant, $device);
+                }
+
+                if ($depth === 'shift'
+                    && app(WaiterShiftService::class)->open($restaurant, $request->attributes->get('waiter_user')) === null) {
+                    throw new WaiterWireException('SHIFT_REQUIRED', 403);
                 }
             }
 

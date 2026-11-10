@@ -86,6 +86,9 @@ export const DASHBOARD_NAV = [
         children: [
             { key: 'staff', labelKey: 'nav.staff', icon: 'pi pi-users', to: { name: 'dashboard.staff' }, capability: 'staff.view' },
             { key: 'roles', labelKey: 'nav.roles', icon: 'pi pi-shield', to: { name: 'dashboard.roles' }, capability: 'staff.view' },
+            // Waiter shift clock: hours are a staff record (staff.view), and
+            // only a restaurant with the waiter handheld has any.
+            { key: 'waiter_shifts', labelKey: 'nav.waiter_shifts', icon: 'pi pi-clock', to: { name: 'dashboard.waiter_shifts' }, feature: 'table_management', capability: 'staff.view' },
         ],
     },
     // Settings is one entry over its own shell (see settings/settings.config.js,
@@ -96,6 +99,9 @@ export const DASHBOARD_NAV = [
         key: 'settings', labelKey: 'nav.section_settings', section: true,
         children: [
             { key: 'settings', labelKey: 'nav.restaurant_settings', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, match: SETTINGS_ROUTE_NAMES, settings: true },
+            // Read-only: what the plan includes, usage against its limits, and
+            // how to upgrade. Same gate as the profile (settings.view).
+            { key: 'plan', labelKey: 'nav.my_plan', icon: 'pi pi-star', to: { name: 'dashboard.plan' }, capability: 'settings.view' },
         ],
     },
 ]

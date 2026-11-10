@@ -120,6 +120,7 @@ const restaurantRoutes = [
             // The home view itself is deliberately ungated — it is where everyone
             // lands, and it degrades to whatever the user may actually see.
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
+            { path: 'plan', name: 'dashboard.plan', component: () => import('../pages/dashboard/PlanView.vue'), meta: { capability: 'settings.view' } },
             { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue'), meta: { capability: 'live.view' } },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue'), meta: { capability: 'analytics.view' } },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue'), meta: { capability: 'orders.view' } },
@@ -225,6 +226,11 @@ const restaurantRoutes = [
                     { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
                     { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
                     { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+                    // Waiter shift clock (POS-BE-033). The server stacks
+                    // feature:table_management + can:staff.view; the feature
+                    // half lives on the sidebar entry, the guard mirrors the
+                    // capability.
+                    { path: 'waiter-shifts', name: 'dashboard.waiter_shifts', component: () => import('../pages/dashboard/WaiterShiftsView.vue'), meta: { capability: 'staff.view' } },
                 ],
             },
             // Where staff and roles lived inside the settings shell.
