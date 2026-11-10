@@ -23,7 +23,6 @@ sealed class WaiterStrings {
   /// Between a line's modifiers: the comma of the language on screen.
   String get listSeparator => arabic ? '، ' : ', ';
   String get appTitle;
-  String get languageToggle;
 
   // Sign in
   String get signInTitle;
@@ -152,7 +151,6 @@ class EnWaiterStrings extends WaiterStrings {
   @override
   String get appTitle => cloud ? 'XOrder Waiter Cloud' : 'XOrder Waiter Offline';
   @override
-  String get languageToggle => 'العربية';
   @override
   String get signInTitle => 'Sign in';
   @override
@@ -341,7 +339,6 @@ class ArWaiterStrings extends WaiterStrings {
   @override
   String get appTitle => cloud ? 'XOrder ويتر كلاود' : 'XOrder ويتر أوفلاين';
   @override
-  String get languageToggle => 'English';
   @override
   String get signInTitle => 'تسجيل الدخول';
   @override

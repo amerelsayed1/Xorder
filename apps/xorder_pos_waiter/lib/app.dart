@@ -27,8 +27,8 @@ class WaiterApplication extends ConsumerWidget {
         },
         debugShowCheckedModeBanner: false,
         theme: buildWaiterTheme(),
-        // Arabic first: the language a waiter in Egypt reads fastest. One tap
-        // on any screen switches.
+        // Arabic: the language a waiter in Egypt reads fastest. There is no
+        // switch on screen.
         locale: app.locale,
         supportedLocales: const [Locale('ar'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

@@ -46,6 +46,7 @@ void main() {
     await boot(tester);
     expect(find.text('تسجيل الدخول'), findsOneWidget);
     expect(find.text('عنوان الجهاز'), findsOneWidget, reason: 'the offline flavor asks for the till');
+    expect(find.text('English'), findsNothing, reason: 'the app bar carries no language switch');
 
     await signIn(tester, target: '10.0.0.5', username: 'mona');
     expect(till.lastUri!.port, defaultWaiterPort, reason: 'a bare address gets the default port');
@@ -55,6 +56,7 @@ void main() {
     expect(store.saved!.serverName, 'Main till');
     expect(find.text('الطاولات'), findsOneWidget);
     expect(find.text('T1'), findsOneWidget);
+    expect(find.text('English'), findsNothing, reason: 'nor does the floor');
 
     await tester.tap(find.byKey(const Key('table-1')));
     await tester.pumpAndSettle();
@@ -106,7 +108,7 @@ void main() {
   testWidgets('a remembered till and name need only the PIN; the same device signs in again', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     expect(find.text('Main till'), findsOneWidget, reason: 'the door says where it signs in');
     expect(tester.widget<TextField>(find.byKey(const Key('target'))).controller!.text, '10.0.0.5:8787');
@@ -121,7 +123,7 @@ void main() {
   testWidgets('an item with options opens the options sheet; required ones are required', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester);
 
@@ -150,7 +152,7 @@ void main() {
   testWidgets('a table changed on another device shows the latest check and says so', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester);
     await tester.tap(find.byKey(const Key('table-1')));
@@ -166,7 +168,7 @@ void main() {
   testWidgets('a wrong PIN is worded; a revoked phone is told, then registers itself again', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester, pin: '9999');
@@ -188,7 +190,7 @@ void main() {
   testWidgets('the first sign-in to a till shows its fingerprint to compare; confirming pins it', (tester) async {
     till.certificateSha256 = 'ab12' * 16;
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester, target: '10.0.0.5', username: 'mona');
@@ -217,7 +219,7 @@ void main() {
       pinnedSha256: 'ff00' * 16,
     );
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester);
@@ -229,7 +231,7 @@ void main() {
   testWidgets('the cloud flavor never asks about a certificate', (tester) async {
     till.certificateSha256 = 'ab12' * 16;
     await boot(tester, mode: WaiterMode.cloud);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester, target: 'demo', username: 'mona');
     expect(find.text('Is this the till?'), findsNothing);
@@ -238,7 +240,7 @@ void main() {
 
   testWidgets('the cloud flavor signs in with the restaurant, a name and a PIN', (tester) async {
     await boot(tester, mode: WaiterMode.cloud);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     expect(find.text('XOrder Waiter Cloud'), findsOneWidget);
     expect(find.text('Restaurant'), findsOneWidget);
@@ -440,3 +442,8 @@ class _FakeClient implements WaiterClient {
   @override
   void close() {}
 }
+
+/// The app bar has no language switch; English-worded tests flip the locale
+/// through the app's own state instead.
+void toEnglish(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(WaiterApplication))).read(waiterAppProvider.notifier).toggleLanguage();

@@ -175,7 +175,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         shape: const Border(bottom: BorderSide(color: WaiterColors.shellLine)),
         title: Text(s.appTitle),
         actions: [
-          const LanguageButton(),
           if (saved != null)
             PopupMenuButton<void>(
               key: const Key('sign-in-menu'),

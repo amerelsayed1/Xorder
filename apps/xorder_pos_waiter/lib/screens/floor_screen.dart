@@ -87,7 +87,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 child: Text(staff.name, style: WaiterText.ui(color: WaiterColors.body, weight: FontWeight.w500)),
               ),
             ),
-          const LanguageButton(),
           IconButton(
             tooltip: s.signOutAction,
             onPressed: ref.read(waiterAppProvider.notifier).signOut,

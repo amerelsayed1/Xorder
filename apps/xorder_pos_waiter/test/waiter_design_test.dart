@@ -29,7 +29,7 @@ void main() {
       child: const WaiterApplication(),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('pin')), '1111');
     await tester.tap(find.byKey(const Key('sign-in')));
@@ -191,3 +191,8 @@ class _Client implements WaiterClient {
   @override
   void close() {}
 }
+
+/// The app bar has no language switch; English-worded tests flip the locale
+/// through the app's own state instead.
+void toEnglish(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(WaiterApplication))).read(waiterAppProvider.notifier).toggleLanguage();
