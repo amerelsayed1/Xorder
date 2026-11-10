@@ -1,0 +1,40 @@
+# "XOrder POS - Offline" (pos-split-apps, D4). Sales stay in the building on a
+# branch PostgreSQL, and the back office is on the till. The code is the shared
+# member packages/shared_module; this package is the entry point, the platform
+# folders and, from stage 3, the offline-only code (lib/features/admin).
+name: xorder_pos_offline
+description: "XOrder POS - Offline: the desktop till whose sales never leave the building."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  flutter_localizations:
+    sdk: flutter
+  collection: ^1.19.1
+  dio: ^5.11.0
+  excel: ^4.0.6
+  file_picker: ^12.2.0
+  shared_module: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  xorder_pos_test_support: any
+  postgres: ^3.5.12
+  mocktail: ^1.0.5
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # No assets or fonts here: the mark and the IBM Plex faces are declared once,
+  # by packages/shared_module, and reach this app as that package's assets
+  # (`package: 'shared_module'`, `packages/shared_module/IBM Plex …`).
+  # Declaring them again bundled every file twice.

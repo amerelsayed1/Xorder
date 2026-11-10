@@ -1,0 +1,13 @@
+# `dart run flutter_launcher_icons` from this folder regenerates the launcher
+# icons of both flavors from assets/icons/ (one config per flavor; this one is
+# XOrder Waiter – Offline: the official mark as it is). The Android result
+# lands in android/app/src/offline/res; iOS gets AppIcon-offline.appiconset,
+# which the offline scheme selects once the iOS schemes exist.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icons/waiter_offline_1024.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#111827"
+  adaptive_icon_foreground: "assets/icons/waiter_offline_foreground_432.png"

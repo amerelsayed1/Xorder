@@ -1,0 +1,272 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:xorder_waiter_link/xorder_waiter_link.dart';
+
+import '../../app/providers.dart';
+import '../../core/config/deployment.dart';
+import '../../data/postgres/pos_database.dart';
+import '../../data/postgres/postgres_parked_tickets.dart';
+import '../../data/postgres/postgres_waiter_devices.dart';
+import '../../data/postgres/postgres_waiter_shifts.dart';
+import '../../domain/models/pos_settings.dart';
+import '../../domain/models/shift.dart';
+import 'till_waiter_backend.dart';
+import 'waiter_link_tls.dart';
+
+/// Whether this till can serve waiter handhelds, and what it is doing about it.
+class WaiterLinkStatus {
+  const WaiterLinkStatus({
+    this.available = false,
+    this.running = false,
+    this.port = defaultWaiterPort,
+    this.addresses = const [],
+    this.devices = const [],
+    this.certificateSha256,
+    this.certificateNotAfter,
+    this.error,
+  });
+
+  /// This till holds the tables (offline main device, or a cloud till) and
+  /// has a database: it is the one handhelds should pair with.
+  final bool available;
+  final bool running;
+  final int port;
+
+  /// This machine's LAN addresses, for the handheld's "till address" field.
+  final List<String> addresses;
+  final List<WaiterDevice> devices;
+
+  /// The fingerprint of the certificate the link serves with — what a waiter
+  /// compares on the handheld's first sign-in (WA4). Null until it is serving.
+  final String? certificateSha256;
+  final DateTime? certificateNotAfter;
+
+  /// Why the last start failed (port in use, ...), in the system's words.
+  final String? error;
+
+  WaiterLinkStatus copyWith({
+    bool? available,
+    bool? running,
+    int? port,
+    List<String>? addresses,
+    List<WaiterDevice>? devices,
+    String? certificateSha256,
+    DateTime? certificateNotAfter,
+    String? error,
+    bool clearError = false,
+  }) => WaiterLinkStatus(
+    available: available ?? this.available,
+    running: running ?? this.running,
+    port: port ?? this.port,
+    addresses: addresses ?? this.addresses,
+    devices: devices ?? this.devices,
+    certificateSha256: certificateSha256 ?? this.certificateSha256,
+    certificateNotAfter: certificateNotAfter ?? this.certificateNotAfter,
+    error: clearError ? null : (error ?? this.error),
+  );
+}
+
+/// The waiter link server inside this till (waiter-app, WA1).
+///
+/// **Off unless a manager turns it on** (`waiter.link_enabled`, this terminal
+/// only), and then on at every launch, watched from the app root like the
+/// cloud sync loop: a till that restarts mid-service must not leave its
+/// waiters standing with dead handhelds.
+///
+/// Only a till that holds the tables may serve: the offline app's main device
+/// (a child till reads the same database, but its handhelds would be one more
+/// hop from it and two tills serving one floor is two sets of pairing codes),
+/// or a cloud till, which keeps its own tables.
+class WaiterLinkHost extends Notifier<WaiterLinkStatus> {
+  HttpServer? _http;
+  WaiterLinkServer? _server;
+  PostgresWaiterDevices? _devices;
+
+  @override
+  WaiterLinkStatus build() {
+    ref.onDispose(_close);
+    final available = _canHost();
+    if (available) {
+      // After the first frame's reads: the settings arrive asynchronously.
+      Future.microtask(_autostart);
+    }
+    return WaiterLinkStatus(available: available);
+  }
+
+  bool _canHost() {
+    final config = ref.read(deploymentProvider);
+    return ref.read(deviceRoleProvider) == TerminalRole.main &&
+        ref.read(posWriteContextProvider) != null &&
+        PosDatabase.hostFor(config) != null;
+  }
+
+  Future<void> _autostart() async {
+    try {
+      final settings = await ref.read(settingsProvider.future);
+      if (settings.boolean(SettingKey.waiterLinkEnabled, orElse: false)) await start();
+    } on Object {
+      // A till that cannot read its settings serves no handhelds; it still sells.
+    }
+  }
+
+  /// Turn the link on for this till, remembered across restarts.
+  Future<void> enable(PosStaff by) async {
+    await _remember(true, by);
+    await start();
+  }
+
+  /// Turn it off. Registered devices stay registered; they reconnect when it is on.
+  Future<void> disable(PosStaff by) async {
+    await _remember(false, by);
+    await _close();
+    state = state.copyWith(running: false);
+  }
+
+  Future<void> _remember(bool on, PosStaff by) async {
+    final context = ref.read(posWriteContextProvider);
+    if (context == null) return;
+    await ref.read(settingsRepositoryProvider).save(
+      key: SettingKey.waiterLinkEnabled,
+      value: on ? 'true' : 'false',
+      scope: SettingScope.terminal,
+      scopeId: context.terminalId,
+      by: by,
+    );
+    ref.invalidate(settingsProvider);
+  }
+
+  Future<void> start() async {
+    if (_http != null || !_canHost()) return;
+    final config = ref.read(deploymentProvider);
+    final context = ref.read(posWriteContextProvider)!;
+    final database = ref.read(posDatabaseProvider);
+    final devices = PostgresWaiterDevices(
+      database: database,
+      config: config,
+      businessId: context.businessId,
+      branchId: context.branchId,
+    );
+    final shifts = PostgresWaiterShifts(
+      database: database,
+      config: config,
+      businessId: context.businessId,
+      branchId: context.branchId,
+    );
+    final parked = PostgresParkedTickets(
+      database: database,
+      config: config,
+      businessId: context.businessId,
+      branchId: context.branchId,
+    );
+    final profile = ref.read(terminalProfileProvider);
+    final backend = TillWaiterBackend(
+      name: () async => [profile.terminalName, profile.branchName]
+          .whereType<String>()
+          .where((s) => s.trim().isNotEmpty)
+          .join(' — '),
+      catalog: () => ref.read(catalogProvider.future),
+      tables: () => ref.read(tablesRepositoryProvider).liveFloor(),
+      taxConfig: () => ref.read(taxConfigProvider),
+      // Name and PIN together, as the lock screen matches them (WA3).
+      signInAs: ({required username, required pin}) =>
+          ref.read(sessionRepositoryProvider).signInAs(username: username, pin: pin),
+      checks: ParkedTicketsCheckStore(parked),
+      devices: PostgresWaiterDeviceStore(devices),
+      shifts: PostgresWaiterShiftStore(shifts),
+      // The till's own floor catches up now, not at its next 5 s refresh.
+      onSaved: () => unawaited(ref.read(openTicketsProvider.notifier).refresh()),
+    );
+    try {
+      // TLS, always (WA4): the link carries names and PINs, and the LAN is
+      // not a trusted wire. The till's own certificate, pinned by every
+      // handheld on its first sign-in.
+      final identity = await _identity(profile);
+      final context = SecurityContext()
+        ..useCertificateChainBytes(utf8.encode(identity.certificatePem))
+        ..usePrivateKeyBytes(utf8.encode(identity.privateKeyPem));
+      final http = await HttpServer.bindSecure(InternetAddress.anyIPv4, ref.read(waiterLinkPortProvider), context);
+      final server = WaiterLinkServer(backend: backend);
+      server.attach(http);
+      _http = http;
+      _server = server;
+      _devices = devices;
+      state = state.copyWith(
+        running: true,
+        port: http.port,
+        addresses: await _lanAddresses(),
+        devices: await devices.all(),
+        certificateSha256: identity.sha256,
+        certificateNotAfter: identity.notAfter,
+        clearError: true,
+      );
+    } on Object catch (e) {
+      state = state.copyWith(running: false, error: '$e');
+    }
+  }
+
+  /// The certificate this till serves the link with: the one in the secret
+  /// store, or a fresh one when there is none or it is inside its last 60
+  /// days. A renewal changes the fingerprint, which every handheld then asks
+  /// to confirm again — the same margin and the same consequence as the
+  /// installer's database certificate.
+  Future<WaiterLinkIdentity> _identity(TerminalProfile profile) async {
+    final store = ref.read(secretStoreProvider);
+    final kept = WaiterLinkIdentity.fromJson(await store.read(WaiterLinkIdentity.secretKey));
+    if (kept != null && !kept.expiresWithin(const Duration(days: 60))) return kept;
+    final name = [profile.terminalName, profile.branchName]
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .join(' — ');
+    final fresh = await WaiterLinkIdentity.generate(name: name.isEmpty ? 'XOrder POS' : name);
+    await store.write(WaiterLinkIdentity.secretKey, fresh.toJson());
+    return fresh;
+  }
+
+  /// Re-read the device list: a handheld that just signed in for the first
+  /// time appears here without anybody pressing refresh.
+  Future<void> refreshDevices() async {
+    final devices = _devices;
+    if (devices == null) return;
+    state = state.copyWith(devices: await devices.all());
+  }
+
+  Future<void> revoke(int deviceId) async {
+    final devices = _devices;
+    if (devices == null) return;
+    await devices.revoke(deviceId);
+    _server?.forgetDevice(deviceId);
+    state = state.copyWith(devices: await devices.all());
+  }
+
+  Future<void> _close() async {
+    final http = _http;
+    _http = null;
+    _server = null;
+    _devices = null;
+    await http?.close(force: true);
+  }
+
+  static Future<List<String>> _lanAddresses() async {
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      return [
+        for (final i in interfaces)
+          for (final a in i.addresses)
+            if (!a.isLoopback && !a.isLinkLocal) a.address,
+      ];
+    } on Object {
+      return const [];
+    }
+  }
+}
+
+/// The port the link listens on. Fixed, so a handheld's saved address keeps
+/// working across restarts; tests bind 0 (any free port).
+final waiterLinkPortProvider = Provider<int>((_) => defaultWaiterPort);
+
+final waiterLinkHostProvider = NotifierProvider<WaiterLinkHost, WaiterLinkStatus>(
+  WaiterLinkHost.new,
+);

@@ -2,10 +2,12 @@
 #
 # Build and package XOrder POS for macOS distribution.
 #
-# Produces  dist/XOrder-POS-<version>.dmg  containing the release app and a
-# drag-to-Applications shortcut.
+# Produces  dist/XOrder-POS-Offline-<version>.dmg  (or -Cloud-) containing the
+# release app and a drag-to-Applications shortcut. Windows has the matching
+# pair, XOrder-POS-Offline-Setup-<version>.exe and XOrder-POS-Cloud-Setup-…,
+# from .github/workflows/windows-installer.yml.
 #
-#   ./scripts/package_macos.sh
+#   ./scripts/package_macos.sh [offline|cloud]
 #
 # Signing. Flutter ad-hoc signs the release build and Xcode injects
 # `com.apple.security.get-task-allow` while doing it — a debugger-attach
@@ -37,17 +39,28 @@
 #
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Which app (pos-split-apps, D4): `offline` (default) or `cloud`.
+#
+#   ./scripts/package_macos.sh cloud
+#
+# Each is a workspace member under apps/; the shared code is packages/shared_module
+# and the disk image still lands in the repository's dist/.
+FLAVOR="${1:-offline}"
+case "$FLAVOR" in
+  offline) APP_NAME="XOrder POS - Offline"; DMG_NAME="XOrder-POS-Offline" ;;
+  cloud)   APP_NAME="XOrder POS - Cloud";   DMG_NAME="XOrder-POS-Cloud" ;;
+  *) echo "Unknown app '$FLAVOR': use offline or cloud." >&2; exit 2 ;;
+esac
+cd "$(dirname "$0")/../apps/xorder_pos_$FLAVOR"
 
-APP_NAME="XOrder POS"
 BUILD_DIR="build/macos/Build/Products/Release"
 APP_PATH="$BUILD_DIR/$APP_NAME.app"
 ENTITLEMENTS="macos/Runner/Release.entitlements"
-DIST_DIR="dist"
+DIST_DIR="../../dist"
 
 VERSION="$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)"
 BUILD_NUMBER="$(sed -n 's/^version: *[0-9.]*+\(.*\)/\1/p' pubspec.yaml)"
-DMG_PATH="$DIST_DIR/XOrder-POS-$VERSION.dmg"
+DMG_PATH="$DIST_DIR/$DMG_NAME-$VERSION.dmg"
 
 if [ -z "${XORDER_LICENSE_PUBLIC_KEY_B64:-}" ] || [ -z "${XORDER_LICENSE_KEY_ID:-}" ]; then
   echo "XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID are required for a release build." >&2

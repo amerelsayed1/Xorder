@@ -48,6 +48,7 @@ it starts empty and refuses to take money, on purpose.
 | `docs/pos/05-data-contracts.md` | Expected wire shapes |
 | `docs/pos/06-implementation-plan.md` | Phased plan |
 | `docs/pos/07-design-system.md` | Tokens and screen specs from the design handoff |
+| `docs/pos/21-waiter-handheld-design.md` | XOrder Waiter: the till's design language on a phone — screens, components, type scale |
 | `docs/pos/08-deployment-modes.md` | Cloud vs branch server vs islanded — and when on-prem is worth it |
 | `docs/pos/09-licensing.md` | Licence format, expiry policy, renewal |
 | `docs/coordination/POS_TO_BACKEND.md` | Backend requests raised by this app (`POS-BE-xxx`) |

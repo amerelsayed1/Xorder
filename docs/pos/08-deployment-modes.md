@@ -1,5 +1,14 @@
 # POS Deployment Modes — cloud and offline
 
+> **Superseded in part, 2026-11-08 (pos-split-apps, owner decision D0).** The
+> recommendation below — one product, the mode a configuration choice — is
+> replaced by **one codebase, two apps**: "XOrder POS - Cloud"
+> (`apps/xorder_pos_cloud`) and "XOrder POS - Offline"
+> (`apps/xorder_pos_offline`), sharing `packages/shared_module`. Each app runs
+> one mode, fixed in its `main`; a licence covers one mode. What still holds:
+> one schema, one API contract, no forked business rules (§3). The design is
+> `docs/features/pos-split-apps/` in the workspace.
+
 **Status:** implemented in the client · **Backend packaging is `PROPOSED`** (POS-BE-017)
 **Code:** `lib/core/config/deployment.dart`
 **Question this answers:** can XOrder POS run entirely on-premises?
