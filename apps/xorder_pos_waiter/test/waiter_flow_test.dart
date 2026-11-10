@@ -46,6 +46,7 @@ void main() {
     await boot(tester);
     expect(find.text('تسجيل الدخول'), findsOneWidget);
     expect(find.text('عنوان الجهاز'), findsOneWidget, reason: 'the offline flavor asks for the till');
+    expect(find.text('English'), findsNothing, reason: 'the app bar carries no language switch');
 
     await signIn(tester, target: '10.0.0.5', username: 'mona');
     expect(till.lastUri!.port, defaultWaiterPort, reason: 'a bare address gets the default port');
@@ -55,6 +56,7 @@ void main() {
     expect(store.saved!.serverName, 'Main till');
     expect(find.text('الطاولات'), findsOneWidget);
     expect(find.text('T1'), findsOneWidget);
+    expect(find.text('English'), findsNothing, reason: 'nor does the floor');
 
     await tester.tap(find.byKey(const Key('table-1')));
     await tester.pumpAndSettle();
@@ -75,10 +77,88 @@ void main() {
     expect(find.text('الدفعة 1'), findsOneWidget);
   });
 
+  testWidgets('no shift open: the start screen, then the floor once it is started', (tester) async {
+    till.shift = null;
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    expect(find.text('ابدأ ورديتك'), findsOneWidget, reason: 'tables wait for the shift');
+    expect(find.text('T1'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('shift-start')));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNotNull);
+    expect(find.text('الطاولات'), findsOneWidget);
+    expect(find.text('T1'), findsOneWidget);
+    expect(find.textContaining('في الوردية منذ'), findsOneWidget);
+  });
+
+  testWidgets('finishing the shift asks first, records it, and closes the floor', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    toEnglish(tester);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('On shift since'), findsOneWidget);
+    expect(find.textContaining('2h 05m'), findsOneWidget, reason: 'how long so far');
+
+    await tester.tap(find.byKey(const Key('shift-finish')));
+    await tester.pumpAndSettle();
+    expect(find.text('Finish your shift?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNotNull, reason: 'cancel finishes nothing');
+
+    await tester.tap(find.byKey(const Key('shift-finish')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('shift-finish-confirm')));
+    await tester.pumpAndSettle();
+    expect(till.shift, isNull);
+    expect(till.finished, hasLength(1));
+    expect(find.textContaining('Shift finished: 2h 05m'), findsOneWidget);
+    expect(find.text('Start your shift'), findsOneWidget);
+  });
+
+  testWidgets('a shift finished on another handheld sends this one back to the start screen', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    expect(find.text('T1'), findsOneWidget);
+    till.shift = null;
+    await tester.tap(find.byKey(const Key('table-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('ابدأ ورديتك'), findsOneWidget);
+  });
+
+  testWidgets('a picked item is marked selected in the menu, with how many are on the check', (tester) async {
+    await boot(tester);
+    await signIn(tester, target: '10.0.0.5', username: 'mona');
+    await tester.tap(find.byKey(const Key('table-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('product-11-count')), findsNothing, reason: 'nothing is picked yet');
+
+    await tester.tap(find.byKey(const Key('product-11')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('product-11-count')), matching: find.text('1×')), findsOneWidget);
+    expect(find.byKey(const Key('product-10-count')), findsNothing, reason: 'only the picked item is marked');
+
+    await tester.tap(find.byKey(const Key('product-11')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('product-11-count')), matching: find.text('2×')), findsOneWidget,
+        reason: 'the count follows the check');
+
+    // Sending keeps the mark: the item is still on this table's check.
+    await tester.tap(find.byKey(const Key('check-tab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('send')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('المنيو'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('product-11-count')), findsOneWidget);
+  });
+
   testWidgets('a remembered till and name need only the PIN; the same device signs in again', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     expect(find.text('Main till'), findsOneWidget, reason: 'the door says where it signs in');
     expect(tester.widget<TextField>(find.byKey(const Key('target'))).controller!.text, '10.0.0.5:8787');
@@ -93,7 +173,7 @@ void main() {
   testWidgets('an item with options opens the options sheet; required ones are required', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester);
 
@@ -122,7 +202,7 @@ void main() {
   testWidgets('a table changed on another device shows the latest check and says so', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester, size: const Size(800, 1280));
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester);
     await tester.tap(find.byKey(const Key('table-1')));
@@ -138,7 +218,7 @@ void main() {
   testWidgets('a wrong PIN is worded; a revoked phone is told, then registers itself again', (tester) async {
     store.saved = const SavedConnection(target: '10.0.0.5:8787', username: 'mona', deviceToken: 'device-token', serverName: 'Main till');
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester, pin: '9999');
@@ -160,7 +240,7 @@ void main() {
   testWidgets('the first sign-in to a till shows its fingerprint to compare; confirming pins it', (tester) async {
     till.certificateSha256 = 'ab12' * 16;
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester, target: '10.0.0.5', username: 'mona');
@@ -189,7 +269,7 @@ void main() {
       pinnedSha256: 'ff00' * 16,
     );
     await boot(tester);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
 
     await signIn(tester);
@@ -201,7 +281,7 @@ void main() {
   testWidgets('the cloud flavor never asks about a certificate', (tester) async {
     till.certificateSha256 = 'ab12' * 16;
     await boot(tester, mode: WaiterMode.cloud);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     await signIn(tester, target: 'demo', username: 'mona');
     expect(find.text('Is this the till?'), findsNothing);
@@ -210,7 +290,7 @@ void main() {
 
   testWidgets('the cloud flavor signs in with the restaurant, a name and a PIN', (tester) async {
     await boot(tester, mode: WaiterMode.cloud);
-    await tester.tap(find.text('English'));
+    toEnglish(tester);
     await tester.pumpAndSettle();
     expect(find.text('XOrder Waiter Cloud'), findsOneWidget);
     expect(find.text('Restaurant'), findsOneWidget);
@@ -259,6 +339,11 @@ class _FakeTill {
   final signInTokens = <String?>[];
   var lines = <WaiterLine>[];
   int? version;
+
+  /// The waiter's open shift; most tests start on shift.
+  WaiterShift? shift = WaiterShift(id: 1, startedAt: DateTime.now().subtract(const Duration(hours: 2, minutes: 5)));
+  var shiftIds = 1;
+  final finished = <WaiterShift>[];
 
   /// The till's certificate; null for a fake that offers no TLS.
   String? certificateSha256;
@@ -320,14 +405,15 @@ class _FakeTill {
           final p = menu.products.firstWhere((p) => p.id == op.productId);
           lines = [
             ...lines,
-            WaiterLine(key: 'k${lines.length}', name: p.name, quantity: op.quantity, totalMinor: p.priceMinor * op.quantity),
+            WaiterLine(key: 'k${lines.length}', name: p.name, quantity: op.quantity, totalMinor: p.priceMinor * op.quantity,
+                productId: p.id),
           ];
         case WaiterSendRound():
           lines = [
             for (final l in lines)
               l.isDraft
                   ? WaiterLine(key: l.key, name: l.name, quantity: l.quantity, totalMinor: l.totalMinor,
-                      stage: WaiterLineStage.sent, round: 1)
+                      stage: WaiterLineStage.sent, round: 1, productId: l.productId)
                   : l,
           ];
         default:
@@ -383,7 +469,27 @@ class _FakeClient implements WaiterClient {
       token: 's',
       staff: const WaiterStaff(id: 1, name: 'Mona', capabilities: {'pos.operate'}),
       deviceToken: issued,
+      shift: till.shift,
     );
+  }
+
+  void _onShift() {
+    if (till.shift == null) throw const WaiterLinkFailure(WaiterError.shiftRequired, 403);
+  }
+
+  @override
+  Future<WaiterShift?> shift() async => till.shift;
+
+  @override
+  Future<WaiterShift> startShift() async => till.shift ??= WaiterShift(id: ++till.shiftIds, startedAt: DateTime.now());
+
+  @override
+  Future<WaiterShift> finishShift() async {
+    final open = till.shift;
+    if (open == null) throw const WaiterLinkFailure(WaiterError.noOpenShift, 409);
+    till.shift = null;
+    till.finished.add(open);
+    return WaiterShift(id: open.id, startedAt: open.startedAt, endedAt: DateTime.now());
   }
 
   @override
@@ -395,6 +501,7 @@ class _FakeClient implements WaiterClient {
   @override
   Future<WaiterFloor> floor() async {
     _guard();
+    _onShift();
     return const WaiterFloor(currency: _egp, tables: [
       WaiterTable(id: 1, label: 'T1', seats: 4),
       WaiterTable(id: 2, label: 'T2', seats: 2),
@@ -402,12 +509,22 @@ class _FakeClient implements WaiterClient {
   }
 
   @override
-  Future<WaiterCheck> check(int tableId) async => till.check;
+  Future<WaiterCheck> check(int tableId) async {
+    _onShift();
+    return till.check;
+  }
 
   @override
-  Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops}) async =>
-      till.apply(ops);
+  Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops}) async {
+    _onShift();
+    return till.apply(ops);
+  }
 
   @override
   void close() {}
 }
+
+/// The app bar has no language switch; English-worded tests flip the locale
+/// through the app's own state instead.
+void toEnglish(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(WaiterApplication))).read(waiterAppProvider.notifier).toggleLanguage();

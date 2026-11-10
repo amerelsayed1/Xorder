@@ -30,6 +30,27 @@ const sqliteUpgrades = <int, List<String>>{
 )''',
     '''CREATE INDEX IF NOT EXISTS pos_waiter_devices_business_idx ON pos_waiter_devices (business_id, branch_id)''',
   ],
+  // Waiter shifts clocked on the handheld (waiter shift clock).
+  66: [
+    '''CREATE TABLE IF NOT EXISTS "pos_waiter_shifts" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "business_id" INTEGER NOT NULL,
+  "branch_id" INTEGER,
+  "user_id" INTEGER NOT NULL,
+  "started_device_id" INTEGER,
+  "ended_device_id" INTEGER,
+  "started_at" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z', 'now')),
+  "ended_at" TEXT,
+  CONSTRAINT "pos_waiter_shifts_ends_after_start" CHECK ((ended_at IS NULL OR ended_at >= started_at)),
+  FOREIGN KEY (business_id) REFERENCES pos_businesses(id) ON DELETE CASCADE,
+  FOREIGN KEY (branch_id) REFERENCES pos_branches(id),
+  FOREIGN KEY (user_id) REFERENCES pos_users(id),
+  FOREIGN KEY (started_device_id) REFERENCES pos_waiter_devices(id),
+  FOREIGN KEY (ended_device_id) REFERENCES pos_waiter_devices(id)
+)''',
+    '''CREATE UNIQUE INDEX IF NOT EXISTS pos_waiter_shifts_one_open ON pos_waiter_shifts (user_id) WHERE ended_at IS NULL''',
+    '''CREATE INDEX IF NOT EXISTS pos_waiter_shifts_business_idx ON pos_waiter_shifts (business_id, branch_id, started_at)''',
+  ],
 };
 
 /// Brings a cloud till's SQLite file up to the current schema.

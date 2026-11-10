@@ -297,4 +297,9 @@ enum ManagementPane {
   /// accounts and the account each payment method pays into. Last, for the same
   /// reason as [sales]: no other pane's index moves.
   financeAccounts,
+
+  /// People › Waiter shifts: the XOrder Waiter handheld's shift clock, behind
+  /// `reports.view` as People › Shifts is. Last, for the same reason as
+  /// [sales]; `_placeInTab` puts it right after Shifts.
+  waiterShifts,
 }

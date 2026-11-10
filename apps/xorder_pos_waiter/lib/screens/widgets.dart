@@ -1,25 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 
-import '../state.dart';
 import '../strings.dart';
 import '../theme.dart';
 
 /// The handheld's components (design §4). Screens compose these and add no
 /// one-off styling of their own.
-
-/// Switches between Arabic and English. Every screen carries it: a waiter who
-/// picks up a handheld set to the other language must not need a menu to fix it.
-class LanguageButton extends ConsumerWidget {
-  const LanguageButton({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => TextButton(
-    onPressed: ref.read(waiterAppProvider.notifier).toggleLanguage,
-    child: Text(WaiterStrings.of(context).languageToggle),
-  );
-}
 
 /// The XOrder mark: an accent square with the letter, as on the till's start screen.
 class XorderMark extends StatelessWidget {

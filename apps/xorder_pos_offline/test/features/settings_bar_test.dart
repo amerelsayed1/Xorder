@@ -532,6 +532,7 @@ void main() {
       'Employees',
       'Roles & permissions',
       'Shifts',
+      'Waiter shifts',
       'Customers',
     ]);
     // Dining areas & tables came from Menu, first, as the epic lists them.
@@ -721,6 +722,7 @@ void main() {
       // three of Settings'.
       ('Finance', 'Settlements', ManagementPane.settlements),
       ('People', 'Shifts', ManagementPane.shifts),
+      ('People', 'Waiter shifts', ManagementPane.waiterShifts),
       ('Management', 'Sync', ManagementPane.sync),
       ('Settings', 'Printer & cash drawer', ManagementPane.printer),
     ]) {
@@ -982,6 +984,7 @@ void main() {
       'المستخدمون',
       'الأدوار والصلاحيات',
       'الورديات',
+      'ورديات النُدُل',
       'العملاء',
     ]);
     // Each of Settings' four once, in its words — no second printer line from

@@ -5,6 +5,7 @@ import 'package:xorder_waiter_link/xorder_waiter_link.dart';
 import '../../core/money/money.dart';
 import '../../data/postgres/postgres_parked_tickets.dart';
 import '../../data/postgres/postgres_waiter_devices.dart';
+import '../../data/postgres/postgres_waiter_shifts.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/permissions.dart';
@@ -65,6 +66,27 @@ class PostgresWaiterDeviceStore implements WaiterDeviceStore {
   Future<void> touch(int id) => _devices.touch(id);
 }
 
+/// Waiters' shifts. [PostgresWaiterShifts] in the app; a list in tests.
+abstract interface class WaiterShiftStore {
+  Future<WaiterShiftRecord?> open(int staffId);
+  Future<WaiterShiftRecord> start(int staffId, {int? deviceId});
+  Future<WaiterShiftRecord?> finish(int staffId, {int? deviceId});
+}
+
+class PostgresWaiterShiftStore implements WaiterShiftStore {
+  const PostgresWaiterShiftStore(this._shifts);
+  final PostgresWaiterShifts _shifts;
+
+  @override
+  Future<WaiterShiftRecord?> open(int staffId) => _shifts.open(staffId);
+
+  @override
+  Future<WaiterShiftRecord> start(int staffId, {int? deviceId}) => _shifts.start(staffId, deviceId: deviceId);
+
+  @override
+  Future<WaiterShiftRecord?> finish(int staffId, {int? deviceId}) => _shifts.finish(staffId, deviceId: deviceId);
+}
+
 /// The till's half of the waiter link: the questions a handheld asks,
 /// answered with this till's own catalog, tables, staff and `TicketEngine`
 /// (waiter-app, WA1).
@@ -89,6 +111,7 @@ class TillWaiterBackend implements WaiterLinkBackend {
     required Future<PosStaff?> Function({required String username, required String pin}) signInAs,
     required this.checks,
     required this.devices,
+    required this.shifts,
     this.onSaved,
     String Function()? newTicketId,
     DateTime Function()? clock,
@@ -103,6 +126,7 @@ class TillWaiterBackend implements WaiterLinkBackend {
   final Future<PosStaff?> Function({required String username, required String pin}) _signIn;
   final WaiterCheckStore checks;
   final WaiterDeviceStore devices;
+  final WaiterShiftStore shifts;
 
   /// Called after a handheld changed a table, so the till's own floor shows
   /// it now rather than at its next refresh.
@@ -156,6 +180,22 @@ class TillWaiterBackend implements WaiterLinkBackend {
       capabilities: {for (final c in _shown) if (staff.can(c)) c},
     );
   }
+
+  // ---------------------------------------------------------------- shifts
+
+  @override
+  Future<WaiterShift?> openShift(int staffId) async => _wire(await shifts.open(staffId));
+
+  @override
+  Future<WaiterShift> startShift(WaiterStaff staff, WaiterDeviceRecord device) async =>
+      _wire(await shifts.start(staff.id, deviceId: device.id))!;
+
+  @override
+  Future<WaiterShift?> finishShift(WaiterStaff staff, WaiterDeviceRecord device) async =>
+      _wire(await shifts.finish(staff.id, deviceId: device.id));
+
+  static WaiterShift? _wire(WaiterShiftRecord? s) =>
+      s == null ? null : WaiterShift(id: s.id, startedAt: s.startedAt, endedAt: s.endedAt);
 
   // ---------------------------------------------------------------- reads
 
@@ -449,6 +489,7 @@ class TillWaiterBackend implements WaiterLinkBackend {
                 ? WaiterLineStage.voided
                 : (line.stage == LineStage.draft ? WaiterLineStage.draft : WaiterLineStage.sent),
             round: line.roundNumber,
+            productId: line.product.id,
           ),
       ],
     );

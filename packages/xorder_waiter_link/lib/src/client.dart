@@ -28,6 +28,16 @@ abstract interface class WaiterClient {
   Future<WaiterFloor> floor();
   Future<WaiterCheck> check(int tableId);
   Future<WaiterCheck> apply({required int tableId, required int? version, required List<WaiterOp> ops});
+
+  /// The signed-in waiter's open shift, or null.
+  Future<WaiterShift?> shift();
+
+  /// Start the waiter's shift; an already-open one comes back as it is.
+  Future<WaiterShift> startShift();
+
+  /// Finish the open shift and return it with its end time. None open throws
+  /// [WaiterLinkFailure] with [WaiterError.noOpenShift].
+  Future<WaiterShift> finishShift();
   void close();
 }
 
@@ -153,6 +163,15 @@ class WaiterLinkClient implements WaiterClient {
       'ops': [for (final op in ops) op.toJson()],
     }),
   );
+
+  @override
+  Future<WaiterShift?> shift() async => WaiterShift.fromReply(await _call('GET', ['shift']));
+
+  @override
+  Future<WaiterShift> startShift() async => WaiterShift.fromJson((await _call('POST', ['shift', 'start']))['shift']);
+
+  @override
+  Future<WaiterShift> finishShift() async => WaiterShift.fromJson((await _call('POST', ['shift', 'finish']))['shift']);
 
   @override
   void close() => _http.close(force: true);

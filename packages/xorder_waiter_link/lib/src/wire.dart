@@ -41,6 +41,8 @@ String _str(Object? v, {String orElse = ''}) => v is String ? v : orElse;
 
 String? _strOrNull(Object? v) => v is String && v.isNotEmpty ? v : null;
 
+DateTime? _time(Object? v) => v is String ? DateTime.tryParse(v)?.toUtc() : null;
+
 bool _bool(Object? v, {bool orElse = false}) => v is bool ? v : orElse;
 
 /// A name in both languages; the handheld picks by its own locale.
@@ -145,15 +147,20 @@ class WaiterStaff {
 /// registered it as a device on that sign-in and this is the token it keeps
 /// for every later request (WA3: sign-in registers, there is no pairing code).
 class WaiterSession {
-  const WaiterSession({required this.token, required this.staff, this.deviceToken});
+  const WaiterSession({required this.token, required this.staff, this.deviceToken, this.shift});
   final String token;
   final WaiterStaff staff;
   final String? deviceToken;
+
+  /// The waiter's open shift at sign-in, or null: they start one before the
+  /// floor opens (a shift is the waiter's, not the device's).
+  final WaiterShift? shift;
 
   Map<String, Object?> toJson() => {
     'session': token,
     'staff': staff.toJson(),
     'device_token': ?deviceToken,
+    if (shift != null) 'shift': shift!.toJson(),
   };
 
   factory WaiterSession.fromJson(Object? json) {
@@ -164,8 +171,44 @@ class WaiterSession {
       token: token,
       staff: WaiterStaff.fromJson(m['staff']),
       deviceToken: _strOrNull(m['device_token']),
+      shift: m['shift'] == null ? null : WaiterShift.fromJson(m['shift']),
     );
   }
+}
+
+/// A waiter's working shift: when they started and, once they finished, when
+/// that was. Times are the server's clock, in UTC on the wire.
+///
+/// **A waiter must have an open shift to work tables**: without one the floor,
+/// a check and its ops answer [WaiterError.shiftRequired]. The menu does not.
+class WaiterShift {
+  const WaiterShift({required this.id, required this.startedAt, this.endedAt});
+
+  final int id;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+
+  bool get isOpen => endedAt == null;
+
+  /// How long it ran, or has run so far at [now].
+  Duration length(DateTime now) => (endedAt ?? now).difference(startedAt);
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'started_at': startedAt.toUtc().toIso8601String(),
+    if (endedAt != null) 'ended_at': endedAt!.toUtc().toIso8601String(),
+  };
+
+  factory WaiterShift.fromJson(Object? json) {
+    final m = _map(json, 'shift');
+    final started = _time(m['started_at']);
+    if (started == null) throw const WaiterWireError('shift has no started_at');
+    return WaiterShift(id: _int(m['id']), startedAt: started, endedAt: _time(m['ended_at']));
+  }
+
+  /// `{"shift": …}` or `{"shift": null}`, as the shift calls answer.
+  static WaiterShift? fromReply(Map<String, Object?> body) =>
+      body['shift'] == null ? null : WaiterShift.fromJson(body['shift']);
 }
 
 // ---------------------------------------------------------------------------
@@ -466,10 +509,16 @@ class WaiterLine {
     this.note,
     this.stage = WaiterLineStage.draft,
     this.round,
+    this.productId,
   });
 
   /// The till's line key: what [WaiterOp]s name the line by.
   final String key;
+
+  /// The menu product this line was rung up from, so the handheld can mark
+  /// what is already on the check. Optional on the wire: an older till or
+  /// server leaves it out, and nothing is marked.
+  final int? productId;
   final WaiterName name;
   final int quantity;
   final int totalMinor;
@@ -489,6 +538,7 @@ class WaiterLine {
     if (note != null) 'note': note,
     'stage': stage.wire,
     if (round != null) 'round': round,
+    if (productId != null) 'product_id': productId,
   };
 
   factory WaiterLine.fromJson(Object? json) {
@@ -502,6 +552,7 @@ class WaiterLine {
       note: _strOrNull(m['note']),
       stage: WaiterLineStage.parse(m['stage']),
       round: _intOrNull(m['round']),
+      productId: _intOrNull(m['product_id']),
     );
   }
 }
@@ -714,6 +765,12 @@ abstract final class WaiterError {
   /// The till's ticket rules refused the edit (out of stock, a required
   /// option missing, a sent line ...). The body's `reason` says which.
   static const refused = 'REFUSED';
+
+  /// The waiter has no open shift: start one before working tables.
+  static const shiftRequired = 'SHIFT_REQUIRED';
+
+  /// "Finish shift" with no shift open (already finished elsewhere).
+  static const noOpenShift = 'NO_OPEN_SHIFT';
 
   static const notFound = 'NOT_FOUND';
   static const badRequest = 'BAD_REQUEST';

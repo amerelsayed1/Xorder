@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'mode.dart';
 import 'screens/floor_screen.dart';
+import 'screens/shift_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -27,15 +28,15 @@ class WaiterApplication extends ConsumerWidget {
         },
         debugShowCheckedModeBanner: false,
         theme: buildWaiterTheme(),
-        // Arabic first: the language a waiter in Egypt reads fastest. One tap
-        // on any screen switches.
+        // Arabic: the language a waiter in Egypt reads fastest. There is no
+        // switch on screen.
         locale: app.locale,
         supportedLocales: const [Locale('ar'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: switch (app.phase) {
           WaiterPhase.loading => const Scaffold(body: Center(child: CircularProgressIndicator())),
           WaiterPhase.signedOut => const SignInScreen(),
-          WaiterPhase.signedIn => const FloorScreen(),
+          WaiterPhase.signedIn => app.shift == null ? const ShiftStartScreen() : const FloorScreen(),
         },
       ),
     );

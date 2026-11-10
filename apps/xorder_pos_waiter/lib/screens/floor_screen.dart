@@ -8,6 +8,7 @@ import '../state.dart';
 import '../strings.dart';
 import '../theme.dart';
 import 'check_screen.dart';
+import 'shift_screen.dart';
 import 'widgets.dart';
 
 /// Every table of the branch, as the till holds them (W5: all waiters see all
@@ -75,10 +76,19 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   Widget build(BuildContext context) {
     final s = WaiterStrings.of(context);
     final staff = ref.watch(waiterAppProvider.select((a) => a.staff));
+    final shift = ref.watch(waiterAppProvider.select((a) => a.shift));
     final floor = _floor;
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.floorTitle),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(s.floorTitle),
+            // Rebuilt with every floor read, so the length keeps up.
+            if (shift != null) ShiftSubtitle(shift, now: DateTime.now()),
+          ],
+        ),
         actions: [
           if (staff != null)
             Center(
@@ -87,7 +97,13 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 child: Text(staff.name, style: WaiterText.ui(color: WaiterColors.body, weight: FontWeight.w500)),
               ),
             ),
-          const LanguageButton(),
+          if (shift != null)
+            IconButton(
+              key: const Key('shift-finish'),
+              tooltip: s.shiftFinishAction,
+              onPressed: () => confirmFinishShift(context, ref, shift),
+              icon: const Icon(Icons.timer_off_outlined),
+            ),
           IconButton(
             tooltip: s.signOutAction,
             onPressed: ref.read(waiterAppProvider.notifier).signOut,

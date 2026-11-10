@@ -353,8 +353,9 @@ void main() {
           ).isAllowed;
 
           // The panes `pos/ia-screens` built, each behind exactly its own
-          // gate and no other: Shifts and Settlements are `reports.view`, as
-          // the panes' `requires` say, so whoever lacks it sees neither;
+          // gate and no other: Shifts, Waiter shifts and Settlements are
+          // `reports.view`, as the panes' `requires` say, so whoever lacks it
+          // sees none of them;
           // Printer is `terminal.manage`, as the till's dialog is; the rest
           // are everybody's past the door, on both deployments.
           final machine = Authorization.check(
@@ -363,6 +364,7 @@ void main() {
           ).isAllowed;
           for (final (pane, allowed) in [
             (ManagementPane.shifts, reads),
+            (ManagementPane.waiterShifts, reads),
             (ManagementPane.settlements, reads),
             (ManagementPane.printer, machine),
             (ManagementPane.sync, true),
@@ -896,6 +898,8 @@ void main() {
             'المستخدمون',
             'الأدوار والصلاحيات',
             'الورديات',
+            // The waiters' half of Shifts, beside it.
+            'ورديات النُدُل',
             'العملاء',
           ],
           // ETA only while filing is on.

@@ -49,6 +49,7 @@ import 'management_roles_pane.dart';
 import 'management_accounts_pane.dart';
 import 'management_settlements_pane.dart';
 import 'management_shifts_pane.dart';
+import 'management_waiter_shifts_pane.dart';
 import 'management_staff_pane.dart';
 import 'management_sync_pane.dart';
 import 'management_terminal_pane.dart';
@@ -281,7 +282,8 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.eta => BackOfficeTab.system,
   ManagementPane.staff ||
   ManagementPane.roles ||
-  ManagementPane.shifts => BackOfficeTab.people,
+  ManagementPane.shifts ||
+  ManagementPane.waiterShifts => BackOfficeTab.people,
   ManagementPane.customers => BackOfficeTab.people,
   ManagementPane.receipt ||
   ManagementPane.taxes ||
@@ -362,6 +364,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home ||
   ManagementPane.sales ||
   ManagementPane.shifts ||
+  ManagementPane.waiterShifts ||
   ManagementPane.customers ||
   ManagementPane.settlements ||
   ManagementPane.financeAccounts ||
@@ -452,9 +455,13 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.staff => 0,
   ManagementPane.roles => 1,
   ManagementPane.shifts => 2,
+  // Beside Shifts, which it is the waiters' half of: somebody looking for who
+  // worked when looks there. Customers moves down one; no other tab's pages
+  // move.
+  ManagementPane.waiterShifts => 3,
   // After the owner's three: the map has no word for Customers, so it goes
   // last rather than between pages whose order was dictated.
-  ManagementPane.customers => 3,
+  ManagementPane.customers => 4,
   // السجل، النسخ الاحتياطي، الأجهزة، المزامنة — and ETA, hidden while filing
   // is off.
   // XORD-022: Dining areas & tables, Devices, Synchronization, Backups,
@@ -781,6 +788,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
   // header and the bar name one place with one word.
   ManagementPane.sales => (s.tabSales, s.paneSalesBlurb),
   ManagementPane.shifts => (s.paneShifts, s.shiftsBlurb),
+  ManagementPane.waiterShifts => (s.paneWaiterShifts, s.waiterShiftsBlurb),
   ManagementPane.customers => (s.paneCustomers, s.paneCustomersBlurb),
   ManagementPane.settlements => (s.paneSettlements, s.settlementsBlurb),
   ManagementPane.financeAccounts => (
@@ -913,6 +921,8 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // pane does. Backed by `shiftHistoryProvider`, which asks `reports.view` of
   // the person acting before it reads a shift.
   ManagementPane.shifts => ManagementShiftsPane.requires,
+  // Backed by `waiterShiftsProvider`, which asks the same of the person acting.
+  ManagementPane.waiterShifts => ManagementWaiterShiftsPane.requires,
   ManagementPane.settlements => ManagementSettlementsPane.requires,
   ManagementPane.financeAccounts => ManagementAccountsPane.requires,
   // The gate the till's Settings menu puts on the printer dialog. Like
@@ -1353,6 +1363,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // other half of the switch above it — one page, not a menu of near-copies.
     ManagementPane.sales => _salesPane(),
     ManagementPane.shifts => ManagementShiftsPane(admin: admin),
+    ManagementPane.waiterShifts => ManagementWaiterShiftsPane(admin: admin),
     ManagementPane.customers => const ManagementCustomersPane(),
     ManagementPane.settlements => ManagementSettlementsPane(admin: admin),
     ManagementPane.financeAccounts => ManagementAccountsPane(admin: admin),

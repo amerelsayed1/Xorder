@@ -1662,6 +1662,21 @@ sealed class AppStrings {
   String shiftReportNote(String note);
   String get shiftsVarianceHidden;
   String get shiftsExpectedNote;
+
+  // ── People › Waiter shifts ────────────────────────────────────────────────
+  String get waiterShiftsBlurb;
+  String get waiterShiftsWaiter;
+  String get waiterShiftsStarted;
+  String get waiterShiftsFinished;
+  String get waiterShiftsLength;
+  String get waiterShiftsHandheld;
+  String get waiterShiftsOnShift;
+  String get waiterShiftsTotals;
+  String get waiterShiftsCount;
+  String get waiterShiftsHours;
+  String get waiterShiftsNone;
+  String get waiterShiftsNeedReports;
+  String get waiterShiftsNote;
   String get financeAsOf;
   String get financeBucketOverdue;
   String get financeBucketToday;
@@ -2063,6 +2078,7 @@ sealed class AppStrings {
   String get paneVoidedOrders;
   String get paneVoidedOrdersBlurb;
   String get paneShifts;
+  String get paneWaiterShifts;
   String get paneSettlements;
   String get panePrinterBlurb;
   String get paneAbout;
@@ -6949,6 +6965,39 @@ final class EnStrings extends AppStrings {
       'count was judged against. Force-closed means somebody other than the '
       "person who opened the drawer counted it, on a manager's approval.";
   @override
+  String get waiterShiftsBlurb =>
+      'When each waiter started and finished a shift on the XOrder Waiter '
+      'handheld, open shifts first. Read-only: the handheld keeps the clock.';
+  @override
+  String get waiterShiftsWaiter => 'Waiter';
+  @override
+  String get waiterShiftsStarted => 'Started';
+  @override
+  String get waiterShiftsFinished => 'Finished';
+  @override
+  String get waiterShiftsLength => 'Length';
+  @override
+  String get waiterShiftsHandheld => 'Handheld';
+  @override
+  String get waiterShiftsOnShift => 'On shift';
+  @override
+  String get waiterShiftsTotals => 'Hours per waiter';
+  @override
+  String get waiterShiftsCount => 'Shifts';
+  @override
+  String get waiterShiftsHours => 'Hours';
+  @override
+  String get waiterShiftsNone =>
+      'No waiter clocked a shift at this branch in these dates.';
+  @override
+  String get waiterShiftsNeedReports =>
+      'Waiter shifts are shown to those who may view reports.';
+  @override
+  String get waiterShiftsNote =>
+      'Lengths are hours and minutes. A shift still open is counted up to '
+      'when this page was opened; a shift that runs past the dates counts in '
+      'full.';
+  @override
   String get financeAsOf => 'As of business date';
   @override
   String get financeBucketOverdue => 'Overdue';
@@ -7782,6 +7831,8 @@ final class EnStrings extends AppStrings {
       'Voided sales, with who voided them and why';
   @override
   String get paneShifts => 'Shifts';
+  @override
+  String get paneWaiterShifts => 'Waiter shifts';
   @override
   String get paneSettlements => 'Settlements';
   @override
@@ -12465,6 +12516,38 @@ final class ArStrings extends AppStrings {
       'الذي حُكم على الجرد مقابله. «أُقفلت إجبارياً» تعني أن شخصاً غير من فتح '
       'الدرج هو من جرده، بموافقة مدير.';
   @override
+  String get waiterShiftsBlurb =>
+      'متى بدأ كل نادل ورديته ومتى أنهاها على جهاز XOrder Waiter المحمول، '
+      'والمفتوحة منها أولاً. للعرض فقط: الجهاز المحمول هو من يسجّل الوقت.';
+  @override
+  String get waiterShiftsWaiter => 'النادل';
+  @override
+  String get waiterShiftsStarted => 'البداية';
+  @override
+  String get waiterShiftsFinished => 'النهاية';
+  @override
+  String get waiterShiftsLength => 'المدة';
+  @override
+  String get waiterShiftsHandheld => 'الجهاز المحمول';
+  @override
+  String get waiterShiftsOnShift => 'في الوردية';
+  @override
+  String get waiterShiftsTotals => 'الساعات لكل نادل';
+  @override
+  String get waiterShiftsCount => 'الورديات';
+  @override
+  String get waiterShiftsHours => 'الساعات';
+  @override
+  String get waiterShiftsNone =>
+      'لم يسجّل أي نادل وردية في هذا الفرع خلال هذه التواريخ.';
+  @override
+  String get waiterShiftsNeedReports =>
+      'تظهر ورديات النُدُل لمن لديه صلاحية عرض التقارير.';
+  @override
+  String get waiterShiftsNote =>
+      'المدة بالساعات والدقائق. الوردية التي ما زالت مفتوحة تُحسب حتى لحظة '
+      'فتح هذه الصفحة، والوردية التي تتجاوز التواريخ تُحسب كاملة.';
+  @override
   String get financeAsOf => 'حتى يوم العمل';
   @override
   String get financeBucketOverdue => 'متأخرة';
@@ -13272,6 +13355,8 @@ final class ArStrings extends AppStrings {
   String get paneVoidedOrdersBlurb => 'المبيعات الملغاة، ومن ألغاها ولماذا';
   @override
   String get paneShifts => 'الورديات';
+  @override
+  String get paneWaiterShifts => 'ورديات النُدُل';
   @override
   String get paneSettlements => 'التسويات';
   @override

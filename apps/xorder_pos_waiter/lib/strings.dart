@@ -23,7 +23,6 @@ sealed class WaiterStrings {
   /// Between a line's modifiers: the comma of the language on screen.
   String get listSeparator => arabic ? '، ' : ', ';
   String get appTitle;
-  String get languageToggle;
 
   // Sign in
   String get signInTitle;
@@ -48,6 +47,21 @@ sealed class WaiterStrings {
   String get certificateMatch;
   String get certificateChanged;
   String get certificateUntrustedCloud;
+
+  // The shift clock
+  String get shiftStartTitle;
+  String get shiftStartIntro;
+  String get shiftStartAction;
+  String get shiftFinishAction;
+  String get shiftFinishTitle;
+  String shiftFinishConfirm(String since, String length);
+  String shiftSince(String time);
+  String shiftFinished(String length);
+  String get shiftRequired;
+  String get noOpenShift;
+
+  /// "2h 05m" — hours and minutes, in mono on screen.
+  String duration(Duration d);
 
   // Floor
   String get floorTitle;
@@ -112,6 +126,8 @@ sealed class WaiterStrings {
     WaiterError.versionMismatch => versionMismatch,
     WaiterError.certificateChanged => certificateChanged,
     WaiterError.certificateUntrusted => certificateUntrustedCloud,
+    WaiterError.shiftRequired => shiftRequired,
+    WaiterError.noOpenShift => noOpenShift,
     'UNREACHABLE' => unreachable,
     _ => tillProblem,
   };
@@ -152,7 +168,6 @@ class EnWaiterStrings extends WaiterStrings {
   @override
   String get appTitle => cloud ? 'XOrder Waiter Cloud' : 'XOrder Waiter Offline';
   @override
-  String get languageToggle => 'العربية';
   @override
   String get signInTitle => 'Sign in';
   @override
@@ -199,6 +214,28 @@ class EnWaiterStrings extends WaiterStrings {
       'If the till was set up again, forget it and sign in afresh; otherwise do not continue.';
   @override
   String get certificateUntrustedCloud => 'The secure connection to xorder.io could not be verified.';
+  @override
+  String get shiftStartTitle => 'Start your shift';
+  @override
+  String get shiftStartIntro => 'Tables open once your shift has started. The start time is recorded.';
+  @override
+  String get shiftStartAction => 'Start shift';
+  @override
+  String get shiftFinishAction => 'Finish shift';
+  @override
+  String get shiftFinishTitle => 'Finish your shift?';
+  @override
+  String shiftFinishConfirm(String since, String length) => 'On shift since $since ($length). The finish time is recorded now.';
+  @override
+  String shiftSince(String time) => 'On shift since $time';
+  @override
+  String shiftFinished(String length) => 'Shift finished: $length.';
+  @override
+  String get shiftRequired => 'Start your shift to work tables.';
+  @override
+  String get noOpenShift => 'Your shift was already finished.';
+  @override
+  String duration(Duration d) => '${d.inHours}h ${(d.inMinutes % 60).toString().padLeft(2, '0')}m';
   @override
   String get floorTitle => 'Tables';
   @override
@@ -341,7 +378,6 @@ class ArWaiterStrings extends WaiterStrings {
   @override
   String get appTitle => cloud ? 'XOrder ويتر كلاود' : 'XOrder ويتر أوفلاين';
   @override
-  String get languageToggle => 'English';
   @override
   String get signInTitle => 'تسجيل الدخول';
   @override
@@ -388,6 +424,28 @@ class ArWaiterStrings extends WaiterStrings {
       'إن أُعيد إعداد الجهاز، انسَه وسجّل الدخول من جديد؛ وإلا فلا تكمل.';
   @override
   String get certificateUntrustedCloud => 'تعذّر التحقق من الاتصال الآمن بـ xorder.io.';
+  @override
+  String get shiftStartTitle => 'ابدأ ورديتك';
+  @override
+  String get shiftStartIntro => 'تُفتح الطاولات بعد بدء ورديتك، ويُسجَّل وقت البدء.';
+  @override
+  String get shiftStartAction => 'بدء الوردية';
+  @override
+  String get shiftFinishAction => 'إنهاء الوردية';
+  @override
+  String get shiftFinishTitle => 'إنهاء ورديتك؟';
+  @override
+  String shiftFinishConfirm(String since, String length) => 'في الوردية منذ $since ($length). سيُسجَّل وقت الإنهاء الآن.';
+  @override
+  String shiftSince(String time) => 'في الوردية منذ $time';
+  @override
+  String shiftFinished(String length) => 'انتهت الوردية: $length.';
+  @override
+  String get shiftRequired => 'ابدأ ورديتك للعمل على الطاولات.';
+  @override
+  String get noOpenShift => 'ورديتك منتهية بالفعل.';
+  @override
+  String duration(Duration d) => '${d.inHours}س ${(d.inMinutes % 60).toString().padLeft(2, '0')}د';
   @override
   String get floorTitle => 'الطاولات';
   @override

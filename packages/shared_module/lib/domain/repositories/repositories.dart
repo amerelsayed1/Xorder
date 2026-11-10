@@ -33,6 +33,7 @@ import '../models/refund_history.dart';
 import '../services/refund_engine.dart' show RefundQuote;
 import '../services/authorization.dart' show Approval;
 import '../models/shift.dart';
+import '../models/waiter_shift.dart';
 import '../models/ticket.dart';
 
 // Every implementation of the till's writes is handed one, so every
@@ -1319,4 +1320,17 @@ abstract interface class PrintQueueRepository {
 
   /// It failed again. Counts the attempt and keeps the job.
   Future<void> markAttempted(int id, {String? error});
+}
+
+/// The waiter shift clock's record, read-only: People › Waiter shifts.
+///
+/// Only the read, and not the clock's start and finish, because the back
+/// office never clocks anybody in — the handheld does, through the waiter
+/// link, against the concrete store. An interface carrying writes the pane has
+/// no business making is how a "fix the forgotten clock-out" button gets
+/// added without anybody deciding the till may rewrite a waiter's hours.
+abstract interface class WaiterShiftReader {
+  /// This branch's shifts that overlap [from]–[to], still-open ones included,
+  /// newest first, with the waiter's and the handhelds' names.
+  Future<List<WaiterShiftRecord>> between(DateTime from, DateTime to);
 }
