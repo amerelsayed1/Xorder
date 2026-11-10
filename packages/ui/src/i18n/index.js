@@ -1728,6 +1728,14 @@ const messages = {
         },
         // The restaurant-side Settings shell: one screen, several sections, one
         // sub-menu. `settings_admin` below is the unrelated Super Admin CMS.
+        plan_banner: {
+            trial_days: 'You are on a free trial of {plan} — {n} day left. | You are on a free trial of {plan} — {n} days left.',
+            trial_today: 'Your free trial of {plan} ends today.',
+            trial_open: 'You are on a free trial of {plan}.',
+            ends_days: 'Your {plan} plan ends in {n} day. | Your {plan} plan ends in {n} days.',
+            ends_today: 'Your {plan} plan ends today.',
+            see_plans: 'See plans', dismiss: 'Hide until tomorrow', badge_days: '{n}d',
+        },
         my_plan: {
             title: 'My plan', subtitle: 'What your plan includes, how much of it you use, and how to change it.',
             current: 'Current plan', no_plan: 'No plan assigned',
@@ -3513,12 +3521,20 @@ const messages = {
             password_mismatch: 'كلمتا المرور غير متطابقتين.',
             password_changed: 'تم تغيير كلمة المرور',
         },
+        plan_banner: {
+            trial_days: 'أنت في فترة تجريبية مجانية لخطة {plan}. الأيام المتبقية: {n}.',
+            trial_today: 'تنتهي فترتك التجريبية لخطة {plan} اليوم.',
+            trial_open: 'أنت في فترة تجريبية مجانية لخطة {plan}.',
+            ends_days: 'تقترب نهاية خطة {plan}. الأيام المتبقية: {n}.',
+            ends_today: 'تنتهي خطة {plan} اليوم.',
+            see_plans: 'عرض الخطط', dismiss: 'إخفاء حتى الغد', badge_days: 'متبقٍ {n}',
+        },
         my_plan: {
             title: 'خطتي', subtitle: 'ما تشمله خطتك، وكم تستخدم منها، وكيف تغيّرها.',
             current: 'الخطة الحالية', no_plan: 'لا توجد خطة محددة',
             free: 'مجانية', custom_price: 'سعر خاص', per_month: '{price} {currency} / شهريًا',
             started: 'بدأت {date}', ends_on: 'تنتهي {date}', ended_on: 'انتهت {date}',
-            days_left: 'متبقٍ يوم واحد | متبقٍ {n} أيام', ends_today: 'تنتهي اليوم', ended_ago: 'انتهت منذ يوم | انتهت منذ {n} أيام',
+            days_left: 'الأيام المتبقية: {n}', ends_today: 'تنتهي اليوم', ended_ago: 'أيام منذ الانتهاء: {n}',
             upgrade: 'الترقية عبر واتساب', renew: 'التجديد عبر واتساب',
             usage_title: 'الاستخدام', limit_reached: 'وصلت إلى الحد — قم بالترقية لإضافة المزيد.',
             limit_reached_note: 'وصلت إلى حد واحد على الأقل.',

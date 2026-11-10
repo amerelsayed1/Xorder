@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute, RouterLink } from 'vue-router'
 import SakaiLayout from '@xorder/ui/SakaiLayout.vue'
 import { setLocale } from '@xorder/ui/i18n'
 import api from '@xorder/api-client/api.js'
@@ -12,6 +12,7 @@ import { useRealtime } from '../../stores/realtime.js'
 import NotificationBell from '../../components/NotificationBell.vue'
 import FullscreenToggle from '../../components/FullscreenToggle.vue'
 import { buildDashboardNav } from './nav.config.js'
+import { daysUntil, todayIn, ENDING_SOON_DAYS } from '../../lib/subscription.js'
 
 const auth = useAuth()
 const router = useRouter()
@@ -171,8 +172,63 @@ const waLink = computed(() => {
     const msg = t('subscription.whatsapp_message', { name })
     return `https://wa.me/${supportWa.value}?text=${encodeURIComponent(msg)}`
 })
+// ---- Plan badge + trial / ending-soon banner -----------------------------
+// Both are for whoever can open "My plan" (settings.view): a cook gains
+// nothing from a countdown they cannot act on.
+const route = useRoute()
+const canSeePlan = computed(() => auth.can('settings.view'))
+const subStatus = computed(() => r.value?.subscription_status || null)
+const daysLeft = computed(() => daysUntil(r.value?.subscription_end_date, r.value?.timezone))
+const planBadge = computed(() => {
+    if (!canSeePlan.value || !r.value) return null
+    const isTrial = subStatus.value === 'TRIAL'
+    return {
+        name: r.value.subscription_plan || t('my_plan.no_plan'),
+        isTrial,
+        // The countdown rides the badge only where it matters: a trial, or a
+        // paid plan inside its last week.
+        days: (isTrial || (daysLeft.value !== null && daysLeft.value <= ENDING_SOON_DAYS)) && daysLeft.value !== null && daysLeft.value >= 0
+            ? daysLeft.value : null,
+        tone: isExpired.value || subStatus.value === 'SUSPENDED' ? 'bad'
+            : (daysLeft.value !== null && daysLeft.value <= 3 ? 'urgent' : (isTrial ? 'trial' : 'ok')),
+    }
+})
+
+// Dismissing the banner hides it for the rest of the restaurant's day; it is
+// back tomorrow, because tomorrow is a day closer. A per-browser convenience,
+// so storage that throws (private window, blocked site data) only means it
+// cannot be dismissed.
+const BANNER_KEY = 'xorder.plan_banner_dismissed'
+const bannerDismissedOn = ref((() => { try { return localStorage.getItem(BANNER_KEY) || '' } catch { return '' } })())
+function dismissPlanBanner() {
+    bannerDismissedOn.value = todayIn(r.value?.timezone)
+    try { localStorage.setItem(BANNER_KEY, bannerDismissedOn.value) } catch { /* storage unavailable */ }
+}
+const showPlanBanner = computed(() => {
+    if (!canSeePlan.value || isExpired.value || route.name === 'dashboard.plan') return false
+    if (bannerDismissedOn.value === todayIn(r.value?.timezone)) return false
+    if (subStatus.value === 'TRIAL') return daysLeft.value === null || daysLeft.value >= 0
+    return subStatus.value === 'ACTIVE' && daysLeft.value !== null && daysLeft.value >= 0 && daysLeft.value <= ENDING_SOON_DAYS
+})
+const planBannerText = computed(() => {
+    const plan = r.value?.subscription_plan || ''
+    const d = daysLeft.value
+    if (subStatus.value === 'TRIAL') {
+        if (d === null) return t('plan_banner.trial_open', { plan })
+        return d === 0 ? t('plan_banner.trial_today', { plan }) : t('plan_banner.trial_days', { plan, n: d }, d)
+    }
+    return d === 0 ? t('plan_banner.ends_today', { plan }) : t('plan_banner.ends_days', { plan, n: d }, d)
+})
+const planWaLink = computed(() => {
+    if (!supportWa.value) return null
+    const name = pickLocalized(r.value, 'name', locale.value) || ''
+    const msg = t('my_plan.wa_upgrade', { name, plan: r.value?.subscription_plan || '' })
+    return `https://wa.me/${supportWa.value}?text=${encodeURIComponent(msg)}`
+})
+
 async function loadSupportWhatsapp() {
-    if (!isExpired.value) return
+    // Wanted by the expired banner and by the trial / ending-soon banner.
+    if (!isExpired.value && !showPlanBanner.value) return
     try {
         const { data } = await api.get('api/public/landing-content')
         supportWa.value = String(data.data?.whatsapp?.number || '').replace(/\D/g, '')
@@ -204,10 +260,33 @@ const nav = computed(() => buildDashboardNav({
 <template>
     <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="!bilingual" searchable>
         <template #topbar-actions>
-            <FullscreenToggle />
+            <RouterLink v-if="planBadge" :to="{ name: 'dashboard.plan' }" class="plan-badge" :class="'plan-badge--' + planBadge.tone"
+                :title="t('nav.my_plan')" :aria-label="t('nav.my_plan') + ': ' + planBadge.name">
+                <i class="pi pi-star-fill" aria-hidden="true"></i>
+                <span class="plan-badge-name">{{ planBadge.name }}</span>
+                <span v-if="planBadge.days !== null" class="plan-badge-days">
+                    <span class="topbar-wide-only">{{ t('plan_banner.badge_days', { n: planBadge.days }) }}</span>
+                    <!-- Phones: just the number; the banner spells it out. -->
+                    <span class="topbar-narrow-only">{{ planBadge.days }}</span>
+                </span>
+            </RouterLink>
+            <!-- Phones get no fullscreen (iOS Safari has none at all), which also
+                 leaves the narrow top bar room for the plan badge. -->
+            <span class="topbar-wide-only"><FullscreenToggle /></span>
             <NotificationBell />
         </template>
         <template #banner>
+            <div v-if="showPlanBanner" class="plan-banner" :class="{ urgent: daysLeft !== null && daysLeft <= 3 }" role="status">
+                <i class="pi pi-star-fill plan-banner-icon" aria-hidden="true"></i>
+                <span class="plan-banner-text">{{ planBannerText }}</span>
+                <RouterLink :to="{ name: 'dashboard.plan' }" class="plan-banner-btn">{{ t('plan_banner.see_plans') }}</RouterLink>
+                <a v-if="planWaLink" :href="planWaLink" target="_blank" rel="noopener noreferrer" class="plan-banner-btn plan-banner-btn--wa">
+                    <i class="pi pi-whatsapp" aria-hidden="true"></i>{{ t('my_plan.upgrade') }}
+                </a>
+                <button type="button" class="plan-banner-close" :aria-label="t('plan_banner.dismiss')" :title="t('plan_banner.dismiss')" @click="dismissPlanBanner">
+                    <i class="pi pi-times" aria-hidden="true"></i>
+                </button>
+            </div>
             <div v-if="isExpired" class="sub-banner" role="alert">
                 <i class="pi pi-exclamation-triangle sub-banner-icon" aria-hidden="true"></i>
                 <div class="sub-banner-text">
@@ -243,6 +322,31 @@ const nav = computed(() => buildDashboardNav({
 </template>
 
 <style scoped>
+.plan-badge { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border-radius: 20px;
+    font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; max-width: 220px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.plan-badge i { font-size: 12px; color: var(--accent); }
+.plan-badge-name { overflow: hidden; text-overflow: ellipsis; }
+.plan-badge-days { font-weight: 700; padding-inline-start: 6px; border-inline-start: 1px solid currentColor; opacity: .9; }
+.plan-badge--trial { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.plan-badge--urgent, .plan-badge--bad { background: #fdecea; border-color: #f5b5ae; color: #b42318; }
+.plan-badge--urgent i, .plan-badge--bad i, .plan-badge--trial i { color: currentColor; }
+.plan-badge:hover { filter: brightness(.97); }
+.topbar-narrow-only { display: none; }
+@media (max-width: 640px) { .topbar-wide-only { display: none; } .topbar-narrow-only { display: inline; } .plan-badge-name { display: none; } .plan-badge { padding: 0 9px; } .plan-badge-days { border: 0; padding: 0; } }
+
+.plan-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-block-end: 20px;
+    padding: 12px 14px 12px 18px; border-radius: 12px; background: #fff7e6; border: 1px solid #fcd34d; color: #92400e; }
+.plan-banner.urgent { background: #fdecea; border-color: #f5b5ae; color: #b42318; }
+.plan-banner-icon { font-size: 16px; flex: none; }
+.plan-banner-text { flex: 1 1 260px; font-size: 14px; font-weight: 600; line-height: 1.45; }
+.plan-banner-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; text-decoration: none; background: #fff; color: inherit; border: 1px solid currentColor; }
+.plan-banner-btn--wa { background: #25d366; border-color: #25d366; color: #fff; }
+.plan-banner-close { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 0;
+    background: transparent; color: inherit; cursor: pointer; opacity: .7; }
+.plan-banner-close:hover { opacity: 1; background: rgba(0, 0, 0, .05); }
+
 .sub-banner {
     display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
     margin-block-end: 20px; padding: 14px 18px; border-radius: 12px;
