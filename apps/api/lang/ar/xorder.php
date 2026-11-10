@@ -72,6 +72,7 @@ return [
         'menu_option_choice_invalid' => 'راجع اختيارات أحد الأصناف في طلبك من فضلك.',
         'order_not_found' => 'لم يتم العثور على الطلب.',
         'waiter_device_not_found' => 'لم يتم العثور على جهاز النادل.',
+        'waiter_shift_range_too_long' => 'اختر فترة لا تزيد عن سنة.',
         'refund_not_found' => 'لم يتم العثور على الاسترداد.',
         'receipt_profile_stale' => 'قام شخص آخر بحفظ بيانات الفاتورة أثناء تعديلك. أعد التحميل لعرض نسخته.',
         'order_updated' => 'تم تحديث الطلب.',

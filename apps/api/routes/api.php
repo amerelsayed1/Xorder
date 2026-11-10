@@ -39,6 +39,7 @@ use App\Http\Controllers\Dashboard\PlanController as DashboardPlanController;
 use App\Http\Controllers\Dashboard\PosPinController;
 use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
 use App\Http\Controllers\Dashboard\PosWaiterDeviceController as DashboardPosWaiterDeviceController;
+use App\Http\Controllers\Dashboard\PosWaiterShiftController as DashboardPosWaiterShiftController;
 use App\Http\Controllers\Dashboard\PulseController;
 use App\Http\Controllers\Dashboard\PurchaseOrderController;
 use App\Http\Controllers\Dashboard\PurchasingLookupController;
@@ -71,6 +72,7 @@ use App\Http\Controllers\Pos\ShiftController as PosShiftController;
 use App\Http\Controllers\Pos\TerminalController as PosTerminalController;
 use App\Http\Controllers\PosWaiter\AuthController as WaiterAuthController;
 use App\Http\Controllers\PosWaiter\FloorController as WaiterFloorController;
+use App\Http\Controllers\PosWaiter\ShiftController as WaiterShiftController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicBillRequestController;
@@ -506,6 +508,13 @@ Route::prefix('dashboard')
                 Route::get('waiter-devices', [DashboardPosWaiterDeviceController::class, 'index']);
             });
 
+            // POS-BE-033 shift clock: when each waiter started and finished.
+            // Staff working hours are a staff record, so staff.view (the Team
+            // section's gate), not tables.view: a role that only works the
+            // floor must not read every colleague's hours.
+            Route::middleware('can:staff.view')
+                ->get('waiter-shifts', [DashboardPosWaiterShiftController::class, 'index']);
+
             // Closing out a visit is floor work, not configuration — it stays
             // available on a lapsed subscription like order handling does, and
             // counts as an edit rather than a deletion.
@@ -875,7 +884,7 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
 | The same wire v1 the till serves on the LAN, served by the platform for a
 | restaurant without a till. The restaurant is the SLUG IN THE PATH (the
 | handheld's base is https://xorder.io/api/pos/waiter/{slug}); the `waiter`
-| middleware pins that tenant and checks device and session at three depths.
+| middleware pins that tenant and checks device, session and open shift at four depths.
 | Credentials are the waiter's own (`xwd_` device, `xws_` session), never a
 | till's `xdt_` token and never the dashboard JWT.
 */
@@ -889,6 +898,15 @@ Route::prefix('pos/waiter/{slug}/v1')->group(function () {
 
     Route::middleware(['waiter:session', 'throttle:240,1'])->group(function () {
         Route::get('menu', [WaiterFloorController::class, 'menu']);
+
+        // The shift clock: one open shift per waiter, whichever device.
+        Route::get('shift', [WaiterShiftController::class, 'show']);
+        Route::post('shift/start', [WaiterShiftController::class, 'start']);
+        Route::post('shift/finish', [WaiterShiftController::class, 'finish']);
+    });
+
+    // Tables are worked on the clock: no open shift → 403 SHIFT_REQUIRED.
+    Route::middleware(['waiter:shift', 'throttle:240,1'])->group(function () {
         Route::get('floor', [WaiterFloorController::class, 'floor']);
         Route::get('tables/{table}/check', [WaiterFloorController::class, 'check'])->whereNumber('table');
         Route::post('tables/{table}/ops', [WaiterFloorController::class, 'ops'])->whereNumber('table');
