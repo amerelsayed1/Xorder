@@ -390,4 +390,10 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
 @media (min-width: 1024px) {
     .sakai-mobile-only { display: none; }
 }
+
+/* Very narrow phones (360px class): the 22px top-bar gutters alone pushed the
+   last control off screen. */
+@media (max-width: 400px) {
+    .sakai-topbar { padding: 0 10px; gap: 6px; }
+}
 </style>

@@ -35,6 +35,7 @@ use App\Http\Controllers\Dashboard\NotificationController;
 use App\Http\Controllers\Dashboard\OptionGroupController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PickupBoardController;
+use App\Http\Controllers\Dashboard\PlanController as DashboardPlanController;
 use App\Http\Controllers\Dashboard\PosPinController;
 use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
 use App\Http\Controllers\Dashboard\PosWaiterDeviceController as DashboardPosWaiterDeviceController;
@@ -339,6 +340,8 @@ Route::prefix('dashboard')
         */
         Route::middleware('can:settings.view')->group(function () {
             Route::get('restaurant', [RestaurantProfileController::class, 'show']);
+            // "My plan": current plan, enforced-limit usage, the plans on offer.
+            Route::get('plan', [DashboardPlanController::class, 'show']);
             Route::get('qr', [DashboardQrController::class, 'show']);
             Route::get('qr/download', [DashboardQrController::class, 'download']);
 

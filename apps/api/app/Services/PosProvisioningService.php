@@ -516,6 +516,14 @@ class PosProvisioningService
      *
      * @return array{max: int|null, claimed: int, occupied: int}
      */
+    public function seatUsage(Restaurant $restaurant): array
+    {
+        return $this->seats($restaurant);
+    }
+
+    /**
+     * @return array{max: int|null, claimed: int, occupied: int}
+     */
     private function seats(Restaurant $restaurant): array
     {
         $licenceMax = PosLicence::query()
