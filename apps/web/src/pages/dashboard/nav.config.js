@@ -96,6 +96,9 @@ export const DASHBOARD_NAV = [
         key: 'settings', labelKey: 'nav.section_settings', section: true,
         children: [
             { key: 'settings', labelKey: 'nav.restaurant_settings', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, match: SETTINGS_ROUTE_NAMES, settings: true },
+            // Read-only: what the plan includes, usage against its limits, and
+            // how to upgrade. Same gate as the profile (settings.view).
+            { key: 'plan', labelKey: 'nav.my_plan', icon: 'pi pi-star', to: { name: 'dashboard.plan' }, capability: 'settings.view' },
         ],
     },
 ]

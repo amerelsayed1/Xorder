@@ -191,7 +191,7 @@ how much other work unblocks. Sizes: S ≤ 1 day, M 2–4 days, L 1–2 weeks.
 | A2 | Orders: date range + CSV export + payment / branch / handled-by / duration details — **done 2026-11-03** (completion is now stamped with who/when, so duration did not need A1) | M | — |
 | A3 | Home: waiting-now / preparing-now tiles, completion & cancel rate, order-type donut | S | A1 |
 | A4 | Restaurant edits its own brand colour and menu layout from Profile — **done 2026-11-03** (second colour left admin-only: the public menu doesn't use it yet) | S | — |
-| A5 | Plan badge + trial/upgrade banner + in-dashboard "My plan" page with limit meters | S–M | — |
+| A5 | Plan badge + trial/upgrade banner + in-dashboard "My plan" page with limit meters — **My plan page done 2026-11-10**; badge and trial banner still open | S–M | — |
 | A6 | Notification preferences (per event, per channel) + the new events listed in 2.7 | M | A1 for status events |
 | A7 | Tables page: occupancy badge + available / occupied filter — **done 2026-11-03** (same rules as the live board; reserved state not built) | S | — |
 | A8 | Sidebar regrouping: section headings (Main, Menu, Inventory & purchasing, Customers & marketing, Reports, Team, Settings), page search, tabbed Purchasing and Stock screens, Staff/Roles to Team, Branches/Dining areas into Settings, old URLs redirected — **done 2026-11-03** | S | — |

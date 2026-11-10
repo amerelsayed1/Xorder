@@ -120,6 +120,7 @@ const restaurantRoutes = [
             // The home view itself is deliberately ungated — it is where everyone
             // lands, and it degrades to whatever the user may actually see.
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
+            { path: 'plan', name: 'dashboard.plan', component: () => import('../pages/dashboard/PlanView.vue'), meta: { capability: 'settings.view' } },
             { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue'), meta: { capability: 'live.view' } },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue'), meta: { capability: 'analytics.view' } },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue'), meta: { capability: 'orders.view' } },
