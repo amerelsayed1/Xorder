@@ -1,0 +1,10 @@
+# XOrder Waiter – Cloud: the mark inverted (orange ground, navy ring), so the
+# two apps are told apart on a home screen at a glance. See the offline file.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icons/waiter_cloud_1024.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FF7900"
+  adaptive_icon_foreground: "assets/icons/waiter_cloud_foreground_432.png"

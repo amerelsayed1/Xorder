@@ -231,7 +231,7 @@ rewriting the controller while the field has focus.
 
 Step 7 reported *"That username and password were not accepted."*
 
-Offline registration authenticates against `pos_staff` on this machine and read
+Offline registration authenticates against `pos_users` on this machine and read
 `operatorUsername`/`operatorPassword` — the **cloud Sign in** fields, which the
 offline path no longer collects since its account step became First
 administrator. It sent an empty username every time, on the last step of the
@@ -310,7 +310,7 @@ form reads, `PinRules.isWellFormed` is the one check, and the wizard's
 
 ### The one real finding: the till role could escalate to owner, offline
 
-`LocalBootstrap.tillGrants` granted `pos_till` INSERT/UPDATE on `pos_staff` and
+`LocalBootstrap.tillGrants` granted `pos_till` INSERT/UPDATE on `pos_users` and
 INSERT/UPDATE/DELETE on the whole catalogue. That block exists for
 `BootstrapSeeder`, which replaces the local cache with the platform's copy, and
 the code comment defended it explicitly:
@@ -322,7 +322,7 @@ the code comment defended it explicitly:
 **That reasoning does not survive going offline.** There is no server-side
 second opinion; this database *is* the restaurant. With those grants, the till
 password — a `0600` file on the same machine — could reprice the menu for real,
-and through `pos_staff` could point somebody's row at the owner role or
+and through `pos_users` could point somebody's row at the owner role or
 overwrite a PIN hash, reaching Management without ever knowing the
 administrator's password.
 
@@ -346,7 +346,7 @@ pos_orders         | INSERT,SELECT
 pos_products       | SELECT
 pos_restaurants    | SELECT
 pos_shifts         | INSERT,SELECT,UPDATE
-pos_staff          | SELECT
+pos_users          | SELECT
 ```
 
 Re-apply to an existing install with:

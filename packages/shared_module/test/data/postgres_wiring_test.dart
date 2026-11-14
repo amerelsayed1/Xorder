@@ -1,0 +1,380 @@
+@Tags(['integration'])
+library;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_module/app/providers.dart';
+import 'package:shared_module/core/config/deployment.dart';
+import 'package:shared_module/data/fakes/fake_repositories.dart';
+import 'package:shared_module/data/unconfigured/unconfigured_repositories.dart';
+import 'package:shared_module/data/postgres/migrations.dart';
+import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/data/eta/filing_orders_repository.dart';
+import 'package:shared_module/data/postgres/postgres_orders_repository.dart';
+import 'package:shared_module/features/setup/application/setup_controller.dart';
+
+import 'package:xorder_pos_test_support/fakes.dart';
+import 'package:xorder_pos_test_support/pg_fixture.dart';
+import 'package:shared_module/data/sql/sql.dart' show SqlDatabase;
+
+/// End-to-end through the **real provider graph**.
+///
+/// The unit tests cover the SQL and the widget tests cover the UI, but neither
+/// exercises the seam between them: whether `ordersRepositoryProvider` actually
+/// resolves to Postgres once a terminal is provisioned, and whether a ticket
+/// built by `TicketEngine` — rather than hand-assembled in a test — survives the
+/// trip. That seam is where a swap-point bug would hide.
+void main() {
+  if (PgFixture.host == null) {
+    test('provider wiring (skipped — set POS_PG_HOST to run)', () {}, skip: true);
+    return;
+  }
+
+  late PgFixture pg;
+  late SqlDatabase database;
+  late DeploymentConfig branchConfig;
+
+  setUp(() async {
+    pg = await PgFixture.open('wiring');
+    database = pg.database;
+    branchConfig = pg.config;
+    await PosMigrator(database).migrate(branchConfig);
+    await pg.truncate();
+  });
+
+  tearDown(() => pg.close());
+
+  /// The fixture database, reached by a terminal that also syncs to a platform.
+  ///
+  /// Worth having in one line: the mode and the database address are now
+  /// independent, so a cloud terminal reading the very same PostgreSQL is a
+  /// `copyWith`, not a different fixture.
+  DeploymentConfig cloudConfig() =>
+      branchConfig.copyWith(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io');
+
+  ProviderContainer containerFor({required bool provisioned, bool files = false}) {
+    final container = ProviderContainer(
+      overrides: [
+        // E-receipts are off in a default build (13 September 2026); a case
+        // about the filing layer turns them on.
+        etaFilingEnabledProvider.overrideWithValue(files),
+        posDatabaseProvider.overrideWithValue(database),
+        posDbCredentialsProvider
+            .overrideWithValue(InMemoryPosDbCredentials(PgFixture.password)),
+        // The menu is not what this suite is about — the orders swap point is.
+        // Bind the fake catalogue explicitly rather than seeding a business
+        // into the wiring database just to have something priced to sell.
+        catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(deploymentProvider.notifier).apply(branchConfig);
+    if (provisioned) {
+      container.read(terminalProfileProvider.notifier).apply(const TerminalProfile(
+            businessId: 1,
+            branchId: 13,
+            branchCode: 'MAADI',
+            branchName: 'Maadi',
+            terminalName: 'Counter 1',
+            terminalId: '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10',
+            provisioned: true,
+          ));
+    }
+    return container;
+  }
+
+  test('an unprovisioned terminal cannot take money, and says so', () {
+    final container = containerFor(provisioned: false);
+    // Falling back rather than throwing at construction is deliberate: a
+    // terminal mid-setup has no database yet, and a provider that threw would
+    // take the app down before the wizard could fix it. What it falls back to
+    // matters just as much — this used to be a fake that accepted the sale and
+    // reported it queued, which printed "QUEUED OFFLINE" on a receipt for a
+    // sale written nowhere at all.
+    expect(container.read(ordersRepositoryProvider), isA<UnconfiguredOrdersRepository>());
+  });
+
+  test('a provisioned terminal gets Postgres', () {
+    final container = containerFor(provisioned: true);
+    // Bare: with e-receipts off there is no filing layer to wrap it in, and a
+    // branch till has no platform sync either.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<PostgresOrdersRepository>(),
+    );
+  });
+
+  test('with e-receipts on, every sale is filed on top', () {
+    final container = containerFor(provisioned: true, files: true);
+    // Wrapped, not bare. Every terminal with a database queues an e-receipt
+    // for every sale, because the obligation is the business's rather than
+    // the deployment's — a branch that files nothing is one whose receipt
+    // profile is blank, which the decorator checks per sale rather than at
+    // construction.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<FilingOrdersRepository>(),
+    );
+  });
+
+  test('a cloud terminal gets Postgres too — it keeps a local one', () {
+    final container = containerFor(provisioned: true);
+    container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+    // This used to assert the opposite, back when only a branch server had a
+    // database and cloud was expected to write over HTTP. Cloud is offline-first
+    // against its own PostgreSQL now, so refusing it a repository would leave it
+    // with no way to record a sale at all.
+    //
+    // Bare PostgreSQL here, on purpose (pos-split-apps stage 3). The sync loop
+    // is the cloud app's: the shared package binds none, so nothing kicks a
+    // drain and nothing wraps the repository. The write itself is the same
+    // either way — PostgreSQL first, an outbox claim in the same transaction.
+    // That the cloud app DOES wrap it is
+    // `apps/xorder_pos_cloud/test/data/cloud_orders_wiring_test.dart`.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<PostgresOrdersRepository>(),
+    );
+  });
+
+  test('a ticket built by the engine lands in Postgres with the engine\'s own totals', () async {
+    final container = containerFor(provisioned: true);
+    final catalog = await container.read(catalogProvider.future);
+    final product = catalog.products.first;
+
+    // Drive the real controller rather than constructing a Ticket by hand, so
+    // the money the database receives is the money TicketEngine computed.
+    final ticketController = container.read(ticketProvider.notifier);
+    ticketController.addProduct(product, quantity: 3);
+    container.read(ticketProvider.notifier).addTender(typeId: 1, label: 'Cash');
+
+    final ticket = container.read(ticketProvider);
+    final expectedTotal = ticket.totals.total.minor;
+    expect(expectedTotal, greaterThan(0), reason: 'the fixture must actually cost something');
+
+    final result = await container.read(ordersRepositoryProvider).submit(ticket);
+    expect(result.invoiceNumber, 'MAADI-2026-000001');
+
+    final stored = await database.query(
+      branchConfig,
+      'SELECT total_minor, currency, exponent, terminal_id, order_type FROM pos_orders',
+    );
+    expect(stored.length, 1);
+    expect(stored.first[0], expectedTotal, reason: 'the till and the ledger must agree exactly');
+    expect(stored.first[1], ticket.currency);
+    expect(stored.first[2], ticket.exponent);
+    expect(stored.first[3].toString(), '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10');
+    expect(stored.first[4], ticket.orderType.wire);
+  });
+
+  test('the sale after a clear is a new sale, not a replay', () async {
+    final container = containerFor(provisioned: true);
+    final catalog = await container.read(catalogProvider.future);
+    final controller = container.read(ticketProvider.notifier);
+    final repository = container.read(ordersRepositoryProvider);
+
+    controller.addProduct(catalog.products.first);
+    controller.addTender(typeId: 1, label: 'Cash');
+    final first = await repository.submit(container.read(ticketProvider));
+
+    // `reset` mints a fresh client_transaction_id. If it did not, the unique
+    // index would silently swallow the second sale and the till would take money
+    // for an order that was never recorded.
+    controller.reset();
+    controller.addProduct(catalog.products.first);
+    controller.addTender(typeId: 1, label: 'Cash');
+    final second = await repository.submit(container.read(ticketProvider));
+
+    expect(second.serverId, isNot(first.serverId));
+    expect(second.invoiceNumber, 'MAADI-2026-000002');
+
+    final count = await database.query(branchConfig, 'SELECT count(*) FROM pos_orders');
+    expect(count.first[0], 2);
+  });
+
+  group('the wizard Test connection button, against a real database', () {
+    ProviderContainer wizardContainer() {
+      // Deliberately NOT the fixture's database: that one is hardwired to the
+      // correct password, which would mask exactly the failures this group is
+      // supposed to catch. Build one that reads the wizard's own credential
+      // store, as production does.
+      // English, asked for rather than assumed: the product's default is
+      // Arabic — its businesses are in Egypt — and this group reads the
+      // English refusals. An override rather than `apply('en')`, because apply
+      // writes the choice to the terminal's config file, and this is a
+      // pure-Dart test with no platform to find that file on.
+      //
+      // The offline app (pos-split-apps, stage 4): the wizard has no mode
+      // switch to tap any more, so the container says which app it is.
+      final container = ProviderContainer(
+        overrides: [
+          localeProvider.overrideWith(EnglishTerminal.new),
+          appModeProvider.overrideWithValue(DeploymentMode.offline),
+        ],
+      );
+      // `posDatabaseProvider` closes its own pool via ref.onDispose, so
+      // disposing the container is enough.
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabaseHost(branchConfig.databaseHost);
+      controller.setDatabaseName(branchConfig.databaseName);
+      controller.setDatabaseUser(branchConfig.databaseUser);
+      controller.setDatabasePort(branchConfig.databasePort.toString());
+      return container;
+    }
+
+    test('reports success with the right credential', () async {
+      final container = wizardContainer();
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword(PgFixture.password);
+
+      expect(await controller.testConnection(), isTrue);
+      expect(container.read(setupProvider).error, isNull);
+      expect(container.read(setupProvider).busy, isFalse);
+    });
+
+    test('a wrong password is reported as a password problem, not a network one', () async {
+      // The distinction is the entire point of the button. Sending an installer
+      // to open a firewall port when the password is wrong wastes a site visit.
+      final container = wizardContainer();
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword('definitely-not-it');
+
+      final refused = !await controller.testConnection();
+      // A dev box commonly runs `trust` in pg_hba for local connections, and
+      // under trust the server accepts the wrong password — so the wizard is
+      // right to report success and this assertion has nothing to test. Say
+      // that out loud rather than failing: a red test somebody has learned to
+      // ignore is worse than no test.
+      if (!refused) {
+        markTestSkipped(
+          'POS_PG_USER=${PgFixture.user} authenticates with trust, so no '
+          'password is wrong. Point POS_PG_USER at a scram-authenticated '
+          'role to exercise this.',
+        );
+        return;
+      }
+
+      expect(container.read(setupProvider).error, contains('username or password'));
+      expect(container.read(setupProvider).busy, isFalse);
+    });
+
+    test('a wrong port is reported as nothing listening', () async {
+      final container = wizardContainer();
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword(PgFixture.password);
+      controller.setDatabasePort('55998');
+
+      expect(await controller.testConnection(), isFalse);
+      expect(container.read(setupProvider).error, contains('Nothing answered on port 55998'));
+    });
+
+    test('a wrong database name is reported as the database, not the credential', () async {
+      final container = wizardContainer();
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword(PgFixture.password);
+      controller.setDatabaseName('no_such_database');
+
+      expect(await controller.testConnection(), isFalse);
+
+      final draft = container.read(setupProvider);
+      // A NOTICE, not a refusal. A database that does not exist yet is the
+      // ordinary state of a first install and the next step is what creates it,
+      // so this arriving in red told the installer something was wrong at the
+      // one moment nothing was. What this test is actually about is unchanged:
+      // it names the DATABASE rather than blaming the credential.
+      expect(draft.error, isNull);
+      expect(draft.notice, contains('no_such_database'));
+    });
+
+    test('a failed test does not leave a stale credential behind', () async {
+      final container = wizardContainer();
+      final controller = container.read(setupProvider.notifier);
+
+      controller.setDatabasePassword('wrong');
+      await controller.testConnection();
+      controller.setDatabasePassword(PgFixture.password);
+
+      // The second attempt must use what the operator just typed, not what the
+      // store kept from the first.
+      expect(await controller.testConnection(), isTrue);
+    });
+  });
+
+  group('the outbound queue', () {
+    Future<void> sell(ProviderContainer container) async {
+      final catalog = await container.read(catalogProvider.future);
+      final controller = container.read(ticketProvider.notifier);
+      controller.addProduct(catalog.products.first);
+      controller.addTender(typeId: 1, label: 'Cash');
+      await container.read(ordersRepositoryProvider).submit(container.read(ticketProvider));
+    }
+
+    test('a cloud sale is claimed for the platform in the same transaction', () async {
+      final container = containerFor(provisioned: true);
+      container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+      await sell(container);
+
+      final queued = await database.query(
+        branchConfig,
+        'SELECT o.client_transaction_id, o.delivered_at, r.id '
+        'FROM pos_outbox o JOIN pos_orders r ON r.id = o.order_id',
+      );
+      expect(queued.length, 1);
+      expect(queued.first[1], isNull, reason: 'nothing has drained it — there is no drain yet');
+
+      expect(await container.read(ordersRepositoryProvider).pendingSyncCount(), 1);
+    });
+
+    test('an offline sale is owed to nobody and queues nothing', () async {
+      final container = containerFor(provisioned: true);
+
+      await sell(container);
+
+      // A queue nothing can ever drain would grow forever and report a debt that
+      // does not exist. The sale is already everywhere it is going.
+      final queued = await database.query(branchConfig, 'SELECT count(*) FROM pos_outbox');
+      expect(queued.first[0], 0);
+      expect(await container.read(ordersRepositoryProvider).pendingSyncCount(), 0);
+    });
+
+    test('a replayed submit does not claim the same money twice', () async {
+      final container = containerFor(provisioned: true);
+      container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+      final catalog = await container.read(catalogProvider.future);
+      final controller = container.read(ticketProvider.notifier);
+      controller.addProduct(catalog.products.first);
+      controller.addTender(typeId: 1, label: 'Cash');
+
+      final repository = container.read(ordersRepositoryProvider);
+      final ticket = container.read(ticketProvider);
+      final first = await repository.submit(ticket);
+      // The same ticket id — a till retrying after a timeout, which is the case
+      // the whole idempotency contract exists for.
+      final second = await repository.submit(ticket);
+
+      expect(second.serverId, first.serverId);
+      expect(
+        await repository.pendingSyncCount(),
+        1,
+        reason: 'one sale is owed once, however many times it was submitted',
+      );
+    });
+
+    test('the queue survives a restart, because it is not held in memory', () async {
+      final first = containerFor(provisioned: true);
+      first.read(deploymentProvider.notifier).apply(cloudConfig());
+      await sell(first);
+
+      // A fresh container is this till relaunching. A count kept in a Notifier
+      // would come back zero here and tell a cashier everything had synced.
+      final restarted = containerFor(provisioned: true);
+      restarted.read(deploymentProvider.notifier).apply(cloudConfig());
+      expect(await restarted.read(ordersRepositoryProvider).pendingSyncCount(), 1);
+    });
+  });
+}

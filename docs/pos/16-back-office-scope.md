@@ -18,7 +18,7 @@ and `pos_categories` and re-inserts the platform's rows, so anything authored
 locally is destroyed by the next bundle. Hiding them is right.
 
 **The Staff pane was not gated the same way, and that was a bug** — fixed in
-`d4cc878`. The seeder also upserts `pos_staff` and deactivates anybody the
+`d4cc878`. The seeder also upserts `pos_users` and deactivates anybody the
 bundle does not name, so a cashier added in the back office of a cloud till was
 switched off by the next sync, silently, mid-shift.
 
@@ -27,10 +27,10 @@ seeder's ownership is **narrower than the pane boundary**:
 
 | Row | Cloud | Offline |
 |---|---|---|
-| `pos_staff` name, username, PIN, capabilities, active | platform | local |
-| `pos_staff.role_id` | **local** | local |
+| `pos_users` name, username, PIN, capabilities, active | platform | local |
+| `pos_users.role_id` | **local** | local |
 | `pos_roles` | **local** | local |
-| `pos_staff_roles`, overrides, ceilings (Wave C) | **local** | local |
+| `pos_user_roles`, overrides, ceilings (Wave C) | **local** | local |
 | `pos_categories`, `pos_products`, modifiers | platform | local |
 | `pos_dining_tables` | platform | local |
 | `pos_receipt_profiles` | local | local |

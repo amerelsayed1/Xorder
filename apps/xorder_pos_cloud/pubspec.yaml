@@ -1,0 +1,45 @@
+# "XOrder POS - Cloud" (pos-split-apps, D4). Sales sync to xorder.io, and the
+# dashboard is the back office (CB-07). The code is the shared member
+# packages/shared_module; this package is the entry point, the platform folders
+# and, from stage 3, the cloud-only code (lib/data/cloud).
+name: xorder_pos_cloud
+description: "XOrder POS - Cloud: the desktop till that syncs its sales to the XOrder platform."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  flutter_localizations:
+    sdk: flutter
+  collection: ^1.19.1
+  dio: ^5.11.0
+  excel: ^4.0.6
+  file_picker: ^12.2.0
+  uuid: ^4.6.0
+  path_provider: ^2.1.6
+  shared_module: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  xorder_pos_test_support: any
+  mocktail: ^1.0.5
+  integration_test:
+    sdk: flutter
+  cryptography: ^2.7.0
+  path: ^1.9.1
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # No assets or fonts here: the mark and the IBM Plex faces are declared once,
+  # by packages/shared_module, and reach this app as that package's assets
+  # (`package: 'shared_module'`, `packages/shared_module/IBM Plex …`).
+  # Declaring them again bundled every file twice.

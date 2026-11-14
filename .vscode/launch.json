@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "XOrder Waiter Cloud",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/xorder_pos_waiter",
+      "program": "lib/main_cloud.dart",
+      "args": ["--flavor", "cloud"]
+    },
+    {
+      "name": "XOrder Waiter Offline",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/xorder_pos_waiter",
+      "program": "lib/main_offline.dart",
+      "args": ["--flavor", "offline"]
+    },
+    {
+      "name": "XOrder Waiter Cloud (staging domain)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/xorder_pos_waiter",
+      "program": "lib/main_cloud.dart",
+      "args": ["--flavor", "cloud", "--dart-define=XORDER_CLOUD_DOMAIN=staging.xorder.io"]
+    }
+  ]
+}

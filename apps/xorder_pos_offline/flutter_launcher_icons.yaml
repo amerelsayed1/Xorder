@@ -1,0 +1,11 @@
+# `dart run flutter_launcher_icons` from this folder regenerates the Windows and
+# macOS icons from the shared package's artwork. Android and iOS are not built
+# (pos-split-apps, O3).
+flutter_launcher_icons:
+  windows:
+    generate: true
+    image_path: "../../packages/shared_module/assets/icons/xorder_app_icon_desktop_1024.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "../../packages/shared_module/assets/icons/xorder_app_icon_desktop_1024.png"

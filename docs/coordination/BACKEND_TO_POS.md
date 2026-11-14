@@ -221,6 +221,8 @@ for everything still `APPROVED`.**
 | POS-BE-027 | Three additive licence claims | **APPROVED** |
 | POS-BE-028 | Terminal rename decoupled from identity | **APPROVED** |
 | POS-BE-030 | Bundle withholds `purchase.manage`; cloud tills hide buying and stock | **READY** (platform half, CB-09 slice a) |
+| POS-BE-032 | Financial accounts in `money` (`financial_accounts`, `tender_account_defaults`) — additive, XORD-015 stage 1 | **PROPOSED** (built both sides 2026-10-26, not deployed) |
+| POS-BE-033 | Incoming feed: `GET /api/pos/incoming` + accept / reject online order + table request handled — additive | **PROPOSED** (cloud half built 2026-11-09, not deployed; POS must not integrate) |
 
 Nothing is `BLOCKED`. Every open question from Agent 1's 2026-08-26/28 replies is
 answered below with a decision, not a discussion.
@@ -2317,6 +2319,78 @@ and are never sent to a till.
 
 ---
 
+## POS-BE-032 — financial accounts · **PROPOSED** (additive to §013 `money`; XORD-015 stage 1)
+
+**Status 2026-10-26: built on both sides, not deployed, not `READY`.** Cloud half:
+`FinancialAccountsTest` (17) in `xorder-cloud`. Till half: `financial_accounts_test` (25, PostgreSQL),
+`financial_accounts_bundle_test`, `management_accounts_pane_test` in `xorder-pos`. The POS integrates only at
+`READY`: until the owner flips it, the till **parses** these keys and seeds them but nothing else reads them.
+
+**What it adds.** Two keys beside `tender_types` inside the existing `money` block of the §023 bootstrap bundle.
+Nothing else changes: no route, no request body, no existing response key. A payment, a refund and the shift
+cash-up are untouched (nothing is posted to an account in this stage).
+
+```jsonc
+"money": {
+  "tax_rules": [...], "charges": [...], "tender_types": [...],          // unchanged
+  "financial_accounts": [
+    { "id": 71, "name": "CIB main", "kind": "bank",        // kind: cash | bank | wallet
+      "currency": "EGP",                                   // the restaurant's, set by the server
+      "branch_id": null,                                   // null = shared by the whole business
+      "reference_label": "CIB 4521",                       // short hint, never an account number
+      "is_active": true, "sort_order": 1 }
+  ],
+  "tender_account_defaults": [                              // PLATFORM ids throughout
+    { "tender_type_id": 501, "branch_id": null, "financial_account_id": 71 },   // business-wide fallback
+    { "tender_type_id": 501, "branch_id": 10,   "financial_account_id": 72 }    // this branch's own
+  ]
+}
+```
+
+**Rules.**
+- The account for method M at branch B is the row for (M, B), else the row for (M, null), else none.
+- A business-wide default must be a shared account (`branch_id` null); a branch default may use a shared account
+  or that branch's own. The platform enforces this; the till applies the same rule (`AccountRules`).
+- Accounts are never deleted. An account the platform stops sending is switched off on the till.
+- **Absent key = an older platform.** The till then leaves its accounts and defaults alone. A present but empty
+  list means the business has none: accounts are switched off and defaults cleared.
+- An account or default the till cannot place (unknown kind, a branch it does not hold, a method it has no row
+  for) is skipped, never widened: "Maadi's drawer" is not stored as a shared account.
+- Cloud-authored only. An offline till authors its own, tied to its own branch, and never sends them.
+- `config_version` (POS-BE-025) moves when an account or a default changes, so the ETag and the till's cache
+  behave as for tenders.
+
+**Permission.** `finance.accounts` (platform `TenantCapability::FINANCE_ACCOUNTS`, till `PosCapability.financeAccounts`):
+the same string both sides. It implies `settings.view` on the platform. Owner only by default.
+
+**Compatibility and rollout.** Additive. Order: cloud first (migrations, bundle keys), then the POS release.
+Old POS + new cloud: the extra keys are ignored. New POS + old cloud: the keys are absent, nothing changes.
+
+**Not in this item (stage 2, separate approval).** Naming the account on a payment or refund, the cashier's
+override, transfers between accounts, movements and balances. Those change the §006 payment payload and its
+idempotency hash and need their own section.
+
+---
+
+## POS-BE-033 — the till's incoming feed (online orders + table requests) · **PROPOSED**
+
+Feature: `docs/features/pos-incoming-cloud-orders/` (S4). Cloud half **built, not deployed, not READY**; the POS must not integrate until this flips to READY (after the owner deploys cloud `main`). Additive: nothing existing changes shape except one optional key (`rejected`) on the public order-status reply. (Renumbering note: `guest-paging` S5 previously also claimed 033; it is now **POS-BE-034**.)
+
+Device group (`pos.device`, bearer device token). Scope is the token's tenant and the terminal's **own branch**; a row outside it is `404 NOT_FOUND`. While the branch setting `online_orders_on_pos` is off the feed is empty and the three actions answer `403 ONLINE_ORDERS_NOT_ON_POS`.
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /api/pos/incoming?cursor=` | — (optional header `X-App-Version`) | `{data:{events:[…],cursor,has_more}}`; `ETag`/`If-None-Match` → bodyless **304** when nothing changed. No cursor = currently open items (NEW online orders; REQUESTED/SEEN/IN_PROGRESS table requests); with a cursor = every change since, **each exactly once**, including terminal states so other tills clear them. `has_more:true` → read again at once. Bad cursor → `422 INVALID_CURSOR` (re-read without it). Max 100 events per table per read. Dine-in bills of an open table visit are never in the feed. |
+| `POST /api/pos/online-orders/{order}/accept` | `client_request_id` (uuid) | the order event, `state:"accepted"`. Order stays `NEW` with `accepted_at` set (accepted is **not** a status). |
+| `POST /api/pos/online-orders/{order}/reject` | `client_request_id` (uuid), `reason` (≤255) | `state:"rejected"`; order becomes `CANCELLED`; `GET public/restaurants/{slug}/orders/{id}/status` then carries `rejected: true` (the free-text reason is **not** public; showing it to the diner needs an unguessable per-order token — open). |
+| `POST /api/pos/table-requests/{billRequest}/handled` | `client_request_id` (uuid) | `state:"handled"`; request `COMPLETED`. |
+
+Idempotency and races: the same terminal repeating the same `client_request_id` gets the same `200`. First writer wins under a row lock; anyone else gets `409` `ALREADY_ACCEPTED` / `ALREADY_REJECTED` / `ALREADY_HANDLED`; an order no longer `NEW` → `409 ORDER_NOT_PENDING`.
+
+Event shapes: `online_order` {id, code, state `new|accepted|rejected`, order_type, customer_name, customer_phone, address, note, items (as the cloud stored them), total, currency, placed_at, accepted_at, accepted_by_terminal_id, rejected_at, reject_reason, updated_at}; `table_request` {id, state `open|handled|cancelled`, table_id, order_id, note, requested_at, handled_at, updated_at}. The cursor is opaque.
+
+**Not decided / UNVERIFIED:** no cashier-permission check on accept/reject yet (device token only; AC-5 needs the owner's decision on how cloud capabilities map to the POS permission); the till's `app_version` header name is unconfirmed; an online order has no branch until S2 ships, so the feed is empty for pickup/delivery orders until then. Rollout: cloud first (dark), then the POS release, then the per-branch switch.
+
 ## REVISION R1 — order-line bilingual name freeze · **PROPOSED** (amends §006, §010, §023)
 
 **Spec:** `docs/coordination/REVISION_ORDER_ITEM_ID.md`. **Owner decision being
@@ -2731,3 +2805,4 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-27 | **Cloud coordination review of two owner revision specs → two `PROPOSED` amendments** (cloud side; no code, nothing committed/deployed). Both specs cross-checked against live `apps/api`+`apps/web` and confirmed accurate. **R1 — order-line bilingual name freeze** (amends §006/§010/§023): `order_items` gains nullable `name_ar`/`name_en`; `PosPricingEngine` freezes both from the resolved item and demotes `name_snapshot` to fallback-only; resources + legacy `orders.items` JSON expose both; dashboard resolves by locale with the app idiom; public/QR "Minimum" writes the single name into all three. `name` retained everywhere; no backfill. **R2 — dashboard-managed online licence + `POST /api/pos/license/check`** (amends §015/§022): additive `pos_licences.status/enforcement/suspended_at/suspended_reason` + `pos_terminals.licence_id/last_licence_check_at`; new `pos.device:no-feature` verdict endpoint (status enum mapped onto the existing `state()` + new `status` col); Super Admin suspend/resume/expire + per-terminal view + audit events; `LicenceIssuer::issueOnline` decouples tenant creation from `LICENCE_SIGNING_KEY` (demoted to islanded-only); the Ed25519 signed-file path kept for islanded tills. Phased 0–5, additive/deploy-safe. Desktop asks recorded (R1-A1..A3, R2-A1..A4). Statuses stay **PROPOSED** — owner's go pending. |
 | 2026-10-07 | **Owner decisions close the R1/R2 asks** (see "Owner decisions — 2026-10-07" at the top). R1 → `READY` (built `77fb22e`). `name_ar_snapshot` (R1-A1) accepted → `APPROVED`: nullable on `StorePosOrderRequest`, used only on the `client_asserted` fallback. R1-A3: the till reads only `data['id']` from replies. R2/POS-BE-031 → `APPROVED`: `enforcement` in the §023 bootstrap `licence` object **and** the activate 200 (absent ⇒ `offline`); path chosen by `enforcement`, never `deployment_mode`; verdict enum gains `not_yet_valid` (+ `starts_at`); `suspended`/`expired`/`not_yet_valid`/404 map `expired`-shaped (open shift finishes); 72h cache, client clamp 7d; one enforcement window per till. No code authorised by this entry. |
 | 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-cloud, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |
+| 2026-10-26 | **POS-BE-032 proposed: financial accounts (XORD-015 stage 1).** Two additive keys inside `money` in the §023 bundle (`financial_accounts`, `tender_account_defaults`); new capability `finance.accounts`. Cloud half in `xorder-cloud` (migrations `2026_10_26_000100/000200`, `FinancialAccountController`, `TenderAccountDefaultController`, `PosBootstrapService`, `FinancialAccountsTest` 17). Till half in `xorder-pos` (migration 60, `BootstrapSeeder`, Finance › Accounts pane). Nothing is posted to an account yet. Not `READY`: the POS parses and seeds the keys and nothing else reads them. Nothing committed or deployed. |
