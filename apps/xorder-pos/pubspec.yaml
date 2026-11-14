@@ -1,0 +1,41 @@
+# The xorder-pos workspace (Dart pub workspace). No code lives here: the
+# packages do. One lockfile, this folder's pubspec.lock, resolves them all.
+#
+#   packages/shared_module              the shared till: money rules, screens, the
+#                                    branch database, the wiring
+#                                    (docs/features/pos-split-apps)
+#   packages/xorder_pos_test_support fakes, fonts and the PostgreSQL fixture
+#                                    every member's tests use (dev only)
+#   apps/xorder_pos_offline          "XOrder POS - Offline": entry point,
+#                                    platforms, and the back office
+#   apps/xorder_pos_cloud            "XOrder POS - Cloud": entry point,
+#                                    platforms, and the cloud sync code
+#   packages/xorder_waiter_link      the waiter handheld <-> till wire,
+#                                    client and server (waiter-app)
+#   apps/xorder_pos_waiter           "XOrder Waiter": the handheld app
+#
+# Run `flutter pub get` in any member once; every member then shares the
+# resolution.
+name: xorder_pos_workspace
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - packages/shared_module
+  - packages/xorder_pos_test_support
+  - apps/xorder_pos_offline
+  - apps/xorder_pos_cloud
+  - packages/xorder_waiter_link
+  - apps/xorder_pos_waiter
+
+# The cloud app's data file is encrypted: package:sqlite3 bundles
+# SQLite3MultipleCiphers instead of plain SQLite (pos-cloud-single-till-sqlite,
+# owner decision 2026-11-08). Its build hook downloads the prebuilt library
+# from the sqlite3.dart GitHub release, checked against sha256 sums pinned in
+# the package.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc

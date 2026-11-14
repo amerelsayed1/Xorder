@@ -1,0 +1,352 @@
+name: Windows installer
+
+# Readiness item 10, run by a machine rather than remembered: build the
+# installer, install it on a clean Windows runner, check the app, the database
+# and its accounts, then run the SAME installer again as an upgrade and check
+# nothing was lost. On a tag, the installers are attached to a release.
+#
+# One installer per app (pos-split-apps stage 5): "XOrder POS - Offline" and
+# "XOrder POS - Cloud", each built, installed and upgraded on its own runner
+# by one leg of the matrix below. Before installing, each leg also proves the
+# installer refuses to go in beside the other app or today's single
+# "XOrder POS" (D5) — the only check of the .iss [Code] section a machine runs.
+#
+# A tag is a restaurant release: it must be signed, built with the release
+# licence key, and use an integrity-pinned PostgreSQL archive. A run on a branch
+# exercises the installers (unsigned unless the certificate secrets are set) but
+# can never publish a release.
+#
+# Analyse and the tests are not run here: they run on your own machine with
+# scripts/check.sh, against a local PostgreSQL. Run it, green, before starting
+# this workflow, and always before tagging a release.
+#
+# Runs only when started by hand (Actions > Windows installer > Run workflow,
+# or `gh workflow run windows-installer.yml --ref <branch-or-tag>`). To release,
+# push the tag, then run this workflow on that tag.
+
+on:
+  workflow_dispatch:
+
+# Each app's build output stays in its own folder (apps/xorder_pos_<app>);
+# what the installer gathers (PostgreSQL, tools, the runtime) goes to
+# build/installer at the root. pos_migrate is shared code and is built from
+# packages/shared_module.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+  FLUTTER_VERSION: '3.47.0'
+  # EDB's binaries-only build. This repository variable is mandatory; a blank
+  # value fails before the archive is expanded.
+  PG_VERSION: '16.11-1'
+  PG_SHA256: ${{ vars.XORDER_PG_SHA256 }}
+  XORDER_LICENSE_PUBLIC_KEY_B64: ${{ vars.XORDER_LICENSE_PUBLIC_KEY_B64 }}
+  XORDER_LICENSE_KEY_ID: ${{ vars.XORDER_LICENSE_KEY_ID }}
+  # The uninstall keys the refusal looks for. The two app ids repeat
+  # installer/xorder-pos.iss (OfflineGuid, CloudGuid) and must never change
+  # there or here alone; the last is today's single "XOrder POS".
+  OFFLINE_GUID: '541470B8-9655-4C8B-B613-BDE215C517D6'
+  CLOUD_GUID: 'CFE3951B-E0DC-4C64-908C-5BCAB02681F5'
+  LEGACY_GUID: '6B0C8F3E-2B6A-4F43-9C8D-58E4A1B7D9C2'
+
+jobs:
+  installer:
+    name: installer (${{ matrix.app }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      # One app's failure says nothing about the other's installer; let both
+      # finish so a run shows every problem at once. The release job still
+      # needs both.
+      fail-fast: false
+      matrix:
+        include:
+          - app: offline
+            flavor: Offline
+            product: 'XOrder POS - Offline'
+            other_guid_var: CLOUD_GUID
+          - app: cloud
+            flavor: Cloud
+            product: 'XOrder POS - Cloud'
+            other_guid_var: OFFLINE_GUID
+    env:
+      WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      APP: ${{ matrix.app }}
+      FLAVOR: ${{ matrix.flavor }}
+      PRODUCT: ${{ matrix.product }}
+      OTHER_GUID_VAR: ${{ matrix.other_guid_var }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # The app's own pubspec: it is what `flutter build windows` stamps into
+      # the exe's version resource, so the setup file and the exe agree.
+      - name: Version from pubspec
+        id: version
+        run: |
+          $v = (Select-String -Path "apps/xorder_pos_$env:APP/pubspec.yaml" -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - name: The tag is the pubspec version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if ("v${{ steps.version.outputs.value }}" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match apps/xorder_pos_$env:APP/pubspec.yaml ${{ steps.version.outputs.value }}"
+          }
+
+      - name: Build the app
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:XORDER_LICENSE_PUBLIC_KEY_B64) -or [string]::IsNullOrWhiteSpace($env:XORDER_LICENSE_KEY_ID)) {
+            throw 'XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID repository variables are required for a release build.'
+          }
+          flutter pub get
+          Push-Location "apps/xorder_pos_$env:APP"
+          flutter build windows --release "--dart-define=XORDER_LICENSE_PUBLIC_KEY_B64=$env:XORDER_LICENSE_PUBLIC_KEY_B64" "--dart-define=XORDER_LICENSE_KEY_ID=$env:XORDER_LICENSE_KEY_ID"
+          if ($LASTEXITCODE -ne 0) { throw "flutter build exited with $LASTEXITCODE" }
+          Pop-Location
+          $exe = "apps/xorder_pos_$env:APP/build/windows/x64/runner/Release/xorder_pos_$env:APP.exe"
+          if (-not (Test-Path $exe)) { throw "the build produced no $exe" }
+
+      # The Cloud app keeps its data in an encrypted SQLite file it makes
+      # itself (pos-cloud-single-till-sqlite): no PostgreSQL, no pos_migrate.
+      - name: Build pos_migrate.exe
+        if: matrix.flavor == 'Offline'
+        run: |
+          # `dart compile exe` refuses a package graph with build hooks
+          # (objective_c, via file_picker); `dart build cli` is its replacement.
+          New-Item -ItemType Directory -Force build/installer/tools | Out-Null
+          Push-Location packages/shared_module
+          dart build cli --target bin/pos_migrate.dart --output build/pos_migrate
+          if ($LASTEXITCODE -ne 0) { throw "dart build cli exited with $LASTEXITCODE" }
+          Pop-Location
+          # The installer ships the executable alone. A native library beside it
+          # would be left behind, so a new one has to be added to the .iss first.
+          $libs = Get-ChildItem packages/shared_module/build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
+          if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
+          Copy-Item packages/shared_module/build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
+
+      # Keyed on the pinned hash, and the hash is still checked after a restore,
+      # so a cached archive is held to the same bar as a fresh download.
+      - name: Cache the PostgreSQL archive
+        if: matrix.flavor == 'Offline'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pg-download
+          key: pgsql-${{ env.PG_VERSION }}-${{ env.PG_SHA256 }}
+
+      - name: PostgreSQL binaries
+        if: matrix.flavor == 'Offline'
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PG_SHA256)) { throw 'XORDER_PG_SHA256 repository variable is required.' }
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pg-download') | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP 'pg-download\pgsql.zip'
+          if (-not (Test-Path $zip)) {
+            Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip" -OutFile $zip
+          }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "PostgreSQL $env:PG_VERSION sha256 $hash"
+          if ($hash -ne $env:PG_SHA256) { throw "PostgreSQL download does not match PG_SHA256" }
+          Expand-Archive $zip -DestinationPath build/installer
+          # The server, the client tools and their libraries. Not pgAdmin, the
+          # docs or debug symbols — a third of the size and none of the use.
+          'pgAdmin 4', 'StackBuilder', 'doc', 'symbols', 'include' | ForEach-Object {
+            Remove-Item -Recurse -Force (Join-Path build/installer/pgsql $_) -ErrorAction SilentlyContinue
+          }
+
+      - name: Visual C++ runtime
+        run: |
+          New-Item -ItemType Directory -Force build/installer/tools | Out-Null
+          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile build/installer/tools/vc_redist.x64.exe
+
+      - name: Inno Setup
+        run: |
+          if (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe') { Write-Host 'Inno Setup is preinstalled'; exit 0 }
+          choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          # No /DAppDir: the .iss derives the build folder from the flavor,
+          # so the folder and the exe can never name two different apps.
+          $args = @(
+            "/DFlavor=$env:FLAVOR",
+            "/DAppVersion=${{ steps.version.outputs.value }}",
+            '/DPgDir=..\build\installer\pgsql',
+            '/DToolsDir=..\build\installer\tools'
+          )
+          if ($env:WINDOWS_CERT_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
+            $sign = "`"$signtool`" sign /f `"$pfx`" /p `"$env:WINDOWS_CERT_PASSWORD`" /fd sha256 /tr http://timestamp.digicert.com /td sha256"
+            # The app and the tool first, so what the installer carries is signed too.
+            # The Cloud installer carries no tool.
+            $tool = if ($env:FLAVOR -eq 'Offline') { ' build\installer\tools\pos_migrate.exe' } else { '' }
+            & cmd /c "$sign apps\xorder_pos_$env:APP\build\windows\x64\runner\Release\xorder_pos_$env:APP.exe$tool"
+            if ($LASTEXITCODE -ne 0) { throw 'signing the app failed' }
+            $args += @('/DSIGN', "/Ssigntool=$sign `$f")
+          } else {
+            if ("${{ github.ref }}" -like 'refs/tags/*') {
+              throw 'A tagged release requires WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD.'
+            }
+            Write-Host '::warning::Verification build is unsigned and must not be distributed.'
+          }
+          & $iscc @args installer\xorder-pos.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exited with $LASTEXITCODE" }
+
+      # D5, on a clean runner: plant the uninstall key the other app (and then
+      # today's single app) would have left, run the installer, and expect it
+      # to refuse with exit code 1 and leave no trace — no app folder, no
+      # service, no data folder. Planted keys only, not real installs: what is
+      # under test is what InitializeSetup looks for, and a key is all it reads.
+      - name: Refuses beside the other app
+        run: |
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $root = Join-Path $env:ProgramData 'XOrder POS'
+          $uninstall = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+          # Only Offline has install types; the Cloud installer has none to pick.
+          $type = if ($env:FLAVOR -eq 'Offline') { @('/TYPE=server') } else { @() }
+          $others = @(
+            @{ guid = (Get-Item "Env:$env:OTHER_GUID_VAR").Value; what = 'the other app' },
+            @{ guid = $env:LEGACY_GUID; what = 'the single XOrder POS' }
+          )
+          foreach ($other in $others) {
+            $key = Join-Path $uninstall ('{' + $other.guid + '}_is1')
+            New-Item -Path $key -Force | Out-Null
+            try {
+              $p = Start-Process $setup -Wait -PassThru -ArgumentList (@(
+                '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') + $type + @(
+                "/LOG=$env:RUNNER_TEMP\setup-refused-$($other.guid).log"))
+              if ($p.ExitCode -ne 1) { throw "beside $($other.what): setup exited with $($p.ExitCode), expected 1 (refused)" }
+              if (Test-Path $app) { throw "beside $($other.what): setup refused but still created $app" }
+              if (Test-Path $root) { throw "beside $($other.what): setup refused but still created $root" }
+              if (Get-Service XOrderPOS-PostgreSQL -ErrorAction SilentlyContinue) { throw "beside $($other.what): setup refused but a database service exists" }
+            } finally {
+              Remove-Item -Path $key -Recurse -Force
+            }
+          }
+          Write-Host 'Refused beside the other app and beside the single XOrder POS; nothing was changed.'
+
+      - name: Install, check, upgrade, check again
+        if: matrix.flavor == 'Offline'
+        run: |
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
+          $root = Join-Path $env:ProgramData 'XOrder POS'
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $exe = "xorder_pos_$env:APP.exe"
+
+          function Install([string] $name) {
+            $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TYPE=server',
+              "/LOG=$env:RUNNER_TEMP\setup-$name.log")
+            Get-Content (Join-Path $root 'logs\provision.log') -Tail 25
+            if ($p.ExitCode -ne 0) { throw "setup ($name) exited with $($p.ExitCode)" }
+          }
+
+          function Check([string] $when) {
+            if ((Get-Service XOrderPOS-PostgreSQL).Status -ne 'Running') { throw "${when}: the database service is not running" }
+            if (-not (Test-Path (Join-Path $app $exe))) { throw "${when}: $exe is not installed in $app" }
+            $script:creds = Get-Content (Join-Path $root 'install-credentials.json') -Raw | ConvertFrom-Json
+            $env:POS_PG_PASSWORD = $creds.admin.password
+            $status = & (Join-Path $app 'tools\pos_migrate.exe') --host 127.0.0.1 --port $creds.port `
+              --database xorder_pos --user pos_admin --no-verify-tls --status
+            if ($status -match 'PENDING') { throw "${when}: migrations still pending`n$status" }
+          }
+
+          function Sql([string] $user, [string] $password, [string] $query) {
+            $env:PGPASSWORD = $password
+            $out = & (Join-Path $app 'pgsql\bin\psql.exe') -h 127.0.0.1 -p $creds.port -U $user -d xorder_pos -tAc $query
+            if ($LASTEXITCODE -ne 0) { throw "psql as $user failed: $query" }
+            return "$out".Trim()
+          }
+
+          Install 'first'
+          Check 'after install'
+          if ((Sql 'pos_admin' $creds.admin.password "SELECT tableowner FROM pg_tables WHERE tablename = 'pos_orders'") -ne 'pos_admin') {
+            throw 'the tables are not pos_admin''s, so a restore could not replace them'
+          }
+          Sql 'pos_admin' $creds.admin.password "INSERT INTO pos_restaurants (slug, name) VALUES ('ci-marker', 'Survives the upgrade')" | Out-Null
+          Sql 'pos_backup' $creds.backup.password 'SELECT count(*) FROM pos_orders' | Out-Null
+
+          Install 'upgrade'
+          Check 'after upgrade'
+          if ((Sql 'pos_till' $creds.till.password "SELECT count(*) FROM pos_restaurants WHERE slug = 'ci-marker'") -ne '1') {
+            throw 'the upgrade lost data'
+          }
+          Write-Host "$env:PRODUCT installed, upgraded in place, nothing lost."
+
+      # The Cloud app: installed and upgraded in place, and nothing of a
+      # database anywhere — no pgsql or tools folder, no service. Its data file
+      # is made by the app on first run, under the user's AppData, so the
+      # installer neither writes nor removes it.
+      - name: Install, check, upgrade, check again (Cloud)
+        if: matrix.flavor == 'Cloud'
+        run: |
+          $setup = (Get-ChildItem "dist\XOrder-POS-$env:FLAVOR-Setup-*.exe" | Select-Object -First 1).FullName
+          $app = Join-Path $env:ProgramFiles $env:PRODUCT
+          $exe = "xorder_pos_$env:APP.exe"
+          foreach ($when in 'install', 'upgrade') {
+            $p = Start-Process $setup -Wait -PassThru -ArgumentList @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+              "/LOG=$env:RUNNER_TEMP\setup-$when.log")
+            if ($p.ExitCode -ne 0) { throw "setup ($when) exited with $($p.ExitCode)" }
+            if (-not (Test-Path (Join-Path $app $exe))) { throw "after ${when}: $exe is not installed in $app" }
+            if (Test-Path (Join-Path $app 'pgsql')) { throw "after ${when}: the Cloud app shipped PostgreSQL" }
+            if (Test-Path (Join-Path $app 'tools')) { throw "after ${when}: the Cloud app shipped database tools" }
+            if (Get-Service XOrderPOS-PostgreSQL -ErrorAction SilentlyContinue) { throw "after ${when}: a database service exists" }
+          }
+          Write-Host "$env:PRODUCT installed and upgraded in place, with no database of its own to install."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xorder-pos-${{ matrix.app }}-windows-${{ steps.version.outputs.value }}
+          path: |
+            dist/XOrder-POS-${{ matrix.flavor }}-Setup-*.exe
+            ${{ runner.temp }}/setup-*.log
+
+  # One job publishes both installers, and only when both legs are green: two
+  # legs each creating the same release would race, and a release with one
+  # app's installer is not a release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # One folder per artifact, not merged: both legs' logs share names, and
+      # an artifact of two paths keeps their common parent, so the setup file
+      # is not at the top of it. Picked out by name below instead.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: xorder-pos-*-windows-*
+          path: artifacts
+
+      - name: Both installers, and only those
+        run: |
+          mkdir -p release
+          find artifacts -name 'XOrder-POS-*-Setup-*.exe' -exec mv {} release/ \;
+          ls -l release
+          for app in Offline Cloud; do
+            ls release/XOrder-POS-$app-Setup-*.exe > /dev/null || { echo "no $app installer to release" >&2; exit 1; }
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/XOrder-POS-Offline-Setup-*.exe
+            release/XOrder-POS-Cloud-Setup-*.exe
