@@ -1,0 +1,1 @@
+../../apps/xorder-pos/.claude/agents/pos-dev.md

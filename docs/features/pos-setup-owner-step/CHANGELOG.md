@@ -1,0 +1,10 @@
+# Changelog — pos-setup-owner-step
+
+## 2026-10-27 — built (xorder-pos, uncommitted)
+- **Setup step 4 (offline first install) is two screens in one step.** Screen A, "Database access": the administrator password, with a plain "used once, not saved" explanation, a Show/Hide control, the account name as a small line, and "leave it empty if PostgreSQL has no password". Screen B, "Create the owner account": owner name, username (prefilled `owner`, left to right), sign-in PIN with a live `n / 4` count and an "exactly 4 digits" sentence, and the PIN again with an inline mismatch line. (`lib/features/setup/presentation/setup_panes.dart`)
+- **One button per screen.** The wizard footer's button is Continue on screen A, "Create database and continue" on screen B, and Continue again once the database exists; the separate "Build the database" button and the dimmed Continue beside it are gone. (`setup_wizard.dart`, `setup_state.dart`: `OwnerPage`, `FooterAction`, `footerEnabled`)
+- **A PIN typed differently twice builds nothing.** An administrator-password, role or connection failure returns the person to screen A with the error and everything typed kept. (`setup_controller.dart`: `setOwnerPinConfirm`, `footerPressed`, `isAdminAccessFailure`)
+- **The PIN help no longer says "four to twelve"** (the rule has always been exactly 4, and extra digits were silently dropped); no screen says PBKDF2, "PostgreSQL role" or "First person". 15 new strings and 10 removed (EN and AR); two error sentences reworded.
+- Unchanged: what the bootstrap does, the PIN rule, cloud, child-tablet and pairing step 4, the step order and list, the persisted progress (nothing new is saved).
+- Tests: new `setup_owner_step_test.dart`, `setup_owner_step_ui_test.dart`; changed `setup_wizard_test.dart` (one test), `setup_typing_test.dart` (starts on the owner's screen), `localisation_test.dart` (string map), `data/installer_owner_test.dart` (supplies the confirmation; PostgreSQL-tagged, not run).
+- Behavior to know about: the owner types the PIN twice; the wizard's button changes its label on this step.

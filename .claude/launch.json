@@ -1,0 +1,52 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/xorder-cloud/apps/api && php artisan serve --host=127.0.0.1 --port=8100"
+      ],
+      "port": 8100,
+      "url": "http://localhost:8100"
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/xorder-cloud && pnpm --filter @xorder/web exec vite --port 5180"
+      ],
+      "port": 5180
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/xorder-cloud && pnpm --filter @xorder/landing dev"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "menu",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/xorder-cloud && pnpm --filter @xorder/menu exec vite --port 5175 --strictPort"
+      ],
+      "port": 5175,
+      "url": "http://localhost:5175"
+    },
+    {
+      "name": "web-floating-save",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/xorder-cloud/.claude/worktrees/settings-floating-save && pnpm --filter @xorder/web exec vite --port 5181 --strictPort"
+      ],
+      "port": 5181
+    }
+  ]
+}

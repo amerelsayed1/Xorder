@@ -1,0 +1,113 @@
+# Feature specification: Roles, capabilities and gates
+
+Status: implemented (cloud API and dashboard SPA; capabilities reach the till through the bootstrap bundle)
+Slug: `tenant-roles` · Module: `roles-and-staff` · Footprint: shared (bootstrap download; the POS maps keys and keeps local roles and grants)
+Verified against: 2026-10-20 · cloud `main 06bc8e3` · POS `main d592db8` (uncommitted files in both repos are documentation, agent/script files and two POS files outside this feature; none is cited as evidence unless stated). Core state: `drafted` (author self-check, mechanical citation check; five independent passes (rounds 1-5), criterion not met: `docs/validation/2026-10-20-batch1-*-report.md`). Path prefixes: `C:` = `apps/xorder-cloud/apps/api/`, `P:` = `apps/xorder-pos/`, `W:` = `apps/xorder-cloud/apps/web/`, `K:` = `apps/xorder-cloud/packages/`, `A:` = `apps/xorder-cloud/apps/`.
+
+## Summary
+Access is decided by two permission systems that share one gate namespace. **Platform** staff (Super Admin portal) get `Capability` values from a fixed role matrix. **Restaurant** users get `TenantCapability` values: the owner holds all of them, and staff hold exactly what their per-restaurant `Role` row lists. Routes stack role, feature (what the tenant bought), capability (what the person may do) and subscription checks. Restaurant users holding the `staff.*` capabilities (the owner holds them implicitly) manage the restaurant's roles.
+
+## Scope and exclusions
+Implemented: the enums and matrix, gate registration, `EnsureRole`, `EnsureFeatureEnabled`, `EnsureSubscriptionAllowsWrites`, role CRUD with delegation checks, the capability catalogue endpoint, the Vue role pages and capability guards, the bootstrap delivery of staff capabilities, the POS key map.
+Not found: a test comparing `RoleEnum::capabilities()` with the Vue mirror `ROLE_CAPS`; a test of `PUT /api/dashboard/roles/{role}` or of `GET /api/dashboard/roles/capabilities`; a migration that backfills later capabilities (`pos.*`, `customers.create`, `purchase.manage`) into existing roles (commands and results in `FEATURE_INVENTORY.md` "Absent", rows for `tenant-roles`).
+
+## Actors and permissions
+| Actor | Rule | Enforced by | Evidence |
+| --- | --- | --- | --- |
+| Super Admin | passes every gate | `Gate::before` | `C:app/Providers/AppServiceProvider.php:120` |
+| Other platform roles | the `Capability` values of their matrix row | gate per `Capability` case | `AppServiceProvider.php:122-127`, `C:app/Enums/RoleEnum.php:57-94` |
+| Restaurant owner (`RESTAURANT_ADMIN`) | every tenant capability | `holdsTenantCapability` | `C:app/Models/User.php:115-119` |
+| Restaurant staff | capabilities of the assigned role; none without a role | `holdsTenantCapability` | `User.php:121-125`, `C:app/Models/Role.php:53-58` |
+| Role management | list/show `staff.view`; create `staff.create`; update `staff.update`; delete `staff.delete` (+ `subscription.writable` on writes) | routes + requests | `C:routes/api.php:303-314`, `C:app/Http/Requests/Dashboard/StoreRoleRequest.php:16`, `UpdateRoleRequest.php:16` |
+On `/api/pos/*`, the till-side per-action capabilities (the `pos.*` verbs other than `pos.provision` and `pos.reprint`, and `customers.create`) are enforced inside services only when the request names an `acting_user_id` (every request declares it `nullable`, e.g. `C:app/Http/Requests/Pos/OpenShiftRequest.php:20`, and the services return early for a null id: `PosOrderService.php:470-474`, `PosRefundService.php:304-309`, `PosShiftService.php:319-336`), and then throw `POS_CAPABILITY_MISSING` 403 (`C:app/Services/PosShiftService.php:335`, `PosCustomerService.php:99`, `PosOrderService.php:488`, `PosRefundService.php:321`), not in route middleware; `pos.provision` is enforced by route middleware `can:pos.provision` on the dashboard terminal routes and on `POST pos/terminals/register` (`C:routes/api.php:658,781-782`). `PUT`/`DELETE dashboard/staff/{staff}/pin` has no route-level `can:` (`C:routes/api.php:708-710`; owned by `pos-pin`). All six role routes sit under `auth:jwt` and `role:<tenant roles>`; no `feature:` gate applies to roles (`docs/architecture/cloud-route-index.md`). Not every tenant route is capability-gated: the shell endpoints `push/token`, `pulse`, `notifications*` and `geo/resolve-map-link` are open to every tenant account (`C:routes/api.php:274-297`).
+
+## Current implemented behavior
+**Platform capabilities** (`C:app/Enums/Capability.php`, 12 cases): `platform_users.manage`, `restaurants.view`, `restaurants.manage`, `plans.manage`, `subscriptions.manage`, `leads.manage`, `landing.manage`, `audit.view`, `insights.view`, `licences.manage`, `pos_fleet.view`, `pos_fleet.manage`.
+**Platform matrix** (`C:app/Enums/RoleEnum.php:57-94`): `SUPER_ADMIN` all twelve; `ADMIN`: restaurants.view/manage, plans.manage, subscriptions.manage, leads.manage, landing.manage, audit.view, insights.view; `MODERATOR`: restaurants.view/manage, landing.manage, insights.view; `SALES`: restaurants.view, plans.manage, subscriptions.manage, leads.manage, insights.view; `SUPPORT`: restaurants.view, audit.view, insights.view; tenant roles: none. `licences.manage`, `pos_fleet.view`, `pos_fleet.manage` are held only by Super Admin (the docblocks in `Capability.php` say so).
+**Tenant capabilities** (`C:app/Enums/TenantCapability.php`, 40 cases; "implies" from `implies()` at `:166-179`):
+- operations: `live.view`; `orders.view`; `orders.update` (→ `orders.view`); `bills.view`; `bills.update` (→ `bills.view`)
+- menu: `menu.view`; `menu.create`, `menu.update`, `menu.delete` (each → `menu.view`)
+- place: `tables.view`; `tables.create|update|delete` (→ `tables.view`); `branches.view`; `branches.create|update|delete` (→ `branches.view`)
+- engagement: `customers.view`; `customers.create` (→ `customers.view`); `reviews.view`; `reviews.update` (→ `reviews.view`)
+- analytics: `analytics.view`; `reports.view`
+- administration: `settings.view`; `settings.update` (→ `settings.view`); `staff.view`; `staff.create|update|delete` (→ `staff.view`)
+- pos: `pos.operate`; `pos.discount`, `pos.price_override`, `pos.void`, `pos.refund`, `pos.shift_open`, `pos.shift_close`, `pos.cash_movement`, `pos.reprint`, `pos.provision` (each → `pos.operate`)
+- buying: `purchase.manage` (no view capability)
+`pos.reprint` is defined but no use was found in `app` or `routes` (grep), so no cloud code enforces it. Enforced verbs and sites: `pos.operate`, `pos.discount`, `pos.price_override` (`C:app/Services/PosOrderService.php:88-94,320,487`), `pos.void` and `pos.refund` (selected in `PosRefundService.php:87-89`, checked at `:320`), `pos.shift_open`, `pos.shift_close`, `pos.cash_movement` (`PosShiftService.php:55,107,182,334`), `customers.create` (`PosCustomerService.php:98`).
+**Derived gates** (not role-editor checkboxes, `AppServiceProvider.php:148-163`): `branches.list` = `branches.view` or `tables.view`; `orders.read` = `orders.view` or `live.view`; `bills.read` = `bills.view` or `live.view`; `tables.live` = `tables.view` or `live.view`.
+**Legacy aliases**: `*.manage` keys map to verbs (`legacyManageMap`, 8 entries) and are appended to a user's capability list only when all implied verbs are held (`TenantCapability.php:188-235`, `User.php:134-145,167-183`; the code comment asks for removal one release after the verb split). `purchase.manage` must never join the legacy map (`TenantCapability.php:118-122`).
+**Gate registration**: one gate per `Capability` case via the role matrix, one per `TenantCapability` case via `holdsTenantCapability` (`AppServiceProvider.php:122-140`).
+**Middleware** (`C:bootstrap/app.php:57-63`): `role` → `EnsureRole` (401 no user; 403 if not ACTIVE (translation key `xorder.errors.account_suspended`, English text "Your account is suspended."); 403 if the role is not listed (key `xorder.errors.no_access`, "You do not have access to this resource.")) (`C:app/Http/Middleware/EnsureRole.php:16-33`); `feature` → `EnsureFeatureEnabled` (pipe-separated any-of; 403 (translation key `xorder.errors.feature_disabled`) if the restaurant holds none) (`C:app/Http/Middleware/EnsureFeatureEnabled.php:24-43`); `subscription.writable` → `EnsureSubscriptionAllowsWrites` (403 for no restaurant, archived or suspended restaurant, and an inactive subscription when `platform.subscription.enforce_dashboard_writes` is on) (`C:app/Http/Middleware/EnsureSubscriptionAllowsWrites.php:17-45`).
+`TenantRoleService::update` overwrites the whole capability list with the grantable subset of the request (`C:app/Services/TenantRoleService.php:92-104`), so an actor who lacks some capabilities of a role can only save a role without them, including the system Admin role.
+**Features** (`C:app/Enums/Feature.php`): 14 keys (qr_menu, whatsapp_ordering, system_ordering, customer_tracking, table_management, bill_requests, internal_reviews, product_analytics, dine_in, pickup, delivery, multi_branch, pos, purchasing); prerequisites bill_requests → table_management → dine_in; defaults on: qr_menu, whatsapp_ordering, pickup, delivery (`Feature.php:66-95`).
+**Role API** (`C:app/Http/Controllers/Dashboard/RoleController.php`):
+1. `index`: roles of the restaurant with `users_count`, system roles first then by name; `show` the same shape for one role; `capabilities` returns the catalogue `{value, group, resource, action, implies}` for the 40 cases (`:30-65`).
+2. `store`/`update`: validated by `StoreRoleRequest`/`UpdateRoleRequest`; `capabilities` are expanded with implied views; a requested value the actor does not hold is a validation error (`role_capability_above_self`); the service keeps only grantable values (`C:app/Services/TenantRoleService.php:72-123`). Created roles are `is_system = false`.
+3. `destroy`: a system role cannot be deleted (422); a role with holders needs `reassign_to` (another role of the restaurant, not itself), otherwise 422 `{message, users_count}`; with a valid replacement the holders are moved and the role deleted (`RoleController.php:93-130`). The database also blocks deleting a role with holders (`restrictOnDelete`).
+4. System role: one preset, `admin` (all capabilities), created at provisioning with `is_system = true` (`TenantRoleService.php:34-67`); update does not guard `is_system` or `slug` (`:92-104`).
+**Vue**: role list and form (`W:src/pages/dashboard/RolesView.vue`, `RoleForm.vue`), capability labels (`W:src/lib/capabilities.js`), verb checks (`W:src/lib/useCaps.js:23-33`), route guard on `meta.capability` (`W:src/router/index.js:260-291`, role routes `:173-175`); `can()` uses the server-sent `capabilities` for tenant roles and a static `ROLE_CAPS` for platform roles (`K:api-client/src/auth.js:16-24,51-57`).
+**POS**: roles reach the till only as capability strings in `staff[]` of the bootstrap; the bundle's ETag is built from `restaurants.pos_config_version` (`C:app/Http/Controllers/Pos/BootstrapController.php:25-33`), which the model hooks bump for branches, tax rules, charges, tender types, terminals and receipt profiles only (`C:app/Services/PosConfigVersion.php:55-58`); the source comment records staff role changes as a KNOWN GAP (`:30-33`); the till skips a bundle whose version is older or equal to the held one unless `force` is set (`P:lib/data/cloud/bootstrap_seeder.dart:71-76`); the bundle's `staff[]` rows also carry `role_id` (`PosBootstrapService.php:321`), which the POS `BootstrapStaff` does not parse (`P:lib/data/cloud/bootstrap_bundle.dart:492-512`); the cloud sends legacy aliases and `reports.view` unchanged (only `purchase.manage` is removed, `:328-331`) and keys without a mapping pass through (`permissions.dart`), some of which equal the till's own back-office keys (`permissions.dart:27,29,102`); the till gates `reports.view` (`P:lib/app/reports_providers.dart:55`, `P:lib/app/branch_sales_providers.dart:85`, `P:lib/features/admin/presentation/management_screen.dart:1039-1058`), and the till's own repositories gate on `staff.manage` (`P:lib/data/postgres/postgres_admin_repositories.dart:174,274,459`) and `settings.manage` (`P:lib/data/postgres/postgres_service_charges_repository.dart:84`, `P:lib/data/postgres/postgres_catalog_admin_repository.dart:539`), so a cloud bundle that carries those spellings reaches code that checks them (whether those paths are reachable on a cloud till was not traced); a PIN set or delete bumps `pos_config_version` and so re-delivers `staff[]` (`C:app/Services/PosConfigVersion.php:25-28`, `PosPinController.php:44,65`). (`C:app/Services/PosBootstrapService.php:305-336`; `purchase.manage` removed). The till stores them as direct capabilities (no cloud role row), renames keys through `PosCapability._renamed` (10 entries, e.g. `pos.shift_open` → `shift.open`, `pos.refund` → `order.refund`) and adds `cash.open_without_sale` for `pos.cash_movement`; unmapped keys pass through (`P:lib/domain/models/permissions.dart:222-266`, `P:lib/data/cloud/bootstrap_seeder.dart:465-487`). The till resolves effective permissions from roles, allow/deny overrides and limits (`P:lib/domain/services/permission_resolver.dart:57-111`); local roles are a separate POS table (`P:lib/data/postgres/migrations.dart:392-410`).
+
+## User journeys and workflows
+Owner → Roles → New role → tick capabilities (implied views are added automatically and locked) → Staff → assign the role. Deleting a role in use opens a reassign step (`W:src/pages/dashboard/RolesView.vue:104-109`, request in `destroy()` `:121-127`).
+
+## Business rules
+| ID | Rule | Where implemented | Evidence |
+| --- | --- | --- | --- |
+| BR-1 | The owner holds every tenant capability; staff hold only their role's; staff without a role hold none. | `holdsTenantCapability` | `C:app/Models/User.php:115-126`; tests `C:tests/Feature/TenantRbacTest.php:101,114` (owner and role-limited staff; no test of a staff member with a null `role_id`) |
+| BR-2 | A write verb needs its own capability; a view capability does not allow writes. | gates on routes | tests `TenantRbacTest.php:127,141`, `C:tests/Feature/CapabilityVerbsTest.php:64-166` |
+| BR-3 | Granting a write verb adds its view capability. | `expand()` | `TenantCapability.php:188-208`; tests `TenantRbacTest.php:296`, `CapabilityVerbsTest.php:141` (every verb implies its view), `:194` (legacy `menu.manage` expansion) |
+| BR-4 | In role create/update and staff create/update payloads, a requested capability or `role_id` the actor does not hold is a validation error. Role deletion with `reassign_to` has no such check (`RoleController.php:99-130`). | request after-validators | `GrantsTenantCapabilities.php:38-81`; tests `TenantRbacTest.php:313,327` (POST role, POST staff) |
+| BR-5 | Role names are unique within a restaurant only. | request rule + index | `StoreRoleRequest.php:26-29`, migration `2026_08_22_000100_create_roles_table.php:36`; test `TenantRbacTest.php:341` |
+| BR-6 | System roles cannot be deleted; a role in use cannot be deleted without reassignment. | controller + FK | `RoleController.php:93-117`; tests `TenantRbacTest.php:74,359,369` |
+| BR-7 | Roles of other restaurants are invisible (404). | scoped model | `Role` uses `BelongsToRestaurant`; test `TenantRbacTest.php:389` |
+| BR-8 | Platform role capabilities are fixed in code, not data. | `RoleEnum::capabilities` | `RoleEnum.php:57-94` |
+| BR-9 | Only values of the `TenantCapability` enum are accepted for roles; legacy `*.manage` values are refused in requests. | `Rule::in` | `GrantsTenantCapabilities.php:27-30`, `StoreRoleRequest.php:32`, `UpdateRoleRequest.php:31` |
+
+## Validation and error handling
+`StoreRoleRequest` (`C:app/Http/Requests/Dashboard/StoreRoleRequest.php`): `name` required string max 80 unique per restaurant; `name_ar` nullable string max 80; `capabilities` required array min 1 of known values; after-validator above-self. `UpdateRoleRequest`: same with the name uniqueness ignoring the role. Errors: 422 (validation, system role, role in use with `users_count`), 404 (other tenant), 403 (capability/role/feature/subscription gates), 401 (no user, `EnsureRole.php:20-22`).
+
+## Edge cases and failure handling
+- `Role` uses the `Auditable` trait, which records `created`, `updated` and `deleted` events for the model (`C:app/Models/Role.php:21`, `C:app/Models/Concerns/Auditable.php:22-27`). `TenantUserService::reassignRole` moves holders with a query-builder `update` (`C:app/Services/TenantUserService.php:108-114`); whether that emits per-user audit events: `BEHAVIORAL_ANALYSIS.md` I.
+- Update of the protected admin role is not guarded (`TenantRoleService.php:92-104`; documented as allowed in `Role.php:16-17`).
+- Delegation, migration and key-mapping conclusions: `BEHAVIORAL_ANALYSIS.md`.
+
+## Cross-application dependencies
+Contract ledger: POS-BE-002 (READY, `apps/xorder-cloud/docs/coordination/BACKEND_TO_POS.md:196,458`) fixes the `pos.*` strings, `pos.provision` and `customers.create`; its request text names `GET /api/dashboard/roles/capabilities` (`apps/xorder-cloud/docs/coordination/POS_TO_BACKEND.md:183`); POS-BE-030 withholds `purchase.manage` from bundles (`BACKEND_TO_POS.md:2733`). Cloud capability strings → POS keys by the rename map; cloud staff rows → `pos_staff`; the Vue `ROLE_CAPS` mirrors `RoleEnum` (comment `RoleEnum.php:52` asks to keep them in sync; no automated check exists).
+
+## Security considerations
+- Capability gates are applied server-side per route group, not on every route: the shell endpoints are ungated (`C:routes/api.php:274-297`; `pulse` returns `null` for the order and bill counts the user may not open, `C:app/Http/Controllers/Dashboard/PulseController.php:34-40`, test `C:tests/Feature/TenantRbacTest.php:164-173`; the route comment at `routes/api.php:279-282` says "zeroed"; the notification count is not capability-gated). Client checks are UX only (`K:api-client/src/auth.js:12-24`).
+- Delegation limits (BR-4) apply to staff creation/update and role creation/update; role deletion reassignment has no above-self check (`RoleController.php:93-130`).
+- The JWT guard looks the user up on each request (`C:app/Providers/AppServiceProvider.php:217-255`; `auth-login`). Effect of role and status changes on the till: `BEHAVIORAL_ANALYSIS.md` J.
+
+## Known limitations
+- The POS_TO_BACKEND copy of POS-BE-002 still reads "APPROVED ... implementation not started" with dotted strings in its body (`apps/xorder-cloud/docs/coordination/POS_TO_BACKEND.md:158`) while that file's index row says READY (`:74`), against READY with underscore strings in `BACKEND_TO_POS.md:196,458`; the READY row was used.
+- Stale comments: `RoleController.php:17` (`staff.manage`), `C:app/Models/Restaurant.php:219` ("four seeded at provisioning"), `C:app/Services/RestaurantProvisioningService.php:126-128` ("four system staff roles"), `C:app/Services/TenantRoleService.php:16` and `GrantsTenantCapabilities.php:12,14` (`staff.manage`), `RoleController.php:48-50` ("27 checkboxes"; the enum has 40), `RoleEnum.php:48-50` (says Super Admin is omitted from the matrix although line 60 lists all), the roles migration docblock (four presets).
+- 30 of 40 capability values have no entry in `xorder.capabilities.*` language files (lines 333-352 of `lang/en/xorder.php`; the Arabic file has the same block at `lang/ar/xorder.php:318-337`), the keys used by the above-self message.
+- No migration backfills `pos.*`, `customers.create` or `purchase.manage` into existing roles (grep in `FEATURE_INVENTORY.md` "Absent"); migrations did rewrite stored roles for the verb split and add `live.view` to roles holding `tables.view` (`DATABASE.md`).
+
+## Existing automated tests
+| Layer | File and test | Covers | Gaps |
+| --- | --- | --- | --- |
+| Cloud feature | `C:tests/Feature/TenantRbacTest.php` (33 tests: provisioning seeds only `admin`, admin role protected, owner holds all, view vs write, shell endpoints, pulse counts, suspended staff, creation, escalation, uniqueness, deletion and reassignment, cross-tenant invisibility, owner listed in the staff list and protected (`:508,527,550`; `:564` is the cross-tenant list test), `/auth/me` sets, branch list gates) | BR-1..BR-7 | `PUT roles/{role}`, `GET roles/capabilities`, `PUT staff/{staff}` above self |
+| Cloud feature | `C:tests/Feature/CapabilityVerbsTest.php` (verbs, `live.view`, aliases) | BR-2, BR-3, legacy aliases | |
+| Cloud feature | `C:tests/Feature/UserCreationMatrixTest.php` | who can create whom | extra arguments at `:201,276` |
+| Cloud feature | `C:tests/Feature/PlanEntitlementTest.php:90,105` (route gates on `/api/dashboard/orders` and `/customers`), `RestaurantFeatureTest.php` (feature resolution, provisioning, some HTTP calls at `:136,182,201`) | feature gates | |
+| POS | `P:test/domain/permissions_test.dart`, `permission_resolver_test.dart` (exist; only the cited lines were read) | key mapping and resolution | cloud-bundle-to-resolved-set test |
+No test compares the platform matrix with `ROLE_CAPS` (`grep -rn "->capabilities()" C:tests` → no match). All cloud tests use SQLite.
+
+## Acceptance criteria
+- AC-1: Owners hold every tenant capability; staff hold only their role's.
+- AC-2: A write capability requires its own verb; granting it adds the view.
+- AC-3: In role and staff create/update, a manager cannot grant or assign more than they hold (role-delete reassignment is not checked: Known limitations).
+- AC-4: System roles cannot be deleted; roles in use must be reassigned first.
+- AC-5: Roles never cross restaurants.
+- AC-6: Platform roles have the capabilities of the matrix and hold no tenant capabilities through `holdsTenantCapability`; Super Admin nevertheless passes every gate through `Gate::before`, and `role:` keeps platform users off the tenant routes.
+- AC-7: Cloud capability strings reach the till and are mapped to POS keys.
+
+## Confirmed source references
+`C:app/Enums/{Capability,TenantCapability,RoleEnum,Feature}.php`; `C:app/Models/{Role,User}.php`; `C:app/Providers/AppServiceProvider.php:118-164`; `C:app/Http/Middleware/{EnsureRole,EnsureFeatureEnabled,EnsureSubscriptionAllowsWrites}.php`; `C:app/Http/Controllers/Dashboard/RoleController.php`; `C:app/Http/Requests/Dashboard/{StoreRoleRequest,UpdateRoleRequest}.php`; `C:app/Http/Requests/Dashboard/Concerns/GrantsTenantCapabilities.php`; `C:app/Services/TenantRoleService.php`; `W:src/lib/{capabilities,useCaps}.js`; `K:api-client/src/auth.js`; `P:lib/domain/models/permissions.dart`; `P:lib/domain/services/permission_resolver.dart`.
+
+## Unknowns and assumptions
+- UNVERIFIED: `TenantRoleService::ungrantable` body details beyond the cited behavior; production `roles` content.
+- UNVERIFIED: POS test coverage of the key map beyond the cited lines.

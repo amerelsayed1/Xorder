@@ -1,0 +1,7 @@
+# Database: Content languages (XORD-005)
+
+- POS: `pos_restaurants.content_languages text NOT NULL DEFAULT 'both'`, CHECK in (`ar`,`en`,`both`) (`P:lib/data/postgres/migrations.dart:4586-4600`, migration 57). Written earlier; unchanged now.
+- POS tables with `name_en NOT NULL` / `name_ar` nullable that this feature writes: categories, products, modifier groups and options, combos and their groups/options, tax groups (also `UNIQUE (restaurant_id, name_en)`), service charges, tender types, order types, units, suppliers, stock items. NOT NULL confirmed from the migration text for the tables listed in `migrations.dart` lines 188-230, 1649-1663, 1858-1904, 2188-2325, 2422-2426, 3577-3590; stock items not located separately: **UNVERIFIED** (they are saved through the same `name_en` contract).
+- XORD-035: no schema change. `LocalBootstrap.seedRestaurant` now names `content_languages` in the INSERT (value from the wizard's language, or the column default `both` when none is given); the `ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug` adoption path leaves an existing row's value alone. No existing row is rewritten. Verified on a real PostgreSQL by `test/data/local_bootstrap_test.dart`.
+- Cloud: `restaurants.bilingual`, `default_language`. No migration in this stage.
+- PostgreSQL behaviour is not exercised by the new tests (widget tests; the PostgreSQL suites self-skip without `POS_PG_HOST`).
