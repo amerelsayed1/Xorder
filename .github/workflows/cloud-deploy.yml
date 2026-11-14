@@ -1,6 +1,8 @@
-name: Deploy to production
+name: Cloud - Deploy to production
 
 # Manual only: run it from the Actions tab.
+# Monorepo layout: the cloud platform lives in apps/xorder-cloud, so every
+# build step below sets `working-directory` to it.
 on:
   workflow_dispatch:
 
@@ -20,35 +22,40 @@ jobs:
       # Version comes from package.json "packageManager" (pnpm@9.12.0).
       # Don't also set `version:` here — action-setup@v4 errors on both.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/xorder-cloud/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
+          cache-dependency-path: apps/xorder-cloud/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        working-directory: apps/xorder-cloud
       - run: pnpm build
+        working-directory: apps/xorder-cloud
 
-      # Laravel API (apps/api).
+      # Laravel API (apps/xorder-cloud/apps/api).
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
           extensions: pdo, pdo_pgsql, mbstring, bcmath, zip, intl, gd
       - name: Composer install (apps/api)
-        working-directory: apps/api
+        working-directory: apps/xorder-cloud/apps/api
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Lint PHP (apps/api)
-        working-directory: apps/api
+        working-directory: apps/xorder-cloud/apps/api
         run: |
           find app routes config database -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
 
       - name: Code style (pint)
-        working-directory: apps/api
+        working-directory: apps/xorder-cloud/apps/api
         run: ./vendor/bin/pint --test
 
       # Full feature suite (SQLite in-memory) — a red test blocks the deploy.
       # Covers auth, tenant isolation, provisioning, public menu + SEO shell,
       # subscription gating, leads.
       - name: Feature tests (apps/api)
-        working-directory: apps/api
+        working-directory: apps/xorder-cloud/apps/api
         run: |
           cp .env.example .env
           php artisan key:generate --quiet
@@ -69,7 +76,10 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           # Compose file to use on the server (defaults to the co-host layout).
           COMPOSE_FILE: ${{ vars.XORDER_COMPOSE_FILE }}
-          # Where the repo is checked out on the VPS (defaults to /opt/xorder).
+          # Directory on the VPS that holds deploy.sh (defaults to /opt/xorder).
+          # Unchanged on purpose: while the VPS clone is still the old
+          # Xorder-Menu repo this keeps working as before. Once the VPS clones
+          # the monorepo, set XORDER_DEPLOY_PATH to <clone>/apps/xorder-cloud.
           DEPLOY_PATH: ${{ vars.XORDER_DEPLOY_PATH }}
         run: |
           set -euo pipefail

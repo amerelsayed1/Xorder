@@ -83,7 +83,7 @@ void main() {
     // The workflow repeats the three for its refusal check; one changed in
     // only one of the two files would test the wrong key.
     final workflow = File(
-      '../../.github/workflows/windows-installer.yml',
+      '../../../../.github/workflows/pos-windows-installer.yml',
     ).readAsStringSync();
     expect(workflow, contains("OFFLINE_GUID: '$offline'"));
     expect(workflow, contains("CLOUD_GUID: '$cloud'"));
@@ -136,7 +136,7 @@ void main() {
 
     test('the workflow fetches and checks PostgreSQL for Offline only', () {
       final workflow = File(
-        '../../.github/workflows/windows-installer.yml',
+        '../../../../.github/workflows/pos-windows-installer.yml',
       ).readAsStringSync();
       for (final step in [
         '- name: Build pos_migrate.exe',

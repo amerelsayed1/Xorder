@@ -22,9 +22,10 @@ Purpose: give any skill or agent the verified project knowledge relevant to its 
 
    Use the module doc (`docs/modules/<module>.md`) only for architecture questions, and `docs/PROJECT_OVERVIEW.md` only for cross-application or platform-wide questions.
 4. **Freshness check (bounded, cheap).** Take from the inventory block the revision per repo (`cloud <sha>`, `pos <sha>`) and the evidence file list. For each repo:
-   - `git -C <repo> diff --name-only <sha>..HEAD -- <evidence paths>` (committed changes since the docs)
-   - `git -C <repo> status --short -- <evidence paths>` (uncommitted work)
-   Paths in the inventory are workspace-relative: strip the `apps/xorder-cloud/` or `apps/xorder-pos/` prefix for the `git -C` call. If the recorded sha is not an ancestor of HEAD, use `git -C <repo> log -1 --format=%h -- <path>` per file and compare dates with the doc date.
+   - **Monorepo (one git repo at the workspace root).** Recorded shas come from the former per-app repos and are still in history, but those commits use un-prefixed paths. Run from the monorepo root and diff the sha against the app's subtree, with paths stripped of the `apps/xorder-cloud/` or `apps/xorder-pos/` prefix: `git diff --name-only <sha> HEAD:apps/xorder-cloud -- <evidence paths>` (use `HEAD:apps/xorder-pos` for pos). Do NOT use `git -C apps/<app> diff ...` for this: the pathspec is prefixed, matches nothing, and reports a false `fresh`.
+   - Uncommitted work: `git status --short -- apps/xorder-cloud/<evidence paths>` (workspace-relative paths, from the root).
+   - Legacy layout (separate per-app repos): `git -C <repo> diff --name-only <sha>..HEAD -- <evidence paths>` and `git -C <repo> status --short -- <evidence paths>`, paths stripped of the app prefix.
+   If the recorded sha is not an ancestor of HEAD, use `git log -1 --format=%h -- <path>` per file (from the root, with the prefixed path in the monorepo) and compare dates with the doc date.
    Verdict:
    - `fresh`: no evidence file changed and the verification status is `validated` or `drafted` with all load-bearing claims cited.
    - `needs verification`: an evidence file changed or is uncommitted, the status is not `validated`, or UNVERIFIED items touch the task.

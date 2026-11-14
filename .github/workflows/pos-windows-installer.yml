@@ -1,5 +1,13 @@
-name: Windows installer
+name: POS - Windows installer
 
+# Monorepo layout: the POS lives in apps/xorder-pos. Every `run` step below
+# executes from there (defaults.run.working-directory), so the relative paths
+# in the steps (apps/xorder_pos_<app>, packages/shared_module, installer/,
+# build/installer, dist/) are unchanged and are relative to apps/xorder-pos.
+# Only the upload-artifact paths, which are resolved from the repo root, carry
+# the apps/xorder-pos/ prefix. Run it with
+# `gh workflow run pos-windows-installer.yml --ref <branch-or-tag>`.
+#
 # Readiness item 10, run by a machine rather than remembered: build the
 # installer, install it on a clean Windows runner, check the app, the database
 # and its accounts, then run the SAME installer again as an upgrade and check
@@ -82,6 +90,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
+        working-directory: apps/xorder-pos
     steps:
       - uses: actions/checkout@v5
 
@@ -315,7 +324,7 @@ jobs:
         with:
           name: xorder-pos-${{ matrix.app }}-windows-${{ steps.version.outputs.value }}
           path: |
-            dist/XOrder-POS-${{ matrix.flavor }}-Setup-*.exe
+            apps/xorder-pos/dist/XOrder-POS-${{ matrix.flavor }}-Setup-*.exe
             ${{ runner.temp }}/setup-*.log
 
   # One job publishes both installers, and only when both legs are green: two
