@@ -1,0 +1,2953 @@
+@import 'tailwindcss';
+
+/* Self-hosted Tajawal. index.html preloads the two weights the first screen
+   needs, so the files are already in flight by the time this rule is read. */
+@import '../../../packages/ui/src/fonts.css';
+
+@source './**/*.{vue,js}';
+
+@theme {
+    --font-sans: 'Tajawal', ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * Design tokens. --accent is injected per-restaurant from App.vue
+ * (brand_color); every tint/shade derives from it via color-mix so any
+ * brand color produces a coherent palette.
+ */
+:root {
+    --cream: #fff8ea;
+    --cream-deep: #f7ecd7;
+    --surface: #fff;
+    --ink: #2d2923;
+    --muted: #756e64;
+    --line: #eadfce;
+    --accent: #f59e0b;
+    --accent-dark: color-mix(in srgb, var(--accent) 80%, #3a2400);
+    --accent-soft: color-mix(in srgb, var(--accent) 16%, white);
+    --accent-softer: color-mix(in srgb, var(--accent) 8%, white);
+    --accent-border: color-mix(in srgb, var(--accent) 34%, white);
+    --accent-shadow: color-mix(in srgb, var(--accent) 20%, transparent);
+    --green: #16a34a;
+    --green-dark: #0b7a35;
+    --shadow: 0 16px 42px #573f1b17;
+
+    /* Sticky-stack heights. useStickyLayout overwrites these with exact measured
+       values (inline on <html>, so JS always wins); these are breakpoint-correct
+       fallbacks so the sticky offsets are right even before JS runs — otherwise
+       the toolbar/heading fall back to desktop offsets and leave a gap over the
+       shorter mobile topbar. */
+    --topbar-h: 78px;
+    --stack-h: 142px;
+    --footer-h: 56px;
+}
+
+@media (width <= 900px) {
+    :root {
+        --topbar-h: 66px;
+        /* topbar (66) + stacked search/tabs toolbar (~108); JS refines it. */
+        --stack-h: 174px;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+html, body, #app {
+    min-height: 100%;
+}
+
+body {
+    /* clip (not hidden) contains the full-bleed hero's 100vw without creating a
+       scroll container that would break the sticky category tabs. */
+    overflow-x: clip;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    margin: 0;
+}
+
+button, input, textarea {
+    font: inherit;
+}
+
+button, a {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button {
+    color: inherit;
+}
+
+img {
+    display: block;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* direction:ltr alone is inert on inline boxes — isolate makes prices and
+   latin snippets keep "12.00 E£" order inside RTL text. */
+.product-title-row strong, .cart-item-copy b, .cart-total strong,
+.step-two-summary strong, .modal-heading > strong, .modal-add strong,
+.option-row strong, .brand span, .powered-by {
+    unicode-bidi: isolate;
+}
+
+/* ---------- Loading: shimmer + skeleton + image fade-in ---------- */
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.shimmer {
+    background: linear-gradient(100deg, var(--cream-deep) 28%, #fdf3e1 46%, #fff8ec 54%, var(--cream-deep) 72%);
+    background-size: 200% 100%;
+    animation: shimmer 1.25s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shimmer {
+        animation: none;
+    }
+}
+
+/* Images fade in over their shimmering wrapper so cards never flash blank. */
+.product-image-wrap img,
+.modal-image-wrap > img,
+.cart-item > img {
+    opacity: 0;
+    transition: opacity .45s ease;
+}
+
+.product-image-wrap img.is-loaded,
+.modal-image-wrap > img.is-loaded,
+.cart-item > img.is-loaded {
+    opacity: 1;
+}
+
+/* Shimmer the wrapper only while its image is still loading (not once it has
+   settled, success or error). */
+.product-image-wrap:has(img:not(.is-loaded)),
+.modal-image-wrap:has(> img:not(.is-loaded)) {
+    background: linear-gradient(100deg, var(--cream-deep) 28%, #fdf3e1 46%, #fff8ec 54%, var(--cream-deep) 72%);
+    background-size: 200% 100%;
+    animation: shimmer 1.25s linear infinite;
+}
+
+/* Hide the fallback glyph while a usable image is loading or shown, so loading
+   reads as a clean shimmer and a loaded photo covers it. The glyph stays visible
+   when there is no image, or when the image failed (img.is-error). */
+.product-image-wrap:has(img:not(.is-error)) .image-placeholder {
+    visibility: hidden;
+}
+
+/* A broken modal image collapses to the neutral cream backdrop. */
+.modal-image-wrap > img.is-error {
+    display: none;
+}
+
+.cart-item > img {
+    background: var(--cream-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .product-image-wrap:has(img:not(.is-loaded)),
+    .modal-image-wrap:has(> img:not(.is-loaded)) {
+        animation: none;
+    }
+}
+
+/* Skeleton menu shown while the first payload loads. */
+.menu-skeleton {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 24px 28px 60px;
+}
+
+.skel-hero {
+    height: 310px;
+    border-radius: 28px;
+}
+
+.skel-toolbar {
+    height: 64px;
+    border-radius: 18px;
+    margin-top: 18px;
+}
+
+.skel-section-title {
+    height: 26px;
+    width: 180px;
+    border-radius: 8px;
+    margin: 34px 4px 16px;
+}
+
+.skel-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    display: grid;
+}
+
+.skel-card {
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 7px 22px #4b37180d;
+}
+
+.skel-card-img {
+    aspect-ratio: 16/10;
+}
+
+.skel-card-body {
+    padding: 15px 16px 18px;
+}
+
+.skel-line {
+    height: 13px;
+    border-radius: 7px;
+}
+
+.skel-line.sm {
+    width: 45%;
+    height: 11px;
+    margin-top: 10px;
+}
+
+.skel-line.lg {
+    width: 75%;
+}
+
+@media (width <= 1180px) {
+    .skel-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (width <= 900px) {
+    .menu-skeleton {
+        padding: 14px 14px 40px;
+    }
+
+    .skel-hero {
+        height: 270px;
+        border-radius: 21px;
+    }
+
+    .skel-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 11px;
+    }
+}
+
+/* ---------- Shell ---------- */
+.site-shell {
+    background: var(--cream);
+    min-height: 100vh;
+    /* Clears the fixed topbar. Measured into --topbar-h (useStickyLayout); the
+       fallback matches the topbar's default height for the first paint. */
+    padding-top: var(--topbar-h, 78px);
+}
+
+/* ---------- Topbar ---------- */
+.topbar {
+    z-index: 50;
+    /* Fully opaque so nothing shows through while content scrolls under it. */
+    background: #fffdf7;
+    border-bottom: 1px solid #ddceb6cc;
+    height: 78px;
+    position: fixed;
+    inset: 0 0 auto;
+    box-shadow: 0 5px 20px #4c36160a;
+}
+
+.topbar-inner {
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1480px;
+    height: 100%;
+    margin: auto;
+    padding: 0 28px;
+    display: flex;
+}
+
+.brand {
+    align-items: center;
+    gap: 11px;
+    display: flex;
+}
+
+.brand img, .brand-fallback {
+    object-fit: cover;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    width: 46px;
+    height: 46px;
+    box-shadow: 0 4px 14px #0000001f;
+    flex: none;
+}
+
+.brand-fallback {
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 19px;
+}
+
+.brand-copy {
+    flex-direction: column;
+    line-height: 1.15;
+    display: flex;
+    min-width: 0;
+    direction: inherit;
+}
+
+.brand strong {
+    font-size: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.brand span {
+    color: var(--muted);
+    direction: ltr;
+    margin-top: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.menu-button {
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    padding: 7px;
+    font-size: 24px;
+}
+
+.top-actions {
+    direction: ltr;
+    align-items: center;
+    gap: 12px;
+    display: flex;
+}
+
+.header-cart-button {
+    min-height: 42px;
+    color: var(--accent-dark);
+    cursor: pointer;
+    direction: rtl;
+    background: #fff7e7;
+    border: 1px solid #efd7a9;
+    border-radius: 999px;
+    align-items: center;
+    gap: 7px;
+    padding: 0 12px;
+    display: inline-flex;
+    position: relative;
+}
+
+.header-cart-button .cart-glyph {
+    display: inline-flex;
+    line-height: 0;
+}
+
+.header-cart-button .cart-glyph svg {
+    width: 20px;
+    height: 20px;
+}
+
+.header-cart-button b {
+    font-size: 12px;
+}
+
+.header-cart-button i {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    place-items: center;
+    min-width: 23px;
+    height: 23px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 800;
+    display: grid;
+}
+
+.language-switch {
+    border: 1px solid var(--line);
+    direction: rtl;
+    background: #fff;
+    border-radius: 999px;
+    padding: 3px;
+    display: flex;
+    overflow: hidden;
+}
+
+.language-switch button {
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    border-radius: 999px;
+    min-width: 35px;
+    height: 32px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.language-switch .active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.contact-button {
+    background: var(--green);
+    color: #fff;
+    cursor: pointer;
+    border: 0;
+    border-radius: 999px;
+    align-items: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 0 18px;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: transform .2s, background .2s;
+    display: inline-flex;
+    direction: rtl;
+}
+
+.contact-button em {
+    font-style: normal;
+}
+
+.contact-button:hover {
+    background: var(--green-dark);
+    transform: translateY(-1px);
+}
+
+.whatsapp-dot {
+    display: inline-flex;
+    line-height: 0;
+}
+
+.whatsapp-dot svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Round icon-only header actions (info / share / WhatsApp). */
+.icon-action {
+    width: 42px;
+    height: 42px;
+    flex: none;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    color: var(--accent-dark);
+    background: #fff7e7;
+    border: 1px solid #efd7a9;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: transform .2s, background .2s, color .2s, border-color .2s;
+}
+
+.icon-action svg {
+    width: 20px;
+    height: 20px;
+}
+
+.icon-action:hover {
+    background: #fdeecb;
+    transform: translateY(-1px);
+}
+
+.icon-action.is-done {
+    color: #fff;
+    background: var(--green);
+    border-color: var(--green);
+}
+
+.icon-action--wa {
+    color: #fff;
+    background: var(--green);
+    border-color: var(--green);
+}
+
+.icon-action--wa:hover {
+    background: var(--green-dark);
+}
+
+/* ---------- Page ---------- */
+.page-wrap {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding-inline: 28px;
+    padding-top: 10px;
+    /* Reserve the fixed footer's measured height plus the device safe area, so
+       the final product always scrolls clear above it. */
+    padding-bottom: calc(var(--footer-h, 64px) + env(safe-area-inset-bottom, 0px) + 28px);
+}
+
+/* ---------- Hero ---------- */
+.restaurant-hero {
+    min-height: 310px;
+    isolation: isolate;
+    border-radius: 0;
+    /* Full-bleed: break out of .page-wrap (max-width + side padding) to span the
+       whole viewport width at any screen size. body has overflow-x: clip so the
+       100vw never introduces a horizontal scrollbar. */
+    width: 100vw;
+    margin-inline: calc(50% - 50vw);
+    /* Sit flush under the fixed topbar — cancel .page-wrap's top padding. */
+    margin-block-start: -10px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(120deg, var(--accent-dark), #2c2115);
+}
+
+.hero-image, .hero-overlay {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+
+.hero-image {
+    object-fit: cover;
+}
+
+.hero-overlay {
+    z-index: 1;
+    background: linear-gradient(90deg, #1a130b4d, #1a130bcc);
+}
+
+html[dir='ltr'] .hero-overlay {
+    background: linear-gradient(270deg, #1a130b4d, #1a130bcc);
+}
+
+.restaurant-profile {
+    z-index: 2;
+    color: #fff;
+    align-items: center;
+    gap: 20px;
+    display: flex;
+    position: absolute;
+    bottom: 38px;
+    inset-inline-start: 46px;
+}
+
+.restaurant-profile > img, .profile-fallback {
+    object-fit: cover;
+    border: 5px solid #fff;
+    border-radius: 50%;
+    width: 106px;
+    height: 106px;
+    box-shadow: 0 10px 30px #00000040;
+    flex: none;
+}
+
+.profile-fallback {
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 42px;
+    font-weight: 800;
+}
+
+.restaurant-copy h1 {
+    letter-spacing: -.04em;
+    margin: 0;
+    font-size: 36px;
+}
+
+.restaurant-copy p {
+    color: #ffffffd1;
+    margin: 6px 0 12px;
+}
+
+.restaurant-title-row {
+    align-items: center;
+    gap: 12px;
+    display: flex;
+}
+
+.restaurant-meta {
+    color: #ffffffe6;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: 13px;
+    display: flex;
+}
+
+.hero-buttons {
+    z-index: 2;
+    gap: 10px;
+    display: flex;
+    position: absolute;
+    bottom: 34px;
+    inset-inline-end: 34px;
+}
+
+.hero-buttons button {
+    cursor: pointer;
+    background: #fffffff0;
+    border: 1px solid #ffffffa6;
+    border-radius: 12px;
+    min-height: 43px;
+    padding: 0 17px;
+    font-weight: 700;
+    transition: transform .2s;
+}
+
+.hero-buttons button:hover {
+    transform: translateY(-2px);
+}
+
+/* ---------- Toolbar ---------- */
+.menu-toolbar {
+    z-index: 20;
+    /* No card — the toolbar sits directly on the page. Opaque cream background
+       keeps the sticky tabs legible over content scrolling underneath. Sticks
+       directly below the fixed topbar (measured height). */
+    background: var(--cream);
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    margin-top: 0;
+    padding: 10px 0;
+    display: flex;
+    position: sticky;
+    top: var(--topbar-h, 78px);
+}
+
+.category-list {
+    scrollbar-width: none;
+    align-items: center;
+    gap: 4px;
+    display: flex;
+    overflow-x: auto;
+    /* Breathing room so the first/last tab is never clipped against the edge,
+       and scroll-padding so scrolling a tab into view leaves it clear of both
+       ends. Logical props keep this correct in RTL. */
+    padding-inline: 6px;
+    scroll-padding-inline: 28px;
+    overscroll-behavior-x: contain;
+}
+
+.category-list::-webkit-scrollbar {
+    display: none;
+}
+
+.category {
+    color: #625b52;
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    /* Pill tab: the whole tab fills with the accent when active. */
+    border-radius: 12px;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 16px;
+    font-weight: 700;
+    transition: color .2s, background-color .2s;
+    display: inline-flex;
+    white-space: nowrap;
+}
+
+.category span {
+    font-size: 17px;
+}
+
+.category:hover {
+    color: var(--accent-dark);
+    background: var(--accent-softer);
+}
+
+.category.active {
+    color: #fff;
+    background: var(--accent);
+}
+
+.search-box {
+    border: 1px solid var(--line);
+    height: 44px;
+    color: var(--muted);
+    background: #fffcf7;
+    border-radius: 12px;
+    flex: 0 0 240px;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    display: flex;
+}
+
+.search-box input {
+    width: 100%;
+    color: var(--ink);
+    background: 0 0;
+    border: 0;
+    outline: 0;
+    font-size: 14px;
+}
+
+/* ---------- Menu content ---------- */
+.content-layout {
+    margin-top: 0;
+    display: block;
+}
+
+.menu-content {
+    min-width: 0;
+}
+
+.category-section {
+    padding-top: 8px;
+    /* Land a jumped-to section fully below the sticky stack (topbar + toolbar),
+       measured into --stack-h. The small extra keeps a hair of gap. */
+    scroll-margin-block-start: calc(var(--stack-h, 150px) + 12px);
+}
+
+.category-section:first-of-type {
+    /* No top gap under the tabs toolbar for the first category. */
+    padding-top: 0;
+}
+
+.category-section + .category-section {
+    border-top: 1px solid #e4d6c1cc;
+    margin-top: 12px;
+}
+
+.category-section:last-of-type {
+    /* Enough runway that the last (possibly short) section can still scroll up
+       to the top of the stack when its tab is selected. */
+    min-height: calc(100dvh - var(--stack-h, 170px) - var(--footer-h, 56px));
+}
+
+/* Each category title sticks just under the toolbar while its items scroll,
+   then the next category's title pushes it up. Opaque cream bg so cards pass
+   behind cleanly; z-index below the toolbar (20) so it tucks under it. */
+.section-heading {
+    position: sticky;
+    top: var(--stack-h, 142px);
+    z-index: 12;
+    background: var(--cream);
+    justify-content: space-between;
+    align-items: end;
+    margin-bottom: 16px;
+    padding: 10px 4px;
+    display: flex;
+}
+
+.section-heading > div {
+    align-items: center;
+    gap: 10px;
+    display: flex;
+}
+
+.section-icon {
+    width: 36px;
+    height: 36px;
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+    border-radius: 11px;
+    place-items: center;
+    display: grid;
+    overflow: hidden;
+    flex: none;
+}
+
+.section-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Serving-times note beside a section that is currently out of hours. Sits in
+   the heading's flex row, so it reads as a qualifier on the title rather than a
+   separate announcement. */
+.section-hours {
+    background: var(--accent-soft);
+    border-radius: 999px;
+    color: var(--accent);
+    margin: 4px 0 0;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.section-heading h2 {
+    margin: 4px 0 0;
+    font-size: 28px;
+}
+
+.section-heading > span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* ---------- Product cards ---------- */
+.product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    display: grid;
+    /* Cards size to their own content instead of stretching to the tallest in
+       the row, so a short card doesn't get a big empty gap above its + button. */
+    align-items: start;
+}
+
+/* A section with a single product shouldn't leave an empty column. On desktop
+   the lone card keeps a normal card footprint aligned to the start; on mobile
+   it spans the full content width (handled in the mobile block below). */
+.product-grid:has(> .product-card:only-child) {
+    grid-template-columns: minmax(0, 340px);
+    justify-content: start;
+}
+
+.product-card {
+    border: 1px solid var(--line);
+    cursor: pointer;
+    position: relative;
+    background: #fff;
+    border-radius: 20px;
+    outline: none;
+    min-width: 0;
+    transition: transform .22s, box-shadow .22s, border-color .22s;
+    overflow: hidden;
+    box-shadow: 0 7px 22px #4b37180d;
+    text-align: start;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-card:hover, .product-card:has(.card-open:focus-visible) {
+    border-color: #e5c992;
+    transform: translateY(-4px);
+    box-shadow: 0 16px 32px #4b37181f;
+}
+
+/* Invisible button covering the card — it is what a diner actually clicks and
+   what keyboard focus lands on, so the card can stay a plain <article> holding
+   real content.
+   The z-index has to clear everything decorative inside the card: the photo is
+   position:relative z-index:1 and the "popular" badge is z-index:2, and either
+   one would otherwise sit on top and swallow a tap on the part of the card a
+   diner is most likely to press. Being transparent, painting above them hides
+   nothing. Only the stepper goes higher, since it must stay clickable. */
+.card-open {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.card-action, .card-qty {
+    position: relative;
+    z-index: 4;
+}
+
+.product-image-wrap {
+    aspect-ratio: 16/10;
+    background: var(--cream-deep);
+    position: relative;
+    overflow: hidden;
+    flex: none;
+}
+
+.product-image-wrap img {
+    object-fit: cover;
+    width: 100%;
+    height: 100%;
+    /* Sits above the fallback glyph; a broken URL is hidden so the glyph shows. */
+    position: relative;
+    z-index: 1;
+    transition: transform .35s;
+}
+
+.product-image-wrap img.is-error {
+    display: none;
+}
+
+.product-card:hover .product-image-wrap img {
+    transform: scale(1.045);
+}
+
+.image-placeholder {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--accent) 45%, #d8c9ac);
+    font-size: 34px;
+}
+
+.popular-badge, .unavailable-badge {
+    color: #fff;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    position: absolute;
+    /* Above the image (z-index:1) and the fallback glyph. */
+    z-index: 2;
+    top: 12px;
+    inset-inline-start: 12px;
+}
+
+.popular-badge {
+    background: color-mix(in srgb, var(--accent) 94%, transparent);
+}
+
+.unavailable-badge {
+    white-space: nowrap;
+    background: #24211dd1;
+    font-size: 12px;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+}
+
+.product-body {
+    padding: 15px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.product-title-row {
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    display: flex;
+}
+
+.product-title-row h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+/* Price block: discounted price is dominant; the old price sits smaller with a
+   strikethrough. Each part is nowrap so a number never splits from its currency,
+   but the two parts may wrap relative to each other on very narrow cards. */
+.product-title-row strong,
+.product-price {
+    color: var(--accent-dark);
+    direction: ltr;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 3px 7px;
+}
+
+.product-price .new-price {
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.old-price {
+    color: var(--muted);
+    text-decoration: line-through;
+    font-weight: 500;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* A price always reads as amount-then-currency, even inside the RTL menu.
+   `direction: ltr` alone isn't enough: without an isolate, the surrounding
+   RTL context reorders the run and floats the currency symbol in front of
+   the number (e.g. "ج.م 55.00"). Isolating the run keeps it "55.00 ج.م". */
+.money {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+/* In the Arabic (RTL) menu the amount must read first, with the currency
+   after it. A forced LTR box would put the number on the left, so an RTL
+   reader hits the currency first — flip the price box to RTL so the amount
+   sits at the reading start (right) and the currency trails it (left). The
+   Latin digits themselves still shape correctly as an isolated number run. */
+html[dir='rtl'] .money {
+    direction: rtl;
+}
+
+.product-body p {
+    min-height: 40px;
+    color: var(--muted);
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    margin: 9px 0 14px;
+    font-size: 12px;
+    line-height: 1.65;
+    display: -webkit-box;
+    overflow: hidden;
+}
+
+/* Circular + icon button. The SVG is flex-centered so the glyph sits dead
+   centre (a text "+" rides slightly high on its line box). */
+.add-button {
+    color: #fff;
+    cursor: pointer;
+    background: var(--accent);
+    border: 0;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-self: flex-start;
+    transition: filter .18s, background .18s;
+}
+
+.add-button svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
+.add-button:hover,
+.add-button:focus-visible {
+    filter: brightness(.95);
+}
+
+/* In-cart quantity stepper shown in place of the add button. Follows page
+   direction so the add (+) sits at the reading start — right in RTL, left in
+   LTR — and the − at the end. */
+.card-qty {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    align-self: flex-start;
+    margin-top: auto;
+    min-height: 44px;
+    padding-inline: 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+}
+
+.card-qty__btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    flex: none;
+    padding: 0;
+    transition: filter .18s, background .18s;
+}
+
+.card-qty__btn--add {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+}
+
+.card-qty__btn--sub {
+    background: #fff;
+    color: var(--accent-dark);
+    border: 1px solid var(--accent-border);
+}
+
+.card-qty__btn:hover { filter: brightness(.95); }
+
+.card-qty__num {
+    min-width: 18px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--accent-dark);
+    font-variant-numeric: tabular-nums;
+}
+
+.product-card.unavailable {
+    filter: grayscale(.35);
+    cursor: default;
+}
+
+.product-card.unavailable .product-image-wrap:after {
+    content: "";
+    background: #fff6;
+    position: absolute;
+    inset: 0;
+}
+
+.product-card.unavailable:hover {
+    border-color: var(--line);
+    transform: none;
+    box-shadow: 0 7px 22px #4b37180d;
+}
+
+.no-results {
+    text-align: center;
+    min-height: 380px;
+    color: var(--muted);
+    border: 1px dashed #dcccb3;
+    border-radius: 22px;
+    place-content: center;
+    display: grid;
+    margin-top: 25px;
+}
+
+.no-results > span {
+    color: var(--accent);
+    font-size: 40px;
+}
+
+.no-results h3 {
+    color: var(--ink);
+    margin: 8px 0;
+}
+
+.no-results p {
+    margin: 0;
+}
+
+/* ---------- Cart panel ---------- */
+.cart-panel {
+    background: #fff;
+    border-radius: 24px;
+    overflow: visible;
+}
+
+.cart-heading {
+    z-index: 2;
+    background: #fffffff5;
+    border-bottom: 1px solid #f0e7d9;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 64px;
+    padding: 0 18px;
+    /* Clear the top-corner close button so it never overlaps the header action. */
+    padding-inline-end: 52px;
+    display: flex;
+    position: sticky;
+    top: 0;
+    border-radius: 24px 24px 0 0;
+}
+
+.cart-heading > div {
+    align-items: center;
+    gap: 9px;
+    display: flex;
+}
+
+.cart-heading h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.cart-heading button {
+    color: #a35b49;
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    font-size: 11px;
+}
+
+.cart-heading .clear-cart {
+    padding: 8px 12px;
+    border-radius: 9px;
+}
+
+/* Armed (awaiting the confirming second tap) — turn red to signal intent. */
+.cart-heading .clear-cart--armed {
+    background: #fee2e2;
+    color: #dc2626;
+    font-weight: 700;
+}
+
+.cart-heading .back-step {
+    width: 31px;
+    height: 31px;
+    color: var(--accent-dark);
+    background: var(--accent-softer);
+    border-radius: 9px;
+    place-items: center;
+    font-size: 17px;
+    display: grid;
+}
+
+.cart-icon {
+    color: var(--accent);
+    font-size: 24px;
+    display: grid;
+    place-items: center;
+}
+
+.cart-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.empty-cart {
+    text-align: center;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 220px;
+    padding: 36px 30px 44px;
+    display: flex;
+}
+
+.empty-cart > span {
+    width: 70px;
+    height: 70px;
+    color: var(--accent);
+    background: var(--accent-softer);
+    border-radius: 50%;
+    place-items: center;
+    margin-bottom: 13px;
+    font-size: 35px;
+    display: grid;
+}
+
+.empty-cart > span svg {
+    width: 32px;
+    height: 32px;
+}
+
+.empty-cart h3 {
+    margin: 0 0 8px;
+}
+
+.empty-cart p {
+    color: var(--muted);
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.cart-items {
+    padding: 8px 16px 0;
+}
+
+.cart-item {
+    border-bottom: 1px solid #f1e9dd;
+    grid-template-columns: 62px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 12px 0;
+    display: grid;
+}
+
+.cart-item > img, .cart-item .cart-thumb-fallback {
+    object-fit: cover;
+    border-radius: 12px;
+    width: 62px;
+    height: 62px;
+}
+
+.cart-item .cart-thumb-fallback {
+    background: var(--cream-deep);
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--accent) 45%, #d8c9ac);
+    font-size: 22px;
+}
+
+.cart-item-copy {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    display: flex;
+}
+
+.cart-item-copy strong {
+    font-size: 13px;
+}
+
+.cart-item-copy span {
+    max-width: 100%;
+    color: var(--muted);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 10px;
+    overflow: hidden;
+}
+
+.cart-item-copy b {
+    color: var(--accent-dark);
+    direction: ltr;
+    font-size: 11px;
+}
+
+.cart-item-actions {
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    display: flex;
+}
+
+.remove-item {
+    color: #9f9383;
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    font-size: 16px;
+}
+
+.quantity-control {
+    border: 1px solid var(--line);
+    direction: ltr;
+    border-radius: 9px;
+    grid-template-columns: 27px 30px 27px;
+    align-items: center;
+    min-height: 30px;
+    display: grid;
+    overflow: hidden;
+}
+
+.quantity-control button {
+    cursor: pointer;
+    background: #fffaf1;
+    border: 0;
+    height: 100%;
+}
+
+.quantity-control strong {
+    text-align: center;
+    font-size: 12px;
+}
+
+.cart-total {
+    border-bottom: 1px solid #eee4d4;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 18px;
+    font-size: 15px;
+    display: flex;
+}
+
+.cart-total strong {
+    color: var(--accent-dark);
+    direction: ltr;
+    font-size: 19px;
+}
+
+/* ---------- Checkout steps ---------- */
+.checkout-progress {
+    border-bottom: 1px solid #f0e7d9;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 18px 10px;
+    display: grid;
+}
+
+.checkout-progress > i {
+    background: #e8ded0;
+    border-radius: 999px;
+    height: 2px;
+    display: block;
+}
+
+.checkout-progress > i.filled {
+    background: #8ccf9e;
+}
+
+.progress-step {
+    color: #9b9286;
+    white-space: nowrap;
+    background: 0 0;
+    border: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    display: flex;
+}
+
+.progress-step span {
+    background: #fff;
+    border: 1px solid #dcd1c2;
+    border-radius: 50%;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    font-size: 11px;
+    font-weight: 800;
+    display: grid;
+}
+
+.progress-step b {
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.progress-step.active {
+    color: var(--accent-dark);
+}
+
+.progress-step.active span {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 12px var(--accent-shadow);
+}
+
+.progress-step.done {
+    cursor: pointer;
+    color: var(--green-dark);
+}
+
+.progress-step.done span {
+    color: var(--green-dark);
+    background: #eaf8ee;
+    border-color: #8ccf9e;
+}
+
+html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
+    transform: scaleX(-1);
+}
+
+.cart-step-action {
+    padding: 16px 18px 20px;
+}
+
+.continue-button {
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    border: 0;
+    border-radius: 12px;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    min-height: 51px;
+    padding: 0 17px;
+    font-weight: 800;
+    transition: background .2s, transform .2s;
+    display: flex;
+    box-shadow: 0 8px 20px var(--accent-shadow);
+}
+
+.continue-button:hover {
+    background: var(--accent-dark);
+    transform: translateY(-1px);
+}
+
+.continue-button b {
+    font-size: 19px;
+}
+
+.cart-step-action p {
+    text-align: center;
+    color: var(--muted);
+    margin: 9px 0 0;
+    font-size: 9px;
+}
+
+.step-two-summary {
+    background: var(--accent-softer);
+    border: 1px solid var(--accent-border);
+    border-radius: 12px;
+    justify-content: space-between;
+    align-items: center;
+    margin: 14px 18px 0;
+    padding: 13px 14px;
+    display: flex;
+}
+
+.step-two-summary > div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    display: flex;
+}
+
+.step-two-summary span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.step-two-summary button {
+    color: var(--accent-dark);
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    border-bottom: 1px solid;
+    padding: 0;
+    font-size: 10px;
+}
+
+.step-two-summary strong {
+    color: var(--accent-dark);
+    direction: ltr;
+    font-size: 17px;
+}
+
+.checkout-form {
+    padding: 16px 18px 20px;
+}
+
+.form-title {
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    display: flex;
+}
+
+.form-title > div {
+    align-items: center;
+    gap: 8px;
+    display: flex;
+}
+
+.form-title > div span {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    font-size: 12px;
+    font-weight: 800;
+    display: grid;
+}
+
+.form-title small {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.order-type {
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 9px;
+    margin-bottom: 13px;
+    display: grid;
+}
+
+.order-type button {
+    border: 1px solid var(--line);
+    cursor: pointer;
+    background: #fff;
+    border-radius: 11px;
+    min-height: 45px;
+    font-weight: 700;
+}
+
+.order-type button.active {
+    border-color: var(--accent);
+    color: var(--accent-dark);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    background: var(--accent-softer);
+}
+
+.checkout-form label {
+    margin-bottom: 11px;
+    display: block;
+}
+
+.checkout-form label > span, .item-note > span {
+    color: #5f584f;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    display: block;
+}
+
+.checkout-form input, .checkout-form textarea, .item-note textarea {
+    border: 1px solid var(--line);
+    background: #fffcf7;
+    border-radius: 10px;
+    outline: 0;
+    width: 100%;
+    transition: border .2s, box-shadow .2s;
+}
+
+.checkout-form input {
+    height: 42px;
+    padding: 0 12px;
+}
+
+.checkout-form textarea {
+    resize: vertical;
+    min-height: 66px;
+    padding: 11px 12px;
+}
+
+.checkout-form input:focus, .checkout-form textarea:focus, .item-note textarea:focus {
+    border-color: color-mix(in srgb, var(--accent) 75%, white);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.checkout-form input[aria-invalid="true"], .checkout-form textarea[aria-invalid="true"] {
+    border-color: #d64545;
+}
+
+.checkout-form .field-error {
+    display: block;
+    margin-top: 5px;
+    color: #c0392b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.whatsapp-order {
+    background: var(--green);
+    color: #fff;
+    cursor: pointer;
+    border: 0;
+    width: 100%;
+    border-radius: 12px;
+    justify-content: center;
+    align-items: center;
+    gap: 11px;
+    min-height: 50px;
+    margin-top: 4px;
+    padding: 0 18px;
+    font-weight: 800;
+    text-decoration: none;
+    transition: background .2s, transform .2s;
+    display: flex;
+}
+
+.whatsapp-order:hover {
+    background: var(--green-dark);
+    transform: translateY(-1px);
+}
+
+.whatsapp-order:disabled {
+    cursor: not-allowed;
+    pointer-events: none;
+    background: #bad6c3;
+}
+
+/* Not-yet-valid: muted, but still clickable so the tap surfaces the field
+   errors instead of doing nothing. */
+.whatsapp-order.muted {
+    background: #bad6c3;
+}
+
+/* System-ordering mode isn't a WhatsApp handoff — use the brand accent. */
+.whatsapp-order.is-system { background: var(--accent); }
+.whatsapp-order.is-system.muted { background: color-mix(in srgb, var(--accent) 45%, #fff); }
+
+.whatsapp-note {
+    text-align: center;
+    color: var(--muted);
+    margin: 9px 0 0;
+    font-size: 9px;
+}
+
+/* ---------- Fixed footer ---------- */
+.fixed-footer {
+    z-index: 45;
+    /* Fully opaque so product cards never show through it as they scroll past. */
+    background: #fffdf7;
+    border-top: 1px solid #e0d0b8e6;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    min-height: 56px;
+    padding-inline: max(24px, 50vw - 712px);
+    padding-block: 8px;
+    /* Keep content clear of the home-indicator / gesture area. */
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    box-shadow: 0 -8px 28px #4b371814;
+}
+
+.footer-socials {
+    align-items: center;
+    gap: 7px;
+    display: flex;
+}
+
+.footer-socials a {
+    border: 1px solid var(--line);
+    color: #5f584f;
+    background: #fff;
+    border-radius: 50%;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    font-weight: 800;
+    text-decoration: none;
+    transition: color .2s, border-color .2s, transform .2s;
+    display: grid;
+}
+
+.footer-socials a:hover {
+    color: var(--accent-dark);
+    border-color: color-mix(in srgb, var(--accent) 55%, white);
+    transform: translateY(-2px);
+}
+
+.footer-socials svg {
+    width: 15px;
+    height: 15px;
+}
+
+.powered-by {
+    color: var(--muted);
+    letter-spacing: .01em;
+    direction: ltr;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.powered-by strong {
+    color: var(--ink);
+    font-size: 14px;
+}
+
+/* ---------- Modals ---------- */
+.modal-backdrop {
+    z-index: 60;
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+    background: #1f1b16ad;
+    place-items: center;
+    padding: 20px;
+    animation: .18s fadeIn;
+    display: grid;
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+}
+
+.cart-dialog-backdrop {
+    z-index: 70;
+}
+
+.cart-dialog {
+    background: #fff;
+    border-radius: 24px;
+    width: min(540px, 94vw);
+    max-height: 90vh;
+    animation: .24s modalIn;
+    position: relative;
+    overflow-y: auto;
+    box-shadow: 0 28px 90px #00000047;
+}
+
+.item-modal {
+    background: #fff;
+    border-radius: 26px;
+    grid-template-columns: 46% 54%;
+    /* An explicit minmax(0, …) row is what lets the sheet clamp to max-height:
+       a default `auto` row grows to the tallest column, so a long item pushed
+       the details past the clamp and `overflow: hidden` simply cut them off. */
+    grid-template-rows: minmax(0, 1fr);
+    width: min(920px, 94vw);
+    max-height: 92vh;
+    animation: .24s modalIn;
+    display: grid;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 28px 90px #00000047;
+}
+
+.item-modal.no-image {
+    grid-template-columns: 1fr;
+    width: min(560px, 94vw);
+}
+
+.modal-close {
+    z-index: 4;
+    cursor: pointer;
+    background: #fffffff0;
+    border: 0;
+    border-radius: 50%;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    font-size: 24px;
+    display: grid;
+    position: absolute;
+    top: 14px;
+    inset-inline-end: 14px;
+    box-shadow: 0 5px 18px #00000026;
+}
+
+.modal-image-wrap {
+    /* Tall enough to give the sheet its presence on a short item, but never
+       taller than the sheet itself — an unbounded 610px overflowed the clamp
+       on laptop-height viewports and cropped against the rounded corner. */
+    min-height: min(610px, 92vh);
+    position: relative;
+    background: var(--cream-deep);
+}
+
+.modal-image-wrap > img {
+    object-fit: cover;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+
+.modal-content {
+    min-width: 0;
+    /* Grid items default to min-height: auto, which keeps this column at full
+       content height so overflow-y never engages. Zero lets it shrink into the
+       row and scroll — the sticky footer below relies on that too. */
+    min-height: 0;
+    padding: 32px;
+    overflow-y: auto;
+}
+
+.modal-heading {
+    border-bottom: 1px solid var(--line);
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    /* Reserve room so the top-corner close button never overlaps the price. */
+    padding-inline-end: 38px;
+    padding-bottom: 22px;
+    display: flex;
+}
+
+.modal-heading h2 {
+    margin: 0 0 8px;
+    font-size: 29px;
+}
+
+.modal-heading p {
+    /* Darker than --muted for readable body contrast on the sheet. */
+    color: #574e43;
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.7;
+}
+
+.modal-heading > strong {
+    color: var(--accent-dark);
+    white-space: nowrap;
+    direction: ltr;
+    font-size: 18px;
+}
+
+.options-section {
+    padding: 20px 0 8px;
+}
+
+.options-title {
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 9px;
+    display: flex;
+}
+
+.options-title span {
+    color: var(--muted);
+    background: #f4eee4;
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 10px;
+}
+
+.options-title span.required {
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+}
+
+.option-row {
+    cursor: pointer;
+    border-bottom: 1px solid #f2eadf;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 48px;
+    display: flex;
+}
+
+.option-row--readonly {
+    cursor: default;
+}
+
+.option-row > span {
+    align-items: center;
+    gap: 10px;
+    display: flex;
+}
+
+/* Custom-drawn indicator so the native user-agent radio/checkbox ring (a dark
+   circle around the accent dot) never shows — appearance:none lets us paint the
+   whole control ourselves in the brand palette. */
+.option-row input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: none;
+    border: 2px solid var(--line);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s;
+}
+
+.option-row input[type="radio"] {
+    border-radius: 50%;
+}
+
+.option-row input[type="checkbox"] {
+    border-radius: 6px;
+}
+
+.option-row input:checked {
+    border-color: var(--accent);
+}
+
+/* Radio: filled centre dot. */
+.option-row input[type="radio"]:checked {
+    background: radial-gradient(circle, var(--accent) 0 4px, var(--surface) 5px);
+}
+
+/* Checkbox: solid accent fill with a white tick. */
+.option-row input[type="checkbox"]:checked {
+    background-color: var(--accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 12px;
+}
+
+.option-row strong {
+    color: var(--muted);
+    direction: ltr;
+    font-size: 11px;
+}
+
+.item-note {
+    margin-top: 14px;
+    display: block;
+}
+
+/* Starts at one practical row and auto-grows (JS) up to a cap. overflow:hidden
+   keeps it scrollbar-free — past the cap the browser still shifts the content to
+   keep the caret line in view, just without a visible scrollbar.
+   resize:none removes the corner drag-handle artifact. */
+.item-note textarea {
+    resize: none;
+    min-height: 46px;
+    max-height: 132px;
+    overflow: hidden;
+    padding: 11px 12px;
+    line-height: 1.5;
+}
+
+.item-note textarea::placeholder,
+.checkout-form input::placeholder,
+.checkout-form textarea::placeholder {
+    color: #8a8073;
+    opacity: 1;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--line);
+    background: #fff;
+    gap: 12px;
+    margin: 25px -32px -32px;
+    padding: 18px 32px 24px;
+    display: flex;
+    position: sticky;
+    bottom: -32px;
+}
+
+.quantity-control.large {
+    border-radius: 12px;
+    flex: 0 0 118px;
+    min-height: 48px;
+    grid-template-columns: 38px 42px 38px;
+}
+
+.quantity-control.large button {
+    font-size: 20px;
+}
+
+.modal-add {
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    border: 0;
+    border-radius: 13px;
+    flex: 1;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 54px;
+    padding: 0 20px;
+    font-weight: 800;
+    transition: background .2s, transform .2s;
+    display: flex;
+}
+
+.modal-add:hover {
+    background: var(--accent-dark);
+    transform: translateY(-1px);
+}
+
+.modal-add:disabled {
+    background: #d9c9ac;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.modal-add strong {
+    direction: ltr;
+}
+
+/* Simple centered dialog (info / success) */
+.simple-dialog {
+    background: #fff;
+    border-radius: 24px;
+    width: min(430px, 94vw);
+    animation: .24s modalIn;
+    position: relative;
+    padding: 30px 26px 24px;
+    box-shadow: 0 28px 90px #00000047;
+}
+
+.simple-dialog h2 {
+    margin: 0 0 6px;
+    font-size: 22px;
+}
+
+.simple-dialog .success-circle {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 14px;
+    background: #eaf8ee;
+    color: var(--green-dark);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 28px;
+}
+
+.info-rows {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.info-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    min-height: 44px;
+    border-bottom: 1px solid #f2eadf;
+    font-size: 13px;
+}
+
+.info-row:last-child {
+    border-bottom: 0;
+}
+
+.info-row > span {
+    color: var(--accent-dark);
+    font-size: 16px;
+    width: 22px;
+    text-align: center;
+    flex: none;
+}
+
+.dialog-button {
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    border-radius: 12px;
+    width: 100%;
+    min-height: 46px;
+    margin-top: 16px;
+    font-weight: 700;
+}
+
+/* ---------- Side menu ---------- */
+.side-backdrop {
+    z-index: 80;
+    background: #1f1b16ad;
+    position: fixed;
+    inset: 0;
+    animation: .18s fadeIn;
+    display: flex;
+}
+
+.side-panel {
+    background: var(--cream);
+    width: 290px;
+    max-width: 82vw;
+    height: 100%;
+    padding: 22px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 0 60px #00000038;
+    animation: .22s sideIn;
+}
+
+html[dir='ltr'] .side-panel {
+    animation-name: sideInLtr;
+}
+
+.side-panel .side-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 6px 16px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 10px;
+}
+
+.side-panel .side-brand img, .side-panel .side-brand .brand-fallback {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.side-panel .side-brand strong {
+    font-size: 15px;
+}
+
+.side-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    background: 0 0;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 12px 12px;
+    font-weight: 700;
+    text-align: start;
+    text-decoration: none;
+    color: var(--ink);
+    transition: background .2s;
+}
+
+.side-link:hover {
+    background: var(--accent-softer);
+}
+
+.side-link span {
+    width: 22px;
+    text-align: center;
+    color: var(--accent-dark);
+}
+
+.side-link.green {
+    color: var(--green-dark);
+}
+
+.side-link.green span {
+    color: var(--green-dark);
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+    }
+}
+
+@keyframes modalIn {
+    0% {
+        opacity: 0;
+        transform: translateY(16px) scale(.985);
+    }
+}
+
+@keyframes sideIn {
+    0% {
+        transform: translateX(30px);
+        opacity: .4;
+    }
+}
+
+@keyframes sideInLtr {
+    0% {
+        transform: translateX(-30px);
+        opacity: .4;
+    }
+}
+
+/* ---------- Responsive ---------- */
+@media (width <= 1180px) {
+    .product-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (width <= 900px) {
+    .site-shell {
+        padding-top: 66px;
+    }
+
+    .topbar {
+        height: 66px;
+    }
+
+    .topbar-inner {
+        padding: 0 16px;
+    }
+
+    .brand img, .brand-fallback {
+        width: 39px;
+        height: 39px;
+    }
+
+    .brand {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .brand strong {
+        font-size: 15px;
+        max-width: 130px;
+    }
+
+    .brand span {
+        max-width: 130px;
+    }
+
+    .contact-button {
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        min-height: 42px;
+        padding: 0;
+    }
+
+    .contact-button em {
+        display: none;
+    }
+
+    .page-wrap {
+        padding-inline: 14px;
+        padding-top: 8px;
+        /* Bottom gutter (footer height + safe area) is inherited from the base rule. */
+    }
+
+    /* Hide the hero banner entirely on mobile — go straight from the top bar
+       to the category tabs + menu. */
+    .restaurant-hero {
+        display: none;
+    }
+
+    .restaurant-profile {
+        gap: 13px;
+        bottom: 24px;
+        inset-inline-start: 22px;
+    }
+
+    .restaurant-profile > img, .profile-fallback {
+        border-width: 3px;
+        width: 76px;
+        height: 76px;
+        font-size: 30px;
+    }
+
+    .restaurant-copy h1 {
+        font-size: 26px;
+    }
+
+    .restaurant-copy p {
+        font-size: 12px;
+    }
+
+    .restaurant-meta {
+        gap: 10px;
+        font-size: 10px;
+    }
+
+    .hero-buttons {
+        bottom: 18px;
+        inset-inline-end: 18px;
+    }
+
+    .hero-buttons button {
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 11px;
+    }
+
+    .menu-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 8px 0;
+        /* Sticky top is the measured topbar height (var); no magic number. */
+    }
+
+    .category-list {
+        order: 2;
+    }
+
+    .category {
+        min-height: 41px;
+        padding: 0 14px;
+        font-size: 12px;
+    }
+
+    .search-box {
+        flex-basis: auto;
+        height: 41px;
+    }
+
+    .content-layout {
+        margin-top: 0;
+    }
+
+    /* scroll-margin, last-section runway, and the section-heading sticky top are
+       all derived from the measured --stack-h/--footer-h in the base rules — the
+       taller stacked toolbar on mobile is handled automatically. */
+    .section-heading {
+        margin-bottom: 10px;
+        padding-block: 8px;
+    }
+
+    .section-heading h2 {
+        font-size: 23px;
+    }
+
+    .product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 11px;
+    }
+
+    /* A lone card spans the full content width on mobile so there's no empty
+       column; a wider crop keeps its media from towering. */
+    .product-grid:has(> .product-card:only-child) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .product-grid:has(> .product-card:only-child) .product-image-wrap {
+        aspect-ratio: 16/9;
+    }
+
+    /* Shorter crop than the desktop 16:10 so more products fit per screen while
+       still reading well at 2-up widths. */
+    .product-image-wrap {
+        aspect-ratio: 3/2;
+    }
+
+    .product-card {
+        border-radius: 16px;
+    }
+
+    .product-body {
+        padding: 12px;
+    }
+
+    .product-title-row {
+        display: block;
+    }
+
+    .product-title-row h3 {
+        margin-bottom: 5px;
+        font-size: 15px;
+    }
+
+    .product-body p {
+        min-height: 36px;
+        margin: 7px 0 10px;
+        font-size: 11px;
+    }
+
+    .add-button {
+        width: 40px;
+        height: 40px;
+        font-size: 24px;
+    }
+
+    .fixed-footer {
+        gap: 10px;
+        min-height: 56px;
+        padding: 8px 14px;
+    }
+
+    .footer-socials {
+        gap: 4px;
+    }
+
+    .footer-socials a {
+        width: 31px;
+        height: 31px;
+        font-size: 12px;
+    }
+
+    .item-modal, .item-modal.no-image {
+        width: min(600px, 94vw);
+        max-height: 91dvh;
+        display: block;
+        overflow-y: auto;
+    }
+
+    .modal-image-wrap {
+        /* Shorter media → less scrolling to reach the details/CTA. */
+        height: 30vh;
+        min-height: 210px;
+    }
+
+    .modal-content {
+        padding: 20px 22px;
+        overflow: visible;
+    }
+
+    .modal-footer {
+        margin: 18px -22px -22px;
+        padding: 14px 22px calc(16px + env(safe-area-inset-bottom, 0px));
+        bottom: -22px;
+    }
+
+    .cart-dialog {
+        border-radius: 24px 24px 0 0;
+        align-self: end;
+        width: min(620px, 100%);
+        max-height: 92vh;
+        animation: .25s sheetIn;
+    }
+
+    .cart-dialog .cart-panel {
+        border-radius: 24px 24px 0 0;
+    }
+
+    @keyframes sheetIn {
+        0% {
+            opacity: .5;
+            transform: translateY(30px);
+        }
+    }
+}
+
+@media (width <= 560px) {
+    .brand {
+        gap: 7px;
+    }
+
+    .menu-button {
+        padding: 4px;
+        font-size: 20px;
+    }
+
+    .language-switch button {
+        min-width: 30px;
+        height: 29px;
+        font-size: 10px;
+    }
+
+    .header-cart-button {
+        justify-content: center;
+        width: 42px;
+        min-height: 42px;
+        padding: 0;
+    }
+
+    .header-cart-button b {
+        display: none;
+    }
+
+    /* Up to five round actions can crowd a narrow bar — trim the gap, shrink the
+       circles, and give the brand priority so nothing overlaps the logo. */
+    .top-actions {
+        gap: 6px;
+        flex: none;
+    }
+
+    .icon-action {
+        width: 36px;
+        height: 36px;
+    }
+
+    .icon-action svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .brand strong {
+        max-width: 84px;
+    }
+
+    /* The Latin alt-name is redundant next to the logo when space is tight. */
+    .brand span {
+        display: none;
+    }
+
+    /* Icon-only button: the count becomes a corner badge pinned to the icon,
+       instead of an inline chip that overflows the circle and detaches. */
+    .header-cart-button i {
+        position: absolute;
+        top: -4px;
+        inset-inline-end: -4px;
+        min-width: 19px;
+        height: 19px;
+        padding: 0 4px;
+        font-size: 10px;
+        border: 2px solid var(--cream);
+    }
+
+    .restaurant-hero {
+        min-height: 235px;
+    }
+
+    .hero-overlay, html[dir='ltr'] .hero-overlay {
+        background: linear-gradient(#19130b1f, #19130bd6);
+    }
+
+    .restaurant-profile {
+        bottom: 20px;
+        inset-inline: 17px;
+    }
+
+    .restaurant-profile > img, .profile-fallback {
+        width: 65px;
+        height: 65px;
+        font-size: 26px;
+    }
+
+    .restaurant-copy h1 {
+        font-size: 22px;
+    }
+
+    .restaurant-title-row {
+        gap: 7px;
+    }
+
+    .hero-buttons {
+        top: 14px;
+        bottom: auto;
+        inset-inline-end: 14px;
+    }
+
+    .hero-buttons button {
+        width: 36px;
+        height: 36px;
+        min-height: 36px;
+        padding: 0;
+        font-size: 0;
+        overflow: hidden;
+    }
+
+    .hero-buttons button:first-letter {
+        font-size: 14px;
+    }
+
+    /* ---- Compact list rows on phones ----
+       A full-width image block per card leaves cards tall and mostly empty at
+       phone widths (and hollow when an item has no photo). Lay each item out as
+       a single row instead: a small square thumbnail on the start, name + price
+       and a one-line description filling the middle, and the add control pinned
+       to the end. Far more items per screen, and it reads well with or without
+       a photo. */
+    .product-grid,
+    .product-grid:has(> .product-card:only-child) {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .product-card {
+        flex-direction: row;
+        align-items: stretch;
+        position: relative;
+        border-radius: 14px;
+    }
+
+    /* Small fixed square thumbnail — overrides the ≤900 crop (incl. the lone-card
+       16/9). Inset and rounded so it reads as a thumbnail, not a banner. */
+    .product-image-wrap,
+    .product-grid:has(> .product-card:only-child) .product-image-wrap {
+        flex: none;
+        align-self: center;
+        width: 88px;
+        aspect-ratio: 1;
+        margin: 10px;
+        margin-inline-end: 0;
+        border-radius: 12px;
+    }
+
+    .product-body {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        justify-content: center;
+        gap: 3px;
+        padding: 12px;
+    }
+
+    /* Name and price share the first line again (the ≤900 block stacks them). */
+    .product-title-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 0;
+    }
+
+    .product-title-row h3 {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        font-size: 15px;
+    }
+
+    /* Description returns as a single muted line under the name. */
+    .product-body p {
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 0;
+        margin: 0;
+    }
+
+    /* Add button / quantity stepper sits below the description, tucked to the
+       end (bottom-inline-end) corner of the card body. */
+    .card-action {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+
+    /* The corner text badge is too wide for an 88px thumbnail — sit it as a small
+       centred pill along the bottom of the thumbnail instead, where it stays
+       inside the clipped media. */
+    .popular-badge {
+        top: auto;
+        bottom: 6px;
+        inset-inline: 0;
+        width: max-content;
+        max-width: calc(100% - 10px);
+        margin-inline: auto;
+        padding: 3px 7px;
+        font-size: 8px;
+        white-space: nowrap;
+    }
+
+    .item-modal, .item-modal.no-image {
+        border-radius: 24px 24px 0 0;
+        align-self: end;
+        width: 100%;
+        max-height: 94dvh;
+    }
+
+    .modal-backdrop {
+        padding: 0;
+    }
+
+    .modal-image-wrap {
+        height: 26vh;
+        min-height: 180px;
+    }
+
+    .modal-heading {
+        display: block;
+    }
+
+    .modal-heading h2 {
+        font-size: 24px;
+    }
+
+    .modal-heading > strong {
+        margin-top: 10px;
+        display: block;
+    }
+
+    .modal-footer {
+        grid-template-columns: 112px 1fr;
+        display: grid;
+    }
+
+    .modal-add {
+        padding: 0 12px;
+        font-size: 12px;
+    }
+
+    .fixed-footer {
+        gap: 7px;
+        padding-inline: 10px;
+    }
+
+    .powered-by {
+        white-space: nowrap;
+        font-size: 9px;
+    }
+
+    .powered-by strong {
+        font-size: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, :before, :after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+    }
+}
+
+/* Table QR banner — shows the detected table under the header. */
+.table-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent-border);
+}
+.table-banner__identity { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+
+.mobile-cart-bar { display: none; }
+
+@media (max-width: 640px) {
+    .mobile-cart-bar {
+        position: fixed;
+        z-index: 60;
+        inset-inline: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 54px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 16px;
+        background: var(--accent-dark);
+        color: #fff;
+        box-shadow: 0 12px 32px #00000038;
+        font: inherit;
+        cursor: pointer;
+    }
+    .mobile-cart-bar__icon { font-size: 19px; }
+    .mobile-cart-bar__label { font-weight: 800; }
+    .mobile-cart-bar__count {
+        min-width: 24px;
+        height: 24px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #ffffff2b;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .mobile-cart-bar strong { margin-inline-start: auto; white-space: nowrap; }
+    .table-banner { gap: 10px; justify-content: space-between; }
+}
+.table-banner__pin { color: var(--accent); }
+.table-banner--error {
+    color: #b42318;
+    background: color-mix(in srgb, #b42318 10%, white);
+    border-bottom-color: color-mix(in srgb, #b42318 30%, white);
+    font-weight: 500;
+    flex-wrap: wrap;
+}
+.table-banner__retry {
+    padding: 4px 12px;
+    font: inherit;
+    font-weight: 600;
+    color: #b42318;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, #b42318 40%, white);
+    border-radius: 999px;
+    cursor: pointer;
+}
+.table-banner__retry:hover { background: color-mix(in srgb, #b42318 8%, white); }
+
+/* ============================================================
+   Menu layout themes  ·  [data-layout] on .site-shell (App.vue)
+   ------------------------------------------------------------
+   The default 'photo' layout is everything above. These two
+   image-less themes are driven per-restaurant by the API's
+   menu_layout and overridable with ?layout= for previewing.
+   Placed last so they win over the default + mobile rules.
+   ============================================================ */
+
+/* Both text themes drop the photo area entirely. */
+[data-layout='text-grid'] .product-image-wrap,
+[data-layout='text-list'] .product-image-wrap {
+    display: none;
+}
+
+/* The add-button label and the inline availability note only exist for the
+   text themes; hidden everywhere by default. */
+.add-label { display: none; }
+.text-only-badge { display: none; }
+
+/* --- text-grid: the same card grid, minus the photos --- */
+[data-layout='text-grid'] .product-body {
+    padding: 16px 18px 18px;
+}
+/* No photo above, so the description no longer needs a reserved
+   two-line gap holding the card height uniform. */
+[data-layout='text-grid'] .product-body p {
+    min-height: 0;
+}
+[data-layout='text-grid'] .text-only-badge {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #b42318;
+}
+
+/* ============================================================
+   text-list: clean printed-menu list — centred category headers,
+   name+price row, description, then a rectangular add button, with
+   a thin hairline between items. Every accent derives from the
+   tenant brand colour (--accent), so a maroon brand renders maroon,
+   amber renders amber, etc.
+   ============================================================ */
+
+/* Single column, centred and width-capped so it reads like a menu
+   card instead of stretching across a wide desktop. */
+[data-layout='text-list'] .product-grid,
+[data-layout='text-list'] .product-grid:has(> .product-card:only-child) {
+    grid-template-columns: 1fr;
+    gap: 0;
+    max-width: 820px;
+    margin-inline: auto;
+}
+
+/* Centred category headers; the item count is dropped (printed menus
+   don't show it). */
+[data-layout='text-list'] .section-heading {
+    justify-content: center;
+    text-align: center;
+    margin-bottom: 8px;
+}
+[data-layout='text-list'] .section-heading > span { display: none; }
+[data-layout='text-list'] .section-heading h2 { font-size: 26px; }
+
+/* Flat rows — no card chrome. */
+[data-layout='text-list'] .product-card {
+    position: relative;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 22px 4px;
+    overflow: visible;
+}
+/* Thin full-width hairline between items (not after the last). */
+[data-layout='text-list'] .category-section .product-card:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 1px;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+[data-layout='text-list'] .product-card:hover,
+[data-layout='text-list'] .product-card:focus-visible {
+    transform: none;
+    box-shadow: none;
+    border: 0;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+/* Body is a simple vertical stack: the name+price row, the description,
+   then the add button beneath it. */
+[data-layout='text-list'] .product-body {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+[data-layout='text-list'] .product-title-row {
+    align-items: baseline;
+    gap: 12px;
+}
+[data-layout='text-list'] .product-title-row h3 {
+    min-width: 0;
+    font-size: 20px;
+    font-weight: 800;
+}
+[data-layout='text-list'] .product-title-row .product-price {
+    flex: none;
+}
+[data-layout='text-list'] .product-price .new-price {
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--ink);
+}
+[data-layout='text-list'] .product-body p {
+    min-height: 0;
+    margin: 10px 0 0;
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+}
+[data-layout='text-list'] .text-only-badge {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #b42318;
+}
+
+/* Add control sits below the description, at the reading start. */
+[data-layout='text-list'] .card-action {
+    align-self: flex-start;
+    margin-top: 12px;
+}
+/* Small circular icon-only + button, sitting below the description. */
+[data-layout='text-list'] .add-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+[data-layout='text-list'] .add-button svg {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+}
+[data-layout='text-list'] .add-button .add-label { display: none; }
+[data-layout='text-list'] .card-qty {
+    margin-top: 12px;
+}
+
+@media (width <= 900px) {
+    [data-layout='text-list'] .product-grid { max-width: none; }
+    [data-layout='text-list'] .product-card { padding: 18px 2px; }
+    [data-layout='text-list'] .section-heading h2 { font-size: 22px; }
+    [data-layout='text-list'] .product-title-row h3 { font-size: 17px; }
+    [data-layout='text-list'] .product-price .new-price { font-size: 16px; }
+    [data-layout='text-list'] .add-button { width: 36px; height: 36px; padding: 0; }
+}

@@ -1,0 +1,195 @@
+import { ref, computed, watch } from 'vue'
+
+export function useCart(slug = '') {
+    const storageKey = `xorder-cart:${slug}`
+
+    function restore() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]')
+            return Array.isArray(parsed) ? parsed : []
+        } catch {
+            return []
+        }
+    }
+
+    const cart = ref(restore())
+
+    // Persist across refreshes — diners on restaurant WiFi lose the page
+    // constantly, and rebuilding a cart from scratch kills the order.
+    watch(cart, (lines) => {
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(lines))
+        } catch {
+            /* private mode / storage full — cart just won't survive a refresh */
+        }
+    }, { deep: true })
+
+    const cartCount = computed(() => cart.value.reduce((n, line) => n + line.qty, 0))
+    const cartTotal = computed(() => cart.value.reduce((sum, line) => sum + line.qty * line.price, 0))
+
+    function addToCart(kind, ref_, groups, qty, note = '') {
+        const uid = `${kind}-${ref_.id}-${JSON.stringify(groups)}-${note}`
+        const existing = cart.value.find(l => l.uid === uid)
+        if (existing) {
+            existing.qty += qty
+        } else {
+            // Snapshot the full item so cart lines and the WhatsApp message
+            // can show real names/options (groups only holds indexes).
+            cart.value.push({ uid, kind, ref: ref_, groups, qty, note, price: calculateLinePrice(kind, ref_, groups) })
+        }
+    }
+
+    function removeLine(uid) {
+        const idx = cart.value.findIndex(l => l.uid === uid)
+        if (idx >= 0) cart.value.splice(idx, 1)
+    }
+
+    function bumpLine(uid, delta) {
+        const line = cart.value.find(l => l.uid === uid)
+        if (!line) return
+        line.qty += delta
+        if (line.qty <= 0) removeLine(uid)
+    }
+
+    function clearCart() {
+        cart.value = []
+    }
+
+    /** Human-readable labels of the selected options for a cart line. */
+    function getLineOptions(line, localize) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        const labels = []
+        groups.forEach((g, gi) => {
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            selectedIndexes(line.groups[gi]).forEach((oi) => {
+                const opt = pool[oi]
+                if (opt) labels.push(localize(opt))
+            })
+        })
+        return labels
+    }
+
+    /**
+     * The chosen size/portion of a cart line, or null when the item has no
+     * variant group. Kept apart from the add-ons so the kitchen reads
+     * "Pizza — Medium" as one thing and "+ extra cheese" as another.
+     */
+    function getLineVariant(line, localize) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        for (let gi = 0; gi < groups.length; gi++) {
+            const g = groups[gi]
+            if (!g.is_variant) continue
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            const opt = pool[selectedIndexes(line.groups[gi])[0]]
+            return opt ? localize(opt) : null
+        }
+        return null
+    }
+
+    /** Labels of the selected add-ons only — every non-variant choice. */
+    function getLineExtras(line, localize) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        const labels = []
+        groups.forEach((g, gi) => {
+            if (g.is_variant) return
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            selectedIndexes(line.groups[gi]).forEach((oi) => {
+                const opt = pool[oi]
+                if (opt) labels.push(localize(opt))
+            })
+        })
+        return labels
+    }
+
+    function amount(value) {
+        const number = Number(value ?? 0)
+        return Number.isFinite(number) ? number : 0
+    }
+
+    /**
+     * The ids of the options (or combo choices) picked on a cart line — what
+     * the order names so the server prices it (XORD-047). The labels and the
+     * price the cart shows are still worked out here, for display only.
+     */
+    function getLineOptionIds(line) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        const ids = []
+        groups.forEach((g, gi) => {
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            selectedIndexes(line.groups[gi]).forEach((oi) => {
+                const id = pool[oi]?.id
+                if (id != null) ids.push(id)
+            })
+        })
+        return ids
+    }
+
+    function selectedIndexes(value) {
+        if (value == null) return []
+        return Array.isArray(value) ? value : [value]
+    }
+
+    function calculateLinePrice(kind, item, groups) {
+        // Base and add-ons are tracked apart so a variant (size) group can
+        // REPLACE the base while regular groups add on top — independent of the
+        // order the groups happen to appear in.
+        //
+        // The base is the DISCOUNTED price when one is set: that is the figure
+        // the card and the modal header advertise, so charging item.price here
+        // would quietly bill the diner more than the menu quoted. (A variant
+        // group still overrides it below — each size carries its own price.)
+        const listed = kind === 'combo' ? item.base_price : (item.discounted_price ?? item.price)
+        let base = amount(listed)
+        let addons = 0
+
+        if (kind === 'item' && item.option_groups) {
+            item.option_groups.forEach((g, gi) => {
+                const picked = selectedIndexes(groups[gi])
+                if (g.is_variant) {
+                    // Size/portion selector: the chosen option's price is the
+                    // price — its sale price when that size is discounted.
+                    const opt = (g.options || [])[picked[0]]
+                    if (opt) base = amount(opt.discounted_price ?? opt.price)
+                    return
+                }
+                picked.forEach((oi) => {
+                    const opt = (g.options || [])[oi]
+                    addons += amount(opt?.price)
+                })
+            })
+        }
+
+        if (kind === 'combo' && item.groups) {
+            item.groups.forEach((g, gi) => {
+                const picked = selectedIndexes(groups[gi])
+                if (g.is_variant) {
+                    // Size/portion selector: the chosen item's price is the price.
+                    const opt = (g.items || [])[picked[0]]
+                    if (opt) base = amount(opt.extra_price)
+                    return
+                }
+                picked.forEach((oi) => {
+                    const opt = (g.items || [])[oi]
+                    addons += amount(opt?.extra_price)
+                })
+            })
+        }
+
+        return base + addons
+    }
+
+    return {
+        cart,
+        cartCount,
+        cartTotal,
+        addToCart,
+        removeLine,
+        bumpLine,
+        clearCart,
+        getLineOptions,
+        getLineVariant,
+        getLineExtras,
+        getLineOptionIds,
+        calculateLinePrice,
+    }
+}

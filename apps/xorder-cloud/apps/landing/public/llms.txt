@@ -1,0 +1,35 @@
+# Xorder
+
+Xorder is a QR-menu and direct-ordering platform for restaurants, used mainly in
+Egypt and the wider Arab world. A restaurant gets a bilingual (Arabic/English)
+digital menu at its own subdomain, printable QR codes for its tables, and orders
+that arrive over WhatsApp or through the built-in ordering system — no commission
+per order. The marketing site is this domain; every restaurant menu lives on its
+own subdomain.
+
+## Main pages
+
+- [Home](https://xorder.io/): what the product does, features, pricing plans, FAQ
+- [Plans](https://xorder.io/#packages): the plans and what each one includes
+- [How it works](https://xorder.io/#how): the steps to publish a menu
+- [Features](https://xorder.io/#features) and [FAQ](https://xorder.io/#faq)
+- [Request a demo](https://xorder.io/#lead): contact form for restaurants
+
+## Restaurant menus
+
+- Every published restaurant has a public menu at `https://{slug}.xorder.io/menu/`
+- [Sitemap](https://xorder.io/sitemap.xml): the canonical list of every public menu
+- [Demo menu](https://demo.xorder.io/menu/): a real example of what diners see
+
+Menu pages are server-rendered with the restaurant's own name, description, image
+and schema.org Restaurant data in the HTML, so there is no need to execute
+JavaScript to read them.
+
+## Notes
+
+- Menu prices, availability and opening hours change daily; treat anything cached
+  from a menu page as possibly stale.
+- Dashboard URLs (anything on a restaurant subdomain outside `/menu/`, and
+  `admin.xorder.io`) are private, require authentication, and hold no public
+  content worth crawling.
+- Contact for anything about this site: https://xorder.io/#lead

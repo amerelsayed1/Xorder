@@ -1,0 +1,24 @@
+@layer theme, base, primevue;
+
+@import 'tailwindcss';
+
+/* Self-hosted Tajawal. The landing page never uses --font-mono, so it does
+   not ship IBM Plex Mono. */
+@import '../../../packages/ui/src/fonts.css';
+
+/* Shared design system (tokens + component primitives) used by web + landing. */
+@import '../../../packages/ui/src/theme.css';
+
+@source './**/*.{vue,js}';
+@source '../../../packages/ui/src/**/*.{vue,js}';
+
+/* Anchor navigation scrolls smoothly; honor users who ask for reduced motion. */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}

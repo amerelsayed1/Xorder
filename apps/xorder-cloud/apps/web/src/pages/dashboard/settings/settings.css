@@ -1,0 +1,266 @@
+/* ===================================================================
+   Settings area primitives
+   -------------------------------------------------------------------
+   Shared by every settings section (Profile, Staff, Roles, POS devices,
+   taxes, payment methods, receipt, units). Loaded once by
+   SettingsLayout.vue, which every section renders inside, so the
+   selectors below are global: do not rename or remove one without
+   grepping `set-` across apps/web/src first.
+
+   Every colour is a theme variable or the PrimeVue primary scale, never
+   a literal: the same shell has to survive the warm and indigo palettes.
+
+   Contrast rules used here (they match the dashboard design spec):
+   - secondary text is var(--body); var(--muted) is decoration only
+   - link / amber / accent-tinted text uses --p-primary-700 / -800,
+     never var(--accent) on a light surface
+   - orange (--accent) is for fills, bars and icons
+   =================================================================== */
+
+/* ---------------------------------------------------------- shell */
+.set-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 248px;
+    gap: 24px;
+    align-items: start;
+}
+.set-main { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.set-aside {
+    position: sticky; top: 88px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    padding: 6px 8px; display: flex; flex-direction: column;
+}
+
+/* Sub-menu ------------------------------------------------------- */
+.set-nav-group { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.set-nav-group:last-child { border-bottom-color: transparent; }
+.set-nav-title { padding: 0 10px 6px; font-size: 12.5px; font-weight: 600; color: var(--body); }
+.set-nav-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+    padding: 9px 11px; border: none; border-radius: 11px; cursor: pointer;
+    background: transparent; color: var(--body); font: inherit;
+    font-size: 14.5px; font-weight: 500; text-align: start; text-decoration: none;
+    transition: background .15s, color .15s;
+}
+.set-nav-item:hover { background: var(--page); color: var(--ink); }
+.set-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.set-nav-item.active { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
+.set-nav-ico { flex: none; width: 20px; text-align: center; font-size: 16px; color: var(--body); }
+.set-nav-item.active .set-nav-ico { color: var(--p-primary-700); }
+.set-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Active marker: a dot at the end of the row, so it never fights the icon. */
+.set-nav-dot { width: 7px; height: 7px; flex: none; border-radius: 999px; background: var(--accent); }
+
+/* Page header ---------------------------------------------------- */
+.set-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.set-head-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 280px; }
+.set-crumb { font-size: 13px; color: var(--body); }
+.set-title { margin: 0; font-family: var(--font-display); font-size: 23px; font-weight: 600; line-height: 1.25; color: var(--ink); }
+.set-desc { margin: 0; font-size: 14.5px; color: var(--body); max-width: 640px; line-height: 1.6; }
+.set-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.set-head-actions > * { white-space: nowrap; }
+
+/* Buttons -------------------------------------------------------- */
+.set-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); font: inherit; font-size: 13.5px; font-weight: 600;
+    color: var(--ink); cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: border-color .15s, color .15s, background .15s;
+}
+.set-btn:hover { border-color: var(--muted); background: var(--page); }
+.set-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.set-btn:disabled { opacity: .5; cursor: not-allowed; border-color: var(--line); color: var(--body); background: var(--card); }
+.set-btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 19px; border: 1px solid transparent; border-radius: 10px;
+    background: var(--accent); font: inherit; font-size: 14px; font-weight: 700;
+    color: #fff; cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: background .15s;
+}
+.set-btn-primary:hover { background: var(--accent-dark); color: #fff; }
+.set-btn-primary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.set-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.set-btn-sm { padding: 8px 13px; }
+/* Borderless brand text button (the "show all permissions" link) */
+.set-link {
+    align-self: flex-start; border: none; background: none; padding: 6px 0;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--p-primary-700); cursor: pointer;
+}
+.set-link:hover { text-decoration: underline; }
+.set-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* Square destructive action */
+.set-icon-danger {
+    width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center;
+    border: 1px solid var(--red-soft); border-radius: 10px; background: var(--card);
+    color: var(--red); cursor: pointer; transition: background .15s, border-color .15s;
+}
+.set-icon-danger:hover { background: var(--red-soft); border-color: var(--red); }
+.set-icon-danger:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+.set-icon-danger:disabled { opacity: .45; cursor: not-allowed; background: var(--card); }
+
+/* Cards & rows --------------------------------------------------- */
+.set-stack { display: flex; flex-direction: column; gap: 10px; }
+.set-stack-lg { display: flex; flex-direction: column; gap: 16px; }
+.set-card { background: var(--card); border: 1px solid var(--line); border-radius: 15px; overflow: hidden; }
+.set-card-head {
+    padding: 16px 18px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+}
+.set-card-head-text { display: flex; flex-direction: column; gap: 3px; flex: 1 1 240px; min-width: 0; }
+.set-card-title { font-family: var(--font-display); font-size: 16.5px; font-weight: 600; color: var(--ink); }
+.set-card-desc { font-size: 13.5px; color: var(--body); max-width: 560px; line-height: 1.6; }
+.set-card-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.set-card-foot { padding: 14px 22px; border-top: 1px solid var(--line); background: var(--page); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.set-form { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
+
+/* One item = one row. Wraps rather than scrolls sideways. */
+.set-row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+    padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+    transition: border-color .15s;
+}
+.set-row:hover { border-color: var(--muted); }
+/* align-items: flex-start, not stretch — a dir="ltr" username or UUID inside
+   an RTL row would otherwise stretch full width and hug the wrong edge. */
+.set-row-id { flex: 1; min-width: 170px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.set-row-name { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; }
+.set-row-name strong { font-size: 15.5px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.set-row-sub { font-family: var(--font-mono); font-size: 13px; color: var(--body); overflow-wrap: anywhere; }
+.set-row-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+
+/* A list of rows *inside* a card (taxes, fees, payment methods). Same anatomy
+   as a standalone .set-row, minus the border/radius each row would repeat. */
+.set-list { display: flex; flex-direction: column; }
+.set-list-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    padding: 12px 18px; min-height: 64px; transition: background .15s;
+}
+.set-list-row + .set-list-row { border-top: 1px solid var(--line); }
+.set-list-row:hover { background: var(--page); }
+.set-list-foot { margin: 0; padding: 12px 18px 14px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; color: var(--body); }
+
+/* The "facts" strip on a device row */
+.set-facts { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.set-fact { display: flex; flex-direction: column; gap: 2px; min-width: 74px; }
+.set-fact-label { font-size: 12.5px; color: var(--body); }
+.set-fact-value { font-size: 14px; font-weight: 600; color: var(--ink); }
+
+/* Avatar tile */
+.set-avatar {
+    width: 44px; height: 44px; flex: none; border-radius: 13px; display: grid; place-items: center;
+    font-size: 14.5px; font-weight: 700; background: var(--accent-soft); color: var(--p-primary-800);
+}
+.set-avatar-owner { background: var(--ink); color: var(--card); }
+
+/* Secondary row actions, revealed by the ⋯ button. A row keeps ONE clear
+   primary action; reset-password and delete live here rather than crowding it. */
+.set-row-more {
+    width: 100%; display: flex; flex-wrap: wrap; gap: 8px;
+    padding-top: 14px; margin-top: 2px; border-top: 1px solid var(--line);
+}
+.set-btn-danger { border-color: var(--red-soft); color: var(--red); }
+.set-btn-danger:hover { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+.set-btn-icon { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 15px; }
+.set-note { font-size: 12.5px; color: var(--body); }
+
+/* Chips ---------------------------------------------------------- */
+.set-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: var(--gray-soft); color: var(--body);
+}
+.set-chip-accent { background: var(--accent-soft); color: var(--p-primary-800); }
+.set-chip-green { background: var(--green-soft); color: var(--green); }
+.set-chip-amber { background: var(--amber-soft); color: var(--p-primary-800); }
+.set-chip-red { background: var(--red-soft); color: var(--red); }
+.set-chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; opacity: .75; }
+/* Permission chip — the wall of them reads better a shade softer than a badge */
+.set-perm { padding: 5px 11px; border-radius: 999px; background: var(--accent-soft); color: var(--p-primary-800); font-size: 13px; font-weight: 500; }
+.set-perm-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
+.set-perm-group { display: flex; flex-direction: column; gap: 8px; }
+.set-perm-title { font-size: 12.5px; font-weight: 600; color: var(--body); }
+
+/* Panels, banners, empty states ---------------------------------- */
+.set-inset {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--page);
+}
+.set-inset-title { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.set-inset-hint { font-size: 13px; color: var(--body); }
+/* Notice: quiet by default (info), it states a fact about the screen rather
+   than raising an alarm. */
+.set-banner {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 16px; border: 1px solid var(--line); border-inline-start: 4px solid var(--accent);
+    border-radius: 12px; background: var(--accent-soft); color: var(--ink);
+    font-size: 14px; line-height: 1.65;
+}
+.set-banner .pi { font-size: 16px; flex: none; margin-top: 3px; color: var(--p-primary-700); }
+.set-empty { padding: 34px 18px; display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
+.set-empty-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+.set-empty-hint { font-size: 13.5px; color: var(--body); max-width: 440px; line-height: 1.6; }
+
+/* Field grids ---------------------------------------------------- */
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; }
+.set-grid-sm { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px; }
+.set-field { display: flex; flex-direction: column; }
+.set-req { color: var(--red); }
+
+/* Form pieces shared by the section modals ------------------------ */
+/* A titled group of related fields inside a form. */
+.set-group { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--page); }
+.set-group-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.set-help { margin: 0; font-size: 13px; line-height: 1.55; color: var(--body); }
+.set-check { display: inline-flex; align-items: center; gap: 10px; min-height: 36px; font-size: 14px; color: var(--body); cursor: pointer; }
+.set-check input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.set-check-wrap { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 4px 0 10px; }
+/* Save / Cancel row that stays on screen while a long form scrolls. */
+.set-form-actions {
+    position: sticky; bottom: 0; z-index: 1;
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-inline: -24px; margin-bottom: -24px; padding: 14px 24px;
+    background: var(--card); border-top: 1px solid var(--line);
+}
+
+/* Skeletons ------------------------------------------------------ */
+.set-skel { border-radius: 12px; background: var(--line); opacity: .55; animation: set-pulse 1.4s ease-in-out infinite; }
+@keyframes set-pulse { 0%, 100% { opacity: .55; } 50% { opacity: .28; } }
+@media (prefers-reduced-motion: reduce) { .set-skel { animation: none; } }
+
+/* Responsive ----------------------------------------------------- */
+@media (max-width: 900px) {
+    .set-shell { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    /* The sub-menu moves above the content and becomes one horizontal
+       segmented strip: every section is a single tap away, with the group
+       names inline as small separators, and no 248px column eating half a
+       phone screen. */
+    .set-aside {
+        position: static; order: -1;
+        flex-direction: row; align-items: center; gap: 4px; overflow-x: auto; padding: 6px;
+        scrollbar-width: none; scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+        background: var(--accent-soft); border-color: transparent;
+    }
+    .set-aside::-webkit-scrollbar { display: none; }
+    .set-nav-group { flex: none; flex-direction: row; align-items: center; gap: 4px; padding: 0; border-bottom: none; }
+    .set-nav-group + .set-nav-group { padding-inline-start: 8px; margin-inline-start: 4px; border-inline-start: 1px solid var(--line); }
+    .set-nav-title { padding: 0 6px; font-size: 12.5px; white-space: nowrap; }
+    .set-nav-item { width: auto; flex: none; white-space: nowrap; padding: 8px 14px; gap: 8px; scroll-snap-align: center; }
+    .set-nav-item:hover { background: var(--card); }
+    .set-nav-item.active { background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+    .set-nav-label { overflow: visible; flex: none; }
+    .set-nav-dot { display: none; }
+}
+
+/* Phone: primary actions are real touch targets, header actions go full width */
+@media (max-width: 640px) {
+    .set-title { font-size: 21px; }
+    .set-btn, .set-btn-primary { min-height: 44px; }
+    .set-btn-icon, .set-icon-danger { width: 44px; height: 44px; }
+    .set-head-actions { width: 100%; }
+    .set-head-actions > * { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+    .set-card-head > .set-btn-primary { flex: 1 1 100%; }
+    .set-list-row { padding-inline: 14px; }
+    .set-card-head, .set-card-body { padding-inline: 14px; }
+    .set-row { padding: 14px; }
+}

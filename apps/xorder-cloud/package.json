@@ -1,0 +1,25 @@
+{
+    "name": "xorder",
+    "private": true,
+    "packageManager": "pnpm@9.12.0",
+    "scripts": {
+        "dev": "turbo run dev",
+        "dev:web": "pnpm --filter @xorder/web dev",
+        "dev:landing": "pnpm --filter @xorder/landing dev",
+        "build": "turbo run build",
+        "lint": "turbo run lint"
+    },
+    "devDependencies": {
+        "turbo": "^2.3.0"
+    },
+    "pnpm": {
+        "onlyBuiltDependencies": [
+            "esbuild"
+        ],
+        "//overrides": "Both arrive transitively through the Vue/Vite build chain, so they cannot be bumped by updating a direct dependency. Patch-level pins within the same major — remove an entry once the upstream range moves past it on its own.",
+        "overrides": {
+            "postcss@<8.5.23": ">=8.5.23",
+            "nanoid@<3.3.18": ">=3.3.18"
+        }
+    }
+}

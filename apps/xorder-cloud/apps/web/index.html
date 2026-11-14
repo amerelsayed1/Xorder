@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Xorder</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#f89a06">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Xorder">
+    <!-- Self-hosted Tajawal (see packages/ui/src/fonts.css). Preloading the two
+         weights the first screen actually uses starts the fetch during HTML
+         parse, on the connection this page already has open — no third-party
+         DNS/TLS, and no waiting for the stylesheet to be parsed first.
+         Arabic is the default locale; the other subsets are fetched on demand,
+         gated by unicode-range. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-400-arabic.woff2">
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-700-arabic.woff2">
+    <!-- Public Firebase push config (editable static file; safe no-op until filled).
+         Deferred: nothing reads __FIREBASE_CONFIG__ until after mount, and a
+         blocking script here delayed first paint for every visitor. -->
+    <script defer src="/firebase-config.js"></script>
+    <style>
+        /* Boot splash. Inline and tiny on purpose — it must paint from the HTML
+           alone, before any stylesheet or bundle arrives. Vue replaces the
+           contents of #app on mount, so there is nothing to tear down. */
+        .boot { position: fixed; inset: 0; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; gap: 18px;
+                background: #fff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .boot-mark { width: 54px; height: 54px; border-radius: 15px; background: #f89a06;
+                     display: grid; place-items: center; color: #fff;
+                     font-size: 27px; font-weight: 800; letter-spacing: -1px; }
+        .boot-bar { width: 132px; height: 3px; border-radius: 3px; background: #f4e7d3; overflow: hidden; }
+        .boot-bar::after { content: ""; display: block; width: 40%; height: 100%;
+                           border-radius: 3px; background: #f89a06; animation: boot-slide 1.1s ease-in-out infinite; }
+        @keyframes boot-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(330%) } }
+        @media (prefers-reduced-motion: reduce) { .boot-bar::after { animation: none; width: 100% } }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app"><div class="boot"><div class="boot-mark">X</div><div class="boot-bar"></div></div></div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+/*
+ * Self-hosted IBM Plex Mono (Latin, weights 400/500).
+ *
+ * Served from our own origin instead of fonts.googleapis.com: the Google
+ * setup cost two extra DNS+TLS handshakes before a single glyph could be
+ * requested (HTML -> googleapis CSS -> gstatic woff2), which measured ~1.5 s
+ * to font-arrival on mobile. Same-origin, these ride the connection the page
+ * already has open.
+ *
+ * The files live in each app's public/fonts (unhashed, stable paths) so
+ * index.html can <link rel="preload"> the weights above-the-fold text needs
+ * before any CSS or JS has parsed. Keep the unicode-range on every face —
+ * it is what stops a Latin-only page from ever downloading the Arabic subset.
+ *
+ * Files come from Google Fonts' own woff2 subsets; see LICENSE.txt beside
+ * them. Regenerate by refetching the css2 URL in git history.
+ */
+
+/* Dashboard-only: slugs, generated passwords, audit diffs. The landing
+   and menu apps never use --font-mono, so they do not ship these. */
+
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-mono-400-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-mono-500-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

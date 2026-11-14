@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <meta name="theme-color" content="#f89a06">
+    <!-- Self-hosted Tajawal (see packages/ui/src/fonts.css). Preloading the two
+         weights the first screen actually uses starts the fetch during HTML
+         parse, on the connection this page already has open — no third-party
+         DNS/TLS, and no waiting for the stylesheet to be parsed first.
+         Arabic is the default locale;
+         MenuShellService swaps these to the Latin subset for English restaurants. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-400-arabic.woff2">
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-700-arabic.woff2">
+    <!-- Digits. Prices are ASCII on an Arabic menu too ("18.00 ج.م" renders the
+         number from the Latin subset and the currency from the Arabic one), and
+         they are bold — so every card needs 700-latin. Nothing references it
+         until the SPA has fetched and rendered the menu, which measured ~1.4 s
+         in the field: long enough for every price on screen to paint in the
+         fallback font and then reflow. On an English menu MenuShellService
+         swaps the two Arabic lines above to Latin, making this one a duplicate,
+         and drops it. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-700-latin.woff2">
+    <!-- Public Firebase/GA4 config (editable static file; no-op until filled).
+         Deferred: nothing reads it before mount, and blocking here cost every
+         diner a slower first paint. -->
+    <script defer src="/firebase-config.js"></script>
+    <style>
+        /* Boot splash — diners arrive here from a QR scan, often on mobile data,
+           so something must paint from the HTML alone. Vue replaces #app on mount. */
+        .boot { position: fixed; inset: 0; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; gap: 18px;
+                background: #fff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .boot-mark { width: 54px; height: 54px; border-radius: 15px; background: #f89a06;
+                     display: grid; place-items: center; color: #fff;
+                     font-size: 27px; font-weight: 800; letter-spacing: -1px; }
+        .boot-bar { width: 132px; height: 3px; border-radius: 3px; background: #f4e7d3; overflow: hidden; }
+        .boot-bar::after { content: ""; display: block; width: 40%; height: 100%;
+                           border-radius: 3px; background: #f89a06; animation: boot-slide 1.1s ease-in-out infinite; }
+        @keyframes boot-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(330%) } }
+        @media (prefers-reduced-motion: reduce) { .boot-bar::after { animation: none; width: 100% } }
+    </style>
+</head>
+<body>
+    <div id="app"><div class="boot"><div class="boot-mark">X</div><div class="boot-bar"></div></div></div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

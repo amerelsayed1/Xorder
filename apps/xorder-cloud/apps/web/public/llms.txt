@@ -1,0 +1,22 @@
+# Xorder restaurant workspace
+
+This hostname is one restaurant's Xorder workspace. Everything here except the
+public menu is a private, authenticated dashboard — there is no public content on
+this host worth crawling or training on.
+
+## What is public here
+
+- [The restaurant's menu](/menu/): the QR-code destination diners see, served
+  server-rendered with the restaurant's name, description, image and schema.org
+  Restaurant data in the HTML.
+
+## What is not
+
+- Every other path on this host is the restaurant's dashboard (orders, menu
+  editing, branches, staff, analytics). It requires a login and returns no data
+  without one.
+
+## About the platform
+
+- [Xorder](https://xorder.io/): the product behind this workspace
+- [Sitemap of all public menus](https://xorder.io/sitemap.xml)

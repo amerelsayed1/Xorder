@@ -1,0 +1,152 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Co-host Xorder on the SAME VPS as Operix + Rakeeza, BEHIND Operix's nginx.
+#
+# Xorder runs app (PHP-FPM) + web (its OWN internal nginx) + Postgres here.
+# No Caddy, no ports 80/443. Operix's nginx stays the sole owner of 80/443 and
+# proxies xorder.io + *.xorder.io to the `xorder-web` container over the shared
+# Docker network. `web` then routes apex vs subdomains internally.
+#
+#   docker compose --env-file .env.production -f docker-compose.cohost.yml up -d --build
+#
+# Set OPERIX_PROXY_NETWORK in .env.production to the Docker network Operix's
+# nginx is attached to (find it with: docker network ls).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Shared VPS: caps + rotation keep xorder from starving Operix/Rakeeza of
+# RAM/CPU or filling the disk with container logs.
+x-limits-app: &limits-app
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: "1.0"
+x-limits-light: &limits-light
+  deploy:
+    resources:
+      limits:
+        memory: 128M
+        cpus: "0.5"
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+
+services:
+  # PHP-FPM application container (Laravel API + public menu).
+  app:
+    build:
+      context: .
+      target: app
+      # Always re-pull the php:8.3-fpm-alpine base so security rebuilds
+      # (e.g. PHP2Shell, CVE-2026-109618/9) land on the next deploy instead
+      # of reusing the base layer cached on the VPS.
+      pull: true
+    image: xorder-app
+    container_name: xorder-app
+    restart: unless-stopped
+    env_file: .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persist uploaded images (public disk) and logs across rebuilds.
+      - xorder-storage:/var/www/html/storage
+    networks:
+      - internal
+    <<: [*limits-app, *logging]
+    # Liveness: the FPM master process. Without this a silently-dead FPM keeps
+    # the container "running" while every request 502s.
+    healthcheck:
+      test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Laravel scheduler — runs subscriptions:process daily (expiry + warnings).
+  # Same image as `app`; skips migrations/seeding (the app container owns those).
+  scheduler:
+    image: xorder-app
+    container_name: xorder-scheduler
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      SEED_ON_START: "false"
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    volumes:
+      - xorder-storage:/var/www/html/storage
+    networks:
+      - internal
+    <<: [*limits-light, *logging]
+
+  # Internal nginx — serves landing + SPA statics, proxies PHP to `app`.
+  # Reachable from Operix's nginx as http://xorder-web:80 over the proxy network.
+  web:
+    build:
+      context: .
+      target: web
+      pull: true
+      args:
+        # Bake the production server names (xorder.io + *.xorder.io) instead of
+        # the dev localhost config.
+        NGINX_SITE_CONF: docker/nginx/default.prod.conf
+    image: xorder-web
+    container_name: xorder-web
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Localhost-only, for health checks / debugging. NOT publicly exposed.
+    # 8082 — 8080 is Rakeeza's co-host, 8081 is tourism-app on this VPS.
+    ports:
+      - "127.0.0.1:8082:80"
+    volumes:
+      # Read-only access to uploaded images so nginx can serve /storage/*.
+      - xorder-storage:/var/www/html/storage:ro
+    networks:
+      - internal   # reach `app` (PHP-FPM)
+      - proxy       # shared with Operix's nginx
+    <<: [*limits-light, *logging]
+
+  # PostgreSQL database.
+  db:
+    image: postgres:16-alpine
+    container_name: xorder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - xorder-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+    <<: [*logging]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+volumes:
+  xorder-db-data:
+  xorder-storage:
+
+networks:
+  internal:
+  # Operix's existing proxy network (where its nginx/frontend container lives).
+  # `external: true` means Compose will NOT create it — it must already exist.
+  proxy:
+    external: true
+    name: ${OPERIX_PROXY_NETWORK:-operix_default}

@@ -1,0 +1,252 @@
+<script setup>
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { OFFERS_CATEGORY_GLYPH, menuCategoryGlyph } from '../lib/menuCategories'
+
+const props = defineProps({
+    categories: Array,
+    combos: Array,
+    search: String,
+    // Display-only menus (plan grants no ordering channel) hide the quick-add
+    // button; the card still opens the item modal for viewing.
+    orderingEnabled: { type: Boolean, default: true },
+    // Muted while a category jump animates so the spy doesn't fight it.
+    scrollLocked: { type: Boolean, default: false },
+    t: Function,
+    money: Function,
+    localize: Function,
+    // Returns how many of an item are currently in the cart (0 = show add button).
+    cartQty: { type: Function, default: () => 0 },
+})
+
+const emit = defineEmits(['openModal', 'activeSection', 'quickAdd', 'quickRemove'])
+
+const menuRoot = ref(null)
+let scrollFrame = null
+let lastActiveSection = null
+
+function updateActiveSection() {
+    scrollFrame = null
+    if (props.scrollLocked) return
+
+    const sectionElements = [...(menuRoot.value?.querySelectorAll('[data-category-id]') || [])]
+    if (!sectionElements.length) return
+
+    // Activate a section once its top passes a little below the sticky toolbar —
+    // the small threshold matches each section's scroll-margin, so the section a
+    // category jump lands on reads as active instead of the one above it.
+    const toolbarBottom = document.querySelector('.menu-toolbar')?.getBoundingClientRect().bottom || 0
+    const activationLine = toolbarBottom + 24
+    let currentSection = sectionElements[0].dataset.categoryId
+
+    for (const section of sectionElements) {
+        if (section.getBoundingClientRect().top > activationLine) break
+        currentSection = section.dataset.categoryId
+    }
+
+    if (currentSection !== lastActiveSection) {
+        lastActiveSection = currentSection
+        emit('activeSection', currentSection)
+    }
+}
+
+function scheduleActiveSectionUpdate() {
+    if (scrollFrame !== null) return
+    scrollFrame = window.requestAnimationFrame(updateActiveSection)
+}
+
+onMounted(() => {
+    window.addEventListener('scroll', scheduleActiveSectionUpdate, { passive: true })
+    window.addEventListener('resize', scheduleActiveSectionUpdate, { passive: true })
+    scheduleActiveSectionUpdate()
+})
+
+onUnmounted(() => {
+    window.removeEventListener('scroll', scheduleActiveSectionUpdate)
+    window.removeEventListener('resize', scheduleActiveSectionUpdate)
+    if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame)
+})
+
+function matches(item) {
+    const q = (props.search || '').trim().toLowerCase()
+    if (!q) return true
+    const hay = [
+        props.localize(item),
+        props.localize(item, 'description'),
+        item.name_ar, item.name_en,
+    ].filter(Boolean).join(' ').toLowerCase()
+    return hay.includes(q)
+}
+
+// Unavailable items are hidden from the menu entirely (not shown greyed-out),
+// so a diner only ever sees things they can actually order. Combos have no
+// availability flag, so `!== false` keeps them visible.
+function visible(item) {
+    return item.is_available !== false && matches(item)
+}
+
+const sections = computed(() => {
+    const list = []
+
+    if ((props.combos || []).length) {
+        list.push({
+            id: 'offers',
+            kind: 'combo',
+            title: props.t('offers'),
+            glyph: OFFERS_CATEGORY_GLYPH,
+            image: null,
+            items: props.combos.filter(visible),
+        })
+    }
+
+    (props.categories || []).forEach((c, i) => {
+        list.push({
+            id: `cat-${c.id}`,
+            kind: 'item',
+            title: props.localize(c),
+            glyph: menuCategoryGlyph(i),
+            image: c.image_url,
+            // A section outside its serving hours stays on the menu — a diner
+            // should be able to see that breakfast exists and when it returns —
+            // but nothing in it can be ordered.
+            availableNow: c.available_now !== false,
+            window: c.available_window || null,
+            items: (c.items || []).filter(visible),
+        })
+    })
+
+    return list.filter(s => s.items.length > 0)
+})
+
+watch(sections, async () => {
+    await nextTick()
+    scheduleActiveSectionUpdate()
+})
+
+const totalCount = computed(() => sections.value.reduce((n, s) => n + s.items.length, 0))
+
+const countText = (n) => `${n} ${n === 1 ? props.t('item_count') : props.t('items_count')}`
+
+// An item is openable when its own stock flag allows it AND its section is
+// currently being served. Both refusals look the same to a tap; the section
+// heading is what explains an out-of-hours one.
+const orderable = (section, item) => section.availableNow !== false && item.is_available !== false
+
+const priceOf = (section, item) => {
+    if (section.kind === 'combo') return `${props.t('from')} ${props.money(item.base_price)}`
+    return props.money(item.discounted_price ?? item.price)
+}
+</script>
+
+<template>
+    <div ref="menuRoot" class="content-layout">
+        <section class="menu-content">
+            <section
+                v-for="section in sections"
+                :id="`section-${section.id}`"
+                :key="section.id"
+                :data-category-id="section.id"
+                class="category-section"
+            >
+                <div class="section-heading">
+                    <div>
+                        <h2>{{ section.title }}</h2>
+                        <!-- Says when it comes back, not just that it is shut —
+                             the times are the only part a diner can act on. -->
+                        <p v-if="!section.availableNow" class="section-hours">
+                            {{ section.window
+                                ? t('served_between', { from: section.window.open, to: section.window.close })
+                                : t('not_served_now') }}
+                        </p>
+                    </div>
+                    <span>{{ countText(section.items.length) }}</span>
+                </div>
+
+                <div class="product-grid">
+                    <article
+                        v-for="item in section.items"
+                        :key="item.id"
+                        class="product-card"
+                        :class="{ unavailable: !orderable(section, item) }"
+                    >
+                        <!-- The whole card opens the item, but the card itself must not
+                             be the button: an <article role="button"> is invalid ARIA,
+                             and it swallows the heading, price and (once the item is in
+                             the cart) the stepper's own buttons into one opaque control.
+                             An overlay button carries the click and the keyboard focus
+                             instead; .card-action sits above it so the stepper stays
+                             reachable. Unavailable items get no button at all — they
+                             were never openable. -->
+                        <button
+                            v-if="orderable(section, item)"
+                            type="button"
+                            class="card-open"
+                            :aria-label="localize(item)"
+                            @click="$emit('openModal', section.kind, item)"
+                        ></button>
+                        <div class="product-image-wrap">
+                            <!-- Fallback glyph sits behind the image; a loaded photo
+                                 covers it, and a broken URL (img.is-error) reveals it
+                                 again — so a card never shows a broken-image icon. -->
+                            <span class="image-placeholder" aria-hidden="true">{{ section.glyph }}</span>
+                            <img v-if="item.image_url" v-img-fade :src="item.image_url" :alt="localize(item)" loading="lazy" decoding="async" />
+                            <span v-if="item.is_featured && item.is_available !== false" class="popular-badge">{{ t('popular') }}</span>
+                            <span v-if="item.is_available === false" class="unavailable-badge">{{ t('item_unavailable') }}</span>
+                        </div>
+                        <div class="product-body">
+                            <div class="product-title-row">
+                                <h3>{{ localize(item) }}</h3>
+                                <strong class="product-price">
+                                    <span v-if="section.kind === 'item' && item.discounted_price" class="old-price money">{{ money(item.price) }}</span>
+                                    <span class="new-price money">{{ priceOf(section, item) }}</span>
+                                </strong>
+                            </div>
+                            <p>{{ localize(item, 'description') }}</p>
+                            <!-- Image-less themes hide the image-wrap where the availability
+                                 badge normally lives, so surface it as inline text there. -->
+                            <span v-if="item.is_available === false" class="text-only-badge">{{ t('item_unavailable') }}</span>
+                            <div v-if="item.is_available !== false && orderingEnabled" class="card-action" @click.stop>
+                                <!-- Once the item is in the cart, the add button becomes a
+                                     quantity stepper so diners can adjust it without opening
+                                     the modal. Items with options still open the modal on +. -->
+                                <div v-if="cartQty(section.kind, item) > 0" class="card-qty">
+                                    <button
+                                        type="button"
+                                        class="card-qty__btn card-qty__btn--add"
+                                        :aria-label="`${t('add')} ${localize(item)}`"
+                                        @click="$emit('quickAdd', section.kind, item)"
+                                    >+</button>
+                                    <span class="card-qty__num">{{ cartQty(section.kind, item) }}</span>
+                                    <button
+                                        type="button"
+                                        class="card-qty__btn card-qty__btn--sub"
+                                        :aria-label="`${t('remove')} ${localize(item)}`"
+                                        @click="$emit('quickRemove', section.kind, item)"
+                                    >−</button>
+                                </div>
+                                <button
+                                    v-else
+                                    class="add-button"
+                                    :aria-label="`${t('add')} ${localize(item)}`"
+                                    @click="$emit('quickAdd', section.kind, item)"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                                        <path d="M12 5v14M5 12h14" />
+                                    </svg>
+                                    <!-- Label shown only in the text-list (printed-menu) theme; the
+                                         icon-only round button keeps its shape in the other layouts. -->
+                                    <span class="add-label">{{ t('add') }}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <div v-if="totalCount === 0" class="no-results">
+                <span>⌕</span>
+                <h3>{{ t('no_results_title') }}</h3>
+                <p>{{ t('no_results_hint') }}</p>
+            </div>
+        </section>
+    </div>
+</template>

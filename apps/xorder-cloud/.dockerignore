@@ -1,0 +1,16 @@
+# Build fresh inside the image — never copy host artifacts in.
+.git
+**/node_modules
+**/vendor
+**/dist
+apps/api/public/build
+# Stale host package-discovery / config caches — let the image rediscover fresh
+# against the --no-dev vendor (otherwise it references dev-only providers like Pail).
+apps/api/bootstrap/cache/*.php
+**/.turbo
+*.log
+.env
+**/.env
+!apps/api/.env.docker
+.idea
+.vscode

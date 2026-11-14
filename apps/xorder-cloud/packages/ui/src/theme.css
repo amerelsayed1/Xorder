@@ -1,0 +1,202 @@
+@theme {
+    --font-sans: 'Tajawal', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Tajawal', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* ===================================================================
+   Design tokens — two themes from the handoff.
+   Warm (restaurant admin) · Indigo (super admin).
+   =================================================================== */
+.theme-warm {
+    --accent: #f89a06;
+    --accent-dark: #d9850a;
+    --accent-soft: #fef0d9;
+    --page: #f8f5ef;
+    --card: #ffffff;
+    --ink: #2a1e14;
+    --body: #5a4d3d;
+    --muted: #8a7c68;
+    --line: #ece5d9;
+    --green: #1f7a3d;
+    --green-soft: #e6f3ea;
+    --amber: #a9711a;
+    --amber-soft: #fbeee0;
+    --red: #c0392b;
+    --red-soft: #fdeeec;
+    --gray: #6b748c;
+    --gray-soft: #eef0f2;
+    --sidebar: #1c1712;
+    --sidebar-line: #2e271e;
+    --sidebar-muted: #8a7f6c;
+    --sidebar-card: #2a2118;
+}
+.theme-indigo {
+    --accent: #3d4a7a;
+    --accent-dark: #2f3a63;
+    --accent-soft: #eef0fb;
+    --page: #f5f6f9;
+    --card: #ffffff;
+    --ink: #1c2230;
+    --body: #4a5163;
+    --muted: #7a8295;
+    --line: #e8eaef;
+    --green: #1f7a3d;
+    --green-soft: #e6f3ea;
+    --amber: #a9711a;
+    --amber-soft: #fef4e3;
+    --red: #c0392b;
+    --red-soft: #fdeeec;
+    --gray: #6b748c;
+    --gray-soft: #eef0f2;
+    --sidebar: #15171f;
+    --sidebar-line: #262a36;
+    --sidebar-muted: #7a8295;
+    --sidebar-card: #20242f;
+}
+
+body { font-family: var(--font-sans); font-size: 16px; }
+
+/* ===================================================================
+   Component primitives (shared by both portals)
+   =================================================================== */
+.portal { background: var(--page); color: var(--body); min-height: 100vh; font-size: 16px; }
+
+/* Sidebar */
+.sidebar { background: var(--sidebar); color: #fff; }
+.side-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 18px; }
+.side-mark { width: 42px; height: 42px; border-radius: 11px; background: var(--accent);
+    display: grid; place-items: center; color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+.side-name { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: #fff; line-height: 1.1; }
+.side-role { font-size: 12.5px; color: var(--sidebar-muted); }
+.nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 11px;
+    color: #d9d2c6; font-size: 15px; font-weight: 500; cursor: pointer; transition: background .15s, color .15s; }
+.theme-indigo .nav-item { color: #c7ccd8; }
+.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+.nav-item.active { background: var(--accent); color: #fff; }
+.nav-ico { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(255,255,255,.06); color: inherit; transition: background .15s; }
+.nav-item:hover .nav-ico { background: rgba(255,255,255,.1); }
+.nav-item.active .nav-ico { background: rgba(255,255,255,.18); }
+.side-sub { margin-top: auto; background: var(--sidebar-card); border-radius: 13px; padding: 12px; }
+.side-powered { display: flex; align-items: center; gap: 7px; padding: 14px 8px 4px; color: var(--sidebar-muted); font-size: 12px; }
+.side-powered :where(svg, img) { height: 15px; width: auto; color: #fff; opacity: .85; }
+
+/* Avatar */
+.avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+    background: var(--accent); color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+
+/* Square icon button (row actions, toolbar) */
+.icon-btn { width: 34px; height: 34px; border-radius: 9px; display: inline-grid; place-items: center;
+    background: transparent; border: 1px solid transparent; color: var(--muted); cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s; }
+.icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.icon-btn:disabled { opacity: .3; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: transparent; color: var(--muted); }
+.icon-btn-danger:hover { background: var(--red-soft, #fdeeec); color: #c0392b; }
+
+/* Stat icon tile */
+.stat-ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0;
+    background: var(--accent-soft); color: var(--accent); }
+
+/* Top bar */
+.topbar { display: flex; align-items: center; gap: 10px; }
+.pill-btn { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--line); color: var(--body); font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: border-color .15s, color .15s; }
+.pill-btn:hover { border-color: var(--muted); color: var(--ink); }
+
+/* Buttons */
+.btn { font-family: var(--font-display); font-weight: 600; font-size: 14.5px; border-radius: 10px;
+    padding: 10px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid transparent; transition: background .15s, border-color .15s, opacity .15s; white-space: nowrap; }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { background: var(--accent-dark); }
+.btn-ghost { background: var(--card); color: var(--ink); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--muted); }
+.btn-dark { background: var(--ink); color: #fff; }
+.btn-sm { padding: 7px 12px; font-size: 13.5px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Cards & surfaces */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 15px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 15px; padding: 18px 20px; }
+.stat-label { font-size: 14px; color: var(--muted); }
+.stat-num { font-family: var(--font-display); font-weight: 600; font-size: 32px; color: var(--ink); line-height: 1.1; margin-top: 6px; }
+
+/* Headings / text */
+.page-title { font-family: var(--font-display); font-weight: 600; font-size: 23px; color: var(--ink); }
+.page-sub { font-size: 14.5px; color: var(--muted); margin-top: 3px; }
+.h-card { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: var(--ink); }
+.mono { font-family: var(--font-mono); }
+.price { font-family: var(--font-display); font-weight: 600; color: var(--accent); }
+
+/* Inputs */
+.label { font-size: 13.5px; color: var(--body); font-weight: 500; }
+.input { width: 100%; margin-top: 6px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 13px; font-size: 15px; color: var(--ink); }
+.input:focus { outline: none; border-color: var(--accent); }
+/* A field pinned to the opposite direction (dir="ltr" for an English name, slug,
+   phone or email inside an RTL page, and the mirror case) still shows a
+   placeholder written in the UI language. Left alone that placeholder hugs the
+   field's own start edge and reads as misaligned against every other label in
+   the form. While the field is empty and unfocused, pull the placeholder to the
+   page's start edge; on focus it snaps back so the caret sits where typing
+   actually begins. */
+[dir=rtl] .input[dir=ltr]:placeholder-shown:not(:focus) { text-align: right; }
+[dir=ltr] .input[dir=rtl]:placeholder-shown:not(:focus) { text-align: left; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600;
+    padding: 4px 10px; border-radius: 20px; font-family: var(--font-display); }
+.badge-green { background: var(--green-soft); color: var(--green); }
+.badge-amber { background: var(--amber-soft); color: var(--amber); }
+.badge-red { background: #fdeeec; color: #c0392b; }
+.badge-gray { background: #eef0f2; color: #6b748c; }
+.badge-indigo { background: var(--accent-soft); color: var(--accent); }
+.badge-tan { background: var(--accent-soft); color: var(--muted); }
+.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* iOS-style switch */
+.switch { position: relative; width: 40px; height: 23px; border-radius: 12px; background: #d6cdbd;
+    cursor: pointer; transition: background .18s; flex-shrink: 0; border: none; }
+.theme-indigo .switch { background: #cfd4de; }
+.switch.on { background: var(--green); }
+.switch::after { content: ''; position: absolute; top: 2px; inset-inline-start: 2px; width: 19px; height: 19px;
+    border-radius: 50%; background: #fff; transition: transform .18s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.switch.on::after { transform: translateX(17px); }
+[dir=rtl] .switch.on::after { transform: translateX(-17px); }
+
+/* Star toggle */
+.star { background: none; border: none; cursor: pointer; font-size: 19px; color: #d6cdbd; line-height: 1; }
+.star.on { color: #e0a82e; }
+
+/* Segmented control */
+.segmented { display: inline-flex; background: var(--accent-soft); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { font-family: var(--font-display); font-weight: 600; font-size: 14px; padding: 7px 14px;
+    border-radius: 8px; border: none; background: transparent; color: var(--muted); cursor: pointer; }
+.segmented button.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* Right slide-over sheet */
+.sheet-overlay { position: fixed; inset: 0; background: rgba(10,12,20,.42); z-index: 50; display: flex; justify-content: flex-end; }
+.sheet { width: min(560px, 100%); height: 100%; background: var(--page); overflow-y: auto;
+    box-shadow: -20px 0 60px -20px rgba(10,12,20,.4); }
+[dir=rtl] .sheet { box-shadow: 20px 0 60px -20px rgba(10,12,20,.4); }
+
+/* Centered modal dialog */
+.dialog-overlay { position: fixed; inset: 0; background: rgba(10,12,20,.42); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dialog-card { width: min(560px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: 0 24px 60px -20px rgba(10,12,20,.45); overflow: hidden; }
+.dialog-card__body { padding: 24px; overflow-y: auto; }
+
+/* URL chip */
+.url-chip { font-family: var(--font-mono); font-size: 14.5px; background: var(--page); border: 1px solid var(--line);
+    border-radius: 9px; padding: 10px 13px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+
+/* Dark QR card */
+.qr-card { background: var(--sidebar); border-radius: 16px; padding: 24px; color: #fff; text-align: center; }
+
+/* QR svg scales to its container (the service emits a fixed-size svg). */
+.qrbox svg { width: 100% !important; height: 100% !important; display: block; }

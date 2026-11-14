@@ -1,0 +1,317 @@
+<script setup>
+import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import FormError from '@xorder/ui/FormError.vue'
+
+const route = useRoute()
+const router = useRouter()
+const { t, locale } = useI18n()
+
+const isEdit = computed(() => !!route.params.id)
+const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
+const form = reactive({
+    name: '', price: '', currency: 'EGP',
+    // Resource caps. Blank = unlimited (stored as null). max_branches only bites
+    // when the plan also grants multi_branch; a single-branch plan is capped at
+    // its one primary branch by the multi_branch feature gate regardless.
+    max_branches: '', max_items: '', max_categories: '', max_staff: '', max_terminals: '',
+    is_active: true, is_recommended: false, sort_order: 0,
+})
+const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
+
+// Ordering is modelled as one exclusive channel (WhatsApp XOR System), each
+// with its own fulfillment. It expands to the underlying feature flags on save
+// and collapses back from them on load — the flags stay the source of truth,
+// but the Super Admin thinks in the three ordering types we present.
+const ordering = reactive({
+    channel: '',          // '' | 'whatsapp' | 'system'
+    waPickup: false, waDelivery: false,
+    tableOrdering: false, tableBillRequests: false,
+    onlineOrdering: false,
+    onPickup: false, onDelivery: false,
+})
+function setChannel(ch) {
+    ordering.channel = ch
+    // Clear the other channel's sub-selection so no stale flags leak on save.
+    if (ch === 'whatsapp') {
+        ordering.tableOrdering = ordering.tableBillRequests = ordering.onlineOrdering = ordering.onPickup = ordering.onDelivery = false
+    } else {
+        ordering.waPickup = ordering.waDelivery = false
+    }
+}
+// Bill requests are a dine-in feature — drop them if table ordering is turned off.
+watch(() => ordering.tableOrdering, (on) => { if (!on) ordering.tableBillRequests = false })
+/** Expand the ordering selection to feature flags. */
+function orderingKeys() {
+    const keys = new Set()
+    if (ordering.channel === 'whatsapp') {
+        keys.add('whatsapp_ordering')
+        if (ordering.waPickup) keys.add('pickup')
+        if (ordering.waDelivery) keys.add('delivery')
+    } else if (ordering.channel === 'system') {
+        if (ordering.tableOrdering) {
+            keys.add('system_ordering'); keys.add('dine_in'); keys.add('table_management')
+            if (ordering.tableBillRequests) keys.add('bill_requests')
+        }
+        if (ordering.onlineOrdering) {
+            keys.add('system_ordering')
+            if (ordering.onPickup) keys.add('pickup')
+            if (ordering.onDelivery) keys.add('delivery')
+        }
+    }
+    return [...keys]
+}
+/** Collapse stored feature flags back into the ordering selection. */
+function loadOrdering(keys) {
+    const has = (k) => keys.includes(k)
+    if (has('system_ordering') || has('dine_in') || has('table_management')) {
+        ordering.channel = 'system' // if a legacy plan had both channels, System wins
+        ordering.tableOrdering = has('dine_in') || has('table_management')
+        ordering.tableBillRequests = has('bill_requests')
+        ordering.onlineOrdering = has('system_ordering') && (has('pickup') || has('delivery'))
+        ordering.onPickup = has('pickup')
+        ordering.onDelivery = has('delivery')
+    } else if (has('whatsapp_ordering')) {
+        ordering.channel = 'whatsapp'
+        ordering.waPickup = has('pickup')
+        ordering.waDelivery = has('delivery')
+    }
+}
+
+// Non-ordering capabilities the admin toggles directly. customer_tracking is
+// gone — customers are captured on every plan now.
+// bill_requests is not here — it's a dine-in sub-option nested under table ordering.
+// purchasing is standalone (CB-09): ticking it does not tick pos, and a plan
+// may carry it with no till at all.
+// guest_paging is standalone too: a café pages its QR orders with no till.
+const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos', 'purchasing', 'guest_paging']
+const capabilities = ref([])
+function toggleCapability(key, on) {
+    const i = capabilities.value.indexOf(key)
+    if (on && i < 0) capabilities.value.push(key)
+    else if (!on && i >= 0) capabilities.value.splice(i, 1)
+}
+// The full flag set the plan will persist.
+const featureKeys = computed(() => [...new Set([...capabilities.value, ...orderingKeys()])])
+const errors = ref({})
+const saving = ref(false)
+
+onMounted(async () => {
+    if (isEdit.value) {
+        const { data } = await api.get(`api/admin/plans/${route.params.id}`)
+        const p = data.data
+        Object.assign(form, {
+            name: p.name,
+            price: p.price ?? '',
+            currency: p.currency,
+            max_branches: p.max_branches ?? '',
+            max_staff: p.max_staff ?? '',
+            max_terminals: p.max_terminals ?? '',
+            max_items: p.max_items ?? '',
+            max_categories: p.max_categories ?? '',
+            is_active: p.is_active,
+            is_recommended: p.is_recommended ?? false,
+            sort_order: p.sort_order,
+        })
+        const keys = Array.isArray(p.feature_keys) ? p.feature_keys : []
+        loadOrdering(keys)
+        capabilities.value = capabilityKeys.filter((k) => keys.includes(k))
+    }
+})
+
+async function submit() {
+    errors.value = {}; saving.value = true
+    try {
+        await ensureCsrf()
+        const payload = {
+            name: form.name,
+            price: form.price === '' ? null : Number(form.price),
+            currency: form.currency,
+            feature_keys: featureKeys.value,
+            max_branches: form.max_branches === '' ? null : Number(form.max_branches),
+            max_staff: form.max_staff === '' ? null : Number(form.max_staff),
+            max_terminals: form.max_terminals === '' ? null : Number(form.max_terminals),
+            max_items: form.max_items === '' ? null : Number(form.max_items),
+            max_categories: form.max_categories === '' ? null : Number(form.max_categories),
+            is_active: form.is_active,
+            is_recommended: form.is_recommended,
+            sort_order: Number(form.sort_order) || 0,
+        }
+        if (isEdit.value) {
+            await api.put(`api/admin/plans/${route.params.id}`, payload)
+        } else {
+            await api.post('api/admin/plans', payload)
+        }
+        router.push({ name: 'admin.plans' })
+    } catch (err) {
+        errors.value = err.response?.data?.errors || {}
+    } finally {
+        saving.value = false
+    }
+}
+</script>
+
+<template>
+    <div class="max-w-2xl">
+        <RouterLink :to="{ name: 'admin.plans' }" class="back-link">{{ backArrow }} {{ t('common.back') }}</RouterLink>
+        <h1 class="page-title my-3">{{ isEdit ? t('plan.edit') : t('plan.create') }}</h1>
+
+        <form @submit.prevent="submit" class="space-y-5">
+            <!-- 1. Basics -->
+            <section class="card p-6 space-y-4" aria-labelledby="pf-basics">
+                <h2 id="pf-basics" class="h-card">{{ t('plan.section_basics') }}</h2>
+                <label class="block"><span class="label">{{ t('plan.name') }}</span>
+                    <input v-model="form.name" class="input" />
+                    <FormError :errors="errors" field="name" /></label>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label class="block sm:col-span-2"><span class="label">{{ t('plan.price') }}</span>
+                        <input v-model="form.price" type="number" min="0" step="0.01" class="input" :placeholder="t('plan.price_hint')" />
+                        <FormError :errors="errors" field="price" /></label>
+                    <label class="block"><span class="label">{{ t('restaurant.currency') }}</span>
+                        <select v-model="form.currency" class="input">
+                            <option v-for="c in currencies" :key="c" :value="c">{{ c }}</option>
+                        </select></label>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <label class="block"><span class="label">{{ t('plan.sort_order') }}</span>
+                        <input v-model="form.sort_order" type="number" min="0" class="input" /></label>
+                    <span class="hidden sm:block" aria-hidden="true"></span>
+                    <label class="choice choice-top">
+                        <input v-model="form.is_active" type="checkbox" class="h-4 w-4 mt-0.5" />
+                        <span>
+                            <span class="choice-title">{{ t('plan.active') }}</span>
+                            <span class="help">{{ t('plan.active_hint') }}</span>
+                        </span>
+                    </label>
+                    <label class="choice choice-top">
+                        <input v-model="form.is_recommended" type="checkbox" class="h-4 w-4 mt-0.5" />
+                        <span>
+                            <span class="choice-title">{{ t('plan.recommended') }}</span>
+                            <span class="help">{{ t('plan.recommended_hint') }}</span>
+                        </span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- 2. Ordering -->
+            <section class="card p-6 space-y-3" aria-labelledby="pf-ordering">
+                <div>
+                    <h2 id="pf-ordering" class="h-card">{{ t('plan.ordering') }}</h2>
+                    <p class="help">{{ t('plan.ordering_hint') }}</p>
+                </div>
+
+                <!-- Channel: WhatsApp XOR System -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label class="choice" :class="{ 'choice-on': ordering.channel === 'whatsapp' }">
+                        <input type="radio" name="channel" :checked="ordering.channel === 'whatsapp'" @change="setChannel('whatsapp')" class="h-4 w-4" />
+                        <span class="choice-title">{{ t('plan.ordering_whatsapp') }}</span>
+                    </label>
+                    <label class="choice" :class="{ 'choice-on': ordering.channel === 'system' }">
+                        <input type="radio" name="channel" :checked="ordering.channel === 'system'" @change="setChannel('system')" class="h-4 w-4" />
+                        <span class="choice-title">{{ t('plan.ordering_system') }}</span>
+                    </label>
+                </div>
+
+                <!-- WhatsApp fulfillment -->
+                <div v-if="ordering.channel === 'whatsapp'" class="sub-block">
+                    <span class="help" style="margin-top:0">{{ t('plan.ordering_fulfillment') }}</span>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <label class="choice"><input type="checkbox" v-model="ordering.waPickup" class="h-4 w-4" /><span class="choice-title">{{ t('feature.pickup') }}</span></label>
+                        <label class="choice"><input type="checkbox" v-model="ordering.waDelivery" class="h-4 w-4" /><span class="choice-title">{{ t('feature.delivery') }}</span></label>
+                    </div>
+                </div>
+
+                <!-- System sub-types -->
+                <div v-else-if="ordering.channel === 'system'" class="sub-block space-y-2">
+                    <label class="choice"><input type="checkbox" v-model="ordering.tableOrdering" class="h-4 w-4" /><span class="choice-title">{{ t('plan.ordering_table') }}</span></label>
+                    <div v-if="ordering.tableOrdering" class="ps-6">
+                        <label class="choice"><input type="checkbox" v-model="ordering.tableBillRequests" class="h-4 w-4" /><span class="choice-title">{{ t('feature.bill_requests') }}</span></label>
+                    </div>
+                    <label class="choice"><input type="checkbox" v-model="ordering.onlineOrdering" class="h-4 w-4" /><span class="choice-title">{{ t('plan.ordering_online') }}</span></label>
+                    <div v-if="ordering.onlineOrdering" class="ps-6">
+                        <span class="help" style="margin-top:0">{{ t('plan.ordering_fulfillment') }}</span>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <label class="choice"><input type="checkbox" v-model="ordering.onPickup" class="h-4 w-4" /><span class="choice-title">{{ t('feature.pickup') }}</span></label>
+                            <label class="choice"><input type="checkbox" v-model="ordering.onDelivery" class="h-4 w-4" /><span class="choice-title">{{ t('feature.delivery') }}</span></label>
+                        </div>
+                    </div>
+                </div>
+                <FormError :errors="errors" field="feature_keys" />
+            </section>
+
+            <!-- 3. Capabilities -->
+            <section class="card p-6 space-y-3" aria-labelledby="pf-caps">
+                <h2 id="pf-caps" class="h-card">{{ t('plan.capabilities') }}</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label v-for="key in capabilityKeys" :key="key" class="choice">
+                        <input type="checkbox" :checked="capabilities.includes(key)" @change="toggleCapability(key, $event.target.checked)" class="h-4 w-4" />
+                        <span class="choice-title">{{ t(`feature.${key}`) }}</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- 4. Limits -->
+            <section class="card p-6 space-y-3" aria-labelledby="pf-limits">
+                <div>
+                    <h2 id="pf-limits" class="h-card">{{ t('plan.limits') }}</h2>
+                    <p class="help">{{ t('plan.limits_hint') }}</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <label class="block"><span class="label">{{ t('plan.max_branches') }}</span>
+                        <input v-model="form.max_branches" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                        <span class="help">{{ t('plan.max_branches_hint') }}</span>
+                        <FormError :errors="errors" field="max_branches" /></label>
+
+                    <label class="block"><span class="label">{{ t('plan.max_staff') }}</span>
+                        <input v-model="form.max_staff" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                        <span class="help">{{ t('plan.max_staff_hint') }}</span>
+                        <FormError :errors="errors" field="max_staff" /></label>
+                    <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
+                        <input v-model="form.max_items" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                        <span class="help">{{ t('plan.max_items_hint') }}</span>
+                        <FormError :errors="errors" field="max_items" /></label>
+                    <label class="block"><span class="label">{{ t('plan.max_categories') }}</span>
+                        <input v-model="form.max_categories" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                        <span class="help">{{ t('plan.max_categories_hint') }}</span>
+                        <FormError :errors="errors" field="max_categories" /></label>
+                    <label class="block"><span class="label">{{ t('plan.max_terminals') }}</span>
+                        <input v-model="form.max_terminals" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                        <span class="help">{{ t('plan.max_terminals_hint') }}</span>
+                        <FormError :errors="errors" field="max_terminals" /></label>
+                </div>
+            </section>
+
+            <div class="action-row">
+                <RouterLink :to="{ name: 'admin.plans' }" class="btn btn-ghost cta">{{ t('common.cancel') }}</RouterLink>
+                <button type="submit" :disabled="saving" class="btn btn-accent cta">
+                    {{ saving ? t('common.saving') : (isEdit ? t('admin.save_changes') : t('plan.create')) }}
+                </button>
+            </div>
+        </form>
+    </div>
+</template>
+
+<style scoped>
+.back-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; font-weight: 500; color: var(--p-primary-700); }
+.back-link:hover { text-decoration: underline; }
+.help { display: block; font-size: 13px; margin-top: 5px; color: var(--body); }
+.cta { min-height: 44px; justify-content: center; }
+
+/* Selectable option row (radio / checkbox) */
+.choice { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card); transition: border-color .15s, background .15s; }
+.choice:hover { border-color: var(--muted); }
+.choice-top { align-items: flex-start; }
+.choice-on, .choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { flex: none; accent-color: var(--accent); }
+.choice-title { font-size: 14.5px; color: var(--ink); font-weight: 500; }
+.choice-top .choice-title { display: block; }
+.sub-block { padding-inline-start: 14px; border-inline-start: 2px solid var(--line); }
+
+.action-row { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0;
+    background: linear-gradient(to top, var(--page) 70%, transparent); }
+</style>

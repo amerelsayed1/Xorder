@@ -1,0 +1,28 @@
+.git
+.github
+node_modules
+vendor
+public/build
+public/storage
+storage/*.key
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+# Stale package-discovery / config caches from the dev machine reference dev-only
+# packages (pail, sail) that aren't installed in the --no-dev image. Regenerated at boot.
+bootstrap/cache/*.php
+database/database.sqlite
+.env
+.env.*
+!.env.docker
+tests
+phpunit.xml
+.phpunit.result.cache
+README.md
+ARCHITECTURE.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.log
+.DS_Store

@@ -1,0 +1,427 @@
+<?php
+
+namespace App\Http\Controllers\Dashboard;
+
+use App\Enums\BillRequestStatus;
+use App\Enums\OrderStatus;
+use App\Enums\TableVisitStatus;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Dashboard\BulkDeleteTablesRequest;
+use App\Http\Requests\Dashboard\BulkStoreTablesRequest;
+use App\Http\Requests\Dashboard\StoreTableRequest;
+use App\Http\Requests\Dashboard\UpdateTableRequest;
+use App\Http\Resources\DiningTableResource;
+use App\Models\BillRequest;
+use App\Models\DiningArea;
+use App\Models\DiningTable;
+use App\Models\Order;
+use App\Models\TableVisit;
+use App\Services\QrCodeService;
+use App\Services\TableQrExportService;
+use App\Services\TableVisitService;
+use Closure;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use ZipArchive;
+
+class TableController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $request->validate([
+            'occupancy' => ['sometimes', 'nullable', 'in:available,occupied'],
+        ]);
+
+        $tables = DiningTable::with('diningArea')
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
+            ->when($request->filled('dining_area_id'), fn ($q) => $q->where('dining_area_id', $request->integer('dining_area_id')))
+            ->when($request->input('status') === 'active', fn ($q) => $q->where('is_active', true))
+            ->when($request->input('status') === 'inactive', fn ($q) => $q->where('is_active', false))
+            ->when($request->filled('search'), fn ($q) => $q->where('label', 'like', '%'.$request->string('search').'%'))
+            ->orderBy('dining_area_id')->orderBy('label')
+            ->get();
+
+        // The same signals the live board draws from, so the two screens can
+        // never disagree about a table. A switched-off table seats nobody, so
+        // it is neither available nor occupied — it only shows under "All".
+        $signals = $this->occupancySignals($tables->pluck('id'));
+        foreach ($tables as $table) {
+            $state = $signals($table->id);
+            $state['state'] = ! $table->is_active ? 'inactive' : ($state['occupied'] ? 'occupied' : 'available');
+            $table->setAttribute('occupancy', $state);
+        }
+
+        // Tab counts answer "what would I get if I clicked this?", so they are
+        // taken before the occupancy filter and after every other one.
+        $summary = [
+            'all' => $tables->count(),
+            'available' => $tables->where('occupancy.state', 'available')->count(),
+            'occupied' => $tables->where('occupancy.state', 'occupied')->count(),
+        ];
+
+        if ($request->filled('occupancy')) {
+            $tables = $tables->where('occupancy.state', $request->input('occupancy'))->values();
+        }
+
+        return DiningTableResource::collection($tables)
+            ->additional(['summary' => ['occupancy' => $summary]])
+            ->response();
+    }
+
+    /**
+     * Per-table occupancy signals for a set of tables, in four grouped
+     * queries (no per-table N+1). Tenant scoping comes from the
+     * BelongsToRestaurant global scope on each model.
+     *
+     * @param  Collection<int, int>  $tableIds
+     * @return Closure(int): array{occupied: bool, active_orders: int, has_request: bool, has_new_order: bool, since: ?string}
+     */
+    private function occupancySignals(Collection $tableIds): Closure
+    {
+        // Occupancy is an explicit visit lifecycle, shared by every device at
+        // the table, instead of whichever browser session happens to be alive.
+        $visits = TableVisit::whereIn('table_id', $tableIds)
+            ->where('status', TableVisitStatus::OPEN->value)
+            ->where('opened_at', '>', now()->subMinutes((int) config('platform.table_session_ttl_minutes', 240)))
+            ->pluck('opened_at', 'table_id');
+
+        // Active orders per table (still NEW — completed/cancelled ones drop
+        // out). A table with one is also flagged as having a new order.
+        $activeOrders = Order::whereIn('table_id', $tableIds)
+            ->where('status', OrderStatus::NEW->value)
+            ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
+            ->pluck('c', 'table_id');
+
+        // Tables with an open bill request → they pulse.
+        $openRequests = BillRequest::whereIn('table_id', $tableIds)
+            ->whereIn('status', [
+                BillRequestStatus::REQUESTED->value,
+                BillRequestStatus::SEEN->value,
+                BillRequestStatus::IN_PROGRESS->value,
+            ])->pluck('table_id')->flip();
+
+        return function (int $id) use ($visits, $activeOrders, $openRequests): array {
+            $orders = (int) ($activeOrders[$id] ?? 0);
+            $since = $visits[$id] ?? null;
+
+            return [
+                // Occupied if a guest visit is live or there are active orders.
+                'occupied' => $since !== null || $orders > 0,
+                'active_orders' => $orders,
+                'has_request' => $openRequests->has($id),
+                'has_new_order' => $orders > 0,
+                'since' => $since ? Carbon::parse($since)->toIso8601String() : null,
+            ];
+        };
+    }
+
+    /**
+     * Live floor grid for the dashboard: every active table with its current
+     * occupancy, active-order count, and whether it has an open bill request
+     * (which makes the card pulse for attention). Kept light — a handful of
+     * grouped queries, no per-table N+1. Tenant scoping is applied by the
+     * BelongsToRestaurant global scope on each model.
+     */
+    public function live(Request $request): JsonResponse
+    {
+        $tables = DiningTable::with('diningArea')
+            ->where('is_active', true)
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
+            ->when($request->filled('dining_area_id'), fn ($q) => $q->where('dining_area_id', $request->integer('dining_area_id')))
+            ->orderBy('dining_area_id')->orderBy('label')
+            ->get();
+
+        $signals = $this->occupancySignals($tables->pluck('id'));
+
+        $data = $tables->map(function ($t) use ($signals) {
+            $state = $signals($t->id);
+
+            return [
+                'id' => $t->id,
+                'label' => $t->label,
+                'dining_area_id' => $t->dining_area_id,
+                'area_name_en' => $t->diningArea?->name_en,
+                'area_name_ar' => $t->diningArea?->name_ar,
+                'active_orders' => $state['active_orders'],
+                'has_request' => $state['has_request'],
+                // A new order that staff hasn't acknowledged yet → flash the card.
+                'has_new_order' => $state['has_new_order'],
+                'occupied' => $state['occupied'],
+            ];
+        });
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function finishVisit(
+        Request $request,
+        DiningTable $table,
+        TableVisitService $visits,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'status' => ['required', 'in:CLOSED,CANCELLED'],
+        ]);
+
+        $visit = $visits->finish(
+            $table,
+            $request->user(),
+            TableVisitStatus::from($validated['status']),
+        );
+        if ($visit === null) {
+            return response()->json(['message' => __('xorder.messages.table_visit_not_open')], 409);
+        }
+
+        return response()->json([
+            'data' => ['id' => $visit->id, 'status' => $visit->status->value],
+            'message' => __('xorder.messages.table_visit_finished'),
+        ]);
+    }
+
+    public function store(StoreTableRequest $request): JsonResponse
+    {
+        $area = DiningArea::findOrFail($request->integer('dining_area_id'));
+
+        $table = new DiningTable($request->validated());
+        // Branch is derived from the area so the two can never disagree.
+        $table->branch_id = $area->branch_id;
+        $table->public_token = DiningTable::generateToken();
+        $table->qr_generated_at = now();
+        $table->save();
+
+        return response()->json([
+            'data' => DiningTableResource::make($table->load('diningArea')),
+            'message' => __('xorder.messages.table_created'),
+        ], 201);
+    }
+
+    /**
+     * Create a batch of tables in one request from an explicit list of names the
+     * owner typed in the dialog, so setting up a floor doesn't mean reopening the
+     * dialog per table. Names are trimmed, blanks dropped, and duplicates within
+     * the batch collapsed; the surviving names are checked against the area's
+     * existing tables before any insert (all-or-nothing).
+     */
+    public function bulkStore(BulkStoreTablesRequest $request): JsonResponse
+    {
+        $area = DiningArea::findOrFail($request->integer('dining_area_id'));
+        $seats = $request->input('seats_count');
+        $isActive = $request->boolean('is_active', true);
+
+        // Trim, drop blanks, and de-duplicate within the batch, preserving order.
+        $labels = [];
+        foreach ((array) $request->input('labels', []) as $raw) {
+            $label = trim((string) $raw);
+            if ($label === '' || in_array($label, $labels, true)) {
+                continue;
+            }
+            $labels[] = $label;
+        }
+
+        if ($labels === []) {
+            return response()->json([
+                'message' => __('validation.required', ['attribute' => 'label']),
+                'errors' => ['labels' => [__('validation.required', ['attribute' => 'label'])]],
+            ], 422);
+        }
+
+        // Reject the whole batch if any name already exists in the area.
+        $taken = DiningTable::query()
+            ->where('dining_area_id', $area->id)
+            ->whereIn('label', $labels)
+            ->pluck('label')
+            ->all();
+        if ($taken !== []) {
+            return response()->json([
+                'message' => __('xorder.validation.table_labels_taken', ['labels' => implode(', ', $taken)]),
+                'errors' => ['labels' => [__('xorder.validation.table_labels_taken', ['labels' => implode(', ', array_slice($taken, 0, 10))])]],
+            ], 422);
+        }
+
+        $ids = DB::transaction(function () use ($labels, $area, $seats, $isActive) {
+            $created = [];
+            foreach ($labels as $label) {
+                $table = new DiningTable([
+                    'dining_area_id' => $area->id,
+                    'label' => $label,
+                    'seats_count' => $seats,
+                    'is_active' => $isActive,
+                ]);
+                $table->branch_id = $area->branch_id;
+                $table->public_token = DiningTable::generateToken();
+                $table->qr_generated_at = now();
+                $table->save();
+                $created[] = $table->id;
+            }
+
+            return $created;
+        });
+
+        $tables = DiningTable::query()->whereIn('id', $ids)->with('diningArea')->orderBy('id')->get();
+
+        return response()->json([
+            'data' => DiningTableResource::collection($tables),
+            'message' => trans_choice('xorder.messages.tables_created', $tables->count(), ['count' => $tables->count()]),
+        ], 201);
+    }
+
+    public function update(UpdateTableRequest $request, DiningTable $table): JsonResponse
+    {
+        $table->fill($request->validated());
+        if ($table->isDirty('dining_area_id')) {
+            $table->branch_id = DiningArea::findOrFail($table->dining_area_id)->branch_id;
+        }
+        $table->save();
+
+        return response()->json([
+            'data' => DiningTableResource::make($table->fresh()->load('diningArea')),
+            'message' => __('xorder.messages.table_updated'),
+        ]);
+    }
+
+    public function toggleStatus(Request $request, DiningTable $table): JsonResponse
+    {
+        $request->validate(['is_active' => ['sometimes', 'boolean']]);
+
+        $table->is_active = $request->has('is_active')
+            ? $request->boolean('is_active')
+            : ! $table->is_active;
+        $table->save();
+
+        return response()->json([
+            'data' => DiningTableResource::make($table->load('diningArea')),
+            'message' => __('xorder.messages.table_status_updated'),
+        ]);
+    }
+
+    public function destroy(DiningTable $table): JsonResponse
+    {
+        if ($table->orders()->exists()) {
+            return response()->json(['message' => __('xorder.messages.table_has_history')], 409);
+        }
+
+        $table->delete();
+
+        return response()->json(['message' => __('xorder.messages.table_deleted')]);
+    }
+
+    /**
+     * Delete several tables at once. Tables with order history are kept (same
+     * rule as the single delete) and reported back as skipped. The tenant
+     * scope limits the query to the caller's own tables.
+     */
+    public function bulkDestroy(BulkDeleteTablesRequest $request): JsonResponse
+    {
+        $ids = collect($request->validated('ids'))->unique();
+        $tables = DiningTable::whereIn('id', $ids)->get();
+
+        $deleted = 0;
+        $skipped = 0;
+        foreach ($tables as $table) {
+            if ($table->orders()->exists()) {
+                $skipped++;
+
+                continue;
+            }
+            $table->delete();
+            $deleted++;
+        }
+
+        $message = $skipped === 0
+            ? trans_choice('xorder.messages.tables_deleted', $deleted, ['count' => $deleted])
+            : __('xorder.messages.tables_deleted_partial', ['deleted' => $deleted, 'skipped' => $skipped]);
+
+        return response()->json([
+            'deleted' => $deleted,
+            'skipped' => $skipped,
+            'message' => $message,
+        ]);
+    }
+
+    /** SVG preview + the URL the QR encodes. */
+    public function qr(DiningTable $table, QrCodeService $qr): JsonResponse
+    {
+        $url = $table->publicUrl();
+
+        return response()->json([
+            'data' => [
+                'svg' => $qr->svgForUrl($url),
+                'url' => $url,
+                'public_token' => $table->public_token,
+                'qr_generated_at' => $table->qr_generated_at,
+            ],
+        ]);
+    }
+
+    public function qrDownload(DiningTable $table, QrCodeService $qr): Response
+    {
+        return response($qr->pngForUrl($table->publicUrl()))
+            ->header('Content-Type', 'image/png')
+            ->header('Content-Disposition', 'attachment; filename="'.$qr->tableDownloadFilename($table).'"');
+    }
+
+    /**
+     * Bundle the QR PNGs for several tables into one ZIP so a floor's codes can
+     * be printed in a single download instead of clicking through each table.
+     * The tenant scope limits the query to the caller's own tables; unknown ids
+     * are silently ignored, and an empty selection is a 422.
+     *
+     * `format=json` returns the same selection as data instead of image files —
+     * see TableQrExportService.
+     */
+    public function qrDownloadBulk(Request $request, QrCodeService $qr, TableQrExportService $export): BinaryFileResponse|JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer'],
+            'format' => ['nullable', 'in:zip,json'],
+        ]);
+
+        $tables = DiningTable::query()
+            // publicUrl() reaches through to the restaurant for every table, so
+            // without this a 50-table download issued 50 extra queries — one per
+            // QR, all for the same tenant. diningArea rides along for the area
+            // names the JSON export carries.
+            ->with(['restaurant', 'diningArea'])
+            ->whereIn('id', collect($validated['ids'])->unique())
+            ->orderBy('dining_area_id')->orderBy('label')
+            ->get();
+
+        if ($tables->isEmpty()) {
+            return response()->json(['message' => __('xorder.messages.no_tables_selected')], 422);
+        }
+
+        if (($validated['format'] ?? 'zip') === 'json') {
+            return response()->json($export->payload($tables, $request));
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'qr-tables-').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        foreach ($tables as $table) {
+            $zip->addFromString($qr->tableZipEntryName($table), $qr->pngForUrl($table->publicUrl()));
+        }
+        $zip->close();
+
+        return response()->download($path, 'qr-tables.zip', [
+            'Content-Type' => 'application/zip',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /** Issue a fresh token; the previous QR stops resolving (FR-QR-007/008). */
+    public function regenerateQr(DiningTable $table): JsonResponse
+    {
+        $table->public_token = DiningTable::generateToken();
+        $table->qr_generated_at = now();
+        $table->save();
+
+        return response()->json([
+            'data' => DiningTableResource::make($table->load('diningArea')),
+            'message' => __('xorder.messages.qr_regenerated'),
+        ]);
+    }
+}
