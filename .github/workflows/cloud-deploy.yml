@@ -62,18 +62,22 @@ jobs:
           php artisan test tests/Feature
 
   # ── 2. Deploy over SSH (runs deploy.sh on the VPS) ─────────────────────────
+  # Secrets come from Doppler (project xorder, config prd), not from GitHub
+  # Actions secrets. The only GitHub secret is DOPPLER_TOKEN: a read-only Doppler
+  # service token scoped to xorder/prd. SSH_HOST, SSH_USER and SSH_KEY (and the
+  # optional SSH_PORT) are read from Doppler at run time.
   deploy:
     needs: build-check
     runs-on: ubuntu-latest
     # Optional: gate on a GitHub "production" environment for required reviewers.
     environment: production
     steps:
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
       - name: Deploy via SSH
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           # Compose file to use on the server (defaults to the co-host layout).
           COMPOSE_FILE: ${{ vars.XORDER_COMPOSE_FILE }}
           # Directory on the VPS that holds deploy.sh (defaults to /opt/xorder).
@@ -82,19 +86,26 @@ jobs:
           # the monorepo, set XORDER_DEPLOY_PATH to <clone>/apps/xorder-cloud.
           DEPLOY_PATH: ${{ vars.XORDER_DEPLOY_PATH }}
         run: |
-          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN is not configured. Add a read-only Doppler service token for xorder/prd as the repo secret DOPPLER_TOKEN."
+            exit 1
+          fi
+          # The script runs under `doppler run`, so SSH_* are in its environment.
+          # ssh uses -n so it never reads the script from stdin.
+          doppler run --project xorder --config prd -- bash -euo pipefail -s <<'SCRIPT'
           if [ -z "${SSH_HOST:-}" ] || [ -z "${SSH_USER:-}" ] || [ -z "${SSH_KEY:-}" ]; then
-            echo "::error::SSH secrets not configured. Add SSH_HOST, SSH_USER, and SSH_KEY (plus optional SSH_PORT) under repo Settings → Secrets and variables → Actions, then re-run. See CO-HOST-PREP.md → CI/CD."
+            echo "::error::SSH_HOST, SSH_USER or SSH_KEY is empty in Doppler xorder/prd."
             exit 1
           fi
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           PORT="${SSH_PORT:-22}"
-          # Trust the host key (use a SSH_KNOWN_HOSTS secret for stricter pinning).
+          # Trust the host key (use a pinned known_hosts entry for stricter checking).
           ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
           REMOTE_PATH="${DEPLOY_PATH:-/opt/xorder}"
           REMOTE_COMPOSE="${COMPOSE_FILE:-$REMOTE_PATH/docker-compose.cohost.yml}"
-          ssh -i ~/.ssh/id_deploy -p "$PORT" "$SSH_USER@$SSH_HOST" \
+          ssh -n -i ~/.ssh/id_deploy -p "$PORT" "$SSH_USER@$SSH_HOST" \
             "cd '$REMOTE_PATH' && export XORDER_COMPOSE_FILE='$REMOTE_COMPOSE' && ./deploy.sh --ci"
+          SCRIPT
