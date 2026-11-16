@@ -4,6 +4,8 @@ return [
     'errors' => [
         'pos_seat_limit' => 'This plan covers :max terminal(s) and :claimed are already in use. Revoke a terminal you no longer use, or raise the plan, then try again.',
         'pos_terminal_still_active' => 'This terminal is still active. Revoke it first — deletion is cleanup for revoked, never-used terminals.',
+        'pos_shift_not_open' => 'This shift is already closed.',
+        'pos_shift_terminal_not_revoked' => 'Only a shift on a revoked till can be closed here. Close it at the till.',
         'pos_terminal_has_history' => 'This terminal has taken sales or run shifts, so its record stays. Revoked terminals hold no seat and cannot trade.',
         'licence_still_active' => 'This licence still permits trade. Revoke it first — deletion is for records that are already revoked, superseded or expired.',
         'unauthenticated' => 'Unauthenticated.',
@@ -66,6 +68,7 @@ return [
         'branch_not_found' => 'Branch not found.',
         'pos_terminal_provisioned' => 'Terminal created. Generate a setup code to pair the device.',
         'pos_terminal_deleted' => 'Terminal deleted.',
+        'pos_shift_force_closed' => 'Shift closed.',
         'pos_terminal_revoked' => 'Terminal revoked.',
         'pos_pin_set' => 'POS PIN set.',
         'pos_pin_cleared' => 'POS PIN cleared.',
