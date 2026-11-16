@@ -16,7 +16,13 @@ COMPOSE_FILE    ?= $(DEPLOY_PATH)/docker-compose.cohost.yml
 
 REMOTE = doppler run --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG) -- scripts/deploy/remote.sh
 
-.PHONY: deploy-check deploy deploy-rollback deploy-logs
+.PHONY: deploy-check deploy deploy-rollback deploy-logs test-cloud
+
+# Cloud API tests (SQLite in-memory). Uses the same Doppler config as deploys ($(DOPPLER_CONFIG),
+# currently prd), so local runs see production APP_KEY/JWT_SECRET. Tests use SQLite, not prod data.
+# Extra args: make test-cloud ARGS="--filter OrderingModeTest"
+test-cloud:
+	cd apps/xorder-cloud/apps/api && doppler run --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG) -- php artisan test $(ARGS)
 
 deploy-check:
 	$(REMOTE) "cd '$(DEPLOY_PATH)' && ls -l deploy.sh && git log -1 --format='server HEAD: %h %s' && git remote -v | head -1"
