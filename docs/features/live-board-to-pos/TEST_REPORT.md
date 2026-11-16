@@ -6,7 +6,7 @@
 |---|---|
 | `php artisan test --filter 'WhatsappPendingOrderTest\|OrderingModeTest'` (first run, before fixture fix) | 8 of 17 failed (test fixture used a restaurant with no ordering entitlement; fixed) |
 | `php artisan test --filter WhatsappPendingOrderTest` | 13/13 passed |
-| `php artisan test --filter 'CapabilityVerbsTest\|RemoveLiveViewMigrationTest'` | 18/18 passed |
+| `php artisan test --filter 'StaleLiveView\|CapabilityVerbs'` | 19/19 passed (2026-11-16; full cloud suite 1299/1299) |
 | `php -d memory_limit=-1 vendor/bin/phpunit` (full suite, 1st run after stage A) | 2 failed: `OrderingModeReconciliationTest::test_order_pipeline_honours_the_coerced_mode`, `PlanEntitlementTest::test_orders_route_requires_system_ordering` (both asserted the old rule; updated) |
 | same, after stage D | 1 failed: the reconciliation test again (my later "WhatsApp order needs a phone" rule; fixture given a phone) |
 | same, after the review fixes (pulse, insights, audit log, generic-route refusal, old migration constants) | **1277 passed**, 6606 assertions, 0 failed |
@@ -21,7 +21,7 @@
 | AC-6 pending order exists, listed, accept makes it real, never kitchen/sales | `WhatsappPendingOrderTest` (checkout PENDING, list/summary/new-count/stats, accept idempotent, reject with reason, cross decisions refused, no move back to PENDING, tenant 404, `orders.update` needed, plan gate, paused restaurant, phone required) | proven on SQLite |
 | BR-3 pending not a sale | stats `orders_today` and insights `orders_total` 0 → 1 after accept; pulse counts pending for a WhatsApp-only plan | proven for stats, insights, pulse; `ReportService` and the pickup board edited, **no direct test** (gap) |
 | AC-5 restaurants without a POS keep an order queue | `PlanEntitlementTest::test_orders_route_requires_an_ordering_feature` (WhatsApp-only plan reaches it) | proven |
-| D9/D11 `live.view` removed, no mapping | `CapabilityVerbsTest` (each read needs its own view; stale value grants nothing), `RemoveLiveViewMigrationTest` (removal, log of roles losing access, run twice) | proven |
+| D9/D11 `live.view` removed, no mapping | `CapabilityVerbsTest` (each read needs its own view; stale value grants nothing), `StaleLiveViewCapabilityTest` (removed value ignored, other capabilities keep working, stored row never rewritten) | proven |
 | AC-1, AC-7 nav/redirect/bell/RTL | `pnpm build`; then seen in the built-in browser (2026-11-10, below) | orders page, nav and redirect seen; menu checkout and bell link not seen |
 | AC-2 dashboard refuses table/bill/visit routes | **not done** (see TECHNICAL.md section 7) | open |
 | AC-3 delivery in both places, AC-4 POS handles tables | depend on `pos-incoming-cloud-orders` and the POS consumer | open |

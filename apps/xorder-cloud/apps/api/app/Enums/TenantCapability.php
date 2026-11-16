@@ -23,6 +23,21 @@ namespace App\Enums;
  */
 enum TenantCapability: string
 {
+    /**
+     * RETIRED (live-board-to-pos D9/D11): the dashboard's Live board is gone and
+     * nothing checks this value any more.
+     *
+     * The case is kept ONLY so the already-shipped migration
+     * 2026_08_23_000400_grant_live_view_to_roles_that_had_it keeps loading
+     * byte-for-byte (it references LIVE_VIEW and still runs on a fresh
+     * database). It is excluded everywhere else: see {@see active()},
+     * {@see values()}, {@see tryFromActive()}. Stored role rows that still carry
+     * 'live.view' are left as they are and ignored when read.
+     *
+     * @deprecated never grant, check or list it.
+     */
+    case LIVE_VIEW = 'live.view';
+
     // Live order queue — raised by diners, progressed by staff.
     case ORDERS_VIEW = 'orders.view';
     case ORDERS_UPDATE = 'orders.update';
@@ -132,10 +147,29 @@ enum TenantCapability: string
     */
     case FINANCE_ACCOUNTS = 'finance.accounts';
 
+    /**
+     * Every capability that still exists: all cases except the retired ones.
+     * Use this, never cases(), for anything user-facing, gated or granted.
+     *
+     * @return list<self>
+     */
+    public static function active(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $c) => $c !== self::LIVE_VIEW));
+    }
+
+    /** tryFrom() that treats a retired value as unknown. */
+    public static function tryFromActive(string $value): ?self
+    {
+        $cap = self::tryFrom($value);
+
+        return $cap === self::LIVE_VIEW ? null : $cap;
+    }
+
     /** @return list<string> */
     public static function values(): array
     {
-        return array_map(fn (self $c) => $c->value, self::cases());
+        return array_map(fn (self $c) => $c->value, self::active());
     }
 
     /** The resource half of the value — "menu" for menu.create. */
@@ -206,7 +240,7 @@ enum TenantCapability: string
         $out = [];
 
         foreach (self::translateLegacy(array_map('strval', $requested)) as $value) {
-            $cap = self::tryFrom($value);
+            $cap = self::tryFromActive($value);
 
             if ($cap === null) {
                 continue;

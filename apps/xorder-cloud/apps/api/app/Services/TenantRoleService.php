@@ -39,7 +39,7 @@ class TenantRoleService
                 'name_ar' => 'مدير النظام',
                 // Everything, including staff.manage — this role is the
                 // tenant-side equivalent of the owner's own access.
-                'capabilities' => Cap::cases(),
+                'capabilities' => Cap::active(),
             ],
         ];
     }

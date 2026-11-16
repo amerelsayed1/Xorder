@@ -132,7 +132,7 @@ class AppServiceProvider extends ServiceProvider
         // from the Role assigned to them — with the restaurant owner
         // (RESTAURANT_ADMIN) holding everything, mirroring the SUPER_ADMIN
         // bypass one level down. Values never collide with Capability's.
-        foreach (TenantCapability::cases() as $capability) {
+        foreach (TenantCapability::active() as $capability) {
             Gate::define(
                 $capability->value,
                 fn (User $user) => $user->holdsTenantCapability($capability),

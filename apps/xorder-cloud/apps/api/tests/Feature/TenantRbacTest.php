@@ -103,7 +103,7 @@ class TenantRbacTest extends TestCase
         $restaurant = Restaurant::factory()->create();
         $owner = User::factory()->restaurantAdmin($restaurant->id)->create();
 
-        foreach (TenantCapability::cases() as $capability) {
+        foreach (TenantCapability::active() as $capability) {
             $this->assertTrue($owner->can($capability->value), $capability->value);
         }
 

@@ -35,13 +35,13 @@ Cutover alone: none. Phase B: removing the Live board affects restaurants and fo
 2. WhatsApp orders get new status **`PENDING`** (accept or reject before it is a real order): `OrderStatus`, `PublicOrderController`, `Dashboard\OrderController`, menu SPA.
 3. Capability **`live.view` removed**; `orders.read` / `bills.read` now need `orders.view` / `bills.view`.
 4. Smaller: pickup board, insights, stats, `ReportService`, `lang/` files, `routes/api.php`, orders view, i18n.
-5. New migration `2026_11_10_000100_remove_live_view_from_roles.php`: **rewrites `roles.capabilities` for every role holding `live.view`**; `down()` is empty (not reversible); roles with neither `orders.view` nor `bills.view` lose order and bill access (only logged). This breaks the "no tenant data updates without an approved plan" rule unless approved explicitly.
-6. An already-shipped migration (`2026_08_23_000400_grant_live_view_...`) was edited; harmless if already applied, but note it.
+5. ~~Migration `2026_11_10_000100_remove_live_view_from_roles.php` rewriting `roles.capabilities`~~ **Removed on branch `fix/live-view-no-data-rewrite`** (release-check A2). Stored role rows are not touched; the removed `live.view` value is ignored at read time, so roles holding only `live.view` lose order and bill reads exactly as designed, but nothing is rewritten and a code rollback restores the old behaviour. Covered by `StaleLiveViewCapabilityTest` (not yet merged to `main`).
+6. ~~An already-shipped migration (`2026_08_23_000400_grant_live_view_...`) was edited~~ **Restored byte-identical to the server commit `dd1a6c6`** on branch `fix/live-view-no-data-rewrite` (release-check A3). To keep it loading, `TenantCapability::LIVE_VIEW` is kept as a retired, `@deprecated` case that every user-facing path excludes (`active()`, `values()`, `tryFromActive()`, Gate definitions, role editor, Admin default role). Covered by `StaleLiveViewCapabilityTest`.
 7. `.github/workflows/deploy.yml` removal in the diff is only the workflow moving to the repo root.
 
 ## 5a. Backward compatibility (checked 2026-11-16, by reading code and the ledger; no tests run)
 
-**Result: the 33-file diff does not change any route the POS calls.** It is not strictly backward compatible only because of the irreversible roles rewrite (section 5, item 5).
+**Result: the 33-file diff does not change any route the POS calls.** With the roles rewrite removed (section 5, item 5) it is backward compatible at the API level; the only behaviour change is that roles holding `live.view` without `orders.view` / `bills.view` lose those reads.
 
 POS cloud client calls (from `apps/xorder_pos_cloud/lib/data/cloud` and `shared_module/lib/data/cloud`): `/pos/bootstrap`, `/pos/orders`, `/pos/refunds`, `/pos/shifts`, `/pos/cash-movements`, `/pos/customers`, `/pos/license/check`, `/pos/terminals/{register,claim,heartbeat}`, `/dashboard/branches`, `/dashboard/pos/terminals`, `/pos/branch/sales[/summary]`.
 
@@ -57,7 +57,7 @@ POS cloud client calls (from `apps/xorder_pos_cloud/lib/data/cloud` and `shared_
 
 **Other compatibility items**
 - `POS-BE-033` (`GET /api/pos/incoming`, accept/reject of online orders) is PROPOSED and its cloud half is not in either version's routes. Not part of this deploy.
-- Rolling back code (`make deploy-rollback`) does not undo the roles rewrite. Restoring `roles` needs the pre-deploy backup.
+- Rolling back code (`make deploy-rollback`) fully restores behaviour: no tenant data is rewritten and no shipped migration is modified (after the fix on `fix/live-view-no-data-rewrite`).
 - `packages/api-client` (Vue apps) was not compared against the changed dashboard routes. The only menu-app change in the diff is a locale file.
 - No automated tests were run for this section (cloud suite, POS suite, contract tests). Before Phase B run the cloud suite (`php artisan test`) and `/project-testing`.
 
@@ -90,7 +90,7 @@ Option for step 4: tag or branch in the monorepo at the commit whose `apps/xorde
    Each row is a role that would lose order and bill reads. Notify those restaurants or fix their roles first. (`capabilities` is JSON text per the migration comment; Postgres column type unverified.)
 3. Fresh backup, quiet window, then `make deploy`.
 4. After: log in as a restaurant admin and a staff role, create a WhatsApp order, accept and reject it, check the dashboard orders view.
-5. Rollback: code rolls back with `make deploy-rollback`, **the capability rewrite does not**. Recovery means restoring the `roles` table from the step-3 backup. This is the main reason to run the impact list first.
+5. Rollback: `make deploy-rollback` is enough; no tenant data was rewritten. The impact list in step 2 is still worth running so affected restaurants are warned.
 
 ## 7. Risks
 | Risk | Mitigation |
@@ -98,7 +98,7 @@ Option for step 4: tag or branch in the monorepo at the commit whose `apps/xorde
 | New clone missing `.env.production` or volumes | Step 2 and 6 comparison; old clone kept as rollback |
 | Server tree differs from `dd1a6c6` | Step 2 clean check before anything else |
 | Deploy ships feature changes by accident | Phase A deploys only the commit-identical tree |
-| Irreversible roles rewrite | Section 6 B.2 impact list, backup, owner approval |
+| Roles lose order/bill reads (by design) | Section 6 B.2 impact list and owner notice; no data rewrite, so no data to restore |
 | Older POS builds vs `PENDING` status | Check `docs/coordination/` ledger; additive-only contract rule |
 | Secrets exposure | SSH key lives in Doppler `xorder/prd`; the deploy key printed once in a chat session and should be rotated |
 
