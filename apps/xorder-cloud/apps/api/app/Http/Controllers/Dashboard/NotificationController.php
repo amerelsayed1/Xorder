@@ -20,6 +20,7 @@ class NotificationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $notifications = Notification::query()
+            ->visibleTo($request->user())
             ->when($request->boolean('unread'), fn ($q) => $q->whereNull('read_at'))
             ->latest('id')
             ->paginate(20);
@@ -28,16 +29,22 @@ class NotificationController extends Controller
     }
 
     /** Lightweight unread badge count. */
-    public function unreadCount(): JsonResponse
+    public function unreadCount(Request $request): JsonResponse
     {
         return response()->json([
-            'data' => ['unread' => Notification::whereNull('read_at')->count()],
+            'data' => ['unread' => Notification::visibleTo($request->user())->whereNull('read_at')->count()],
         ]);
     }
 
-    /** Mark a single notification read (idempotent). */
-    public function markRead(Notification $notification): JsonResponse
+    /**
+     * Mark a single notification read (idempotent). One this account may not see
+     * answers 404, exactly like another restaurant's, so its existence is not
+     * confirmed.
+     */
+    public function markRead(Request $request, Notification $notification): JsonResponse
     {
+        abort_unless(Notification::typeVisibleTo($notification->type, $request->user()), 404);
+
         if ($notification->read_at === null) {
             $notification->forceFill(['read_at' => now()])->save();
         }
@@ -45,10 +52,10 @@ class NotificationController extends Controller
         return response()->json(['data' => NotificationResource::make($notification)]);
     }
 
-    /** Mark every unread notification read; returns how many were cleared. */
-    public function markAllRead(): JsonResponse
+    /** Mark every unread notification this account may see as read; returns how many were cleared. */
+    public function markAllRead(Request $request): JsonResponse
     {
-        $cleared = Notification::whereNull('read_at')->update(['read_at' => now()]);
+        $cleared = Notification::visibleTo($request->user())->whereNull('read_at')->update(['read_at' => now()]);
 
         return response()->json(['data' => ['cleared' => $cleared]]);
     }

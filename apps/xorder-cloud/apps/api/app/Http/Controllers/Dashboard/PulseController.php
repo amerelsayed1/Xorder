@@ -46,10 +46,12 @@ class PulseController extends Controller
             ? BillRequest::where('status', BillRequestStatus::REQUESTED->value)->count()
             : null;
 
-        $unread = Notification::whereNull('read_at')->count();
+        // Only the notifications this account may see, so neither the count nor the
+        // newest id reveals that a hidden kind (an order, say) exists.
+        $unread = Notification::visibleTo($user)->whereNull('read_at')->count();
         // The newest id lets the client tell "a notification arrived" apart from
         // "one was marked read elsewhere" when the unread count moves.
-        $latestId = Notification::max('id') ?? 0;
+        $latestId = Notification::visibleTo($user)->max('id') ?? 0;
 
         $payload = [
             'new_orders' => $newOrders,
