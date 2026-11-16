@@ -6,6 +6,10 @@ name: Cloud - Deploy to production
 on:
   workflow_dispatch:
 
+# Least privilege: the jobs only read the repository. Doppler and SSH carry the rest.
+permissions:
+  contents: read
+
 # Never let two production deploys overlap.
 concurrency:
   group: production-deploy
@@ -64,8 +68,8 @@ jobs:
   # ── 2. Deploy over SSH (runs deploy.sh on the VPS) ─────────────────────────
   # Secrets come from Doppler (project xorder, config prd), not from GitHub
   # Actions secrets. The only GitHub secret is DOPPLER_TOKEN: a read-only Doppler
-  # service token scoped to xorder/prd. SSH_HOST, SSH_USER and SSH_KEY (and the
-  # optional SSH_PORT) are read from Doppler at run time.
+  # service token scoped to xorder/prd. SSH_HOST, SSH_USER, SSH_KEY and
+  # SSH_KNOWN_HOSTS (and the optional SSH_PORT) are read from Doppler at run time.
   deploy:
     needs: build-check
     runs-on: ubuntu-latest
@@ -101,11 +105,18 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           PORT="${SSH_PORT:-22}"
-          # Trust the host key (use a pinned known_hosts entry for stricter checking).
-          ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Pinned host keys (Doppler SSH_KNOWN_HOSTS, ssh known_hosts format).
+          # Never scan the network at run time: that would trust whoever answers.
+          if [ -z "${SSH_KNOWN_HOSTS:-}" ]; then
+            echo "::error::SSH_KNOWN_HOSTS is empty in Doppler xorder/prd. Add the server's host keys (ssh-keygen -F <host>)."
+            exit 1
+          fi
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
           REMOTE_PATH="${DEPLOY_PATH:-/opt/xorder}"
           REMOTE_COMPOSE="${COMPOSE_FILE:-$REMOTE_PATH/docker-compose.cohost.yml}"
-          ssh -n -i ~/.ssh/id_deploy -p "$PORT" "$SSH_USER@$SSH_HOST" \
+          ssh -n -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -p "$PORT" "$SSH_USER@$SSH_HOST" \
             "cd '$REMOTE_PATH' && export XORDER_COMPOSE_FILE='$REMOTE_COMPOSE' && ./deploy.sh --ci"
           SCRIPT
