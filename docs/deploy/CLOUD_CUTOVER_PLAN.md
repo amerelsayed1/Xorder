@@ -24,7 +24,7 @@ Make `https://xorder.io` deploy from this monorepo (`apps/xorder-cloud`) instead
 - The server's directory layout beyond `deploy.sh` (where `.env.production`, `backups/`, `logs/`, compose files live relative to the clone).
 - Whether `/opt/xorder` is the clone root and whether the compose file is `docker-compose.cohost.yml` there.
 - Whether a check constraint or column type on `orders.status` accepts the new `PENDING` value.
-- POS compatibility with `PENDING` orders and the removed `live.view` capability (see `docs/coordination/`).
+- Whether any POS-facing response other than `/pos/orders` (for example `/pos/bootstrap`) can return a `PENDING` WhatsApp order. Section 5a covers what was checked.
 - GitHub `production` environment reviewers, and the values of repo variables `XORDER_DEPLOY_PATH` / `XORDER_COMPOSE_FILE`.
 
 ## 4. Venue-model impact (`.claude/rules/domain-expert.md`)
@@ -38,6 +38,28 @@ Cutover alone: none. Phase B: removing the Live board affects restaurants and fo
 5. New migration `2026_11_10_000100_remove_live_view_from_roles.php`: **rewrites `roles.capabilities` for every role holding `live.view`**; `down()` is empty (not reversible); roles with neither `orders.view` nor `bills.view` lose order and bill access (only logged). This breaks the "no tenant data updates without an approved plan" rule unless approved explicitly.
 6. An already-shipped migration (`2026_08_23_000400_grant_live_view_...`) was edited; harmless if already applied, but note it.
 7. `.github/workflows/deploy.yml` removal in the diff is only the workflow moving to the repo root.
+
+## 5a. Backward compatibility (checked 2026-11-16, by reading code and the ledger; no tests run)
+
+**Result: the 33-file diff does not change any route the POS calls.** It is not strictly backward compatible only because of the irreversible roles rewrite (section 5, item 5).
+
+POS cloud client calls (from `apps/xorder_pos_cloud/lib/data/cloud` and `shared_module/lib/data/cloud`): `/pos/bootstrap`, `/pos/orders`, `/pos/refunds`, `/pos/shifts`, `/pos/cash-movements`, `/pos/customers`, `/pos/license/check`, `/pos/terminals/{register,claim,heartbeat}`, `/dashboard/branches`, `/dashboard/pos/terminals`, `/pos/branch/sales[/summary]`.
+
+| Check | Finding |
+|---|---|
+| Routes changed in `routes/api.php` | Only the dashboard orders group: gate widened to `system_ordering\|pos\|whatsapp_ordering`, new `POST orders/{order}/accept` and `/reject`, `orders.read` / `bills.read` lose the `live.view` alternative. No `/pos/*`, `/dashboard/branches` or `/dashboard/pos/terminals` route changed. |
+| POS controllers/services in the diff | None (`Controllers/Pos`, `PosOrderService`, `PosRefundService` are not in the diff). |
+| `PENDING` reaching POS | `PENDING` is set only in `PublicOrderController` for WhatsApp orders; `Pos\OrderController` queries `channel = 'pos'`. `/pos/bootstrap` not checked (UNVERIFIED). |
+| `PENDING` in cloud reports | Excluded from stats, insights, `ReportService` and the pickup board. |
+| Old dashboard browser tabs | Do not know `PENDING` and the removed `live.view`; a hard reload after deploy picks up the new bundle. |
+
+**`/api/pos/branch/sales` and `/sales/summary` (open point 1, resolved):** these are **POS-BE-029, status PROPOSED** (`POS_TO_BACKEND.md` line 1550; `BACKOFFICE_TO_CLOUD.md` CB-11 "absent"). The POS client was built against a fake HTTP layer. A search of the cloud `routes/` and `app/` at both the server commit `dd1a6c6` and the monorepo `HEAD` finds **no such route in either**, and git history has no commit adding one. So these calls return 404 today and will return 404 after Phase B: the deploy changes nothing here. Per `CLAUDE.md` the POS must not integrate against PROPOSED items; whether the POS shows these screens to users on a cloud till is UNVERIFIED (not traced).
+
+**Other compatibility items**
+- `POS-BE-033` (`GET /api/pos/incoming`, accept/reject of online orders) is PROPOSED and its cloud half is not in either version's routes. Not part of this deploy.
+- Rolling back code (`make deploy-rollback`) does not undo the roles rewrite. Restoring `roles` needs the pre-deploy backup.
+- `packages/api-client` (Vue apps) was not compared against the changed dashboard routes. The only menu-app change in the diff is a locale file.
+- No automated tests were run for this section (cloud suite, POS suite, contract tests). Before Phase B run the cloud suite (`php artisan test`) and `/project-testing`.
 
 ## 6. Plan
 
