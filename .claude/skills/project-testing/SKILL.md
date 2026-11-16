@@ -20,9 +20,10 @@ Read-only on product code: this skill finds and reports problems, it does not fi
 | Suite | Command | Notes |
 |---|---|---|
 | Cloud API | `cd apps/xorder-cloud/apps/api && php artisan test` | PHPUnit 12 on SQLite `:memory:`; PostgreSQL-only behavior is NOT covered |
-| Vue build (`build` scope only) | `cd apps/xorder-cloud && pnpm build` | only automated check for `apps/web|landing|menu`; writes gitignored `dist/` output; no unit/E2E/lint scripts exist |
+| Vue unit tests | `cd apps/xorder-cloud && pnpm test` | Vitest + jsdom, tests beside the code as `*.test.js` (money, quantity, subscription dates, safeUrl, digits, auth store/capabilities). Component tests not yet written |
+| Vue build (`build` scope only) | `cd apps/xorder-cloud && pnpm build` | writes gitignored `dist/` output; no E2E/lint scripts exist |
 | POS static analysis | `cd apps/xorder-pos && flutter analyze` | must be clean |
-| POS unit + widget | `cd apps/xorder-pos && env -u POS_PG_HOST flutter test` | `integration`-tagged suites skip without a database; count and report the skips |
+| POS unit + widget | `cd apps/xorder-pos && for p in packages/shared_module apps/xorder_pos_offline apps/xorder_pos_cloud apps/xorder_pos_waiter packages/xorder_waiter_link; do (cd $p && env -u POS_PG_HOST flutter test); done` | The POS root is a pub workspace with no `test/` folder: `flutter test` there runs nothing, so run every member that has tests (`find apps packages -path '*/test/*' -name '*_test.dart'` lists them; re-check when a package is added; `xorder_pos_test_support` has none by design). `integration`-tagged suites skip without a database; count and report the skips per package |
 | POS PostgreSQL suites (`pg` only) | `cd apps/xorder-pos && scripts/check.sh` | **Ask the user first.** It creates and drops throwaway databases/roles on a *local* PostgreSQL (defaults `127.0.0.1:5432`). Refuse any `POS_PG_HOST` that is not localhost |
 | POS `integration_test/` | not run by default | needs a desktop device and a database; ask first |
 | Harness | `bash scripts/harness/verify.sh` | structure/doc checks |

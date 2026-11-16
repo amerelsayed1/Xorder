@@ -46,7 +46,7 @@ class Role extends Model
     {
         return array_values(array_filter(
             (array) ($this->capabilities ?? []),
-            fn ($value) => TenantCapability::tryFrom((string) $value) !== null,
+            fn ($value) => TenantCapability::tryFromActive((string) $value) !== null,
         ));
     }
 

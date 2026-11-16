@@ -54,7 +54,7 @@ class RoleController extends Controller
             'resource' => $c->resource(),
             'action' => $c->action(),
             'implies' => $c->implies()?->value,
-        ], TenantCapability::cases());
+        ], TenantCapability::active());
 
         return response()->json(['data' => $data]);
     }

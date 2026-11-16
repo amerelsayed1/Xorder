@@ -221,7 +221,7 @@ class CapabilityVerbsTest extends TestCase
         $this->actingAs($bills)->getJson('/api/dashboard/orders')->assertForbidden();
     }
 
-    /** A role row that still carries the removed value (before the migration ran) grants nothing. */
+    /** A role row that still carries the removed value (rows are never rewritten) grants nothing. */
     public function test_a_stale_live_view_value_in_a_role_grants_nothing(): void
     {
         $this->enableFeatures(['system_ordering', 'bill_requests', 'table_management']);
