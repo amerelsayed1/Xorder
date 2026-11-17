@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DeviceToken;
+use App\Models\Notification;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -21,6 +22,27 @@ use Kreait\Firebase\Messaging\WebPushConfig;
 class PushService
 {
     /**
+     * The device tokens a push of this kind may go to: those whose user may see
+     * that kind of notification (the same rule as the in-app feed). A push with
+     * no kind is untyped and goes to the owner's devices only, so nothing leaks
+     * by default. Tokens whose user no longer exists are skipped.
+     *
+     * @return list<string>
+     */
+    public function tokensFor(int $restaurantId, ?string $type): array
+    {
+        return DeviceToken::query()
+            ->where('restaurant_id', $restaurantId)
+            ->with('user.tenantRole')
+            ->get()
+            ->filter(fn (DeviceToken $t) => $t->user !== null
+                && Notification::typeVisibleTo($type ?? '', $t->user))
+            ->pluck('token')
+            ->values()
+            ->all();
+    }
+
+    /**
      * Fan a push out to every device registered for the restaurant.
      *
      * @param  array<string,mixed>  $data  extra payload merged into the message
@@ -28,7 +50,7 @@ class PushService
      */
     public function toRestaurant(int $restaurantId, string $title, string $body, array $data = [], string $link = '/admin'): void
     {
-        $tokens = DeviceToken::where('restaurant_id', $restaurantId)->pluck('token')->all();
+        $tokens = $this->tokensFor($restaurantId, isset($data['type']) ? (string) $data['type'] : null);
         if ($tokens === []) {
             return;
         }
