@@ -1,0 +1,55 @@
+diff --git a/apps/web/src/pages/dashboard/nav.config.js b/apps/web/src/pages/dashboard/nav.config.js
+index a2f66e3..6bd6dd5 100644
+--- a/apps/web/src/pages/dashboard/nav.config.js
++++ b/apps/web/src/pages/dashboard/nav.config.js
+@@ -92,12 +92,9 @@ export const DASHBOARD_NAV = [
+     // which `settingsVisible()` below consults so this entry never opens an
+     // empty screen). Profile sits at the bare /settings; a user who cannot
+     // open Profile is moved on to the first section they can (settingsIndexGuard).
+-    {
+-        key: 'settings', labelKey: 'nav.section_settings', section: true,
+-        children: [
+-            { key: 'settings', labelKey: 'nav.restaurant_settings', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, match: SETTINGS_ROUTE_NAMES, settings: true },
+-        ],
+-    },
++    // A flat item, not a section: a heading over a single page is a fold with
++    // nothing to fold.
++    { key: 'settings', labelKey: 'nav.section_settings', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, match: SETTINGS_ROUTE_NAMES, settings: true },
+ ]
+ 
+ // Resolve the schema against the current feature set, the signed-in user's
+diff --git a/packages/ui/src/SakaiLayout.vue b/packages/ui/src/SakaiLayout.vue
+index a901428..62e4a12 100644
+--- a/packages/ui/src/SakaiLayout.vue
++++ b/packages/ui/src/SakaiLayout.vue
+@@ -332,6 +332,8 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
+     font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .02em; text-align: start;
+     color: var(--p-text-muted-color); border-radius: 7px; }
+ .sakai-menu > li:first-child > .sakai-section-toggle { margin-top: 0; }
++/* A flat item after a section stands on its own, not as the section's last row. */
++.sakai-menu > li:has(> .sakai-section-toggle) + li > .sakai-menu-item { margin-top: 14px; }
+ .sakai-section-toggle:hover { color: var(--p-text-color); }
+ .sakai-section-toggle .sakai-group-arrow { font-size: 11px !important; }
+ .sakai-section-toggle .sakai-menu-badge { margin-inline-start: auto; }
+diff --git a/packages/ui/src/i18n/index.js b/packages/ui/src/i18n/index.js
+index 2149ef9..3756864 100644
+--- a/packages/ui/src/i18n/index.js
++++ b/packages/ui/src/i18n/index.js
+@@ -154,7 +154,7 @@ const messages = {
+             section_main: 'Main', section_menu: 'Menu', section_stock: 'Inventory & purchasing',
+             section_customers: 'Customers & marketing', section_reports: 'Reports',
+             section_team: 'Team', section_settings: 'Settings',
+-            stock_short: 'Stock', purchasing: 'Purchasing', restaurant_settings: 'Restaurant settings',
++            stock_short: 'Stock', purchasing: 'Purchasing',
+             search_pages: 'Search pages…', search_none: 'No matching page',
+         },
+         tbl: {
+@@ -1944,7 +1944,7 @@ const messages = {
+             section_main: 'الرئيسية', section_menu: 'المنيو', section_stock: 'المخزون والمشتريات',
+             section_customers: 'العملاء والتسويق', section_reports: 'التقارير',
+             section_team: 'فريق العمل', section_settings: 'الإعدادات',
+-            stock_short: 'المخزون', purchasing: 'المشتريات', restaurant_settings: 'إعدادات المطعم',
++            stock_short: 'المخزون', purchasing: 'المشتريات',
+             search_pages: 'ابحث في الصفحات…', search_none: 'لا توجد صفحة مطابقة',
+         },
+         tbl: {
