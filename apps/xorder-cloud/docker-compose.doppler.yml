@@ -1,0 +1,56 @@
+# Run the stack with secrets from Doppler instead of apps/api/.env.docker.
+#
+#   doppler run --project xorder --config prd -- \
+#     docker compose -p xorder-doppler -f docker-compose.yml -f docker-compose.doppler.yml up -d
+#
+# (or from the repo root: make docker-up)
+#
+# - Secrets are passed through BY NAME from the environment `doppler run` creates;
+#   no value is written to a file or to this repo.
+# - Non-secret settings the containers need are set here.
+# - `-p xorder-doppler` gives this stack its own volumes (xorder-doppler_pgdata,
+#   xorder-doppler_storage-data), so an older local database is never reused or touched.
+# - The Doppler config is `prd`, so these are PRODUCTION keys inside a LOCAL stack. The
+#   database is a fresh local Postgres, never the production one.
+
+x-doppler-env: &doppler-env
+  # secrets (names only; values come from the process environment)
+  APP_KEY:
+  JWT_SECRET:
+  DB_PASSWORD:
+  LICENCE_SIGNING_KEY:
+  SUPER_ADMIN_PASSWORD:
+  # non-secret settings
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:8080
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: qrmenu
+  DB_USERNAME: qrmenu
+  CACHE_STORE: file
+  SESSION_DRIVER: file
+  QUEUE_CONNECTION: sync
+  LOG_CHANNEL: stderr
+  MAIL_MAILER: log
+
+services:
+  app:
+    env_file: !reset []
+    environment:
+      <<: *doppler-env
+      RUN_MIGRATIONS: "true"
+      SEED_ON_START: "true"
+
+  scheduler:
+    env_file: !reset []
+    environment:
+      <<: *doppler-env
+      RUN_MIGRATIONS: "false"
+      SEED_ON_START: "false"
+
+  db:
+    ports: !override
+      # 5433 is taken by another local container; use 5434.
+      - "127.0.0.1:5434:5432"

@@ -2,6 +2,13 @@
 
 Status: **approved 2026-11-10; stages A, B, C and part of D built (uncommitted); see section 7** · 2026-11-10 · Verified against: xorder-cloud `1ae5fd8` (main, clean), xorder-pos `c058837` (development, clean) · Spec: `FEATURE.md`
 
+> **As-built correction (2026-11-16, supersedes the lines it names below).** Release-check A2/A3 failed on the first design, so it was changed:
+> - **No data migration.** `2026_11_10_000100_remove_live_view_from_roles` was deleted; no role row is rewritten and no "affected roles" report is printed. Stored `live.view` values stay in `roles.capabilities` and are ignored at read time (`Role::capabilityValues()` filters with `TenantCapability::tryFromActive()`). Rollback of the code restores the old behaviour.
+> - **Shipped migration restored.** `2026_08_23_000400_grant_live_view_to_roles_that_had_it` is byte-identical to the server commit `dd1a6c6` again. To keep it loading, `TenantCapability::LIVE_VIEW` is kept as a retired, `@deprecated` case that every user-facing path excludes (`active()`, `values()`, `tryFromActive()`, `expand()`, Gate definitions, role editor, Admin preset). This replaces the 2026-11-10 owner decision "no hidden legacy enum case".
+> - **Gates now:** `orders.read` = `orders.view`; `bills.read` = `bills.view`; `tables.live` = `tables.view`. Role create/update with `live.view` returns 422.
+> - Where the sections below say a data migration removes `live.view`, prints affected roles, or that `orders.read` is `orders.view` OR `live.view`, read them as the *plan-phase* design, not the code. To list roles that lose access, use the read-only SELECT in `docs/deploy/CLOUD_CUTOVER_PLAN.md` section 6, Phase B step 2.
+> - Tests: `StaleLiveViewCapabilityTest`, `CapabilityVerbsTest`, `TenantRbacTest`.
+
 ## 1. Plan-phase findings (source re-read)
 
 | Claim in FEATURE.md | Result |
@@ -21,7 +28,7 @@ Status: **approved 2026-11-10; stages A, B, C and part of D built (uncommitted);
 
 - **D7 (Q4)** board removed from the dashboard for everyone in one release; no per-restaurant flag. Rollback is a code revert. Hard-dependency risk accepted by the owner.
 - **D8 (Q5)** delivery rings and badges in both POS and dashboard; first accept wins under a server lock. POS side needs `pos-incoming-cloud-orders`.
-- **D9 (Q6)** `live.view` removed now; **D11** no mapping, so roles holding only it lose the order and bill reads it granted; the migration reports affected roles per restaurant first. **Narrows access: needs approval.**
+- **D9 (Q6)** `live.view` removed now; **D11** no mapping, so roles holding only it lose the order and bill reads it granted; ~~the migration reports affected roles per restaurant first~~ (superseded: no migration, see the correction at the top). **Narrows access: needs approval.**
 - **D6, D10, D12, D13, D14** WhatsApp orders stay on the dashboard: saved as pending, never expire, Accept and Reject buttons (dashboard only), diner's message goes out after the decision. **Rule change (WhatsApp mode creates no record today); needs approval.**
 - **Open:** Q7d (how the diner's message is sent).
 
@@ -55,13 +62,13 @@ AC coverage: AC-1, AC-7 stage D (person looks); AC-2 stage D; AC-3, AC-5 regress
 
 1. Go on stages A, B, D (C waits for Q7d; E is separate).
 2. The WhatsApp rule change: an order record and a pending status where none exists (D6).
-3. Two additive migrations, written and never run by me (pending status; `live.view` removal with a role report).
+3. ~~Two additive migrations~~ (superseded: none; pending status needs no schema change and `live.view` removal rewrites no data).
 4. Narrowing access: removing `live.view` (D9/D11) and refusing dashboard table/bill actions.
 5. Anything reaching `xorder-cloud` `main` (production deploy).
 
 ## 7. As built (2026-11-10) and deviations from the plan
 
-- **No migration for pending status.** `orders.status` is a `string(20)`, so `PENDING` needed no schema change. The only migration is the data migration removing `live.view` (written, never run on a real database).
+- **No migration for pending status.** `orders.status` is a `string(20)`, so `PENDING` needed no schema change. There is no migration for the `live.view` removal either (the data migration was deleted, see the correction at the top).
 - **Menu app added.** Not in the approved stages, but without it no pending order would ever be created (WhatsApp checkout never called the API). It now posts the order and no longer opens `wa.me` to the restaurant (D10); a phone number is required server-side (D15 needs it).
 - **Stage D partly done.** Done: Live page, nav, redirect, bell link, translations, `live.view` removal. **Not done: AC-2** (removing `tables/live`, `tables/{id}/visit/finish`, `bill-requests`). Reason: the cloud has no other way to close a table visit (`TableVisitService::finish` is called only from `TableController::finishVisit`), and `OrderController::updateStatus` tells staff to close the visit instead, so removing the route would strand dine-in orders until the POS/waiter contract can close visits. The POS repo calls only `dashboard/branches`, `dashboard/pos/terminals`, `dashboard/pulse` (grep, `packages` and `apps`), so the routes could be removed without breaking it once that contract exists. Needs a decision.
 - **Verified:** full cloud suite 1273 passed (see TEST_REPORT.md). **Not verified:** any screen, PostgreSQL, the wa.me link.
@@ -72,7 +79,7 @@ AC coverage: AC-1, AC-7 stage D (person looks); AC-2 stage D; AC-3, AC-5 regress
 
 ## 8. Release check 2026-11-10 and owner decision
 
-`/release-check` verdict was NO-GO: A3 failed because the shipped migration `2026_08_23_000400_grant_live_view_to_roles_that_had_it.php` was edited (enum constant replaced by the literal `'live.view'`, runtime behaviour identical). **Owner decision (2026-11-10): accepted.** There is no real client on xorder.io, only a test client, so the data-safety rule is not weighed as for live customers; no hidden legacy enum case is added. Still open before a push: merge `origin/main` (`dd1a6c6`, conflict in `apps/web/src/router/index.js`), re-run the full suite and build on the merged tree, CI green. Nothing is pushed.
+`/release-check` verdict was NO-GO: A3 failed because the shipped migration `2026_08_23_000400_grant_live_view_to_roles_that_had_it.php` was edited (enum constant replaced by the literal `'live.view'`, runtime behaviour identical). **Owner decision (2026-11-10): accepted, then superseded 2026-11-16:** the migration is restored byte-identical and a retired `LIVE_VIEW` enum case is kept (see the correction at the top). Still open before a push: merge `origin/main` (`dd1a6c6`, conflict in `apps/web/src/router/index.js`), re-run the full suite and build on the merged tree, CI green. Nothing is pushed.
 
 **Merge done 2026-11-10 (owner approved):** local `main` was a direct ancestor of `origin/main`, so it was a fast-forward to `dd1a6c6` with no merge commit; my work was stashed and re-applied. One conflict, `apps/web/src/router/index.js` (upstream's new `plan` route beside my `live` redirect), resolved by keeping both. Full suite 1298 passed and `pnpm build` clean on the merged tree. Still uncommitted and unpushed; CI not run.
 
