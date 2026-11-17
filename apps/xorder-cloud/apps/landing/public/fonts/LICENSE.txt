@@ -1,4 +1,5 @@
 Copyright 2018 Boutros International. (http://www.boutrosfonts.com)
+Copyright 2015-2023 The Aref Ruqaa Project Authors (https://github.com/alif-type/aref-ruqaa) — aref-ruqaa-*.woff2
 
 These fonts are redistributed here (self-hosted woff2 subsets taken from
 Google Fonts) under the SIL Open Font License, Version 1.1, reproduced

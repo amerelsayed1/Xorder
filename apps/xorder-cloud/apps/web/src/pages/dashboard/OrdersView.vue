@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
@@ -19,6 +19,7 @@ import { useRealtime } from '../../stores/realtime.js'
 const { t, locale } = useI18n()
 // Advancing an order's status is an update.
 const { canUpdate } = useCaps('orders')
+const route = useRoute()
 const router = useRouter()
 const rt = useRealtime()
 
@@ -188,6 +189,12 @@ async function pollNew() {
 
 onMounted(() => {
     load()
+    // ?order=ID (the shift page links here): open that order's sheet straight
+    // away, from the details request alone — it may not be on the first page.
+    const linked = Number(route.query.order)
+    if (Number.isInteger(linked) && linked > 0) {
+        api.get(`api/dashboard/orders/${linked}`).then(({ data }) => { receiptOrder.value = data.data }).catch(() => {})
+    }
     // New orders only ever appear when the shared pulse's new-order count rises,
     // so pull them in the instant it ticks; keep a slow fallback as a safety net.
     offTick = rt.onTick(() => { if (!document.hidden) pollNew() })

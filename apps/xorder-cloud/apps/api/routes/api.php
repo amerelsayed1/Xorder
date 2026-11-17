@@ -37,6 +37,7 @@ use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PickupBoardController;
 use App\Http\Controllers\Dashboard\PlanController as DashboardPlanController;
 use App\Http\Controllers\Dashboard\PosPinController;
+use App\Http\Controllers\Dashboard\PosShiftController as DashboardPosShiftController;
 use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
 use App\Http\Controllers\Dashboard\PosWaiterDeviceController as DashboardPosWaiterDeviceController;
 use App\Http\Controllers\Dashboard\PosWaiterShiftController as DashboardPosWaiterShiftController;
@@ -717,6 +718,15 @@ Route::prefix('dashboard')
                     Route::delete('pos/terminals/{terminal}', [DashboardPosTerminalController::class, 'destroy']);
                 });
             });
+
+            // dashboard-shift-details. Reading a shift is the Home card's own
+            // gate (analytics.view: the same figures, one level down). The
+            // force close is shift-close work, and only for a revoked till's
+            // shift — the service enforces that, not this route.
+            Route::get('pos/shifts/{shift}', [DashboardPosShiftController::class, 'show'])
+                ->middleware('can:analytics.view');
+            Route::post('pos/shifts/{shift}/force-close', [DashboardPosShiftController::class, 'forceClose'])
+                ->middleware(['can:pos.shift_close', 'subscription.writable']);
 
             Route::middleware('can:settings.view')->group(function () {
                 // A3 / CB-08 — who the receipt says sold the food, per branch.

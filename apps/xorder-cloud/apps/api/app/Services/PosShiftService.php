@@ -144,6 +144,63 @@ class PosShiftService
         return ['shift' => $shift, 'replay' => false];
     }
 
+    /**
+     * Close, from the dashboard, a shift its till can never close: the till
+     * was revoked while the shift was open (dashboard-shift-details, owner
+     * decisions 2026-11-09). Revoked tills only — a live till's sales keep
+     * landing in its shift, and its own close would then be refused.
+     *
+     * Counted cash and a reason are both required (someone has to have looked
+     * in the drawer); the variance is the server's, as at the till. Closed at
+     * the server's time, by the dashboard user, marked `closed_via=dashboard`.
+     */
+    public function forceClose(PosShift $shift, User $actor, int $counted, string $reason): PosShift
+    {
+        return DB::transaction(function () use ($shift, $actor, $counted, $reason) {
+            // The shift row is the mutex: two owners pressing at once
+            // serialise here, and the second finds it closed.
+            $shift = PosShift::whereKey($shift->id)->lockForUpdate()->firstOrFail();
+
+            if (! $shift->isOpen()) {
+                throw new PosApiException('SHIFT_NOT_OPEN', 422, null, __('xorder.errors.pos_shift_not_open'));
+            }
+
+            if (! $shift->terminal?->isRevoked()) {
+                throw new PosApiException('TERMINAL_NOT_REVOKED', 422, null, __('xorder.errors.pos_shift_terminal_not_revoked'));
+            }
+
+            $expected = $this->expectedCash($shift);
+            $variance = $counted - $expected;
+
+            $shift->forceFill([
+                'closed_by_id' => $actor->id,
+                'closed_at' => now(),
+                'counted_cash_minor' => $counted,
+                'expected_cash_minor' => $expected,
+                'variance_minor' => $variance,
+                'variance_reason' => $reason,
+                'status' => PosShift::STATUS_CLOSED,
+                'closed_via' => PosShift::CLOSED_VIA_DASHBOARD,
+            ])->save();
+
+            AuditLogger::record('pos_shift.force_closed', [
+                'restaurant_id' => $shift->restaurant_id,
+                'actor' => $actor,
+                'auditable' => $shift,
+                'description' => sprintf('Shift force-closed from the dashboard with variance %d', $variance),
+                'properties' => [
+                    'pos_terminal_id' => $shift->pos_terminal_id,
+                    'expected_cash_minor' => $expected,
+                    'counted_cash_minor' => $counted,
+                    'variance_minor' => $variance,
+                    'reason' => $reason,
+                ],
+            ]);
+
+            return $shift;
+        });
+    }
+
     public function current(PosTerminal $terminal): ?PosShift
     {
         return PosShift::where('pos_terminal_id', $terminal->id)
@@ -209,8 +266,16 @@ class PosShiftService
      */
     public function report(PosTerminal $terminal, string $ref): array
     {
-        $shift = $this->resolve($terminal, $ref);
+        return $this->summary($this->resolve($terminal, $ref));
+    }
 
+    /**
+     * The X/Z figures of one shift, whoever asks: the till's report key above
+     * (branch-scoped there) and the dashboard's shift page (tenant-scoped by
+     * route binding) read the same numbers, so they cannot disagree.
+     */
+    public function summary(PosShift $shift): array
+    {
         $byTender = OrderPayment::where('pos_shift_id', $shift->id)
             ->selectRaw('tender_type_id, SUM(amount_minor) as amount, COUNT(*) as payments')
             ->groupBy('tender_type_id')

@@ -21,6 +21,9 @@ class PosShift extends Model
 
     public const STATUS_CLOSED = 'closed';
 
+    /** `closed_via`: null is the till's own close; this is the dashboard's force close. */
+    public const CLOSED_VIA_DASHBOARD = 'dashboard';
+
     /** Created exclusively by PosShiftService via forceFill. */
     protected $fillable = [];
 
@@ -47,6 +50,16 @@ class PosShift extends Model
     public function openedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'opened_by_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by_id');
     }
 
     public function cashMovements(): HasMany
