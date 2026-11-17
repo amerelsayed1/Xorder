@@ -12,6 +12,26 @@
 @source './**/*.{vue,js}';
 @source '../../../packages/ui/src/**/*.{vue,js}';
 
+/* Aref Ruqaa: the landing's handwritten notes only (self-hosted like Tajawal,
+   files + licence in public/fonts). Not preloaded: the notes are decorative,
+   so `swap` lets them fall back without blocking anything. */
+@font-face {
+    font-family: 'Aref Ruqaa';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/aref-ruqaa-400-arabic.woff2') format('woff2');
+    unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+    font-family: 'Aref Ruqaa';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/aref-ruqaa-400-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* Anchor navigation scrolls smoothly; honor users who ask for reduced motion. */
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
@@ -22,3 +42,20 @@ html { scroll-behavior: smooth; }
         transition-duration: 0.001ms !important;
     }
 }
+
+/* Scroll reveal (see src/lib/reveal.js). Animates the standalone `translate`
+   property so a card's own hover `transform` keeps working after it lands. */
+@keyframes lp-rv-in { from { opacity: 0; translate: 0 26px; } to { opacity: 1; translate: 0 0; } }
+html.lp-reveal .lp-rv { opacity: 0; }
+html.lp-reveal .lp-rv.is-in { animation: lp-rv-in 1s cubic-bezier(.2,.7,.2,1) var(--rv-d, 0s) both; }
+
+/* Handwritten accents (greeting, notes). Decorative only. */
+.lp-hand { font-family: 'Aref Ruqaa', 'Tajawal', serif; font-weight: 400; line-height: 1.2; }
+
+/* Section typography shared by LandingView and its section components
+   (scoped styles do not reach child components). */
+.lp-eyebrow { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 14px;
+    color: var(--lp-amber); margin-bottom: 10px; }
+.lp-h2 { font-family: var(--font-display); font-weight: 800; font-size: clamp(28px, 4vw, 38px); color: var(--ink);
+    line-height: 1.2; margin: 0; }
+.lp-sub { font-size: clamp(16px, 2vw, 18px); color: var(--lp-muted); margin: 14px 0 0; line-height: 1.7; }
