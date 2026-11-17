@@ -188,9 +188,17 @@ const shiftStats = computed(() => shift.value ? [
 ] : [])
 const shiftMeta = computed(() => {
     if (!shift.value) return ''
-    const time = shift.value.opened_at
-        ? new Date(shift.value.opened_at).toLocaleTimeString(locale.value, { hour: 'numeric', minute: '2-digit' })
-        : ''
+    // A shift opened on an earlier day says which day: "10:55" alone reads as
+    // this morning even when the shift has been open for weeks.
+    const opened = shift.value.opened_at ? new Date(shift.value.opened_at) : null
+    const now = new Date()
+    const today = opened && opened.toDateString() === now.toDateString()
+    const time = !opened ? '' : opened.toLocaleString(locale.value, {
+        ...(today ? {} : { day: 'numeric', month: 'short' }),
+        ...(today || opened.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+        hour: 'numeric',
+        minute: '2-digit',
+    })
     return t('dashboard.shift_started', { who: shift.value.opened_by || shift.value.terminal || '—', time })
 })
 
@@ -341,11 +349,18 @@ const showSetup = computed(() => !setupComplete.value && !dismissed.value && set
         </section>
 
         <!-- Current shift: live trading figures, so it sits above the analytics -->
-        <section v-if="hasPos" class="card p-5 flex flex-col gap-4" aria-labelledby="home-shift">
+        <!-- With a shift open, the whole card opens its details page: the link
+             is the heading, stretched over the card, so keyboard and screen
+             readers get one link and not a clickable box. -->
+        <section v-if="hasPos" class="card shift-card p-5 flex flex-col gap-4" :class="{ 'has-link': shift }" aria-labelledby="home-shift">
             <div class="flex items-start justify-between gap-3 flex-wrap">
                 <div class="min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <h2 id="home-shift" class="h-card">{{ t('dashboard.current_shift') }}</h2>
+                        <h2 id="home-shift" class="h-card">
+                            <RouterLink v-if="shift" :to="{ name: 'dashboard.shift', params: { id: shift.id } }" class="shift-link"
+                                :aria-label="t('shift.open_details')">{{ t('dashboard.current_shift') }}</RouterLink>
+                            <template v-else>{{ t('dashboard.current_shift') }}</template>
+                        </h2>
                         <span class="shift-pill" :class="{ off: !shift }">
                             <span class="shift-dot" aria-hidden="true"></span>{{ shift ? t('dashboard.shift_open') : t('dashboard.shift_none') }}
                         </span>
@@ -354,6 +369,7 @@ const showSetup = computed(() => !setupComplete.value && !dismissed.value && set
                 </div>
                 <div class="flex items-center gap-2 text-sm" style="color:var(--body)">
                     <i class="pi pi-desktop" style="font-size:14px" aria-hidden="true"></i>{{ t('dashboard.shift_managed_by_pos') }}
+                    <span v-if="shift" class="shift-more" aria-hidden="true">{{ t('shift.open_details') }}<i class="pi pi-angle-right dir-flip" /></span>
                 </div>
             </div>
             <div v-if="shift" class="shift-grid">
@@ -538,6 +554,14 @@ a.tile:hover .tile-link, .tile-link:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 
 /* ── Current shift ──────────────────────────────────────────────── */
+/* The heading link stretches over the card (see the template comment). */
+.shift-card { position: relative; transition: border-color .15s; }
+.shift-card.has-link:hover { border-color: var(--p-primary-300); }
+.shift-link { color: inherit; }
+.shift-link::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.shift-link:focus-visible { outline: none; }
+.shift-link:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
+.shift-more { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: 10px; font-weight: 600; color: var(--p-primary-700); }
 .shift-pill {
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
     font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px;

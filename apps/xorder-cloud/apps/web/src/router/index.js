@@ -125,6 +125,8 @@ const restaurantRoutes = [
             // Old bookmarks and links land on the home page.
             { path: 'live', redirect: { name: 'dashboard.home' } },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue'), meta: { capability: 'analytics.view' } },
+            // dashboard-shift-details: the Home card's shift, one level down (same gate).
+            { path: 'shifts/:id', name: 'dashboard.shift', component: () => import('../pages/dashboard/ShiftView.vue'), meta: { capability: 'analytics.view' } },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue'), meta: { capability: 'orders.view' } },
             { path: 'reviews', name: 'dashboard.reviews', component: () => import('../pages/dashboard/ReviewsView.vue'), meta: { capability: 'reviews.view' } },
             { path: 'reports', redirect: { name: 'dashboard.reports.products' } },
