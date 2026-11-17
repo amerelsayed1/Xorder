@@ -4,6 +4,11 @@ import { installEnDigits } from '@xorder/ui/enDigits.js'
 import { initAnalytics, initPerformance } from '@xorder/analytics'
 import './app.css'
 import LandingView from './LandingView.vue'
+import landingMessages from './i18n/messages.js'
+
+// Landing copy lives with the landing app (namespace `lp`), not in the shared
+// dictionary used by the dashboard.
+for (const [loc, msgs] of Object.entries(landingMessages)) i18n.global.mergeLocaleMessage(loc, msgs)
 
 setLocale(localStorage.getItem('locale') || 'ar')
 
