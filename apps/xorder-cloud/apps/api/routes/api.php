@@ -68,6 +68,7 @@ use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
 use App\Http\Controllers\Pos\CustomerController as PosCustomerController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
+use App\Http\Controllers\Pos\PagerController as PosPagerController;
 use App\Http\Controllers\Pos\RefundController as PosRefundController;
 use App\Http\Controllers\Pos\ShiftController as PosShiftController;
 use App\Http\Controllers\Pos\TerminalController as PosTerminalController;
@@ -76,6 +77,7 @@ use App\Http\Controllers\PosWaiter\FloorController as WaiterFloorController;
 use App\Http\Controllers\PosWaiter\ShiftController as WaiterShiftController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
+use App\Http\Controllers\Public\PagerSessionController;
 use App\Http\Controllers\Public\PublicBillRequestController;
 use App\Http\Controllers\Public\PublicCustomerController;
 use App\Http\Controllers\Public\PublicMenuApiController;
@@ -865,6 +867,9 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
     // "by-client-id" is never matched as an order reference.
     Route::get('pos/orders/by-client-id/{uuid}', [PosOrderController::class, 'byClientId']);
     Route::post('pos/orders', [PosOrderController::class, 'store']);
+    // POS-BE-035 (PROPOSED): is this guest-paging pairing code open for this
+    // restaurant? Advisory only; the till never blocks a sale on it.
+    Route::get('pos/pager/{code}', [PosPagerController::class, 'peek'])->where('code', '[^/]{1,16}');
     Route::post('pos/orders/{order}/payments', [PosOrderController::class, 'storePayment']);
 
     // Refunds (POS-BE-010). Same device credential and the same three tiers of
@@ -983,6 +988,18 @@ Route::prefix('public/orders/track/{token}')
         Route::post('ack', 'acknowledge')->middleware('throttle:20,1,paging-write');
         Route::post('push-token', 'storePushToken')->middleware('throttle:10,1,paging-push');
         Route::delete('push-token', 'destroyPushToken')->middleware('throttle:10,1,paging-push');
+    });
+
+// Guest paging, shared QR (docs/features/guest-paging-shared-qr): the join page
+// behind the restaurant's one standing QR. Starting is rare (once per client);
+// reading is the page polling every few seconds, and a counter's Wi-Fi puts many
+// waiting clients behind one address, hence the wide read limit. Own buckets, as
+// for the tracking routes above.
+Route::prefix('public/restaurants/{slug}/pager-sessions')
+    ->controller(PagerSessionController::class)
+    ->group(function () {
+        Route::post('', 'start')->middleware('throttle:120,1,pager-start');
+        Route::get('current', 'show')->middleware('throttle:1200,1,pager-read');
     });
 
 // WhatsApp checkout captures just the customer (no order record) so the

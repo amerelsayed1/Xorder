@@ -8,6 +8,7 @@ use App\Http\Requests\Pos\StorePosOrderRequest;
 use App\Http\Resources\PosOrderResource;
 use App\Models\Order;
 use App\Models\PosTerminal;
+use App\Services\PagerSessionService;
 use App\Services\PosOrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,12 +29,23 @@ class OrderController extends Controller
         /** @var PosTerminal $terminal */
         $terminal = $request->attributes->get('pos_terminal');
 
-        ['order' => $order, 'replay' => $replay] = $this->service->create($terminal, $request->validated());
+        $data = $request->validated();
+        $pagerCode = $data['pager_code'] ?? null;
+        unset($data['pager_code']);
 
-        return response()->json(
-            ['data' => PosOrderResource::make($order->load(['orderItems', 'payments']))],
-            $replay ? 200 : 201,
-        );
+        ['order' => $order, 'replay' => $replay] = $this->service->create($terminal, $data);
+
+        $body = ['data' => PosOrderResource::make($order->load(['orderItems', 'payments']))];
+
+        // Guest paging, shared QR (POS-BE-035). Bound after the order is stored,
+        // on a replay too (a retry whose first attempt died before binding
+        // finishes the job). Best effort: the order's own result never changes,
+        // and the answer is information for the till, not an error.
+        if ($pagerCode !== null && $pagerCode !== '') {
+            $body['pager'] = ['status' => app(PagerSessionService::class)->bind($terminal->restaurant, $order, $pagerCode)];
+        }
+
+        return response()->json($body, $replay ? 200 : 201);
     }
 
     /** §006-P — {order} accepts the server id or the order's client uuid. */

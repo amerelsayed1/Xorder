@@ -222,6 +222,7 @@ for everything still `APPROVED`.**
 | POS-BE-028 | Terminal rename decoupled from identity | **APPROVED** |
 | POS-BE-030 | Bundle withholds `purchase.manage`; cloud tills hide buying and stock | **READY** (platform half, CB-09 slice a) |
 | POS-BE-032 | Financial accounts in `money` (`financial_accounts`, `tender_account_defaults`) — additive, XORD-015 stage 1 | **PROPOSED** (built both sides 2026-10-26, not deployed) |
+| POS-BE-035 | Guest paging, shared QR: `GET /api/pos/pager/{code}` (advisory check), optional `pager_code` on `POST /api/pos/orders` (+ additive `pager.status` in the answer), `restaurant.guest_paging` in `pos/bootstrap` — additive | **PROPOSED** (cloud half built 2026-11-18, not deployed; the POS must not integrate until this flips to READY) |
 
 Nothing is `BLOCKED`. Every open question from Agent 1's 2026-08-26/28 replies is
 answered below with a decision, not a discussion.
@@ -2787,3 +2788,14 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-cloud, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |
 | 2026-10-25 | **`CUSTOMER_NOT_FOUND` is now enforced on `POST /api/pos/orders`** (XORD-001 stage 1, cloud side only). When `customer_id` is present it must be a customer of the terminal's own restaurant; otherwise `422 CUSTOMER_NOT_FOUND` and nothing is written. A customer of another restaurant and one that does not exist get the same answer. `customer_id` null/absent (walk-in) is unchanged, and `customer_id` is still **not** part of the idempotency hash: a replay of an order already stored is answered from the stored order before the check runs (never a 422, never `IDEMPOTENCY_PAYLOAD_MISMATCH`). A till uploads the customer first and sends the platform's customer id. Old POS builds omit the field and are unaffected. No migration, no payload-shape change. Tests: `tests/Feature/Pos/PosOrdersTest.php` (+5). |
 | 2026-10-26 | **POS-BE-032 proposed: financial accounts (XORD-015 stage 1).** Two additive keys inside `money` in the §023 bundle (`financial_accounts`, `tender_account_defaults`); new capability `finance.accounts`. Cloud half in `xorder-cloud` (migrations `2026_10_26_000100/000200`, `FinancialAccountController`, `TenderAccountDefaultController`, `PosBootstrapService`, `FinancialAccountsTest` 17). Till half in `xorder-pos` (migration 60, `BootstrapSeeder`, Finance › Accounts pane). Nothing is posted to an account yet. Not `READY`: the POS parses and seeds the keys and nothing else reads them. Nothing committed or deployed. |
+
+## POS-BE-035 — guest paging, shared QR (pairing code typed at the till) · **PROPOSED**
+
+Feature: `docs/features/guest-paging-shared-qr/` (API.md has the full contract). Cloud half **built, not deployed, not READY**; the POS must not integrate until this flips to READY. Cloud-flavor tills only (only that flavor syncs sales).
+
+- `GET /api/pos/pager/{code}`: device token. `200 {"data":{"open":true}}`, or `404 {"code":"PAGER_CODE_NOT_FOUND","message":"…"}`. Advisory: the till never blocks a sale on it.
+- `POST /api/pos/orders`: new optional `pager_code` (string, max 16). **Not** part of the idempotency hash; never a reason to refuse the order. When sent, the answer gains a top-level `pager: {"status": "paired|not_found|expired|already_used|not_eligible"}` beside `data`. A replay binds again.
+- `GET /api/pos/bootstrap`: new `restaurant.guest_paging` (bool).
+- Old till against new server: sends no code, ignores the extra keys. New till against old server: the check answers 404 (skip it); an unknown `pager_code` key is dropped by validation.
+- Rollout: cloud first (flag-gated by the plan feature `guest_paging`), then the POS release.
+- Ledger drift noted 2026-11-18: this copy and the other `BACKEND_TO_POS.md` differ (the cloud copy has no POS-BE-033 row), and `POS_TO_BACKEND.md` uses POS-BE-033 for the waiter wire while this file uses it for the incoming feed. Compare both before relying on either.

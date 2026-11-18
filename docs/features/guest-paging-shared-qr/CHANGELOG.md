@@ -1,0 +1,4 @@
+# One shared QR for guest paging: changelog
+
+- 2026-11-18: `FEATURE.md` written (proposed) from the owner's request and three decisions (one standing QR; the cashier types the client's code; a separate counter QR). `TECHNICAL.md` plan approved for the cloud part.
+- 2026-11-18: **Cloud half built, uncommitted** (branch `feat/guest-paging-shared-qr-cloud`, from `origin/development`): migration and `PagerSession` model; `PagerSessionService` (start or resume, peek, bind, prune); public `POST …/pager-sessions` and `GET …/pager-sessions/current`; till `GET pos/pager/{code}`; optional `pager_code` on `POST pos/orders` with an additive `pager.status` answer; `restaurant.guest_paging` in `pos/bootstrap`; `pager:prune` scheduled hourly; new config keys; en and ar messages; `PagerSessionTest` and `PosPagerTest` (21 tests). Contract item POS-BE-035 added as PROPOSED to both `BACKEND_TO_POS.md` copies. Not built: the menu join page, the dashboard QR, the POS. Nothing deployed.

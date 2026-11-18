@@ -33,6 +33,10 @@ class StorePosOrderRequest extends FormRequest
             'priced_offline' => ['nullable', 'boolean'],
             'catalog_synced_at' => ['nullable', 'date'],
             'note' => ['nullable', 'string', 'max:1000'],
+            // Guest paging, shared QR (POS-BE-035): the code a client reads out.
+            // Not part of the idempotency hash and never a reason to refuse the
+            // order; PagerSessionService::bind() reports what became of it.
+            'pager_code' => ['nullable', 'string', 'max:16'],
 
             'lines' => ['required', 'array', 'min:1', 'max:200'],
             // POS-BE-010: the till's own key for the line ('L1', a local row

@@ -83,6 +83,10 @@ class PosBootstrapService
                 // name fields to ask for. Additive: an older till ignores it,
                 // and a till that never receives it keeps its own setting.
                 'bilingual' => $restaurant->bilingual !== false,
+                // POS-BE-035 (new key): whether guest paging is on, so the till
+                // shows the pairing-code field only for restaurants that have
+                // it. Additive: an older till ignores it.
+                'guest_paging' => (bool) $restaurant->hasFeature('guest_paging'),
             ],
             'branches' => $branches
                 ->map(fn ($b) => [

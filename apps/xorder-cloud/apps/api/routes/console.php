@@ -23,3 +23,7 @@ Schedule::command('activity:prune')->dailyAt('03:45');
 // than the file mirror (AUDIT_LOG_DAYS, default 90) — but not forever: orders
 // are audited, so the table grows with every status transition.
 Schedule::command('audit:prune')->dailyAt('04:00');
+
+// Guest paging pairing sessions (shared QR): dead codes are freed on every new
+// session already; this removes the rows themselves. Hourly keeps the table tiny.
+Schedule::command('pager:prune')->hourly();

@@ -132,6 +132,10 @@ return [
     'guest_paging' => [
         'call_out_minutes' => env('GUEST_PAGING_CALL_OUT_MINUTES', 3),
         'tracking_ttl_hours' => env('GUEST_PAGING_TRACKING_TTL_HOURS', 48),
+        // Shared-QR pairing (docs/features/guest-paging-shared-qr): the code a
+        // client reads out to the cashier, and how long it stays open.
+        'pairing_code_digits' => env('GUEST_PAGING_PAIRING_CODE_DIGITS', 4),
+        'pairing_ttl_minutes' => env('GUEST_PAGING_PAIRING_TTL_MINUTES', 30),
     ],
 
     /*
