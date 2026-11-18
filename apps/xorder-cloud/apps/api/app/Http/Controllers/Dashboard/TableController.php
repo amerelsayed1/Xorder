@@ -304,7 +304,11 @@ class TableController extends Controller
             return response()->json(['message' => __('xorder.messages.table_has_history')], 409);
         }
 
-        $table->delete();
+        // Its open bill requests go with it (see BillRequest::cancelOpenForTables).
+        DB::transaction(function () use ($table) {
+            BillRequest::cancelOpenForTables([$table->id]);
+            $table->delete();
+        });
 
         return response()->json(['message' => __('xorder.messages.table_deleted')]);
     }
@@ -327,7 +331,10 @@ class TableController extends Controller
 
                 continue;
             }
-            $table->delete();
+            DB::transaction(function () use ($table) {
+                BillRequest::cancelOpenForTables([$table->id]);
+                $table->delete();
+            });
             $deleted++;
         }
 

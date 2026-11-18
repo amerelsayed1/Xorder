@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Enums\BillRequestStatus;
 use App\Enums\RoleEnum;
+use App\Models\BillRequest;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\DiningArea;
@@ -301,6 +303,62 @@ class WaiterWireTest extends TestCase
         $this->assertSame('open', $table['state']);
         $this->assertSame(2000, $table['total_minor']);
         $this->assertSame(2, $table['items']);
+    }
+
+    private function billRequest(Restaurant $restaurant, ?int $tableId, BillRequestStatus $status = BillRequestStatus::REQUESTED): BillRequest
+    {
+        $bill = new BillRequest([
+            'table_id' => $tableId, 'public_token' => BillRequest::generateToken(),
+            'status' => $status, 'requested_at' => now(),
+        ]);
+        $bill->restaurant_id = $restaurant->id;
+        $bill->save();
+
+        return $bill;
+    }
+
+    public function test_a_table_with_an_open_bill_request_is_marked_bill_asked(): void
+    {
+        $auth = $this->signIn();
+        $this->billRequest($this->restaurant, $this->table->id);
+
+        $this->getJson($this->url('floor'), $this->headers($auth))
+            ->assertOk()->assertJsonPath('tables.0.state', 'bill_asked');
+    }
+
+    public function test_an_open_bill_request_with_no_table_does_not_break_the_floor(): void
+    {
+        $auth = $this->signIn();
+        // `table_id` is nullable (the table was deleted, or the session had none).
+        $this->billRequest($this->restaurant, null);
+
+        $this->getJson($this->url('floor'), $this->headers($auth))
+            ->assertOk()->assertJsonPath('tables.0.state', 'free');
+    }
+
+    public function test_the_floor_loads_after_a_table_with_an_open_bill_request_is_deleted(): void
+    {
+        $auth = $this->signIn();
+        $bill = $this->billRequest($this->restaurant, $this->table->id);
+        $this->table->delete();
+
+        $this->assertNull(BillRequest::withoutGlobalScopes()->find($bill->id)->table_id);
+        $this->getJson($this->url('floor'), $this->headers($auth))
+            ->assertOk()->assertJsonPath('tables', []);
+    }
+
+    public function test_closed_and_other_restaurants_bill_requests_do_not_mark_a_table(): void
+    {
+        [$beta, , $betaTable] = $this->seedRestaurant('beta');
+        $auth = $this->signIn();
+
+        $this->billRequest($this->restaurant, $this->table->id, BillRequestStatus::COMPLETED);
+        $this->billRequest($this->restaurant, $this->table->id, BillRequestStatus::CANCELLED);
+        $this->billRequest($beta, $betaTable->id);
+        $this->billRequest($beta, null);
+
+        $this->getJson($this->url('floor'), $this->headers($auth))
+            ->assertOk()->assertJsonPath('tables.0.state', 'free');
     }
 
     // ----------------------------------------------------------------- ops
