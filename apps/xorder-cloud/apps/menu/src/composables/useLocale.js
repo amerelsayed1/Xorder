@@ -103,6 +103,16 @@ const translations = {
         track_reconnecting_first: 'جارٍ إعادة الاتصال…',
         track_not_found: 'لم نجد هذا الطلب. ربما انتهت صلاحية الرابط.',
         track_unavailable: 'تتبّع الطلب غير متاح لهذا المطعم.',
+        // Join page (shared QR, /menu/p): the client types the number on their slip.
+        join_title: 'اكتب الرقم المطبوع على إيصالك',
+        join_hint: 'هي آخر أرقام رقم الفاتورة. مثلًا 42 للرقم',
+        join_button: 'ابحث عن طلبي',
+        join_looking: 'جارٍ البحث…',
+        join_not_found: 'لم نعثر على هذا الرقم بعد. إن كنت قد دفعت للتو، انتظر بضع ثوانٍ وحاول مرة أخرى.',
+        join_ambiguous: 'أكثر من طلب يحمل هذا الرقم. اكتب الرقم كاملًا كما هو مطبوع، مثل',
+        join_invalid: 'اكتب الرقم المطبوع على إيصالك.',
+        join_busy: 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.',
+        join_found: 'وجدنا طلبك…',
     },
     en: {
         home: 'Home', offers: 'Offers', branches: 'Branches', cart: 'Cart',
@@ -206,6 +216,16 @@ const translations = {
         track_reconnecting_first: 'Reconnecting…',
         track_not_found: 'We couldn\'t find this order. The link may have expired.',
         track_unavailable: 'Order tracking isn\'t available for this restaurant.',
+        // Join page (shared QR, /menu/p): the client types the number on their slip.
+        join_title: 'Type the number on your slip',
+        join_hint: 'It is the last digits of your invoice number, for example 42 for',
+        join_button: 'Find my order',
+        join_looking: 'Looking…',
+        join_not_found: 'We can\'t find that number yet. If you just paid, wait a few seconds and try again.',
+        join_ambiguous: 'More than one order has that number. Type the full number as printed, for example',
+        join_invalid: 'Type the number printed on your slip.',
+        join_busy: 'Too many tries. Please wait a moment and try again.',
+        join_found: 'Found your order…',
     },
 }
 

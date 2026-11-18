@@ -44,13 +44,21 @@ function afterLoadAndIdle() {
 const trackMatch = /^\/menu\/o\/([A-Za-z0-9]{40})\/?$/.exec(window.location.pathname)
 const TrackingApp = trackMatch ? (await import('./tracking/TrackingApp.vue')).default : null
 
+// Guest paging, shared QR (docs/features/guest-paging-shared-qr): the restaurant's
+// one standing QR opens /menu/p. Same idea as above: a small page that shows the
+// client a short code to read out, then moves to their order-number page.
+const joinMatch = /^\/menu\/p\/?$/.test(window.location.pathname)
+const JoinApp = joinMatch ? (await import('./tracking/JoinApp.vue')).default : null
+
 // Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
 installEnDigits()
 
 // Registered before mount so it is in place ahead of the first track() call.
-if (!trackMatch) initAnalytics('menu', { until: afterLoadAndIdle() })
+if (!trackMatch && !joinMatch) initAnalytics('menu', { until: afterLoadAndIdle() })
 
-const app = trackMatch ? createApp(TrackingApp, { token: trackMatch[1] }) : createApp(App)
+const app = trackMatch
+    ? createApp(TrackingApp, { token: trackMatch[1] })
+    : joinMatch ? createApp(JoinApp) : createApp(App)
 
 // Fade images in once decoded so cards never flash a blank box, and resolve the
 // loading state on BOTH success and failure so a card never shimmers forever.

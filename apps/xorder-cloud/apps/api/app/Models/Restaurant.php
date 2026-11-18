@@ -330,6 +330,26 @@ class Restaurant extends Model
     }
 
     /**
+     * Guest paging, shared QR (docs/features/guest-paging-shared-qr): the one
+     * standing QR's address, where a client types the number on their slip.
+     * Same host rules as tableUrl().
+     */
+    public function pagerJoinUrl(): string
+    {
+        $domain = config('platform.menu_domain');
+
+        if ($domain) {
+            $scheme = config('platform.menu_secure', true) ? 'https' : 'http';
+            $port = config('platform.menu_port');
+            $portPart = $port ? ":{$port}" : '';
+
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu/p";
+        }
+
+        return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/p';
+    }
+
+    /**
      * A URL on this restaurant's dashboard SPA. With a menu domain configured
      * the dashboard lives at the subdomain root (https://{slug}.<domain>/…);
      * otherwise it falls back to a path-based URL for local/dev. Used to build

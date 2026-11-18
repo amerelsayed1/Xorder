@@ -74,6 +74,7 @@ return [
         'menu_option_unavailable' => 'اختيار في طلبك لم يعد متاحاً. حدّث المنيو من فضلك.',
         'menu_option_choice_invalid' => 'راجع اختيارات أحد الأصناف في طلبك من فضلك.',
         'order_not_found' => 'لم يتم العثور على الطلب.',
+        'pager_number_invalid' => 'اكتب الرقم المطبوع على إيصالك.',
         'waiter_device_not_found' => 'لم يتم العثور على جهاز النادل.',
         'waiter_shift_range_too_long' => 'اختر فترة لا تزيد عن سنة.',
         'refund_not_found' => 'لم يتم العثور على الاسترداد.',

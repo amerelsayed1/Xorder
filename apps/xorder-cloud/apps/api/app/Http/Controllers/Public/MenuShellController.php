@@ -37,9 +37,11 @@ class MenuShellController extends Controller
             ->header('Content-Type', 'text/html; charset=utf-8')
             ->header('Cache-Control', 'no-cache');
 
-        // Order-tracking links (/menu/o/{token}, guest paging) belong to one
-        // diner. Crawlers do not run the page's JavaScript, so say it here.
-        if ($request->is('menu/o/*')) {
+        // Order-tracking links (/menu/o/{token}) belong to one diner, and the
+        // join page (/menu/p) is the same code page for everyone: neither is
+        // for a search index. Crawlers do not run the page's JavaScript, so say
+        // it here.
+        if ($request->is('menu/o/*', 'menu/p')) {
             $response->header('X-Robots-Tag', 'noindex, nofollow');
         }
 

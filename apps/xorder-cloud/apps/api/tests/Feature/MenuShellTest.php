@@ -122,6 +122,8 @@ class MenuShellTest extends TestCase
         $tracking->assertOk();
         $tracking->assertHeader('X-Robots-Tag', 'noindex, nofollow');
 
+        $this->get('http://demo.xorder.io/menu/p')->assertOk()->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+
         $this->get('http://demo.xorder.io/menu')->assertHeaderMissing('X-Robots-Tag');
         $this->get('http://demo.xorder.io/menu/t/'.str_repeat('B', 10))->assertHeaderMissing('X-Robots-Tag');
     }

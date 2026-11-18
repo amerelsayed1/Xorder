@@ -34,6 +34,7 @@ use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\NotificationController;
 use App\Http\Controllers\Dashboard\OptionGroupController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
+use App\Http\Controllers\Dashboard\PagerQrController as DashboardPagerQrController;
 use App\Http\Controllers\Dashboard\PickupBoardController;
 use App\Http\Controllers\Dashboard\PlanController as DashboardPlanController;
 use App\Http\Controllers\Dashboard\PosPinController;
@@ -76,6 +77,7 @@ use App\Http\Controllers\PosWaiter\FloorController as WaiterFloorController;
 use App\Http\Controllers\PosWaiter\ShiftController as WaiterShiftController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
+use App\Http\Controllers\Public\PagerLookupController;
 use App\Http\Controllers\Public\PublicBillRequestController;
 use App\Http\Controllers\Public\PublicCustomerController;
 use App\Http\Controllers\Public\PublicMenuApiController;
@@ -345,6 +347,13 @@ Route::prefix('dashboard')
             Route::get('plan', [DashboardPlanController::class, 'show']);
             Route::get('qr', [DashboardQrController::class, 'show']);
             Route::get('qr/download', [DashboardQrController::class, 'download']);
+
+            // Guest paging, shared QR: the counter sign. Owners only see it if
+            // the plan has guest_paging.
+            Route::middleware('feature:guest_paging')->group(function () {
+                Route::get('pager-qr', [DashboardPagerQrController::class, 'show']);
+                Route::get('pager-qr/download', [DashboardPagerQrController::class, 'download']);
+            });
 
             Route::middleware(['can:settings.update', 'subscription.writable'])
                 ->put('restaurant', [RestaurantProfileController::class, 'update']);
@@ -983,6 +992,17 @@ Route::prefix('public/orders/track/{token}')
         Route::post('ack', 'acknowledge')->middleware('throttle:20,1,paging-write');
         Route::post('push-token', 'storePushToken')->middleware('throttle:10,1,paging-push');
         Route::delete('push-token', 'destroyPushToken')->middleware('throttle:10,1,paging-push');
+    });
+
+// Guest paging, shared QR (docs/features/guest-paging-shared-qr): the join page
+// behind the restaurant's one standing QR. The client types the number on their
+// slip. A counter's Wi-Fi puts many clients behind one address, so the limits are
+// wide; own buckets, as for the tracking routes above.
+Route::prefix('public/restaurants/{slug}/pager-lookup')
+    ->controller(PagerLookupController::class)
+    ->group(function () {
+        Route::get('', 'info')->middleware('throttle:240,1,pager-info');
+        Route::post('', 'lookup')->middleware('throttle:120,1,pager-lookup');
     });
 
 // WhatsApp checkout captures just the customer (no order record) so the

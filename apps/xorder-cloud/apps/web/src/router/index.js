@@ -186,6 +186,10 @@ const restaurantRoutes = [
                     { path: 'branches/create', name: 'dashboard.branches.create', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.create' } },
                     { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
                     { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
+                    // Guest paging's one standing counter QR. The server gates it with
+                    // feature:guest_paging + can:settings.view; the feature half lives on
+                    // the settings sub-menu entry.
+                    { path: 'counter-qr', name: 'dashboard.pager_qr', component: () => import('../pages/dashboard/settings/PagerQrView.vue'), meta: { capability: 'settings.view' } },
                     // POS terminal provisioning (POS-BE-023). The server stacks
                     // feature:pos on top of can:pos.provision; client-side the
                     // feature gate lives on the settings sub-menu entry
