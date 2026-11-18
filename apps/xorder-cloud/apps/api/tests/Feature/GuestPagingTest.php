@@ -505,7 +505,14 @@ class GuestPagingTest extends TestCase
             ->assertJsonMissingPath('data.total')
             ->assertJsonMissingPath('data.customer_name')
             ->assertJsonMissingPath('data.customer_phone');
-        $this->assertSame(['name', 'logo_url', 'brand_color'], array_keys($res->json('data.restaurant')));
+        // The exact key list is the leak guard. The names and language settings
+        // are there so the page opens in the restaurant's language.
+        $this->assertSame(
+            ['name', 'name_ar', 'name_en', 'default_language', 'bilingual', 'logo_url', 'brand_color'],
+            array_keys($res->json('data.restaurant')),
+        );
+        $this->assertContains($res->json('data.restaurant.default_language'), ['ar', 'en']);
+        $this->assertIsBool($res->json('data.restaurant.bilingual'));
         $this->assertStringNotContainsString('Amer', $res->getContent());
         $this->assertStringNotContainsString('+2012', $res->getContent());
 

@@ -67,7 +67,7 @@ Throttles use their own buckets (`throttle:N,1,<prefix>`): `paging-read` 120/min
     "picked_up_at": null,
     "order_type": "pickup",
     "call_out": true,
-    "restaurant": { "name": "Al-Hay Coffee", "logo_url": "/storage/logos/…png", "brand_color": "#0a7" },
+    "restaurant": { "name": "Al-Hay Coffee", "name_ar": "قهوة الحي", "name_en": "Al-Hay Coffee", "default_language": "ar", "bilingual": true, "logo_url": "/storage/logos/…png", "brand_color": "#0a7" },
     "branch": { "name": "Maadi" },
     "review_public_url": null,
     "review_thank_you": null
@@ -75,7 +75,7 @@ Throttles use their own buckets (`throttle:N,1,<prefix>`): `paging-read` 120/min
 }
 ```
 
-`status` is the pickup state (`PREPARING|READY|PICKED_UP`); `order_status` is the platform lifecycle, so a cancelled order reads `CANCELLED` there. `ref` is the number printed on the slip (`pickup_display_ref`) or `ORD-{id}`. `logo_url` is rewritten to a root-relative path exactly as `RestaurantPublicResource` does (`PublicImageUrl::relative`). Visibility follows `Restaurant::isPubliclyVisible()` (status), not `hide_menu_when_expired`: a diner who already paid keeps their page while the menu of an expired subscription may be hidden. `review_public_url` (through `SafeUrl::forLink`) and `review_thank_you` are present **only when `status = PICKED_UP`**. Never present: items, totals, customer name or phone, the push token. Carries an `ETag`; `If-None-Match` → `304`.
+`restaurant.name_ar`, `name_en`, `default_language` (`ar|en`) and `bilingual` were added on 2026-11-18 (additive) so the order-number page opens in the restaurant's language like the menu does; `name` stays as before, localized by `X-Locale`/`?lang=`. `status` is the pickup state (`PREPARING|READY|PICKED_UP`); `order_status` is the platform lifecycle, so a cancelled order reads `CANCELLED` there. `ref` is the number printed on the slip (`pickup_display_ref`) or `ORD-{id}`. `logo_url` is rewritten to a root-relative path exactly as `RestaurantPublicResource` does (`PublicImageUrl::relative`). Visibility follows `Restaurant::isPubliclyVisible()` (status), not `hide_menu_when_expired`: a diner who already paid keeps their page while the menu of an expired subscription may be hidden. `review_public_url` (through `SafeUrl::forLink`) and `review_thank_you` are present **only when `status = PICKED_UP`**. Never present: items, totals, customer name or phone, the push token. Carries an `ETag`; `If-None-Match` → `304`.
 
 ### POST /api/public/orders/track/{token}/follow — `paging-write`, 20/min
 Stamps `pickup_followed_at` once ("Following on phone" on the board). 200 with the same payload.

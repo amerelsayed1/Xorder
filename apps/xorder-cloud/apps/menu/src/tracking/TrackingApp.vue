@@ -9,9 +9,22 @@ import { readableOn } from '../lib/contrast'
 // categories, no cart, no prices, and nothing personal about the order.
 const props = defineProps({ token: { type: String, required: true } })
 
-// Arabic is the product default; an English-language phone gets English.
-const initial = (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'ar'
-const { locale, isAr, t } = useLocale(initial)
+// Language: the restaurant's own setting decides, as it does for the menu: its
+// default language, and for a single-language restaurant that language only. A
+// bilingual restaurant's diner can switch, and their choice is remembered. The
+// restaurant is only known after the first response, so until then (and for
+// the not-found screens, which have no restaurant) the phone's language is used.
+const LANG_KEY = 'xorder.track_lang'
+function storedLang() {
+    try {
+        const v = localStorage.getItem(LANG_KEY)
+        return v === 'ar' || v === 'en' ? v : null
+    } catch {
+        return null // storage can be blocked; the page works without it
+    }
+}
+const phoneLang = (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'ar'
+const { locale, isAr, t } = useLocale(storedLang() || phoneLang)
 
 // ---- Alert while the page is open ------------------------------------------
 // Vibration works where the browser allows it (not iOS Safari). Browsers block
@@ -20,22 +33,32 @@ const { locale, isAr, t } = useLocale(initial)
 const soundOn = ref(false)
 let audio = null
 
-function beep() {
+// A loud, phone-style ring. A square wave sounds far louder to the ear than a
+// sine at the same level, so it is used here at full gain, trilling between two
+// high notes, two bursts per ring, repeated so it is hard to miss. A web page
+// cannot go above the phone's own volume, and iPhone's silent switch mutes it.
+function ring(rings = 3) {
     if (!audio) return
-    const now = audio.currentTime
-    ;[880, 880, 1175].forEach((freq, i) => {
-        const start = now + i * 0.25
-        const osc = audio.createOscillator()
-        const gain = audio.createGain()
-        osc.type = 'sine'
-        osc.frequency.value = freq
-        gain.gain.setValueAtTime(0.0001, start)
-        gain.gain.exponentialRampToValueAtTime(0.4, start + 0.02)
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2)
-        osc.connect(gain).connect(audio.destination)
-        osc.start(start)
-        osc.stop(start + 0.22)
-    })
+    const start = audio.currentTime + 0.05
+    for (let r = 0; r < rings; r++) {
+        for (let b = 0; b < 2; b++) {
+            const t0 = start + r * 1.3 + b * 0.45
+            const osc = audio.createOscillator()
+            const gain = audio.createGain()
+            osc.type = 'square'
+            // Trill between two notes every 40 ms for the length of the burst.
+            for (let k = 0; k * 0.04 < 0.35; k++) {
+                osc.frequency.setValueAtTime(k % 2 ? 1319 : 988, t0 + k * 0.04)
+            }
+            gain.gain.setValueAtTime(0.0001, t0)
+            gain.gain.linearRampToValueAtTime(1, t0 + 0.01)
+            gain.gain.setValueAtTime(1, t0 + 0.33)
+            gain.gain.linearRampToValueAtTime(0.0001, t0 + 0.36)
+            osc.connect(gain).connect(audio.destination)
+            osc.start(t0)
+            osc.stop(t0 + 0.37)
+        }
+    }
 }
 
 function enableSound() {
@@ -43,15 +66,15 @@ function enableSound() {
         audio = audio || new (window.AudioContext || window.webkitAudioContext)()
         audio.resume?.()
         soundOn.value = true
-        beep()
+        ring(1) // one ring so the diner hears what the alert sounds like
     } catch {
         soundOn.value = false
     }
 }
 
 function alertReady() {
-    navigator.vibrate?.([250, 120, 250, 120, 500])
-    if (soundOn.value) beep()
+    navigator.vibrate?.([400, 150, 400, 150, 400, 150, 800])
+    if (soundOn.value) ring(3)
 }
 
 const { order, phase, stale, acking, acknowledge } = useOrderTracking(props.token, { onBecameReady: alertReady })
@@ -67,6 +90,21 @@ const stepIndex = computed(() => ({ PREPARING: 0, READY: 1, PICKED_UP: 2 })[stat
 const steps = ['preparing', 'ready', 'picked_up']
 
 const restaurant = computed(() => order.value?.restaurant || null)
+const bilingual = computed(() => restaurant.value?.bilingual !== false)
+const restaurantName = computed(() => {
+    const r = restaurant.value
+    if (!r) return ''
+    return (isAr.value ? (r.name_ar || r.name_en) : (r.name_en || r.name_ar)) || r.name || ''
+})
+
+// Apply the restaurant's language once, when it first arrives.
+let languageApplied = false
+watch(restaurant, (r) => {
+    if (!r || languageApplied) return
+    languageApplied = true
+    const fallback = r.default_language === 'en' ? 'en' : 'ar'
+    locale.value = r.bilingual === false ? fallback : (storedLang() || fallback)
+})
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
 const theme = computed(() => ({ '--accent': accent.value, '--on-accent': readableOn(accent.value) }))
 
@@ -80,7 +118,7 @@ const headline = computed(() => ({
 // The tab shows the number, so a diner switching apps still sees it.
 watch([order, locale], () => {
     if (!order.value) return
-    document.title = `${order.value.ref} · ${restaurant.value?.name || 'Xorder'}`
+    document.title = `${order.value.ref} · ${restaurantName.value || 'Xorder'}`
 })
 onMounted(() => {
     // Crawlers do not run this script; the server also sends an X-Robots-Tag.
@@ -90,7 +128,10 @@ onMounted(() => {
     document.head.appendChild(meta)
 })
 
-const toggleLang = () => { locale.value = isAr.value ? 'en' : 'ar' }
+const toggleLang = () => {
+    locale.value = isAr.value ? 'en' : 'ar'
+    try { localStorage.setItem(LANG_KEY, locale.value) } catch { /* storage unavailable */ }
+}
 </script>
 
 <template>
@@ -98,9 +139,9 @@ const toggleLang = () => { locale.value = isAr.value ? 'en' : 'ar' }
         <header class="trk-head">
             <div class="trk-brand">
                 <img v-if="restaurant?.logo_url" :src="restaurant.logo_url" alt="" class="trk-logo">
-                <span v-if="restaurant?.name" class="trk-name">{{ restaurant.name }}</span>
+                <span v-if="restaurantName" class="trk-name">{{ restaurantName }}</span>
             </div>
-            <button type="button" class="trk-lang" @click="toggleLang">{{ isAr ? 'English' : 'عربي' }}</button>
+            <button v-if="bilingual" type="button" class="trk-lang" @click="toggleLang">{{ isAr ? 'English' : 'عربي' }}</button>
         </header>
 
         <section class="trk-body" aria-live="polite">
@@ -110,7 +151,10 @@ const toggleLang = () => { locale.value = isAr.value ? 'en' : 'ar' }
 
             <!-- First load -->
             <template v-else-if="!order">
-                <p class="trk-msg">{{ stale ? t('track_reconnecting_first') : t('track_loading') }}</p>
+                <!-- No words until the restaurant's language is known, so an Arabic
+                     restaurant never flashes English. -->
+                <p v-if="stale" class="trk-msg">{{ t('track_reconnecting_first') }}</p>
+                <span v-else class="trk-spin" role="status" aria-label="Loading… / جارٍ التحميل…"><i></i><i></i><i></i></span>
             </template>
 
             <template v-else>
@@ -169,6 +213,14 @@ const toggleLang = () => { locale.value = isAr.value ? 'en' : 'ar' }
 .trk-label { margin: 0; font-size: 18px; color: #625b52; }
 .trk-number { margin: 0; font-size: clamp(64px, 24vw, 150px); line-height: 1; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; unicode-bidi: isolate; word-break: break-all; }
 .trk-msg { margin: 0; font-size: 18px; color: #625b52; max-width: 28ch; }
+.trk-spin { display: inline-flex; gap: 8px; }
+.trk-spin i { width: 12px; height: 12px; border-radius: 50%; background: #e4d8c4; }
+@media (prefers-reduced-motion: no-preference) {
+    .trk-spin i { animation: trk-dot 1s ease-in-out infinite; }
+    .trk-spin i:nth-child(2) { animation-delay: 0.15s; }
+    .trk-spin i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes trk-dot { 0%, 100% { background: #e4d8c4; } 50% { background: #8a8174; } }
+}
 
 .trk-card { width: min(100%, 420px); border-radius: 20px; padding: 18px 20px; background: #fff; border: 2px solid #efe3cf; }
 .trk-card.ready { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
