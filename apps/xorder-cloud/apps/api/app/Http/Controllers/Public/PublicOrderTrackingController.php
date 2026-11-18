@@ -149,6 +149,13 @@ class PublicOrderTrackingController extends Controller
                 'name' => $ar
                     ? ($restaurant->name_ar ?: $restaurant->name_en)
                     : ($restaurant->name_en ?: $restaurant->name_ar),
+                // Both names and the restaurant's language settings, so the page
+                // opens in the language the restaurant chose (as the menu does)
+                // and can switch without another request.
+                'name_ar' => $restaurant->name_ar ?: $restaurant->name_en,
+                'name_en' => $restaurant->name_en ?: $restaurant->name_ar,
+                'default_language' => $restaurant->default_language?->value ?? 'ar',
+                'bilingual' => (bool) $restaurant->bilingual,
                 // Same rewrite as RestaurantPublicResource, so the page treats
                 // both the same way.
                 'logo_url' => PublicImageUrl::relative($restaurant->logo_url),
