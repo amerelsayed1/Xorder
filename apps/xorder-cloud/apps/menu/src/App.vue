@@ -170,13 +170,36 @@ const menuLayout = computed(() => {
 })
 
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
+
+// Text colour that stays readable ON the tenant's brand colour. A fixed white
+// fails WCAG AA on light or amber brands (the default #f59e0b is ~2:1), so pick
+// white or a dark ink, whichever has the higher contrast. Unparseable colours
+// (named colours, hsl()) keep white, the previous behaviour.
+function readableOn(color) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color).trim())
+    if (!m) return '#ffffff'
+    const hex = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1]
+    const lin = [0, 2, 4].map((i) => {
+        const v = parseInt(hex.slice(i, i + 2), 16) / 255
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    })
+    const lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    const ink = '#1f1a14'
+    const inkLum = 0.0108 // relative luminance of #1f1a14
+    const whiteContrast = 1.05 / (lum + 0.05)
+    const inkContrast = (lum + 0.05) / (inkLum + 0.05)
+    return whiteContrast >= inkContrast ? '#ffffff' : ink
+}
+const onAccent = computed(() => readableOn(accent.value))
+
 // Modals (ItemModal, CartDrawer, …) render via <Teleport to="body">, outside
 // .site-shell where --accent is set — so they'd fall back to the default colour.
 // Mirror the tenant accent onto the document root so every teleported overlay
 // inherits the client's brand colour too.
-watch(accent, (c) => {
+watch([accent, onAccent], ([c, on]) => {
     document.documentElement.style.setProperty('--accent', c)
     document.documentElement.style.setProperty('--acc', c)
+    document.documentElement.style.setProperty('--on-accent', on)
 }, { immediate: true })
 const sym = computed(() => {
     const r = restaurant.value
@@ -408,7 +431,7 @@ function updateUserField(field, value) {
 </script>
 
 <template>
-    <div :style="{ '--accent': accent, '--acc': accent }" :data-layout="menuLayout" class="site-shell">
+    <div :style="{ '--accent': accent, '--acc': accent, '--on-accent': onAccent }" :data-layout="menuLayout" class="site-shell">
         <!-- Exactly one <main> per state: the skeleton while the payload loads,
              the message on failure, and .page-wrap once the menu renders. The
              loading one is marked busy so a screen reader is told the region is
