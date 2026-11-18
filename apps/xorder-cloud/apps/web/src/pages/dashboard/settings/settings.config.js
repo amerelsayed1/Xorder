@@ -33,6 +33,8 @@ export const SETTINGS_GROUPS = [
         items: [
             { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' }, feature: 'multi_branch', capability: 'branches.view' },
             { key: 'areas', labelKey: 'nav.areas', icon: 'pi pi-th-large', to: { name: 'dashboard.areas' }, feature: 'table_management', capability: 'tables.view' },
+            // The one standing QR for guest paging (the client types the number on their slip).
+            { key: 'pager_qr', labelKey: 'nav.pager_qr', icon: 'pi pi-qrcode', to: { name: 'dashboard.pager_qr' }, feature: 'guest_paging', capability: 'settings.view' },
         ],
     },
     {

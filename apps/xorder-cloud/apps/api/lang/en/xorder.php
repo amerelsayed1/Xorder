@@ -79,6 +79,7 @@ return [
         'menu_option_unavailable' => 'An option you chose is no longer available. Please refresh the menu.',
         'menu_option_choice_invalid' => 'Please check the choices for an item in your order.',
         'order_not_found' => 'Order not found.',
+        'pager_number_invalid' => 'Type the number printed on your slip.',
         'waiter_device_not_found' => 'Waiter device not found.',
         'waiter_shift_range_too_long' => 'Pick a range of one year or less.',
         'refund_not_found' => 'Refund not found.',

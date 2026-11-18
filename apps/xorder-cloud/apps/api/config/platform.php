@@ -132,6 +132,9 @@ return [
     'guest_paging' => [
         'call_out_minutes' => env('GUEST_PAGING_CALL_OUT_MINUTES', 3),
         'tracking_ttl_hours' => env('GUEST_PAGING_TRACKING_TTL_HOURS', 48),
+        // Shared-QR lookup (docs/features/guest-paging-shared-qr): a client types the
+        // number on their slip; only orders sold within this many hours can match.
+        'lookup_window_hours' => env('GUEST_PAGING_LOOKUP_WINDOW_HOURS', 12),
     ],
 
     /*
