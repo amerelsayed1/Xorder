@@ -120,7 +120,8 @@ const restaurantRoutes = [
             // The home view itself is deliberately ungated — it is where everyone
             // lands, and it degrades to whatever the user may actually see.
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
-            { path: 'plan', name: 'dashboard.plan', component: () => import('../pages/dashboard/PlanView.vue'), meta: { capability: 'settings.view' } },
+            // The "My plan" page was removed; old bookmarks land on the home page.
+            { path: 'plan', redirect: { name: 'dashboard.home' } },
             // The Live board was retired (live-board-to-pos): live work is in the POS.
             // Old bookmarks and links land on the home page.
             { path: 'live', redirect: { name: 'dashboard.home' } },
