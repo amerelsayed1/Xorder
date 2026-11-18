@@ -114,6 +114,18 @@ class MenuShellTest extends TestCase
         Storage::disk('public')->assertExists('brand-cache/demo-icon.png');
     }
 
+    public function test_order_tracking_links_are_not_indexable_but_the_menu_is(): void
+    {
+        Restaurant::factory()->create(['slug' => 'demo']);
+
+        $tracking = $this->get('http://demo.xorder.io/menu/o/'.str_repeat('A', 40));
+        $tracking->assertOk();
+        $tracking->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+
+        $this->get('http://demo.xorder.io/menu')->assertHeaderMissing('X-Robots-Tag');
+        $this->get('http://demo.xorder.io/menu/t/'.str_repeat('B', 10))->assertHeaderMissing('X-Robots-Tag');
+    }
+
     public function test_unknown_slug_serves_noindex_shell_with_404(): void
     {
         $res = $this->get('http://nope.xorder.io/menu');

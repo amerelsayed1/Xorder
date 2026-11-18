@@ -61,3 +61,42 @@ Verification commands: cloud `cd apps/xorder-cloud/apps/api && php artisan test 
 ## Approvals that remain
 - The migration reaches production on the next push of `xorder-cloud` `main` (`/release-check` first; owner pushes).
 - POS-BE-034 contract text (S5), the public throttle values (S2), the `PushService` refactor (S8), POS migration 63 + till grant (S6).
+
+## S3 plan — the client number page (written 2026-11-18, awaiting approval)
+
+Scope: `apps/xorder-cloud/apps/menu` only (plus one optional response header in the cloud API). No migration, no POS change, no contract change. Verified against monorepo `2ac114fb` and against the live demo restaurant on 2026-11-18.
+
+### Facts verified
+- The menu app has **no router**: `App.vue` reads `window.location` itself (restaurant slug from the subdomain, table token from `…/t/{token}`; `App.vue:45-53`). `MenuShellController::show` serves the same SPA shell for any `/menu/*` path (`app/Http/Controllers/Public/MenuShellController.php:24-40`), so `/menu/o/{token}` already reaches the shell and **no server routing change is needed**. Today the SPA then renders the full menu there (seen live on `demo`).
+- Tracking API, live on demo: `GET /api/public/orders/track/{token}` returns `ref`, `status` (`PREPARING|READY|PICKED_UP`), `order_status`, `ready_at`, `acknowledged_at`, `call_out`, `restaurant {name, logo_url, brand_color}`; ETag/304; `POST …/ack` (422 until READY); 404 unknown or older than 48 h; 403 when the restaurant lacks `guest_paging`; 120/min read limit.
+- The page needs nothing else from the API.
+
+### Design
+1. **Entry switch in `src/main.js`**: if `location.pathname` matches `^/menu/o/([A-Za-z0-9]{40})/?$`, dynamically import `src/tracking/TrackingApp.vue` and mount only that. `App.vue` (the menu), the cart and the menu fetch are never loaded for this URL. Every other path runs exactly as today.
+2. **`useOrderTracking(token)`** composable: polls the endpoint every 5 s with the ETag (a 304 costs no body), pauses while the tab is hidden and refreshes on return, backs off after errors, stops on `PICKED_UP`, `CANCELLED` or 404.
+3. **Screen** (mobile first, Arabic default, English supported, RTL-safe): the client number large and centred; one status line and a simple 3-step indicator (being prepared, ready, picked up); restaurant name and logo and the brand colour (text colour chosen for contrast with the helper from PR 9, moved to a shared `src/lib/contrast.js`). **No menu, no cart, no prices, no customer name or phone.**
+4. **States covered**: loading, preparing, ready (highlighted), "On my way" button (only when READY, calls `ack`, then shows confirmed), picked up, cancelled, not found or expired, paging off (403, shown as "not available"), offline or error (keeps the last known status and shows "reconnecting").
+5. **Alert when ready, while the page is open**: vibration (`navigator.vibrate`, where the browser supports it) and a short beep through the Web Audio API. Browsers block sound until the user touches the page, so the page shows a one-tap "Enable sound" control. Push to a closed page is **S8**, not this stage.
+6. **Strings** in English and Arabic next to the menu's existing strings; digits via the existing `installEnDigits`; `<meta name="robots" content="noindex">` set at runtime.
+7. **Optional, cloud API:** an `X-Robots-Tag: noindex` header on `/menu/o/*` in `MenuShellController::show`, because crawlers do not run the page's JavaScript. One line plus one feature test; skip if you prefer to keep this stage menu-app only.
+
+### Tests and how each acceptance point is proven
+No JavaScript test framework exists in the repo, so nothing here is covered by an automated front-end test and I will say so. Checks: `cd apps/xorder-cloud && pnpm build`; the full API suite stays green (API untouched, except the optional header test). Manual checklist on the live demo with a test order, on a real phone: scan shows the number and "being prepared" (not the menu); marking Ready flips the page, vibrates and beeps after enabling sound; "On my way" works and is refused before Ready; cancel shows cancelled; a wrong token shows "not found"; a restaurant without paging shows "not available"; Arabic and English; the normal menu and table-QR URLs still behave as before.
+
+### Rollout and rollback
+Cloud deploy only; the existing tokens and the tracking API are already live, so the page works as soon as the build ships. Rollback is `./deploy.sh --rollback`, which returns to today's behavior (the menu opens). Needs `/release-check` and your approval before anything reaches `main`.
+
+### Risks
+- The page is public; the 40-character token is the only credential and the endpoint answers 404 for anything else. Nothing personal is shown.
+- iOS Safari ignores vibration; sound needs a tap; both are browser limits, hence S8 push.
+- Polling every 5 s per open page is within the 120/min limit, but a very busy venue with many phones on one Wi-Fi IP could hit it; the page backs off on 429.
+
+### Open questions (defaults chosen)
+Poll interval 5 s; keep the screen awake with the Wake Lock API while a page is open (suggestion, default off); apply `noindex` through the response header (default yes).
+
+### S3 as built (2026-11-18)
+Matches the plan above, with these differences, all small:
+- **The menu bundle is still downloaded** for `/menu/o/{token}`, because the tracking page is selected inside the menu's entry file (a second entry hop would have added a round trip to every normal menu load). None of the menu runs: no menu fetch, no cart, no analytics (`initAnalytics` is skipped). The tracking page itself is its own chunk (`TrackingApp-*.js`, 5.6 kB, 2.6 kB gzip), loaded only on that path.
+- **`POST …/follow` is called once per page load** (best effort), so the dashboard board can show "Following on phone". The plan did not list it; it is part of the S2 API and the original description.
+- **Language:** Arabic by default, English when the phone's language is English, with a toggle on the page.
+- Not built, as planned: push to a closed page (S8), Wake Lock (default off).

@@ -43,3 +43,18 @@ After the security review (distinct throttle buckets, cancelled-order ack refusa
 Adds proof for: 30 polls then `follow`/`ack`/`push-token` still succeed (bucket separation), `ack` 422 on a cancelled order that was READY, writes 404 after the TTL and 403 on a SUSPENDED restaurant, both tokens listed in `Order::auditExcludedAttributes()`, `?lang=ar`, and the `ORD-{id}` fallback on the real intake-issued token.
 
 Not proven: the limit numbers themselves beyond the 20-write bucket, HEAD requests, PostgreSQL behaviour, web-server access logs.
+
+## S3 — the order-number page (2026-11-18)
+Branch `feat/guest-paging-s3`, uncommitted. Environment: local machine, PHPUnit on SQLite in-memory with throwaway `APP_KEY` and `JWT_SECRET`; no production access.
+
+| Command | Result |
+|---|---|
+| `php artisan test tests/Feature/MenuShellTest.php` | 13 passed (includes the new `test_order_tracking_links_are_not_indexable_but_the_menu_is`) |
+| `php artisan test` (full suite) | **1320 passed**, 6944 assertions |
+| `./vendor/bin/pint --test` | passed |
+| `pnpm --filter ./apps/menu build` | built; tracking page is a separate 5.64 kB chunk |
+
+**Checked by running the built app against a local mock of the tracking API** (mobile viewport, in the browser pane): preparing, ready (card in the brand colour, "I'm on my way" button), ready with call-out, picked up, cancelled, not found, reconnecting after a server error and recovery, the status flipping from preparing to ready by itself within one poll, "I'm on my way" accepted, the Arabic right-to-left layout, polls sending `If-None-Match`, and `follow` sent once per load. No console errors.
+
+**Not verified:** a real phone (sound and vibration; iOS ignores vibration), the page against the live API (the live demo restaurant's order was cancelled earlier and the page is not deployed), the 403 "not available" screen visually, an amber brand colour on the page, and the mock stood in for the server's real responses, so a mismatch between the mock and the real payload is possible (the real shape was read from the live endpoint on 2026-11-18).
+There is no JavaScript test framework in the repo, so none of the front-end behaviour has an automated test.
