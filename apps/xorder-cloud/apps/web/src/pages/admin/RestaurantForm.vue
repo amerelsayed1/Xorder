@@ -611,7 +611,8 @@ async function submitCreate() {
                     </div>
                     <span class="help">{{ t('restaurant.bilingual_hint') }}</span>
                     <!-- Bilingual clients choose which language the menu opens in by default. -->
-                    <div v-if="editLangValue === 'bilingual'" class="mt-3">
+                    <!-- Shown as a child of the choice above: a logical (RTL-safe) rule on the start side. -->
+                    <div v-if="editLangValue === 'bilingual'" class="mt-3 ps-4" style="border-inline-start: 2px solid var(--line)">
                         <span class="label">{{ t('wizard.primary_language') }}</span>
                         <div class="flex gap-2 mt-1.5">
                             <button v-for="lng in ['ar', 'en']" :key="lng" type="button" @click="form.default_language = lng"
@@ -676,7 +677,7 @@ async function submitCreate() {
                         <span class="block font-semibold" style="color:var(--ink)">{{ langOptionLabel(opt) }}</span>
                     </button>
                 </div>
-                <div v-if="langConfig === 'bilingual'">
+                <div v-if="langConfig === 'bilingual'" class="ps-4" style="border-inline-start: 2px solid var(--line)">
                     <span class="label">{{ t('wizard.primary_language') }}</span>
                     <div class="flex gap-2 mt-1.5">
                         <button v-for="lng in ['ar', 'en']" :key="lng" type="button" @click="primaryLanguage = lng"

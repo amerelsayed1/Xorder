@@ -3,6 +3,7 @@ import { ref, computed, reactive, watch, onMounted, onUnmounted, defineAsyncComp
 import { postOrder } from './api.js'
 import { track } from './lib/analytics.js'
 import { warm } from './lib/prefetch.js'
+import { readableOn } from './lib/contrast.js'
 import { useLocale } from './composables/useLocale'
 import { useCart } from './composables/useCart'
 import { useOrder } from './composables/useOrder'
@@ -170,13 +171,18 @@ const menuLayout = computed(() => {
 })
 
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
+
+// White or dark ink, whichever is readable on the brand colour (lib/contrast.js).
+const onAccent = computed(() => readableOn(accent.value))
+
 // Modals (ItemModal, CartDrawer, …) render via <Teleport to="body">, outside
 // .site-shell where --accent is set — so they'd fall back to the default colour.
 // Mirror the tenant accent onto the document root so every teleported overlay
 // inherits the client's brand colour too.
-watch(accent, (c) => {
+watch([accent, onAccent], ([c, on]) => {
     document.documentElement.style.setProperty('--accent', c)
     document.documentElement.style.setProperty('--acc', c)
+    document.documentElement.style.setProperty('--on-accent', on)
 }, { immediate: true })
 const sym = computed(() => {
     const r = restaurant.value
@@ -408,7 +414,7 @@ function updateUserField(field, value) {
 </script>
 
 <template>
-    <div :style="{ '--accent': accent, '--acc': accent }" :data-layout="menuLayout" class="site-shell">
+    <div :style="{ '--accent': accent, '--acc': accent, '--on-accent': onAccent }" :data-layout="menuLayout" class="site-shell">
         <!-- Exactly one <main> per state: the skeleton while the payload loads,
              the message on failure, and .page-wrap once the menu renders. The
              loading one is marked busy so a screen reader is told the region is

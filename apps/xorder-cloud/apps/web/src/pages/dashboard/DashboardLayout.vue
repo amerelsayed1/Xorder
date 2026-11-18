@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter, useRoute, RouterLink } from 'vue-router'
+import { useRouter } from 'vue-router'
 import SakaiLayout from '@xorder/ui/SakaiLayout.vue'
 import { setLocale } from '@xorder/ui/i18n'
 import api from '@xorder/api-client/api.js'
@@ -181,9 +181,9 @@ const waLink = computed(() => {
     return `https://wa.me/${supportWa.value}?text=${encodeURIComponent(msg)}`
 })
 // ---- Plan badge + trial / ending-soon banner -----------------------------
-// Both are for whoever can open "My plan" (settings.view): a cook gains
-// nothing from a countdown they cannot act on.
-const route = useRoute()
+// Both are for whoever holds settings.view (the owner): a cook gains nothing
+// from a countdown they cannot act on. There is no "My plan" page any more;
+// the banner's WhatsApp button is how an owner reaches Xorder to upgrade.
 const canSeePlan = computed(() => auth.can('settings.view'))
 const subStatus = computed(() => r.value?.subscription_status || null)
 const daysLeft = computed(() => daysUntil(r.value?.subscription_end_date, r.value?.timezone))
@@ -213,7 +213,7 @@ function dismissPlanBanner() {
     try { localStorage.setItem(BANNER_KEY, bannerDismissedOn.value) } catch { /* storage unavailable */ }
 }
 const showPlanBanner = computed(() => {
-    if (!canSeePlan.value || isExpired.value || route.name === 'dashboard.plan') return false
+    if (!canSeePlan.value || isExpired.value) return false
     if (bannerDismissedOn.value === todayIn(r.value?.timezone)) return false
     if (subStatus.value === 'TRIAL') return daysLeft.value === null || daysLeft.value >= 0
     return subStatus.value === 'ACTIVE' && daysLeft.value !== null && daysLeft.value >= 0 && daysLeft.value <= ENDING_SOON_DAYS
@@ -268,7 +268,7 @@ const nav = computed(() => buildDashboardNav({
 <template>
     <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="!bilingual" searchable>
         <template #topbar-actions>
-            <RouterLink v-if="planBadge" :to="{ name: 'dashboard.plan' }" class="plan-badge" :class="'plan-badge--' + planBadge.tone"
+            <div v-if="planBadge" class="plan-badge" :class="'plan-badge--' + planBadge.tone" role="img"
                 :title="t('nav.my_plan')" :aria-label="t('nav.my_plan') + ': ' + planBadge.name">
                 <i class="pi pi-star-fill" aria-hidden="true"></i>
                 <span class="plan-badge-name">{{ planBadge.name }}</span>
@@ -277,7 +277,7 @@ const nav = computed(() => buildDashboardNav({
                     <!-- Phones: just the number; the banner spells it out. -->
                     <span class="topbar-narrow-only">{{ planBadge.days }}</span>
                 </span>
-            </RouterLink>
+            </div>
             <!-- Phones get no fullscreen (iOS Safari has none at all), which also
                  leaves the narrow top bar room for the plan badge. -->
             <span class="topbar-wide-only"><FullscreenToggle /></span>
@@ -287,7 +287,6 @@ const nav = computed(() => buildDashboardNav({
             <div v-if="showPlanBanner" class="plan-banner" :class="{ urgent: daysLeft !== null && daysLeft <= 3 }" role="status">
                 <i class="pi pi-star-fill plan-banner-icon" aria-hidden="true"></i>
                 <span class="plan-banner-text">{{ planBannerText }}</span>
-                <RouterLink :to="{ name: 'dashboard.plan' }" class="plan-banner-btn">{{ t('plan_banner.see_plans') }}</RouterLink>
                 <a v-if="planWaLink" :href="planWaLink" target="_blank" rel="noopener noreferrer" class="plan-banner-btn plan-banner-btn--wa">
                     <i class="pi pi-whatsapp" aria-hidden="true"></i>{{ t('my_plan.upgrade') }}
                 </a>
@@ -339,7 +338,6 @@ const nav = computed(() => buildDashboardNav({
 .plan-badge--trial { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .plan-badge--urgent, .plan-badge--bad { background: #fdecea; border-color: #f5b5ae; color: #b42318; }
 .plan-badge--urgent i, .plan-badge--bad i, .plan-badge--trial i { color: currentColor; }
-.plan-badge:hover { filter: brightness(.97); }
 .topbar-narrow-only { display: none; }
 @media (max-width: 640px) { .topbar-wide-only { display: none; } .topbar-narrow-only { display: inline; } .plan-badge-name { display: none; } .plan-badge { padding: 0 9px; } .plan-badge-days { border: 0; padding: 0; } }
 

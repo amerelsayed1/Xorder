@@ -688,7 +688,8 @@ html[dir='ltr'] .hero-overlay {
 }
 
 .category.active {
-    color: #fff;
+    /* Readable on any brand colour: App.vue picks white or dark ink (WCAG). */
+    color: var(--on-accent, #fff);
     background: var(--accent);
 }
 
