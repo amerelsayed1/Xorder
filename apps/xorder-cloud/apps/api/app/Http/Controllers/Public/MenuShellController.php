@@ -33,9 +33,17 @@ class MenuShellController extends Controller
 
         // Unknown slug → 404 so crawlers drop the URL; the body still carries
         // the SPA, which renders its own "unavailable" screen.
-        return response($html, $restaurant === null ? 404 : 200)
+        $response = response($html, $restaurant === null ? 404 : 200)
             ->header('Content-Type', 'text/html; charset=utf-8')
             ->header('Cache-Control', 'no-cache');
+
+        // Order-tracking links (/menu/o/{token}, guest paging) belong to one
+        // diner. Crawlers do not run the page's JavaScript, so say it here.
+        if ($request->is('menu/o/*')) {
+            $response->header('X-Robots-Tag', 'noindex, nofollow');
+        }
+
+        return $response;
     }
 
     /**

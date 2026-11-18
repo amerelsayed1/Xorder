@@ -35,13 +35,22 @@ function afterLoadAndIdle() {
     })
 }
 
+// Guest paging (docs/features/guest-paging, S3): a receipt QR opens
+// /menu/o/{token}. That is not the menu: it is a small page that shows the
+// diner their order number and its state. The menu bundle is already in this
+// entry, but none of it runs for that path: no menu fetch, no cart, no
+// analytics. The page itself is a separate chunk, loaded only for that path, so
+// the menu's own first load is unchanged.
+const trackMatch = /^\/menu\/o\/([A-Za-z0-9]{40})\/?$/.exec(window.location.pathname)
+const TrackingApp = trackMatch ? (await import('./tracking/TrackingApp.vue')).default : null
+
 // Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
 installEnDigits()
 
 // Registered before mount so it is in place ahead of the first track() call.
-initAnalytics('menu', { until: afterLoadAndIdle() })
+if (!trackMatch) initAnalytics('menu', { until: afterLoadAndIdle() })
 
-const app = createApp(App)
+const app = trackMatch ? createApp(TrackingApp, { token: trackMatch[1] }) : createApp(App)
 
 // Fade images in once decoded so cards never flash a blank box, and resolve the
 // loading state on BOTH success and failure so a card never shimmers forever.
