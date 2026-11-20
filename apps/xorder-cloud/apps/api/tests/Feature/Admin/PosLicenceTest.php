@@ -53,7 +53,8 @@ class PosLicenceTest extends TestCase
             'issued_at' => '2026-09-01',
             'expires_at' => '2027-09-01',
             'max_terminals' => 4,
-            'modes' => ['cloud', 'branch_server'],
+            // A legacy wire value on purpose: the till still parses it as offline.
+            'modes' => ['branch_server'],
             'features' => ['qr_menu', 'dine_in'],
         ], $overrides);
     }
@@ -208,7 +209,7 @@ class PosLicenceTest extends TestCase
         $this->assertSame(30, $claims['warn_days']);
 
         // DeploymentMode.wire values, not enum names.
-        $this->assertSame(['cloud', 'branch_server'], $claims['modes']);
+        $this->assertSame(['branch_server'], $claims['modes']);
 
         // No `alg` field, ever — that absence is why this is not a JWT.
         $this->assertArrayNotHasKey('alg', $claims);
@@ -226,6 +227,34 @@ class PosLicenceTest extends TestCase
             ->postJson('/api/admin/pos/licences', $this->payload($r, ['modes' => []]))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('modes');
+    }
+
+    public function test_a_licence_covering_both_modes_is_refused(): void
+    {
+        // One mode per licence (owner, 2026-11-08): the till is two apps, and
+        // each refuses a licence that covers the other one too.
+        $r = $this->restaurant();
+        $sa = User::factory()->superAdmin()->create();
+
+        foreach ([['cloud', 'offline'], ['cloud', 'branch_server'], ['standalone', 'cloud']] as $modes) {
+            $this->actingAs($sa)
+                ->postJson('/api/admin/pos/licences', $this->payload($r, ['modes' => $modes]))
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['modes' => 'one mode']);
+        }
+        $this->assertSame(0, PosLicence::count());
+    }
+
+    public function test_legacy_spellings_of_offline_are_still_one_mode(): void
+    {
+        // `branch_server` and `standalone` are offline on the till, so a list
+        // of them with `offline` covers one mode, not three.
+        $r = $this->restaurant();
+        $sa = User::factory()->superAdmin()->create();
+
+        $this->actingAs($sa)
+            ->postJson('/api/admin/pos/licences', $this->payload($r, ['modes' => ['offline', 'branch_server', 'standalone']]))
+            ->assertCreated();
     }
 
     public function test_platform_staff_below_super_admin_may_not_issue(): void
@@ -383,7 +412,7 @@ class PosLicenceTest extends TestCase
 
         // Scope is inherited — a renewal that only moves the dates keeps its terms.
         $this->assertSame(4, $renewal['data']['max_terminals']);
-        $this->assertSame(['cloud', 'branch_server'], $renewal['data']['modes']);
+        $this->assertSame(['branch_server'], $renewal['data']['modes']);
 
         // The six-till site retypes nothing: the same key now resolves to the
         // renewal, and the superseded row is no longer handed out.

@@ -243,6 +243,8 @@ return [
     'validation' => [
         'map_link_unresolved' => "We couldn't find a location in that link. Open it in Google Maps and copy the full URL from the address bar, or paste the coordinates as \"lat, lng\".",
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',
+        'licence_one_mode' => 'A licence covers one mode: cloud or offline, not both.',
+        'licence_one_mode_renewal' => 'This licence covers both modes. Choose cloud or offline for the renewal.',
         'geofence_required' => 'Draw the branch area on the map before enabling the location check.',
         'egress_ip_invalid' => "That doesn't look like a valid internet address. Use the “Use this connection” button while you're on the branch Wi-Fi.",
         'egress_ips_max' => 'You can add up to 5 connections for one branch.',

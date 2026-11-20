@@ -105,7 +105,7 @@ class LicenceRenewalUpgradeTest extends TestCase
             'warn_days' => 45,
             'max_offline_days' => 14,
             'features' => ['qr_menu', 'dine_in', 'delivery', 'pos'],
-            'modes' => ['cloud', 'offline'],
+            'modes' => ['offline'],
         ])->assertCreated()->json();
 
         $claims = $this->claimsOf($renewal);
@@ -115,7 +115,7 @@ class LicenceRenewalUpgradeTest extends TestCase
         $this->assertSame(45, $claims['warn_days']);
         $this->assertSame(14, $claims['max_offline_days']);
         $this->assertEqualsCanonicalizing(['qr_menu', 'dine_in', 'delivery', 'pos'], $claims['features']);
-        $this->assertEqualsCanonicalizing(['cloud', 'offline'], $claims['modes']);
+        $this->assertSame(['offline'], $claims['modes']);
         $this->assertSame($plan->id, $renewal['data']['plan']['id']);
     }
 
@@ -155,6 +155,26 @@ class LicenceRenewalUpgradeTest extends TestCase
     {
         $this->renew($this->cloud(), ['modes' => []])
             ->assertUnprocessable()->assertJsonValidationErrors('modes');
+    }
+
+    public function test_a_renewal_may_not_cover_both_modes(): void
+    {
+        $this->renew($this->cloud(), ['modes' => ['cloud', 'offline']])
+            ->assertUnprocessable()->assertJsonValidationErrors(['modes' => 'one mode']);
+    }
+
+    public function test_a_licence_signed_for_both_modes_must_choose_one_to_renew(): void
+    {
+        // Signed before one mode became the rule. Left out of the body, modes
+        // would be inherited as both, which both apps refuse.
+        $old = $this->cloud();
+        PosLicence::findOrFail($old['data']['id'])->update(['modes' => ['cloud', 'offline']]);
+
+        $this->renew($old, ['max_terminals' => 3])
+            ->assertUnprocessable()->assertJsonValidationErrors(['modes' => 'Choose cloud or offline']);
+
+        $renewal = $this->renew($old, ['modes' => ['cloud']])->assertCreated()->json();
+        $this->assertSame(['cloud'], $this->claimsOf($renewal)['modes']);
     }
 
     // --------------------------------------------------------- offline licence

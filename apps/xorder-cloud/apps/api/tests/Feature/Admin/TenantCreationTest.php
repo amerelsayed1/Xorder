@@ -115,7 +115,7 @@ class TenantCreationTest extends TestCase
             ->postJson('/api/admin/restaurants', $this->payload([
                 'licence' => [
                     'max_terminals' => 12,
-                    'modes' => ['cloud', 'offline'],
+                    'modes' => ['offline'],
                     'grace_days' => 30,
                     'notes' => 'Bespoke: 12 tills, two sites.',
                 ],
@@ -125,7 +125,7 @@ class TenantCreationTest extends TestCase
 
         $this->assertSame(12, $licence->max_terminals);
         $this->assertSame(30, $licence->grace_days);
-        $this->assertSame(['cloud', 'offline'], $licence->modes);
+        $this->assertSame(['offline'], $licence->modes);
         $this->assertSame(0, PosTerminal::withoutGlobalScopes()->count());
     }
 
@@ -152,6 +152,18 @@ class TenantCreationTest extends TestCase
             ->postJson('/api/admin/restaurants', $this->payload(['licence' => ['modes' => []]]))
             ->assertStatus(422)
             ->assertJsonValidationErrors('licence.modes');
+    }
+
+    public function test_the_creation_form_refuses_a_licence_covering_both_modes(): void
+    {
+        // One mode per licence (owner, 2026-11-08). Nothing is created: the
+        // tenant and its licence are one transaction.
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/restaurants', $this->payload(['licence' => ['modes' => ['cloud', 'offline']]]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['licence.modes' => 'one mode']);
+
+        $this->assertSame(0, PosLicence::count());
     }
 
     // ------------------------------------------------------- transactionality

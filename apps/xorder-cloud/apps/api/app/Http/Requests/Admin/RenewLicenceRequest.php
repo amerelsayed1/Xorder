@@ -106,11 +106,28 @@ class RenewLicenceRequest extends FormRequest
             'features' => ['nullable', 'array'],
             'features.*' => ['string', Rule::in(Feature::values())],
 
-            'modes' => ['nullable', 'array', 'min:1'],
+            'modes' => ['nullable', 'array', 'min:1', StoreLicenceRequest::oneModeRule()],
             'modes.*' => ['string', Rule::in(StoreLicenceRequest::MODES)],
 
             'branch_ids' => ['nullable', 'array'],
             'branch_ids.*' => ['integer'],
         ];
+    }
+
+    /**
+     * A licence signed for both modes, before one mode became the rule, cannot
+     * be renewed as it is: a body that leaves `modes` out would inherit both,
+     * and both apps refuse such a licence. The operator picks one.
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ($this->isOffline() || is_array($this->input('modes'))) {
+                return;
+            }
+            if (StoreLicenceRequest::modeCount($this->original()?->modes ?? []) > 1) {
+                $validator->errors()->add('modes', __('xorder.validation.licence_one_mode_renewal'));
+            }
+        });
     }
 }
