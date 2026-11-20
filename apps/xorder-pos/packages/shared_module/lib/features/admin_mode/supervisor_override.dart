@@ -306,6 +306,8 @@ class _SupervisorOverrideDialogState
     // Shut: answered before the PIN is looked at, so the right PIN typed
     // during the wait approves nothing.
     final limiter = ref.read(signInLimiterProvider);
+    await limiter.ready;
+    if (!mounted) return;
     if (limiter.lockedFor(_limiterKey) case final wait?) {
       setState(() {
         _pin = '';
@@ -316,6 +318,8 @@ class _SupervisorOverrideDialogState
       return;
     }
 
+    await limiter.reserve(_limiterKey);
+    if (!mounted) return;
     setState(() => _busy = true);
     final staff = await ref.read(staffDirectoryRepositoryProvider).byPin(_pin);
     if (!mounted) return;

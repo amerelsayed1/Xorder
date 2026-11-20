@@ -24,6 +24,7 @@ import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
 import '../core/security/attempt_limiter.dart';
+import '../core/security/attempt_store.dart';
 import '../core/network/connectivity_probe.dart';
 import '../data/backup/backup_service.dart';
 import '../data/backup/pg_archive.dart';
@@ -116,6 +117,7 @@ import '../domain/models/order_type_config.dart';
 import '../domain/models/business_logo.dart';
 import '../domain/models/content_languages.dart';
 import '../domain/models/permissions.dart';
+import 'password_sign_in.dart';
 import '../domain/models/purchase_order.dart';
 import '../domain/models/tax.dart';
 import '../domain/models/supplier.dart';
@@ -1947,12 +1949,18 @@ final tillClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 /// lock screen with the name left empty lands on the keypad's key too: it is
 /// the same kind of try, a PIN with no claim of who.
 ///
-/// Admin Mode keeps its own (see `AdminSessionController`). Held for the life
-/// of the process and lost on restart; see [AttemptLimiter] for why that is
-/// accepted for now.
-final signInLimiterProvider = Provider<AttemptLimiter>(
-  (ref) => AttemptLimiter(clock: () => ref.read(tillClockProvider)()),
-);
+/// Admin Mode keeps its own (see `AdminSessionController`), still in memory.
+/// This one is saved in the till's secret store and survives a restart (see
+/// [AttemptLimiter]).
+final signInLimiterProvider = Provider<AttemptLimiter>((ref) {
+  final limiter = AttemptLimiter(
+    clock: () => ref.read(tillClockProvider)(),
+    store: SecretAttemptStore(ref.read(secretStoreProvider)),
+  );
+  // Until this finishes the doors answer "wait a moment", not "open".
+  unawaited(limiter.load());
+  return limiter;
+});
 
 /// Whether something on screen is in the middle of moving money, so the idle
 /// lock must wait for it.
@@ -2665,9 +2673,121 @@ class TerminalReset {
     _ref.invalidate(licenceClaimsProvider);
     _ref.invalidate(setupProvider);
   }
+
+  /// **Move this tablet to another business** (tablet-cloud-onboarding,
+  /// Stage 5, BR-6). Unlike the resets above this DELETES: the till's data
+  /// file and its key, the device token, the licence and every saved secret.
+  /// Nothing on the platform changes; the old terminal stays claimed in the old
+  /// business until somebody removes it on the dashboard.
+  ///
+  /// **The guards are here, not in a button.** The platform cannot refuse a
+  /// local wipe, so the action refuses by itself, in this order and before
+  /// anything is touched: the signed-in person holds `terminal.manage`; no
+  /// shift is open; no sale is waiting to be sent; and the person's own
+  /// password, typed again, is accepted by the platform. A password that
+  /// cannot be checked is a refusal, never a pass.
+  Future<ChangeBusinessResult> changeBusiness({
+    required String password,
+  }) async {
+    final staff = _ref.read(signedInStaffProvider);
+    if (staff == null || !staff.can(PosCapability.terminalManage)) {
+      return const ChangeBusinessResult.refused(
+        ChangeBusinessRefusal.notPermitted,
+      );
+    }
+    final check = _ref.read(platformPasswordCheckProvider);
+    final username = staff.username?.trim() ?? '';
+    if (check == null || username.isEmpty) {
+      return const ChangeBusinessResult.refused(
+        ChangeBusinessRefusal.notAvailable,
+      );
+    }
+    if (await _ref.read(shiftProvider.future) != null) {
+      return const ChangeBusinessResult.refused(
+        ChangeBusinessRefusal.shiftOpen,
+      );
+    }
+    // Read fresh, not from the cached count: the pill may be minutes old.
+    final pending = await _ref
+        .read(ordersRepositoryProvider)
+        .pendingSyncCount();
+    final held = await _ref.read(syncQueueRepositoryProvider).heldSyncCount();
+    if (pending > 0 || held > 0) {
+      return const ChangeBusinessResult.refused(
+        ChangeBusinessRefusal.unsyncedSales,
+      );
+    }
+
+    switch (await check.verify(username: username, password: password)) {
+      case PasswordVerdict.verified:
+        break;
+      case PasswordVerdict.rejected:
+        return const ChangeBusinessResult.refused(
+          ChangeBusinessRefusal.wrongPassword,
+        );
+      case PasswordVerdict.throttled:
+        return const ChangeBusinessResult.refused(
+          ChangeBusinessRefusal.throttled,
+        );
+      case PasswordVerdict.unreachable:
+        return const ChangeBusinessResult.refused(
+          ChangeBusinessRefusal.cannotCheckPassword,
+        );
+    }
+
+    // Everything the hard reset wipes, then what it keeps on purpose: the data
+    // file and its key, which this action alone is allowed to destroy.
+    await runHard();
+    await _ref.read(deviceTokenVaultProvider).forget();
+    await _ref.read(changeBusinessWipeProvider)();
+    return const ChangeBusinessResult.done();
+  }
 }
 
 final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
+
+/// What a till that keeps its data in a file of its own must also destroy when
+/// the business changes: the file and its key. Nothing in the shared package
+/// (the offline app's data is a database server this till does not own); the
+/// cloud app binds it (tablet-cloud-onboarding, Stage 5).
+final changeBusinessWipeProvider = Provider<Future<void> Function()>(
+  (ref) => () async {},
+);
+
+/// Why the till refused to change business. Every one of them leaves the
+/// tablet exactly as it was.
+enum ChangeBusinessRefusal {
+  /// Nobody is signed in, or the person lacks `terminal.manage`.
+  notPermitted,
+
+  /// This app has no platform to check the password against.
+  notAvailable,
+
+  /// A shift is open: its sales and cash belong to the business being left.
+  shiftOpen,
+
+  /// Sales the platform has not received yet would be lost with the file.
+  unsyncedSales,
+
+  /// The platform answered, and the password is not the signed-in person's.
+  wrongPassword,
+
+  /// The password could not be checked: no connection, or the platform said
+  /// nothing about it.
+  cannotCheckPassword,
+
+  /// Too many sign-ins from this network just now.
+  throttled,
+}
+
+/// How [TerminalReset.changeBusiness] ended: null [refusal] means it did.
+class ChangeBusinessResult {
+  const ChangeBusinessResult.done() : refusal = null;
+  const ChangeBusinessResult.refused(ChangeBusinessRefusal this.refusal);
+
+  final ChangeBusinessRefusal? refusal;
+  bool get changed => refusal == null;
+}
 
 /// Secrets a hard reset puts back after wiping the store: the ones that
 /// guard data the reset promises to leave alone. Empty in the shared package;

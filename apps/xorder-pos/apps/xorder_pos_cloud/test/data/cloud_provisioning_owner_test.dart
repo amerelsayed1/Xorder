@@ -7,6 +7,7 @@ import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:shared_module/data/cloud/device_token_vault.dart';
 import 'package:shared_module/data/postgres/pos_database.dart';
+import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:xorder_pos_cloud/data/cloud/cloud_provisioning_repository.dart';
 
 /// Only the owner sets up a cloud till (pos-cloud-sign-in-setup, D3, AC-7).
@@ -122,6 +123,134 @@ void main() {
     });
   });
 
+  group('a sign-in that does not succeed leaves nothing behind '
+      '(tablet-cloud-onboarding AC-3)', () {
+    // The vault is the one thing a sign-in could leave on the tablet; the
+    // business itself is written only by `complete()`, which these never reach.
+    CloudProvisioningRepository withVault(
+      DeviceTokenVault vault,
+      HttpClientAdapter adapter,
+    ) => CloudProvisioningRepository(
+      api: PosCloudApi(
+        baseUrl: 'http://127.0.0.1:9',
+        client: Dio(BaseOptions(validateStatus: (_) => true))
+          ..httpClientAdapter = adapter,
+      ),
+      vault: vault,
+      database: PosDatabase(credentials: InMemoryPosDbCredentials('unused')),
+      config: const DeploymentConfig(
+        mode: DeploymentMode.cloud,
+        baseUrl: 'http://127.0.0.1:9',
+        tenantSlug: 'cafe-nile',
+      ),
+      fingerprint: () async => 'fingerprint',
+    );
+
+    test('no internet is named, and no token is kept', () async {
+      final vault = DeviceTokenVault();
+
+      final result = await withVault(
+        vault,
+        _Down(),
+      ).connect(tenantSlug: 'cafe-nile', username: 'owner', password: 'secret');
+
+      expect(result.succeeded, isFalse);
+      expect(result.code, 'PLATFORM_UNREACHABLE');
+      expect(vault.isSet, isFalse);
+    });
+
+    test('a wrong password keeps no token', () async {
+      final vault = DeviceTokenVault();
+
+      final result = await withVault(
+        vault,
+        _Platform({
+          '/api/auth/login': (401, {'message': 'no'}),
+        }),
+      ).connect(tenantSlug: 'cafe-nile', username: 'owner', password: 'bad');
+
+      expect(result.code, 'CREDENTIALS_REJECTED');
+      expect(vault.isSet, isFalse);
+    });
+
+    test('a staff account keeps no token', () async {
+      final vault = DeviceTokenVault();
+
+      final result = await withVault(
+        vault,
+        _Platform({'/api/auth/login': (200, login('RESTAURANT_STAFF'))}),
+      ).connect(tenantSlug: 'cafe-nile', username: 'staff', password: 'pw');
+
+      expect(result.code, 'NOT_OWNER');
+      expect(vault.isSet, isFalse);
+    });
+
+    test('a throttled login is not reported as a wrong password', () async {
+      final vault = DeviceTokenVault();
+
+      final result = await withVault(
+        vault,
+        _Platform({
+          '/api/auth/login': (429, {'message': 'Too many'}),
+        }),
+      ).connect(tenantSlug: 'cafe-nile', username: 'owner', password: 'pw');
+
+      expect(result.succeeded, isFalse);
+      expect(result.code, isNot('CREDENTIALS_REJECTED'));
+      expect(vault.isSet, isFalse);
+    });
+  });
+
+  group('a registration whose answer was lost (tablet-cloud-onboarding)', () {
+    test(
+      'is retried with the same transaction id, so it is one terminal',
+      () async {
+        final adapter = _DropsFirstRegister();
+        final repo = CloudProvisioningRepository(
+          api: PosCloudApi(
+            baseUrl: 'http://127.0.0.1:9',
+            client: Dio(BaseOptions(validateStatus: (_) => true))
+              ..httpClientAdapter = adapter,
+          ),
+          vault: DeviceTokenVault(),
+          database: PosDatabase(
+            credentials: InMemoryPosDbCredentials('unused'),
+          ),
+          config: const DeploymentConfig(
+            mode: DeploymentMode.cloud,
+            baseUrl: 'http://127.0.0.1:9',
+            tenantSlug: 'cafe-nile',
+          ),
+          fingerprint: () async => 'fingerprint',
+        );
+
+        Future<ClaimResult> register() => repo.registerManually(
+          tenantSlug: 'cafe-nile',
+          username: 'owner',
+          password: 'secret',
+          terminalName: 'Tablet',
+          branchId: 1,
+          installId: null,
+        );
+
+        final first = await register();
+        expect(first.claim, isNull);
+        expect(first.code, 'PLATFORM_UNREACHABLE');
+
+        final second = await register();
+        expect(second.claim, isNotNull);
+
+        expect(adapter.transactionIds, hasLength(2));
+        expect(adapter.transactionIds[0], adapter.transactionIds[1]);
+
+        // Once answered, the id is spent: a later registration is a new one.
+        await register();
+        expect(adapter.transactionIds, hasLength(3));
+        expect(adapter.transactionIds[2], isNot(adapter.transactionIds[0]));
+      },
+    );
+  });
+
   group('adopting and registering sign in again, and check again', () {
     test('a non-owner cannot adopt a waiting till', () async {
       platform = _Platform({
@@ -207,6 +336,70 @@ class _Platform implements HttpClientAdapter {
     final path = options.uri.path;
     paths.add(path);
     final (status, body) = replies[path] ?? (404, const {'message': 'none'});
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// No route to the platform at all: the adapter throws what Dio throws.
+class _Down implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => throw DioException.connectionError(
+    requestOptions: options,
+    reason: 'no route to host',
+  );
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Sign-in works; the first registration's reply never arrives, later ones do.
+class _DropsFirstRegister implements HttpClientAdapter {
+  final transactionIds = <Object?>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    Map<String, Object?> body;
+    var status = 200;
+    switch (options.uri.path) {
+      case '/api/auth/login':
+        body = {
+          'token': 'jwt',
+          'data': {'role': 'RESTAURANT_ADMIN'},
+        };
+      case '/api/pos/terminals/register':
+        transactionIds.add((options.data as Map)['client_transaction_id']);
+        if (transactionIds.length == 1) {
+          throw DioException.connectionTimeout(
+            timeout: const Duration(seconds: 1),
+            requestOptions: options,
+          );
+        }
+        status = 201;
+        body = {
+          'device_token': 'xdt_test',
+          'terminal': {'id': 5, 'branch_id': 1, 'name': 'Tablet'},
+        };
+      default:
+        status = 404;
+        body = const {'message': 'none'};
+    }
     return ResponseBody.fromString(
       jsonEncode(body),
       status,

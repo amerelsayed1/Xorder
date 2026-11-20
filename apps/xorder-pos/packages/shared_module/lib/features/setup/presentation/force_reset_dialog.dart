@@ -139,6 +139,8 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
     // one would be five more guesses per lockout window for anybody who knew
     // the shortcut. Asked before the PIN is looked at, as there.
     final limiter = ref.read(signInLimiterProvider);
+    await limiter.ready;
+    if (!mounted) return;
     if (limiter.lockedFor(username) case final wait?) {
       _pin.clear();
       setState(
@@ -148,6 +150,8 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
       );
       return;
     }
+    await limiter.reserve(username);
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -167,6 +171,7 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
         Navigator.of(context).pop(true);
       case StaffUnreachable():
         // Nothing was checked, so nothing is counted. See the class comment.
+        limiter.release(username);
         Navigator.of(context).pop(true);
       case StaffRefused():
         // Every refusal counts — unknown name, wrong PIN, and the right PIN

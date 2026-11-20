@@ -131,6 +131,7 @@ class SetupDraft {
     this.needsDatabase = false,
     this.detectedPrinters,
     this.claimed = false,
+    this.autoPlaced = false,
     this.pulledTerminals,
     this.adoptTerminalId,
     this.branchId,
@@ -308,8 +309,7 @@ class SetupDraft {
   /// person standing at the till holds.
   List<SetupStep> get cloudSteps => [
     SetupStep.account,
-    SetupStep.branch,
-    SetupStep.terminal,
+    if (!(autoPlaced && claimed)) ...[SetupStep.branch, SetupStep.terminal],
     SetupStep.connecting,
     if (detectedPrinters != 1) SetupStep.hardware,
     SetupStep.summary,
@@ -425,6 +425,12 @@ class SetupDraft {
   /// True once the server has confirmed this terminal (adopted or registered
   /// at the terminal step).
   final bool claimed;
+
+  /// True when the wizard chose the branch and registered the till itself,
+  /// because the answer was not ambiguous (tablet-cloud-onboarding, Q2): one
+  /// branch and no waiting till. The branch and terminal screens are then not
+  /// part of the walk. Never set when anything was left for a person to pick.
+  final bool autoPlaced;
 
   final int? branchId;
   final String? branchLabel;
@@ -569,6 +575,7 @@ class SetupDraft {
     bool? needsDatabase,
     int? detectedPrinters,
     bool? claimed,
+    bool? autoPlaced,
     List<PosTerminalSummary>? pulledTerminals,
     int? adoptTerminalId,
     bool clearAdoption = false,
@@ -630,6 +637,7 @@ class SetupDraft {
     // "forget this": switching setup path has to erase the branch and till
     // name a previous claim filled in, not merely leave them unset.
     claimed: clearClaim ? false : (claimed ?? this.claimed),
+    autoPlaced: clearClaim ? false : (autoPlaced ?? this.autoPlaced),
     pulledTerminals: pulledTerminals ?? this.pulledTerminals,
     adoptTerminalId: clearClaim || clearAdoption
         ? null

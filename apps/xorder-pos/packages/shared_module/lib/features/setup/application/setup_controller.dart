@@ -1,4 +1,5 @@
 import 'dart:convert' show jsonEncode;
+import 'dart:io' show Platform;
 import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
@@ -19,7 +20,7 @@ import '../../../data/postgres/local_bootstrap.dart';
 import '../../../domain/models/content_languages.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/repositories.dart'
-    show ClaimNotice, DiscoveredPrinter;
+    show ClaimNotice, DiscoveredPrinter, PosBranch, PosTerminalSummary;
 import '../../../data/postgres/pos_database.dart';
 import '../../licensing/data/licence_service.dart';
 import '../../licensing/data/site_licence.dart';
@@ -1623,7 +1624,38 @@ class SetupController extends Notifier<SetupDraft> {
       branchLabel: only?.name ?? state.branchLabel,
       branchCode: only?.code ?? state.branchCode,
     );
+
+    await _placeWhenUnambiguous(only, adoptable);
   }
+
+  /// One branch and no till waiting for an owner: there is nothing to choose,
+  /// so register this machine and skip the branch and terminal screens
+  /// (tablet-cloud-onboarding, Q2). **Any doubt asks instead**: several
+  /// branches, or any till waiting to be adopted (it may have been made for a
+  /// desktop), leaves the existing screens exactly as they were. A refused or
+  /// unreachable registration also falls back to them, with its message.
+  Future<void> _placeWhenUnambiguous(
+    PosBranch? only,
+    List<PosTerminalSummary> adoptable,
+  ) async {
+    final cloudMain =
+        state.deployment.mode == DeploymentMode.cloud &&
+        !state.deployment.isChild;
+    if (!cloudMain || only == null || adoptable.isNotEmpty || state.claimed) {
+      return;
+    }
+    state = state.copyWith(terminalName: _defaultTerminalName);
+    await registerTerminal();
+    if (_disposed) return;
+    if (state.claimed) {
+      state = state.copyWith(autoPlaced: true);
+    }
+  }
+
+  /// What an automatically registered till is called until the owner renames
+  /// it on the dashboard.
+  static String get _defaultTerminalName =>
+      Platform.isAndroid ? 'Tablet' : 'Till';
 
   /// Everything the cloud path used to ask for, done instead of asked (owner
   /// decision, 2026-09-15: "cloud setup should get everything from cloud, no

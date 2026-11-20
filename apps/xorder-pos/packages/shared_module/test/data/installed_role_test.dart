@@ -71,4 +71,20 @@ void main() {
       expect(draft.step, SetupStep.account);
     });
   });
+
+  // tablet-cloud-onboarding, Stage 7: there is no installer on Android to write
+  // a marker, and an absent one reads as the main device.
+  group('on an Android tablet', () {
+    test('the role is a child of a desktop main device, with no file', () async {
+      expect(
+        await const FileInstalledRole(android: true).read(),
+        TerminalRole.child,
+      );
+    });
+
+    test('off Android the marker file is still what decides', () async {
+      // This machine has no installer marker, so no answer: a main device.
+      expect(await const FileInstalledRole(android: false).read(), isNull);
+    });
+  });
 }

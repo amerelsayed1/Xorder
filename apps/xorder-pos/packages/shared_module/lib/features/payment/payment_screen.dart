@@ -347,12 +347,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           children: [
             _header(strings, ticket),
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _left(strings, ticket, totals)),
-                  SizedBox(width: 400, child: _right(strings, ticket, totals)),
-                ],
+              // The keypad column is 400 wide where there is room (every
+              // desktop and tablet used landscape or wide) and shares the
+              // dialog half and half where there is not — a tablet held upright
+              // at 600 leaves the amounts 152 px otherwise
+              // (tablet-cloud-onboarding, AC-10).
+              child: LayoutBuilder(
+                builder: (context, box) => Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _left(strings, ticket, totals)),
+                    SizedBox(
+                      width: box.maxWidth >= 700 ? 400 : box.maxWidth * 0.5,
+                      child: _right(strings, ticket, totals),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

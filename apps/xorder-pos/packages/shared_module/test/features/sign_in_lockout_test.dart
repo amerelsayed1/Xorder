@@ -221,6 +221,7 @@ void main() {
           overrides: [
             staffDirectoryRepositoryProvider.overrideWithValue(directory),
             tillClockProvider.overrideWithValue(() => now),
+            secretStoreProvider.overrideWithValue(InMemorySecretStore()),
           ],
           child: MaterialApp(
             theme: buildPosTheme(),

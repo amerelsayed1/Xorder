@@ -899,11 +899,18 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       ),
       child: Row(
         children: [
-          Text(
-            strings.shortcutStrip,
-            style: PosText.mono(size: 11, color: context.pos.muted),
+          // Expanded: in the medium shell (a tablet held upright) the product
+          // area is narrower than this hint is long. It gives way; the count
+          // beside it does not, and stays at the far end as before.
+          Expanded(
+            child: Text(
+              strings.shortcutStrip,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PosText.mono(size: 11, color: context.pos.muted),
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: PosSpace.md),
           Text(
             searching
                 ? strings.matchCount(visible.length)

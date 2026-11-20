@@ -367,6 +367,29 @@ sealed class AppStrings {
   /// ONE message for both halves, on purpose: saying which of the two was wrong
   /// turns the lock screen into a way of finding out which usernames exist.
   String get wrongUsernameOrPin;
+
+  // Password sign-in on the lock screen (tablet-cloud-onboarding, Stage 4).
+  String get usePasswordInstead;
+  String get usePinInstead;
+
+  /// Like [wrongUsernameOrPin], one message for both halves.
+  String get wrongUsernameOrPassword;
+  String get passwordNeedsConnection;
+  String get passwordTryAgainLater;
+  String get passwordAccountNotOnTill;
+
+  // Change business (tablet-cloud-onboarding, Stage 5).
+  String get changeBusiness;
+  String get changeBusinessHelp;
+  String get changeBusinessConfirm;
+  String get changeBusinessPasswordHint;
+  String get changeBusinessNotPermitted;
+  String get changeBusinessNotAvailable;
+  String get changeBusinessShiftOpen;
+  String get changeBusinessUnsynced;
+  String get changeBusinessWrongPassword;
+  String get changeBusinessCannotCheck;
+  String get changeBusinessThrottled;
   String get openTheDrawer;
   String get signInHelp;
   String get signInOnlyHelp;
@@ -4253,6 +4276,51 @@ final class EnStrings extends AppStrings {
   String get switchUser => 'Switch user';
   @override
   String get wrongUsernameOrPin => 'Wrong username or PIN — try again';
+  @override
+  String get usePasswordInstead => 'Use password';
+  @override
+  String get usePinInstead => 'Use PIN';
+  @override
+  String get wrongUsernameOrPassword =>
+      'Wrong username or password — try again';
+  @override
+  String get passwordNeedsConnection =>
+      'Cannot reach XOrder. Check the connection, or use your PIN.';
+  @override
+  String get passwordTryAgainLater =>
+      'Too many sign-in attempts from this network. Wait a minute, or use your PIN.';
+  @override
+  String get passwordAccountNotOnTill =>
+      'Your account is not on this till yet. Try again in a moment, or ask a manager.';
+  @override
+  String get changeBusiness => 'Change business';
+  @override
+  String get changeBusinessHelp =>
+      'Moves this tablet to another business. It deletes the sales data, saved settings and licence on this tablet. Nothing is deleted on the platform: the old terminal stays registered in the old business until it is removed on the dashboard.';
+  @override
+  String get changeBusinessConfirm => 'Delete and change business';
+  @override
+  String get changeBusinessPasswordHint =>
+      'Type your password again to confirm.';
+  @override
+  String get changeBusinessNotPermitted =>
+      'Only someone who may manage terminals can change the business.';
+  @override
+  String get changeBusinessNotAvailable =>
+      'This app cannot change the business.';
+  @override
+  String get changeBusinessShiftOpen => 'Close the open shift first.';
+  @override
+  String get changeBusinessUnsynced =>
+      'Some sales have not reached the platform yet. Connect and sync them first.';
+  @override
+  String get changeBusinessWrongPassword => 'That password is not right.';
+  @override
+  String get changeBusinessCannotCheck =>
+      'Cannot check the password without a connection. Connect and try again.';
+  @override
+  String get changeBusinessThrottled =>
+      'Too many sign-in attempts from this network. Wait a minute and try again.';
   @override
   String get openTheDrawer => 'Open the drawer';
   @override
@@ -9934,6 +10002,49 @@ final class ArStrings extends AppStrings {
   @override
   String get wrongUsernameOrPin =>
       'اسم المستخدم أو الرقم السري خاطئ — حاول مرة أخرى';
+  @override
+  String get usePasswordInstead => 'استخدم كلمة المرور';
+  @override
+  String get usePinInstead => 'استخدم الرقم السري';
+  @override
+  String get wrongUsernameOrPassword =>
+      'اسم المستخدم أو كلمة المرور خاطئ — حاول مرة أخرى';
+  @override
+  String get passwordNeedsConnection =>
+      'تعذّر الاتصال بـ XOrder. تحقق من الاتصال أو استخدم الرقم السري.';
+  @override
+  String get passwordTryAgainLater =>
+      'محاولات تسجيل دخول كثيرة من هذه الشبكة. انتظر دقيقة أو استخدم الرقم السري.';
+  @override
+  String get passwordAccountNotOnTill =>
+      'حسابك ليس على هذا الجهاز بعد. حاول بعد قليل أو اسأل المدير.';
+  @override
+  String get changeBusiness => 'تغيير النشاط';
+  @override
+  String get changeBusinessHelp =>
+      'ينقل هذا الجهاز إلى نشاط آخر. يحذف بيانات المبيعات والإعدادات المحفوظة والترخيص من هذا الجهاز. لا يُحذف شيء على المنصة: يبقى الجهاز القديم مسجلًا في النشاط القديم حتى تحذفه من لوحة التحكم.';
+  @override
+  String get changeBusinessConfirm => 'احذف وغيّر النشاط';
+  @override
+  String get changeBusinessPasswordHint => 'اكتب كلمة المرور مرة أخرى للتأكيد.';
+  @override
+  String get changeBusinessNotPermitted =>
+      'يمكن لمن لديه صلاحية إدارة الأجهزة فقط تغيير النشاط.';
+  @override
+  String get changeBusinessNotAvailable => 'هذا التطبيق لا يمكنه تغيير النشاط.';
+  @override
+  String get changeBusinessShiftOpen => 'أغلق الوردية المفتوحة أولًا.';
+  @override
+  String get changeBusinessUnsynced =>
+      'بعض المبيعات لم تصل إلى المنصة بعد. اتصل بالإنترنت وزامنها أولًا.';
+  @override
+  String get changeBusinessWrongPassword => 'كلمة المرور غير صحيحة.';
+  @override
+  String get changeBusinessCannotCheck =>
+      'لا يمكن التحقق من كلمة المرور دون اتصال. اتصل وحاول مرة أخرى.';
+  @override
+  String get changeBusinessThrottled =>
+      'محاولات تسجيل دخول كثيرة من هذه الشبكة. انتظر دقيقة وحاول مرة أخرى.';
   @override
   String get openTheDrawer => 'افتح الدرج';
   @override

@@ -118,6 +118,8 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     // for every lockout window. Shut means the PIN is not even looked at.
     final limiter = ref.read(signInLimiterProvider);
     final username = _username.text;
+    await limiter.ready;
+    if (!mounted) return;
     if (limiter.lockedFor(username) case final wait?) {
       setState(() {
         _pin = '';
@@ -128,6 +130,8 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
       return;
     }
 
+    await limiter.reserve(username);
+    if (!mounted) return;
     setState(() => _busy = true);
     // Name and PIN, exactly as switching user asks for them. Opening a shift is
     // the same act by another name: the person becomes the operator, and the

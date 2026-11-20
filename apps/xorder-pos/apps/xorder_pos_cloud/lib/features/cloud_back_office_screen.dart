@@ -8,6 +8,7 @@ import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/core/ui/tokens.dart';
 import 'package:shared_module/core/ui/widgets/pos_widgets.dart';
+import 'package:shared_module/domain/models/permissions.dart';
 
 /// What a CLOUD till shows where an offline till shows its back office.
 ///
@@ -69,7 +70,13 @@ class CloudBackOfficeScreen extends ConsumerWidget {
             ),
           ),
           Expanded(
-            child: Center(
+            // Scrolls when the screen is short or the keyboard is up, centred
+            // when there is room (tablet-cloud-onboarding, AC-10).
+            child: LayoutBuilder(
+              builder: (context, box) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: box.maxHeight),
+                  child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 620),
                 child: Padding(
@@ -122,14 +129,156 @@ class CloudBackOfficeScreen extends ConsumerWidget {
                           ),
                         ),
                       ],
+                      if (ref
+                              .watch(signedInStaffProvider)
+                              ?.can(PosCapability.terminalManage) ??
+                          false) ...[
+                        const SizedBox(height: PosSpace.xl),
+                        const _ChangeBusiness(),
+                      ],
                     ],
                   ),
                 ),
               ),
             ),
           ),
+          ),
+          ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// "Change business" (tablet-cloud-onboarding, Stage 5, BR-6). Shown only to
+/// somebody holding `terminal.manage`, but that is a courtesy: the action
+/// itself refuses everybody else, an open shift, unsent sales and a password
+/// the platform does not accept (`TerminalReset.changeBusiness`).
+class _ChangeBusiness extends ConsumerStatefulWidget {
+  const _ChangeBusiness();
+
+  @override
+  ConsumerState<_ChangeBusiness> createState() => _ChangeBusinessState();
+}
+
+class _ChangeBusinessState extends ConsumerState<_ChangeBusiness> {
+  final _password = TextEditingController();
+  bool _open = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  String _words(AppStrings s, ChangeBusinessRefusal why) => switch (why) {
+    ChangeBusinessRefusal.notPermitted => s.changeBusinessNotPermitted,
+    ChangeBusinessRefusal.notAvailable => s.changeBusinessNotAvailable,
+    ChangeBusinessRefusal.shiftOpen => s.changeBusinessShiftOpen,
+    ChangeBusinessRefusal.unsyncedSales => s.changeBusinessUnsynced,
+    ChangeBusinessRefusal.wrongPassword => s.changeBusinessWrongPassword,
+    ChangeBusinessRefusal.cannotCheckPassword => s.changeBusinessCannotCheck,
+    ChangeBusinessRefusal.throttled => s.changeBusinessThrottled,
+  };
+
+  Future<void> _confirm() async {
+    final s = context.strings;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final typed = _password.text;
+    final ChangeBusinessResult result;
+    try {
+      result = await ref
+          .read(terminalResetProvider)
+          .changeBusiness(password: typed);
+    } finally {
+      _password.clear();
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      final why = result.refusal;
+      _error = why == null ? null : _words(s, why);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    if (!_open) {
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: PosButton(
+          key: const Key('change-business'),
+          label: s.changeBusiness,
+          onPressed: () => setState(() => _open = true),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MicroLabel(s.changeBusiness),
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          s.changeBusinessHelp,
+          style: PosText.ui(size: 13.5, color: context.pos.body, height: 1.6),
+        ),
+        const SizedBox(height: PosSpace.lg),
+        Text(
+          s.changeBusinessPasswordHint,
+          style: PosText.ui(size: 13, color: context.pos.body),
+        ),
+        const SizedBox(height: PosSpace.sm),
+        TextField(
+          key: const Key('change-business-password'),
+          controller: _password,
+          obscureText: true,
+          enableSuggestions: false,
+          autocorrect: false,
+          onChanged: (_) => setState(() => _error = null),
+          onSubmitted: (_) => _busy ? null : _confirm(),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: PosSpace.md),
+          Text(
+            _error!,
+            key: const Key('change-business-error'),
+            style: PosText.ui(
+              size: 13.5,
+              weight: FontWeight.w800,
+              color: context.pos.offlinePillText,
+            ),
+          ),
+        ],
+        const SizedBox(height: PosSpace.lg),
+        Row(
+          children: [
+            PosButton(
+              key: const Key('change-business-confirm'),
+              label: s.changeBusinessConfirm,
+              onPressed: _busy ? null : _confirm,
+            ),
+            const SizedBox(width: PosSpace.md),
+            PosButton(
+              key: const Key('change-business-cancel'),
+              label: s.cancel,
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                      _open = false;
+                      _error = null;
+                      _password.clear();
+                    }),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

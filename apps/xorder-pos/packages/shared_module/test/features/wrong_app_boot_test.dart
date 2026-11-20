@@ -131,6 +131,63 @@ void main() {
       });
     }
 
+    // tablet-cloud-onboarding BR-4, BR-7, AC-4, AC-6: the launch decision
+    // reads only what is on disk. It takes no network result, so a dead
+    // connection can neither clear the business nor send anyone to setup.
+    test('a set-up cloud tablet keeps its business on every launch', () {
+      final config = SavedTerminalConfig(
+        deployment: const DeploymentConfig(
+          mode: DeploymentMode.cloud,
+          baseUrl: 'https://cafe-nile.xorder.io',
+          tenantSlug: 'cafe-nile',
+        ),
+        terminal: terminal,
+        languageCode: 'en',
+      );
+
+      for (var launch = 0; launch < 3; launch++) {
+        final boot = bootFor(
+          saved: config,
+          appMode: DeploymentMode.cloud,
+          hasDatabaseCredential: true,
+          credentialStoreUnavailable: false,
+        );
+        expect(boot.otherAppMode, isNull);
+        expect(boot.config?.deployment.tenantSlug, 'cafe-nile');
+        expect(boot.hasDatabaseCredential, isTrue);
+      }
+
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(appMode: DeploymentMode.cloud),
+          terminalBootProvider.overrideWithValue(
+            bootFor(
+              saved: config,
+              appMode: DeploymentMode.cloud,
+              hasDatabaseCredential: true,
+              credentialStoreUnavailable: false,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      expect(container.read(setupCompleteProvider), isTrue);
+      expect(container.read(deploymentProvider).tenantSlug, 'cafe-nile');
+    });
+
+    test('a tablet whose keystore refuses is told so, not sent to setup '
+        'with its business forgotten', () {
+      final config = saved(DeploymentMode.cloud);
+      final boot = bootFor(
+        saved: config,
+        appMode: DeploymentMode.cloud,
+        hasDatabaseCredential: false,
+        credentialStoreUnavailable: true,
+      );
+      expect(boot.config, isNotNull);
+      expect(boot.credentialStoreUnavailable, isTrue);
+    });
+
     test('a child tablet is judged by its main device\'s mode too', () {
       final child = SavedTerminalConfig(
         deployment: const DeploymentConfig(

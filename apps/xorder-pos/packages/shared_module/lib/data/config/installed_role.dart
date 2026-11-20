@@ -54,7 +54,10 @@ abstract interface class InstalledRoleSource {
 
 /// The marker the Windows installer wrote, beside its credentials file.
 class FileInstalledRole implements InstalledRoleSource {
-  const FileInstalledRole();
+  /// [android] is for tests; the app leaves it null and asks the platform.
+  const FileInstalledRole({this.android});
+
+  final bool? android;
 
   /// Kept in step with `installer/xorder-pos.iss` by hand, and pinned by
   /// `test/tool/installer_consistency_test.dart`.
@@ -62,6 +65,12 @@ class FileInstalledRole implements InstalledRoleSource {
 
   @override
   Future<TerminalRole?> read() async {
+    // A tablet is always a child of a desktop main device: it cannot host the
+    // branch's PostgreSQL. There is no installer on Android to say so, and
+    // "absent" would read as main (tablet-cloud-onboarding, Stage 7). The Cloud
+    // app does not ask this question; it fixes its own role.
+    if (android ?? Platform.isAndroid) return TerminalRole.child;
+
     final root = Platform.environment['ProgramData'];
     if (root == null || root.isEmpty) return null;
 

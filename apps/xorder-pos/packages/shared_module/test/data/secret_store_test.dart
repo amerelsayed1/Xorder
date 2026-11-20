@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_module/data/config/android_keystore_secret_store.dart';
 import 'package:shared_module/data/config/file_secret_store.dart';
 import 'package:shared_module/data/config/mac_keychain_secret_store.dart';
 import 'package:shared_module/data/config/pos_db_secret_store.dart';
@@ -54,6 +55,70 @@ void main() {
     () async => MacKeychainSecretStore(backend: keychain),
   );
 
+  final androidSecrets = _StandInAndroidSecrets();
+  secretStoreContract(
+    'the Android Keystore store (stand-in native side)',
+    () async => AndroidKeystoreSecretStore(backend: androidSecrets),
+  );
+
+  group('the Android Keystore store', () {
+    test(
+      'a refusing keystore is a typed refusal that names the store',
+      () async {
+        final backend = _StandInAndroidSecrets()..failing = true;
+        final store = AndroidKeystoreSecretStore(backend: backend);
+
+        for (final call in <Future<Object?> Function()>[
+          () => store.read('k'),
+          () => store.write('k', 'a-password-that-must-not-leak'),
+          () => store.delete('k'),
+          () => store.deleteAll(),
+        ]) {
+          await expectLater(call(), throwsA(isA<SecretStoreUnavailable>()));
+        }
+      },
+    );
+
+    test(
+      'a refusal never carries the secret and never falls back to a file',
+      () async {
+        final backend = _StandInAndroidSecrets()..failing = true;
+        final store = AndroidKeystoreSecretStore(backend: backend);
+
+        Object? caught;
+        try {
+          await store.write('k', 'a-password-that-must-not-leak');
+        } on Object catch (error) {
+          caught = error;
+        }
+
+        expect(caught, isA<SecretStoreUnavailable>());
+        expect('$caught', contains('Android Keystore'));
+        expect('$caught', isNot(contains('a-password-that-must-not-leak')));
+        // Nothing was kept anywhere: the stand-in holds no value either.
+        expect(backend.values, isEmpty);
+      },
+    );
+
+    test('it is protected by the operating system', () {
+      expect(AndroidKeystoreSecretStore().protectedByOperatingSystem, isTrue);
+    });
+
+    test(
+      'with no native side present it refuses instead of crashing',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        // The real channel with nothing answering: what a desktop run, or an
+        // Android build without MainActivity's handler, would see.
+        final store = AndroidKeystoreSecretStore();
+        await expectLater(
+          store.read('k'),
+          throwsA(isA<SecretStoreUnavailable>()),
+        );
+      },
+    );
+  });
+
   group('SecretStore.forPlatform', () {
     test('plaintext only where nobody sells', () {
       // Every member, so a new platform added to the enum is a failing test
@@ -82,6 +147,10 @@ void main() {
       expect(
         forPlatform(SecretPlatform.macos),
         isA<MacKeychainSecretStore>(),
+      );
+      expect(
+        forPlatform(SecretPlatform.android),
+        isA<AndroidKeystoreSecretStore>(),
       );
       expect(
         forPlatform(SecretPlatform.development),
@@ -438,4 +507,44 @@ class _ThrowingKeychain implements KeychainBackend {
   @override
   int delete(String service, String? account) =>
       throw ArgumentError('Failed to load dynamic library');
+}
+
+/// Stands in for the native Keystore calls: a map, and a switch that makes
+/// every call refuse.
+class _StandInAndroidSecrets implements AndroidSecretsBackend {
+  final values = <String, String>{};
+  bool failing = false;
+
+  void _check() {
+    if (failing) {
+      throw const AndroidSecretsFailure(
+        'keystore_failure',
+        'KeyStoreException',
+      );
+    }
+  }
+
+  @override
+  Future<String?> read(String key) async {
+    _check();
+    return values[key];
+  }
+
+  @override
+  Future<void> write(String key, String value) async {
+    _check();
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    _check();
+    values.remove(key);
+  }
+
+  @override
+  Future<void> deleteAll() async {
+    _check();
+    values.clear();
+  }
 }

@@ -187,6 +187,21 @@ class SqliteDatabase implements SqlDatabase {
     });
   }
 
+  /// Close the file and delete it, with the journal files SQLite keeps beside
+  /// it. **Destroys every sale in it**; only the guarded "change business"
+  /// action calls this (tablet-cloud-onboarding, Stage 5). A later open creates
+  /// a new empty file, which needs a key again.
+  Future<void> deleteFile() async {
+    await close();
+    await _serialised(() async {
+      final path = _path ?? await _locate!();
+      for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+        final file = File('$path$suffix');
+        if (await file.exists()) await file.delete();
+      }
+    });
+  }
+
   /// A consistent copy of the whole file at [target], encrypted with the same
   /// key — the day-close backup (`VACUUM INTO`).
   Future<void> copyTo(String target) => _serialised(() async {
