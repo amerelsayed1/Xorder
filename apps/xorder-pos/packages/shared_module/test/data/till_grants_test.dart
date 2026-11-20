@@ -112,6 +112,11 @@ void main() {
       expect(writesTo(offline, 'pos_shifts'), isNotEmpty);
       expect(writesTo(offline, 'pos_invoice_sequences'), isNotEmpty);
       expect(
+        writesTo(offline, 'pos_order_day_counters'),
+        isNotEmpty,
+        reason: 'the order-number trigger runs as the till and bumps this',
+      );
+      expect(
         writesTo(offline, 'pos_parked_tickets'),
         isNotEmpty,
         reason: 'seating and settling a table both write here',

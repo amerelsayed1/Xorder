@@ -5108,6 +5108,67 @@ const posMigrations = <PosMigration>[
       ON pos_waiter_shifts (business_id, branch_id, started_at)
     ''',
   ]),
+  // The count of customers served in a trading day: 1, 2, 3 ... for the order
+  // a cashier calls out. It is **not** the invoice number — that one is the
+  // legal and tax number, unique per branch and year, and stays exactly as it
+  // is. This one is shared by every till of the branch, restarts at 1 with the
+  // trading day, and is shown beside the invoice number on the paper.
+  //
+  // **A trigger, for the reason migration 35 gave.** The trading day of an order
+  // is chosen by the database (`pos_stamp_business_day`), so the number has to
+  // be taken from that same day; and there are two order inserts, a sale and a
+  // void, with a third one always possible. A column remembered at every INSERT
+  // is the column forgotten at every INSERT.
+  //
+  // **Order of triggers.** PostgreSQL fires BEFORE triggers in name order, so
+  // `pos_orders_business_day` (which fills `business_day_id`) runs before
+  // `pos_orders_number`, which reads it. A test pins that.
+  //
+  // **The upsert is the lock.** Two tills settling at the same instant queue on
+  // the day's counter row and get consecutive numbers. Voided orders keep their
+  // number. An order outside any trading day keeps NULL, never an invented one.
+  // A sale that loses the idempotency race (`ON CONFLICT DO NOTHING`) has spent
+  // a number: a gap, tolerated for the invoice number in the same way.
+  //
+  // Additive: a nullable column with no default (no table rewrite) and a new
+  // table. Old orders keep NULL. An older build against a migrated database
+  // still works; a newer build against an unmigrated one does not, so migrate
+  // through the newer binary first, as for every migration.
+  //
+  // The function is single-quoted, not dollar-quoted, as in 35 and 36, and runs
+  // as the till role, which is granted the counter table (local_bootstrap.dart,
+  // bin/pos_migrate.dart).
+  PosMigration(67, 'the count of orders in a trading day, shared by every till', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_order_day_counters (
+      business_day_id bigint  PRIMARY KEY
+        REFERENCES pos_business_days(id) ON DELETE CASCADE,
+      last_value      integer NOT NULL DEFAULT 0,
+      CONSTRAINT pos_order_day_counters_sane CHECK (last_value >= 0)
+    )
+    ''',
+    'ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS day_order_number integer',
+    '''
+    CREATE OR REPLACE FUNCTION pos_stamp_day_order_number() RETURNS trigger
+    LANGUAGE plpgsql AS '
+    BEGIN
+      IF NEW.day_order_number IS NULL AND NEW.business_day_id IS NOT NULL THEN
+        INSERT INTO pos_order_day_counters (business_day_id, last_value)
+        VALUES (NEW.business_day_id, 1)
+        ON CONFLICT (business_day_id)
+        DO UPDATE SET last_value = pos_order_day_counters.last_value + 1
+        RETURNING last_value INTO NEW.day_order_number;
+      END IF;
+      RETURN NEW;
+    END
+    '
+    ''',
+    'DROP TRIGGER IF EXISTS pos_orders_number ON pos_orders',
+    '''
+    CREATE TRIGGER pos_orders_number BEFORE INSERT ON pos_orders
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_day_order_number()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

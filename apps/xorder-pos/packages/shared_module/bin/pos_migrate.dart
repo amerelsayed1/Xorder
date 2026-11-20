@@ -598,6 +598,8 @@ Future<void> _seedCatalogue(PosDatabase database, Options options) async {
 ///
 /// * `pos_invoice_sequences` needs UPDATE. Invoice numbering bumps `next_value`
 ///   under `SELECT … FOR UPDATE`, and row locking is itself an UPDATE right.
+/// * `pos_order_day_counters` needs INSERT and UPDATE. The `pos_orders_number`
+///   trigger bumps the trading day's order count in the till's own transaction.
 /// * The `bigserial` primary keys need USAGE on their sequences, or every
 ///   INSERT fails on `nextval`.
 ///

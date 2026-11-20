@@ -71,6 +71,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   ReceiptData _slip() => _data ??= ReceiptData.fromTicket(
     ticket,
     invoiceNumber: result.invoiceNumber,
+    dayOrderNumber: result.dayOrderNumber,
     queued: result.queued,
     // Whether there is a platform at all. An offline till prints nothing
     // about sync rather than claiming to have reached something it has

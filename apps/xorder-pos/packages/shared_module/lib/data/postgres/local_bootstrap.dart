@@ -814,6 +814,9 @@ class LocalBootstrap {
         'net_minor) ON pos_business_days TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_business_days_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_invoice_sequences TO "$role"',
+    // The trading day's order count, bumped by the order-number trigger in the
+    // till's own transaction (so the till needs INSERT and UPDATE here).
+    'GRANT SELECT, INSERT, UPDATE ON pos_order_day_counters TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_orders_id_seq, pos_order_lines_id_seq, '
         'pos_order_payments_id_seq TO "$role"',
     // Everything Wave M added to the menu, read-only on the same terms as the

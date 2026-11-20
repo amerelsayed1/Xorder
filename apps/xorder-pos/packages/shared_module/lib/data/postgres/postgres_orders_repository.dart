@@ -84,7 +84,8 @@ class PostgresOrdersRepository implements OrdersRepository {
         Sql.named(
           'SELECT o.id, o.invoice_number, '
           '       (SELECT x.server_invoice_number FROM pos_outbox x '
-          '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1) '
+          '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1), '
+          '       o.day_order_number '
           'FROM pos_orders o '
           'WHERE o.business_id = @business AND o.client_transaction_id = @txn',
         ),
@@ -97,6 +98,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           queued: false,
           serverId: row[0] as int,
           invoiceNumber: _printable(row[1] as String?, row[2] as String?),
+          dayOrderNumber: row[3] as int?,
         );
       }
 
@@ -127,7 +129,7 @@ class PostgresOrdersRepository implements OrdersRepository {
             @customer
           )
           ON CONFLICT (business_id, client_transaction_id) DO NOTHING
-          RETURNING id, invoice_number
+          RETURNING id, invoice_number, day_order_number
         '''),
         parameters: {
           'txn': ticket.id,
@@ -172,7 +174,8 @@ class PostgresOrdersRepository implements OrdersRepository {
           Sql.named(
             'SELECT o.id, o.invoice_number, '
             '       (SELECT x.server_invoice_number FROM pos_outbox x '
-            '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1) '
+            '         WHERE x.order_id = o.id ORDER BY x.id DESC LIMIT 1), '
+          '       o.day_order_number '
             'FROM pos_orders o '
             'WHERE o.business_id = @business AND o.client_transaction_id = @txn',
           ),
@@ -184,6 +187,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           queued: false,
           serverId: row[0] as int,
           invoiceNumber: _printable(row[1] as String?, row[2] as String?),
+          dayOrderNumber: row[3] as int?,
         );
       }
 
@@ -205,6 +209,11 @@ class PostgresOrdersRepository implements OrdersRepository {
         queued: queued,
         serverId: orderId,
         invoiceNumber: _printable(inserted.first[1] as String?, null),
+        dayOrderNumber: await _dayOrderNumber(
+          tx,
+          orderId,
+          inserted.first[2] as int?,
+        ),
       );
     });
     // Refused inside the transaction, thrown out here: `runTx` translates
@@ -223,6 +232,21 @@ class PostgresOrdersRepository implements OrdersRepository {
   /// one. An offline till has no platform, and its own number is the invoice.
   String? _printable(String? local, String? server) =>
       _config.mode.syncsSalesToPlatform ? server : local;
+
+  /// The order's number in its trading day, as the database stamped it.
+  ///
+  /// PostgreSQL stamps it in a BEFORE trigger, so `RETURNING` carries it
+  /// ([returned]). A cloud till's SQLite stamps it in an AFTER trigger, which
+  /// `RETURNING` does not see, so the row is read back once. Null stays null:
+  /// an order outside any trading day is never given an invented number.
+  Future<int?> _dayOrderNumber(TxSession tx, int orderId, int? returned) async {
+    if (returned != null) return returned;
+    final row = await tx.execute(
+      Sql.named('SELECT day_order_number FROM pos_orders WHERE id = @id'),
+      parameters: {'id': orderId},
+    );
+    return row.isEmpty ? null : row.first[0] as int?;
+  }
 
   /// Let go of [ticket]'s parked check as part of the sale, and confirm it is
   /// the check being paid (XORD-045, XORD-046 for a held ticket). False
@@ -303,7 +327,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       // retried after a timeout must not record the waste twice.
       final replay = await tx.execute(
         Sql.named(
-          'SELECT id, invoice_number FROM pos_orders '
+          'SELECT id, invoice_number, day_order_number FROM pos_orders '
           'WHERE business_id = @business AND client_transaction_id = @txn',
         ),
         parameters: {'business': _context.businessId, 'txn': ticket.id},
@@ -314,6 +338,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           queued: false,
           serverId: replay.first[0] as int,
           invoiceNumber: replay.first[1] as String?,
+          dayOrderNumber: replay.first[2] as int?,
         );
       }
 
@@ -345,7 +370,7 @@ class PostgresOrdersRepository implements OrdersRepository {
             @note, @servedBy
           )
           ON CONFLICT (business_id, client_transaction_id) DO NOTHING
-          RETURNING id, invoice_number
+          RETURNING id, invoice_number, day_order_number
         '''),
         parameters: {
           'txn': ticket.id,
@@ -383,7 +408,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       if (inserted.isEmpty) {
         final winner = await tx.execute(
           Sql.named(
-            'SELECT id, invoice_number FROM pos_orders '
+            'SELECT id, invoice_number, day_order_number FROM pos_orders '
             'WHERE business_id = @business AND client_transaction_id = @txn',
           ),
           parameters: {'business': _context.businessId, 'txn': ticket.id},
@@ -393,6 +418,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           queued: false,
           serverId: winner.first[0] as int,
           invoiceNumber: winner.first[1] as String?,
+          dayOrderNumber: winner.first[2] as int?,
         );
       }
 
@@ -414,6 +440,11 @@ class PostgresOrdersRepository implements OrdersRepository {
         queued: false,
         serverId: orderId,
         invoiceNumber: inserted.first[1] as String?,
+        dayOrderNumber: await _dayOrderNumber(
+          tx,
+          orderId,
+          inserted.first[2] as int?,
+        ),
       );
     });
     return outcome ?? (throw CheckChangedElsewhere(ticket.tableId));

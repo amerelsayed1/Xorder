@@ -69,8 +69,10 @@ void main() {
     String? customerPhone,
     String? customerEmail,
     bool platformNumbered = true,
+    int? number,
   }) => OrderRecord(
     id: id,
+    dayOrderNumber: number,
     clientTransactionId: 'txn-$id',
     invoiceNumber: invoice,
     status: status,
@@ -200,6 +202,37 @@ void main() {
       final first = tester.getTopLeft(find.text('HST-000482')).dy;
       final second = tester.getTopLeft(find.text('HST-000481')).dy;
       expect(first, lessThan(second));
+    });
+
+    testWidgets('shows the day\'s order number beside the invoice number, and a '
+        'dash where there is none', (tester) async {
+      await pump(
+        tester,
+        orders: [
+          order(id: 1, invoice: 'HST-000481', occurredAt: at(10), number: 17),
+          order(id: 2, invoice: 'HST-000482', occurredAt: at(12)),
+        ],
+      );
+
+      expect(
+        tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('order-number-1')),
+            matching: find.byType(Text),
+          ),
+        ).data,
+        '17',
+      );
+      expect(
+        tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('order-number-2')),
+            matching: find.byType(Text),
+          ),
+        ).data,
+        '—',
+      );
+      expect(find.text('HST-000481'), findsOneWidget);
     });
 
     testWidgets('at the narrowest window the table scrolls sideways rather '
@@ -380,10 +413,11 @@ void main() {
         orders: [order(id: 1, invoice: 'OLD', occurredAt: at(10))],
       );
       expect(find.text('OLD'), findsOneWidget);
-      // Five em dashes: the staff and table columns, since BO-2 the payment
-      // method and till columns, and the customer — each saying "not recorded"
-      // rather than guessing.
-      expect(find.text('—'), findsNWidgets(5));
+      // Six em dashes: the staff and table columns, since BO-2 the payment
+      // method and till columns, the customer, and the day's order number (an
+      // order from before it existed) — each saying "not recorded" rather
+      // than guessing.
+      expect(find.text('—'), findsNWidgets(6));
     });
 
     // "Says so when the cap was hit" lived here. There is no cap since BO-3:
@@ -782,6 +816,23 @@ void main() {
 
       expect(find.text('BR8-000007'), findsOneWidget);
       expect(find.text('PROVISIONAL'), findsNothing);
+    });
+
+    testWidgets('the opened order says its number in the day', (tester) async {
+      final record = order(
+        id: 1,
+        invoice: 'HST-000481',
+        occurredAt: at(10),
+        table: 'T12',
+        number: 17,
+      );
+      await pump(tester, orders: [record], details: {1: detail(record)});
+
+      await tester.tap(find.text('HST-000481'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Order no. 17'), findsOneWidget);
+      expect(find.text('HST-000481'), findsWidgets);
     });
 
     testWidgets('a voided line stays on the record and names who', (

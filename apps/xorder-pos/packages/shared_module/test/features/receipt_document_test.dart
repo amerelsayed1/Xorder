@@ -302,6 +302,86 @@ void main() {
     expect(labels.where((label) => label.contains('12')), isEmpty);
   });
 
+  group('the order number', () {
+    test('is printed beside the invoice number, which stays as it was', () {
+      final printed = rows(
+        slip(
+          ReceiptData.fromTicket(
+            ownersSale(),
+            invoiceNumber: 'MAIN-2026-000001',
+            dayOrderNumber: 17,
+          ),
+        ),
+      );
+
+      expect(printed['Order no.'], '17');
+      expect(printed['Order #'], 'MAIN-2026-000001');
+    });
+
+    test('says so in Arabic too, under its own label', () {
+      final printed = rows(
+        slip(
+          ReceiptData.fromTicket(
+            ownersSale(),
+            invoiceNumber: 'MAIN-2026-000001',
+            dayOrderNumber: 17,
+          ),
+          strings: const ArStrings(),
+        ),
+      );
+
+      expect(printed[const ArStrings().receiptDayOrderNumber], '17');
+      expect(
+        const ArStrings().receiptDayOrderNumber,
+        isNot(const ArStrings().receiptOrderNumber),
+        reason: 'two rows must not wear the same label',
+      );
+    });
+
+    test('is left off when there is none, rather than printing a dash', () {
+      final printed = rows(
+        slip(
+          ReceiptData.fromTicket(
+            ownersSale(),
+            invoiceNumber: 'MAIN-2026-000001',
+          ),
+        ),
+      );
+
+      expect(printed.containsKey('Order no.'), isFalse);
+      expect(printed['Order #'], 'MAIN-2026-000001');
+    });
+
+    test('reaches a reprint through the order record', () {
+      final record = OrderRecord(
+        id: 9,
+        clientTransactionId: 'txn-9',
+        invoiceNumber: 'HST-000512',
+        dayOrderNumber: 42,
+        status: OrderStatus.paid,
+        orderType: OrderType.takeaway,
+        occurredAt: DateTime(2026, 9, 12, 20, 41),
+        subtotal: const Money(1000),
+        discount: Money.zero,
+        service: Money.zero,
+        vat: Money.zero,
+        total: const Money(1000),
+      );
+      final data = ReceiptData.fromOrder(
+        OrderRecordDetail(
+          order: record,
+          lines: const [],
+          payments: const [],
+          discounts: const [],
+          taxLines: const [],
+        ),
+      );
+
+      expect(data.dayOrderNumber, 42);
+      expect(data.invoiceNumber, 'HST-000512');
+    });
+  });
+
   group('a reprint of a split bill', () {
     OrderRecordDetail splitBill() => OrderRecordDetail(
       order: OrderRecord(

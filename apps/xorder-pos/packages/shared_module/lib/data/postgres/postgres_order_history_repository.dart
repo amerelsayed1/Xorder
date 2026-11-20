@@ -89,7 +89,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         trading.business_date, o.terminal_id::text, term.name,
         tenders.labels, tenders.type_ids,
         o.customer_id, cust.name, cust.phone, cust.email,
-        length(coalesce(o.server_invoice_number, '')) > 0''';
+        length(coalesce(o.server_invoice_number, '')) > 0,
+        o.day_order_number''';
 
   /// The joins [_orderColumns] needs.
   ///
@@ -311,6 +312,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       customerPhone: row[32] as String?,
       customerEmail: row[33] as String?,
       platformNumbered: row.boolean(34),
+      dayOrderNumber: row[35] as int?,
     );
   }
 

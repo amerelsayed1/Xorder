@@ -474,6 +474,7 @@ class SubmitOrderResult {
     required this.queued,
     this.serverId,
     this.invoiceNumber,
+    this.dayOrderNumber,
     this.totalsMismatch = false,
   });
 
@@ -481,6 +482,12 @@ class SubmitOrderResult {
   final bool queued;
   final int? serverId;
   final String? invoiceNumber;
+
+  /// The count of orders in this trading day, shared by every till of the
+  /// branch: the number a cashier calls out. **Not** the invoice number, which
+  /// is the legal one. Null when no trading day was open (or for a cloud
+  /// platform reply, which does not carry it).
+  final int? dayOrderNumber;
 
   /// The server re-priced and disagreed with what the till charged. Money has
   /// already changed hands, so this is a reconciliation prompt, not a failure.

@@ -51,6 +51,49 @@ const sqliteUpgrades = <int, List<String>>{
     '''CREATE UNIQUE INDEX IF NOT EXISTS pos_waiter_shifts_one_open ON pos_waiter_shifts (user_id) WHERE ended_at IS NULL''',
     '''CREATE INDEX IF NOT EXISTS pos_waiter_shifts_business_idx ON pos_waiter_shifts (business_id, branch_id, started_at)''',
   ],
+  // The count of orders in a trading day (PostgreSQL migration 67). A cloud
+  // till is one till, so "shared by every till" is only itself, but the history
+  // and the receipt read the column on either engine.
+  //
+  // SQLite cannot change the row in a BEFORE trigger, and the trading day is
+  // itself stamped by an AFTER INSERT trigger that UPDATEs the row
+  // (`pos_orders_business_day`). So the number is taken in the two places the
+  // day can arrive: an INSERT that already names it, and the UPDATE that
+  // stamps it. A row with no trading day keeps NULL, never an invented number.
+  67: [
+    'ALTER TABLE pos_orders ADD COLUMN day_order_number INTEGER',
+    '''CREATE TABLE IF NOT EXISTS "pos_order_day_counters" (
+  "business_day_id" INTEGER PRIMARY KEY,
+  "last_value" INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT "pos_order_day_counters_sane" CHECK (last_value >= 0),
+  FOREIGN KEY (business_day_id) REFERENCES pos_business_days(id) ON DELETE CASCADE
+)''',
+    '''CREATE TRIGGER pos_orders_number_insert AFTER INSERT ON pos_orders
+  WHEN NEW.day_order_number IS NULL AND NEW.business_day_id IS NOT NULL
+BEGIN
+  INSERT INTO pos_order_day_counters (business_day_id, last_value)
+  VALUES (NEW.business_day_id, 1)
+  ON CONFLICT (business_day_id)
+  DO UPDATE SET last_value = last_value + 1;
+  UPDATE pos_orders SET day_order_number = (
+    SELECT last_value FROM pos_order_day_counters
+     WHERE business_day_id = NEW.business_day_id)
+   WHERE rowid = NEW.rowid;
+END''',
+    '''CREATE TRIGGER pos_orders_number_day_stamped
+  AFTER UPDATE OF business_day_id ON pos_orders
+  WHEN NEW.day_order_number IS NULL AND NEW.business_day_id IS NOT NULL
+BEGIN
+  INSERT INTO pos_order_day_counters (business_day_id, last_value)
+  VALUES (NEW.business_day_id, 1)
+  ON CONFLICT (business_day_id)
+  DO UPDATE SET last_value = last_value + 1;
+  UPDATE pos_orders SET day_order_number = (
+    SELECT last_value FROM pos_order_day_counters
+     WHERE business_day_id = NEW.business_day_id)
+   WHERE rowid = NEW.rowid;
+END''',
+  ],
 };
 
 /// Brings a cloud till's SQLite file up to the current schema.

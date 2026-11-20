@@ -790,6 +790,7 @@ class FakeOrdersRepository implements OrdersRepository {
         clientTransactionId: ticket.id,
         queued: true,
         invoiceNumber: 'POS-${_sequence - submitted.length + existing + 1}',
+        dayOrderNumber: _sequence - submitted.length + existing + 1,
       );
     }
 
@@ -799,6 +800,7 @@ class FakeOrdersRepository implements OrdersRepository {
       clientTransactionId: ticket.id,
       queued: true,
       invoiceNumber: 'POS-$_sequence',
+      dayOrderNumber: _sequence,
     );
   }
 
@@ -842,6 +844,7 @@ class FakeOrdersRepository implements OrdersRepository {
       clientTransactionId: ticket.id,
       queued: true,
       invoiceNumber: 'POS-$_sequence',
+      dayOrderNumber: _sequence,
     );
   }
 }
