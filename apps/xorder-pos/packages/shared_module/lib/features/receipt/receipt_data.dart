@@ -43,11 +43,53 @@ class ReceiptLine {
     required this.lineTotal,
     this.isVoided = false,
     this.wasRepriced = false,
+    this.mergeKey,
   });
 
   final String name;
   final int quantity;
   final Money lineTotal;
+
+  /// What makes two lines the same dish sold the same way, or null for a line
+  /// that must stand alone. Built by the factories from the product and its
+  /// modifiers (the ticket's line key), the unit price, the note and whether the
+  /// price was set by hand — and left null for a voided line and for a line
+  /// that carries a discount of its own. Two lines with the same key were sold
+  /// in different rounds; the slip prints them as one.
+  final String? mergeKey;
+
+  /// The lines as the customer reads them: identical dishes from later rounds
+  /// are one line, quantities and line totals added.
+  ///
+  /// **Presentation only.** The ticket and `pos_order_lines` keep every row —
+  /// a refund points at one, the kitchen printed a round per row, and an audit
+  /// asks who rang what — and the slip's money figures come from the engine, not
+  /// from these lines, so none of them moves. Line totals are whole minor
+  /// units, so the sum is exact; there is no rounding step here.
+  ///
+  /// Order of first appearance. A line with no [mergeKey] is kept as it is.
+  static List<ReceiptLine> consolidate(List<ReceiptLine> lines) {
+    final merged = <ReceiptLine>[];
+    final at = <String, int>{};
+    for (final line in lines) {
+      final key = line.mergeKey;
+      final seen = key == null ? null : at[key];
+      if (seen == null) {
+        if (key != null) at[key] = merged.length;
+        merged.add(line);
+        continue;
+      }
+      final first = merged[seen];
+      merged[seen] = ReceiptLine(
+        name: first.name,
+        quantity: first.quantity + line.quantity,
+        lineTotal: first.lineTotal + line.lineTotal,
+        wasRepriced: first.wasRepriced,
+        mergeKey: key,
+      );
+    }
+    return merged;
+  }
 
   /// Printed struck through. A voided line stays on the slip because the
   /// kitchen made it and the customer watched it happen.
@@ -134,7 +176,7 @@ class ReceiptData {
       orderType: ticket.orderType,
       tableLabel: ticket.tableLabel,
       occurredAt: DateTime.now(),
-      lines: [
+      lines: ReceiptLine.consolidate([
         for (final line in ticket.lines)
           ReceiptLine(
             name: line.product.nameEn,
@@ -142,8 +184,14 @@ class ReceiptData {
             lineTotal: line.lineTotal,
             isVoided: line.isVoided,
             wasRepriced: line.isRepriced,
+            mergeKey:
+                line.isVoided ||
+                    ticket.lineDiscounts.any((d) => d.lineKey == line.key)
+                ? null
+                : '${line.key}|${line.unitPrice.minor}|${line.note ?? ''}|'
+                      '${line.isRepriced}',
           ),
-      ],
+      ]),
       subtotal: totals.subtotal,
       discount: totals.discount,
       service: totals.service,
@@ -244,15 +292,20 @@ class ReceiptData {
       // week later that claimed to be a week old sale from today would be a
       // forgery the till produced on request.
       occurredAt: order.occurredAt,
-      lines: [
+      lines: ReceiptLine.consolidate([
         for (final line in detail.lines)
           ReceiptLine(
             name: line.name,
             quantity: line.quantity,
             lineTotal: line.lineTotal,
             isVoided: line.isVoided,
+            mergeKey:
+                line.isVoided ||
+                    detail.discounts.any((d) => d.lineKey == line.lineKey)
+                ? null
+                : '${line.lineKey}|${line.unitPrice.minor}|${line.note ?? ''}',
           ),
-      ],
+      ]),
       subtotal: order.subtotal,
       discount: order.discount,
       service: order.service,
