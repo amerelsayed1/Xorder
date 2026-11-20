@@ -410,29 +410,43 @@ void main() {
     expect(find.byType(MenuBar), findsNothing);
   }, variant: desktop);
 
-  testWidgets('the theme item names the theme the next tap would give', (
-    tester,
-  ) async {
+  // XORD-040 (README XORDER-013): the theme is chosen in Settings › Appearance,
+  // which offers light, dark and system. A second, two-state row in this menu
+  // was redundant, so it is gone in either theme and either language.
+  for (final theme in [Brightness.dark, Brightness.light]) {
+    testWidgets('the Settings menu has no theme row when the till is '
+        '${theme.name}', (tester) async {
+      final container = await pumpApp(tester);
+      container.read(brightnessProvider.notifier).apply(theme);
+      await tester.pumpAndSettle();
+
+      await openSettings(tester);
+
+      expect(find.text('Switch to light'), findsNothing);
+      expect(find.text('Switch to dark'), findsNothing);
+      expect(find.byIcon(Icons.dark_mode_outlined), findsNothing);
+      expect(find.byIcon(Icons.light_mode_outlined), findsNothing);
+      // The rest of the menu is still there.
+      expect(find.text('Order history'), findsOneWidget);
+      expect(find.text('العربية'), findsOneWidget);
+    }, variant: desktop);
+  }
+
+  testWidgets('and none in Arabic either', (tester) async {
     final container = await pumpApp(tester);
-    // The first frame is dark — the state the menu used to freeze at.
     container.read(brightnessProvider.notifier).apply(Brightness.dark);
     await tester.pumpAndSettle();
-
     await openSettings(tester);
-    expect(find.text('Switch to light'), findsOneWidget);
-
-    // Tap it. The till is now light, and the menu has to say so the next time
-    // it is opened — this is the assertion the bug failed.
-    await tester.tap(find.text('Switch to light'));
+    await tester.tap(find.text('العربية'));
     await tester.pumpAndSettle();
 
-    await openSettings(tester);
-    expect(
-      find.text('Switch to dark'),
-      findsOneWidget,
-      reason: 'the till is showing light; offering light again is a lie',
-    );
-    expect(find.text('Switch to light'), findsNothing);
+    await openSettings(tester, label: 'الإعدادات');
+
+    expect(find.text(const ArStrings().switchToLight), findsNothing);
+    expect(find.text(const ArStrings().switchToDark), findsNothing);
+    expect(find.byIcon(Icons.dark_mode_outlined), findsNothing);
+    expect(find.byIcon(Icons.light_mode_outlined), findsNothing);
+    expect(find.text('English'), findsOneWidget);
   }, variant: desktop);
 
   testWidgets('and the language item flips with it, for the same reason', (
