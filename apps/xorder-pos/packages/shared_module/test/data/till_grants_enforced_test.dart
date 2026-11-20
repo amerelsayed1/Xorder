@@ -169,19 +169,19 @@ void main() {
     // The number is stamped by a trigger that runs AS THE TILL and bumps
     // `pos_order_day_counters`. A table with no grant for it works for the
     // superuser in every other suite and refuses at the counter.
-    final restaurant = (await db.query(
+    final business = (await db.query(
       pg.config,
-      "INSERT INTO pos_restaurants (slug, name) VALUES ('number-probe', 'Number') "
-      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      "INSERT INTO pos_businesses (slug, name) VALUES ('number-probe', 'Number') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_businesses.name '
       'RETURNING id',
     )).first[0]! as int;
     final branch = (await db.query(
       pg.config,
-      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "INSERT INTO pos_branches (business_id, code, name) "
       "VALUES (@r, 'NPR', 'Probe') "
-      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'ON CONFLICT (business_id, code) DO UPDATE SET name = pos_branches.name '
       'RETURNING id',
-      parameters: {'r': restaurant},
+      parameters: {'r': business},
     )).first[0]! as int;
     Future<void> sweep() async {
       await db.query(pg.config, 'DELETE FROM pos_orders WHERE branch_id = @b',
@@ -200,21 +200,21 @@ void main() {
       await sweep();
       await db.query(pg.config, 'DELETE FROM pos_branches WHERE id = @b',
           parameters: {'b': branch});
-      await db.query(pg.config, 'DELETE FROM pos_restaurants WHERE id = @r',
-          parameters: {'r': restaurant});
+      await db.query(pg.config, 'DELETE FROM pos_businesses WHERE id = @r',
+          parameters: {'r': business});
     });
     await db.query(
       pg.config,
-      'INSERT INTO pos_business_days (restaurant_id, branch_id, business_date, '
+      'INSERT INTO pos_business_days (business_id, branch_id, business_date, '
       "  opened_at) VALUES (@r, @b, '2026-09-10', now() - interval '1 hour')",
-      parameters: {'r': restaurant, 'b': branch},
+      parameters: {'r': business, 'b': branch},
     );
 
     final connection = await connect();
     addTearDown(connection.close);
     Future<int> sell() async => (await connection.execute(
       Sql.named(
-        'INSERT INTO pos_orders (client_transaction_id, restaurant_id, '
+        'INSERT INTO pos_orders (client_transaction_id, business_id, '
         '  branch_id, terminal_id, invoice_number, order_type, currency, '
         '  exponent, subtotal_minor, service_minor, vat_minor, total_minor, '
         '  occurred_at) '
@@ -222,7 +222,7 @@ void main() {
         "  'INV-' || gen_random_uuid()::text, 'takeaway', 'EGP', 2, 100, 0, 0, "
         '  100, now()) RETURNING day_order_number',
       ),
-      parameters: {'r': restaurant, 'b': branch},
+      parameters: {'r': business, 'b': branch},
     )).first[0]! as int;
 
     expect(await sell(), 1);
