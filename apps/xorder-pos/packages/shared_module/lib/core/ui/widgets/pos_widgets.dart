@@ -473,14 +473,27 @@ class PinPad extends StatelessWidget {
     final isBackspace = label == '⌫';
     return Material(
       color: isBackspace ? context.pos.shellRow : context.pos.shellCard,
-      child: InkWell(
-        onTap: () => isBackspace ? onBackspace() : onDigit(label),
-        child: Center(
-          child: Text(
-            label,
-            style: PosText.mono(
-              size: 21,
-              color: isBackspace ? context.pos.shellMuted : context.pos.shellText,
+      // A Builder, so `Focus.of` starts below the pad's own Focus: `context`
+      // here is the pad's, which sits above it.
+      child: Builder(
+        builder: (keyContext) => InkWell(
+          onTap: () {
+            // A tap on the glass must hand the keyboard to the pad as well.
+            // Otherwise focus stays wherever it was — the name box on the lock
+            // screen — and the cashier who taps one key and carries on typing
+            // finishes their PIN in the username field.
+            Focus.of(keyContext).requestFocus();
+            isBackspace ? onBackspace() : onDigit(label);
+          },
+          child: Center(
+            child: Text(
+              label,
+              style: PosText.mono(
+                size: 21,
+                color: isBackspace
+                    ? context.pos.shellMuted
+                    : context.pos.shellText,
+              ),
             ),
           ),
         ),
@@ -536,10 +549,17 @@ class UsernameField extends StatelessWidget {
     this.onChanged,
     this.autofocus = true,
     this.textAlign = TextAlign.center,
+    this.pinHint = false,
     super.key,
   });
 
   final TextEditingController controller;
+
+  /// Say, under the box, how to get from the name to the PIN. For the forms
+  /// whose next step is the PIN pad. A username can contain digits, so while
+  /// this box has the keyboard a typed digit cannot be told from a PIN digit:
+  /// Enter or Tab is the one handoff, and the hint is how anybody finds out.
+  final bool pinHint;
 
   /// Centred, as on the lock screen's PIN pad. A form that reads in the page's
   /// direction passes [TextAlign.start], which follows the locale (right in
@@ -577,6 +597,15 @@ class UsernameField extends StatelessWidget {
           hintStyle: PosText.mono(size: 16, color: context.pos.shellMuted),
         ),
       ),
+      if (pinHint) ...[
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          context.strings.pinTypeHint,
+          key: const Key('pin-type-hint'),
+          textAlign: TextAlign.center,
+          style: PosText.ui(size: 12, color: context.pos.shellMuted),
+        ),
+      ],
     ],
   );
 }

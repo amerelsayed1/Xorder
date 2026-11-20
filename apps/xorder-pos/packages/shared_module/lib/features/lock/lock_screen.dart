@@ -403,6 +403,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
               UsernameField(
                 controller: _username,
                 autofocus: !_prefilled,
+                pinHint: true,
                 onChanged: (_) => setState(() => _error = null),
                 onSubmitted: _pad.requestFocus,
               ),
