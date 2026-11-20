@@ -58,9 +58,13 @@ class WaiterCheckService
             ->orderBy('dining_area_id')->orderBy('label')->orderBy('id')
             ->get();
 
+        // A request can outlive its table (`table_id` is nullable, nulled when the
+        // table is deleted): skip those, `flip()` raises on a null and would fail
+        // the whole floor.
         $asked = BillRequest::query()
             ->whereIn('status', array_map(fn (BillRequestStatus $s) => $s->value,
                 array_filter(BillRequestStatus::cases(), fn (BillRequestStatus $s) => $s->isOpen())))
+            ->whereNotNull('table_id')
             ->pluck('table_id')->flip();
 
         $out = [];

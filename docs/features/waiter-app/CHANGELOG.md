@@ -11,3 +11,10 @@
 - The platform now serves wire v1 at `/api/pos/waiter/{slug}/v1/*` for the cloud flavor: hello, sign-in (registers the device), sign-out, menu, floor, check, ops/send. Migration `2026_11_09_000100` (additive). Dashboard list/revoke of waiter devices (API only; no Vue page yet).
 - **Contract amended:** the restaurant is the slug in the path (`https://xorder.io/api/pos/waiter/{slug}`), not a subdomain; the handheld's cloud client and sign-in field follow (`lib/state.dart`, `lib/mode.dart`, `sign_in_screen.dart`).
 - Build fix for the handheld: `resValues = true` in `android/app/build.gradle.kts`.
+
+## 2026-11-18 — cloud waiter floor no longer fails on a bill request with no table (xorder-cloud, uncommitted, not deployed)
+- Fix: `GET /api/pos/waiter/{slug}/v1/floor` returned HTTP 500 when any open bill request had a NULL `table_id` (for example after its table was deleted), so the waiter app showed "xorder.io could not do that" and no tables. Such requests are now ignored by the floor.
+- Deleting a table (single or bulk) now cancels its open bill requests instead of leaving a request that points at no table. Tables with orders are still not deletable.
+- No API shape change, no migration. Root-cause report: `docs/harness/investigations/waiter-cloud-floor-500-null-bill-request-table.md`.
+- Deleting a whole dining area (no orders) now also cancels its tables' open bill requests; the logic is shared as `BillRequest::cancelOpenForTables`.
+- Known gap: deleting a branch still orphans its tables' open bill requests (the waiter floor is protected; the dashboard bill board is not).

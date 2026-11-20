@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BillRequestStatus;
+use App\Models\BillRequest;
 use App\Models\Branch;
 use App\Models\DiningArea;
 use App\Models\DiningTable;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\TableVisit;
@@ -280,6 +283,94 @@ class TableTest extends TestCase
 
         $this->actingAs($this->admin)->deleteJson("/api/dashboard/tables/{$table->id}")
             ->assertStatus(409);
+    }
+
+    private function makeBill(DiningTable $table, BillRequestStatus $status): BillRequest
+    {
+        $bill = new BillRequest([
+            'table_id' => $table->id, 'public_token' => BillRequest::generateToken(),
+            'status' => $status, 'requested_at' => now(),
+        ]);
+        $bill->restaurant_id = $table->restaurant_id;
+        $bill->save();
+
+        return $bill;
+    }
+
+    private function billAlert(BillRequest $bill): Notification
+    {
+        $n = new Notification([
+            'type' => 'bill_request.created', 'title' => 'Bill request', 'body' => 'Table wants the bill',
+            'data' => ['bill_request_id' => (string) $bill->id, 'url' => '/admin/requests'],
+        ]);
+        $n->restaurant_id = $bill->restaurant_id;
+        $n->save();
+
+        return $n;
+    }
+
+    public function test_deleting_a_table_cancels_its_open_bill_requests(): void
+    {
+        $table = $this->makeTable('B1');
+        $open = [
+            $this->makeBill($table, BillRequestStatus::REQUESTED),
+            $this->makeBill($table, BillRequestStatus::SEEN),
+            $this->makeBill($table, BillRequestStatus::IN_PROGRESS),
+        ];
+        $done = $this->makeBill($table, BillRequestStatus::COMPLETED);
+        $alert = $this->billAlert($open[0]);
+
+        // Another restaurant's open request is untouched.
+        $other = Restaurant::factory()->create();
+        $otherTable = new DiningTable(['dining_area_id' => $this->area->id, 'label' => 'X', 'public_token' => DiningTable::generateToken()]);
+        $otherTable->restaurant_id = $other->id;
+        $otherTable->branch_id = $this->branch->id;
+        $otherTable->save();
+        $theirs = $this->makeBill($otherTable, BillRequestStatus::REQUESTED);
+
+        $this->actingAs($this->admin)->deleteJson("/api/dashboard/tables/{$table->id}")->assertOk();
+
+        $this->assertNull(DiningTable::withoutGlobalScopes()->find($table->id));
+        foreach ($open as $bill) {
+            $fresh = BillRequest::withoutGlobalScopes()->find($bill->id);
+            $this->assertSame(BillRequestStatus::CANCELLED, $fresh->status);
+            $this->assertNotNull($fresh->cancelled_at);
+        }
+        $this->assertSame(BillRequestStatus::COMPLETED, BillRequest::withoutGlobalScopes()->find($done->id)->status);
+        $this->assertNotNull($alert->fresh()->read_at);
+        $this->assertSame(BillRequestStatus::REQUESTED, BillRequest::withoutGlobalScopes()->find($theirs->id)->status);
+    }
+
+    public function test_bulk_delete_cancels_open_bill_requests_and_spares_tables_with_orders(): void
+    {
+        $free = $this->makeTable('B2');
+        $busy = $this->makeTable('B3');
+        $order = new Order(['status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP', 'table_id' => $busy->id]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+        $freeBill = $this->makeBill($free, BillRequestStatus::REQUESTED);
+        $busyBill = $this->makeBill($busy, BillRequestStatus::REQUESTED);
+
+        $this->actingAs($this->admin)->deleteJson('/api/dashboard/tables/bulk', ['ids' => [$free->id, $busy->id]])
+            ->assertOk()->assertJsonPath('deleted', 1)->assertJsonPath('skipped', 1);
+
+        $this->assertSame(BillRequestStatus::CANCELLED, BillRequest::withoutGlobalScopes()->find($freeBill->id)->status);
+        // The table that is kept keeps its live request.
+        $this->assertSame(BillRequestStatus::REQUESTED, BillRequest::withoutGlobalScopes()->find($busyBill->id)->status);
+        $this->assertNotNull(DiningTable::withoutGlobalScopes()->find($busy->id));
+    }
+
+    public function test_a_table_with_orders_that_cannot_be_deleted_keeps_its_open_bill_request(): void
+    {
+        $table = $this->makeTable('B4');
+        $order = new Order(['status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP', 'table_id' => $table->id]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+        $bill = $this->makeBill($table, BillRequestStatus::REQUESTED);
+
+        $this->actingAs($this->admin)->deleteJson("/api/dashboard/tables/{$table->id}")->assertStatus(409);
+
+        $this->assertSame(BillRequestStatus::REQUESTED, BillRequest::withoutGlobalScopes()->find($bill->id)->status);
     }
 
     public function test_live_board_reflects_occupancy_and_flags_new_orders(): void

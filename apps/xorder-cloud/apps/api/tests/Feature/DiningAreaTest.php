@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BillRequestStatus;
+use App\Models\BillRequest;
 use App\Models\Branch;
 use App\Models\DiningArea;
+use App\Models\DiningTable;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
@@ -105,6 +109,80 @@ class DiningAreaTest extends TestCase
             ->assertStatus(409);
 
         $this->assertDatabaseHas('dining_areas', ['id' => $area->id]);
+    }
+
+    private function makeTableIn(DiningArea $area, string $label): DiningTable
+    {
+        $t = new DiningTable([
+            'dining_area_id' => $area->id, 'label' => $label,
+            'public_token' => DiningTable::generateToken(), 'qr_generated_at' => now(),
+        ]);
+        $t->restaurant_id = $area->restaurant_id;
+        $t->branch_id = $area->branch_id;
+        $t->save();
+
+        return $t;
+    }
+
+    private function makeBill(DiningTable $table, BillRequestStatus $status): BillRequest
+    {
+        $bill = new BillRequest([
+            'table_id' => $table->id, 'public_token' => BillRequest::generateToken(),
+            'status' => $status, 'requested_at' => now(),
+        ]);
+        $bill->restaurant_id = $table->restaurant_id;
+        $bill->save();
+
+        return $bill;
+    }
+
+    public function test_deleting_an_area_cancels_the_open_bill_requests_of_its_tables(): void
+    {
+        $this->enableTables();
+        $area = $this->makeArea();
+        $keep = $this->makeArea();
+        [$a, $b] = [$this->makeTableIn($area, 'A1'), $this->makeTableIn($area, 'A2')];
+        $elsewhere = $this->makeTableIn($keep, 'K1');
+
+        $openA = $this->makeBill($a, BillRequestStatus::REQUESTED);
+        $openB = $this->makeBill($b, BillRequestStatus::IN_PROGRESS);
+        $done = $this->makeBill($a, BillRequestStatus::COMPLETED);
+        $kept = $this->makeBill($elsewhere, BillRequestStatus::REQUESTED);
+
+        $alert = new Notification([
+            'type' => 'bill_request.created', 'title' => 'Bill request', 'body' => 'Table wants the bill',
+            'data' => ['bill_request_id' => (string) $openA->id, 'url' => '/admin/requests'],
+        ]);
+        $alert->restaurant_id = $this->restaurant->id;
+        $alert->save();
+
+        $this->actingAs($this->admin)->deleteJson("/api/dashboard/dining-areas/{$area->id}")->assertOk();
+
+        $this->assertDatabaseMissing('dining_areas', ['id' => $area->id]);
+        foreach ([$openA, $openB] as $bill) {
+            $fresh = BillRequest::withoutGlobalScopes()->find($bill->id);
+            $this->assertSame(BillRequestStatus::CANCELLED, $fresh->status);
+            $this->assertNotNull($fresh->cancelled_at);
+        }
+        $this->assertSame(BillRequestStatus::COMPLETED, BillRequest::withoutGlobalScopes()->find($done->id)->status);
+        $this->assertNotNull($alert->fresh()->read_at);
+        // A table in another area keeps its live request.
+        $this->assertSame(BillRequestStatus::REQUESTED, BillRequest::withoutGlobalScopes()->find($kept->id)->status);
+    }
+
+    public function test_an_area_with_history_that_cannot_be_deleted_keeps_its_open_bill_requests(): void
+    {
+        $this->enableTables();
+        $area = $this->makeArea();
+        $bill = $this->makeBill($this->makeTableIn($area, 'H1'), BillRequestStatus::REQUESTED);
+
+        $order = new Order(['status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP', 'dining_area_id' => $area->id]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+
+        $this->actingAs($this->admin)->deleteJson("/api/dashboard/dining-areas/{$area->id}")->assertStatus(409);
+
+        $this->assertSame(BillRequestStatus::REQUESTED, BillRequest::withoutGlobalScopes()->find($bill->id)->status);
     }
 
     private function makeArea(): DiningArea

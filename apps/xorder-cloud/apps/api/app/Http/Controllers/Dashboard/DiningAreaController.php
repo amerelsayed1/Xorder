@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\StoreDiningAreaRequest;
 use App\Http\Requests\Dashboard\UpdateDiningAreaRequest;
 use App\Http\Resources\DiningAreaResource;
+use App\Models\BillRequest;
 use App\Models\DiningArea;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DiningAreaController extends Controller
 {
@@ -69,7 +71,12 @@ class DiningAreaController extends Controller
             return response()->json(['message' => __('xorder.messages.area_has_history')], 409);
         }
 
-        $area->delete();
+        // Deleting the area cascades to its tables, which would orphan their open
+        // bill requests; cancel them first (see BillRequest::cancelOpenForTables).
+        DB::transaction(function () use ($area) {
+            BillRequest::cancelOpenForTables($area->tables()->pluck('id')->all());
+            $area->delete();
+        });
 
         return response()->json(['message' => __('xorder.messages.area_deleted')]);
     }

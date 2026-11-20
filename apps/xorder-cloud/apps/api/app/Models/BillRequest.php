@@ -58,6 +58,48 @@ class BillRequest extends Model
         return $this->status->isOpen();
     }
 
+    /**
+     * Cancel the open "ask for the bill / call the waiter" requests of these
+     * tables. Call it before deleting the tables (or an area / branch that
+     * cascades to them): the foreign key would otherwise null their `table_id`
+     * and leave a card on the live board that points at nothing.
+     *
+     * It cancels the way the dashboard does when staff cancel one (status,
+     * timestamp, unread bell alert marked read). The tenant scope limits it to
+     * the caller's own restaurant.
+     *
+     * @param  array<int,int>  $tableIds
+     */
+    public static function cancelOpenForTables(array $tableIds): void
+    {
+        if ($tableIds === []) {
+            return;
+        }
+
+        $ids = static::query()
+            ->whereIn('table_id', $tableIds)
+            ->whereIn('status', [
+                BillRequestStatus::REQUESTED->value,
+                BillRequestStatus::SEEN->value,
+                BillRequestStatus::IN_PROGRESS->value,
+            ])
+            ->pluck('id')->all();
+
+        if ($ids === []) {
+            return;
+        }
+
+        // Cancel exactly the rows read above, so the alert update below matches them.
+        static::query()->whereIn('id', $ids)
+            ->update(['status' => BillRequestStatus::CANCELLED->value, 'cancelled_at' => now()]);
+
+        Notification::query()
+            ->where('type', 'bill_request.created')
+            ->whereIn('data->bill_request_id', array_map('strval', $ids))
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+    }
+
     public function table(): BelongsTo
     {
         return $this->belongsTo(DiningTable::class, 'table_id');

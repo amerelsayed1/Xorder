@@ -38,3 +38,21 @@ Environment: macOS, PHP CLI, SQLite `:memory:`, Flutter on macOS. Nothing run ag
 Covered by `WaiterWireTest`: hello/unknown slug/feature gate; first sign-in registers and returns the token once (stored hashed); one error for wrong PIN and unknown user; lockout after 5; no `pos.operate`; no PIN set; device and session depth; revoked device; 12 h idle; sign-out; **tenant boundary** (tokens, tables and products of another restaurant, dashboard list and revoke); menu prices; floor states; server-side pricing ignoring client prices; merge; qty/note/guests/remove; stale version 409 with no change; all-or-none batch; unavailable product and bad quantity; unknown op and empty batch; send creates the round, a second round appends to the same order, a repeated send is never a second round; sent lines not editable and keep their price; `PosPin::verify`.
 
 Not tested / listed for a person: real concurrency on PostgreSQL (two phones, `lockForUpdate`); a real handheld against a deployed server; the push on `send` (best-effort, after the response); a restaurant with variants, required option groups or auto-applied groups (only plain products are in the fixtures); tax and service rules (the test branch has none); the Arabic strings in the dashboard error.
+
+## 2026-11-18 — floor 500 fix, stages 1 and 2
+Environment: `apps/xorder-cloud/apps/api`, SQLite `:memory:`, throwaway `APP_KEY`/`JWT_SECRET` env vars.
+| Command | Result |
+|---|---|
+| throwaway repro in the scratchpad (before the fix) | open request with NULL `table_id` and "table deleted" cases: HTTP 500, `array_flip(): Can only flip string and integer values` at `WaiterCheckService.php:64`; 3 control cases 200 |
+| `php artisan test --filter 'WaiterWireTest\|TableTest'` | 76 passed, 378 assertions |
+| same with the S1 line temporarily removed (`WaiterWireTest`) | 35 tests, 33 passed, **2 failed**: `test_an_open_bill_request_with_no_table_does_not_break_the_floor`, `test_the_floor_loads_after_a_table_with_an_open_bill_request_is_deleted` (fix restored afterwards) |
+| `php artisan test` (whole cloud suite, final code) | 1344 passed, 7223 assertions, 0 failed |
+Independent review (`code-reviewer`, read-only): no blockers; found the dining-area cascade gap (recorded) and a non-atomic id read (fixed: cancel `whereIn('id', $ids)`).
+Stage 2b (dining-area delete, `BillRequest::cancelOpenForTables` shared with the table delete):
+| Command | Result |
+|---|---|
+| `php artisan test --filter 'DiningAreaTest\|TableTest\|WaiterWireTest\|BillRequestTest'` | 96 passed, 449 assertions |
+| `DiningAreaTest` with the area change temporarily removed | 8 tests, 7 passed, **1 failed**: `test_deleting_an_area_cancels_the_open_bill_requests_of_its_tables` (change restored afterwards) |
+| `php artisan test` (whole cloud suite, final code) | 1346 passed, 7234 assertions, 0 failed |
+| `php artisan test` re-run on the commit base (`origin/main` `8d5a85b9` + this change; the 1346 above was on a branch that also carried the guest-paging commit) | **1329 passed, 6993 assertions, 0 failed** |
+Not tested: PostgreSQL, a real handheld against a deployed server (the phone retest after deploy is for a person), rollback of a failed delete, branch delete (known gap).

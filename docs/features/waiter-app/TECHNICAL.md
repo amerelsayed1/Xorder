@@ -228,3 +228,54 @@ Plan §12 with these decisions (owner chose "use path" for Q1; the rest were tak
 - **Not enforced:** refusing cloud sign-in for a restaurant that has the `pos` feature (the plan's risk mitigation); it would block testing on a restaurant that has both.
 - **Deviation from the plan:** the Vue page for devices (C5) was not built; only the API.
 - Known limitations: the floor prices every open table on each read (one pricing run per open table); sent lines of a QR order have phone-written prices and are shown at those prices; no audit-log entry for device registration or revocation; no plan/licence limit on waiter devices (Q6).
+
+## 14. Plan — fix: the cloud floor returns 500 when an open bill request has no table (2026-11-18, **not approved, nothing built**)
+
+Source: `docs/harness/investigations/waiter-cloud-floor-500-null-bill-request-table.md` (mechanism confirmed by a throwaway test; whether the production demo tenant holds such a row is **unproven**). Verified against xorder-cloud `9aec07d4` (branch `feat/guest-paging-slip-number`, working tree clean for these paths).
+
+### 14.1 What the code says (re-checked on the current tree)
+- `app/Services/WaiterCheckService.php:61-64`: `BillRequest::query()->whereIn('status', open)->pluck('table_id')->flip()`. `bill_requests.table_id` is nullable with `nullOnDelete` (`2026_07_20_000200_create_bill_requests_table.php:16`); `Collection::flip()` raises an `E_WARNING` on a null, which Laravel turns into `ErrorException` → HTTP 500 `{"message":"Server Error"}`.
+- `DiningTable` has no `SoftDeletes`; `Dashboard\TableController::destroy` (line 301) and `bulkDestroy` (line 317) refuse only a table with **orders**, so a table whose only history is a bill request can be deleted, which nulls that request's `table_id`.
+- Not affected: `TableController.php:106` (same shape, but `whereIn('table_id', $tableIds)` excludes null).
+
+### 14.2 Acceptance criteria (proposed)
+- **AC-F1** `GET /api/pos/waiter/{slug}/v1/floor` answers 200 when the tenant has an open (REQUESTED, SEEN, IN_PROGRESS) bill request with `table_id` NULL; no table is marked `bill_asked` because of it.
+- **AC-F2** It answers 200 after a table that had an open bill request was deleted.
+- **AC-F3** A table that has an open bill request still reports `state: bill_asked` (no test covers this today).
+- **AC-F4** A closed (COMPLETED/CANCELLED) request, and another tenant's open request, never mark a table or break the call. The response shape is unchanged.
+
+### 14.3 Reuse
+`BillRequestStatus::isOpen()`, the existing `WaiterWireTest` seeding helpers (`seedRestaurant`, `signIn`, `headers`), `BillRequest` model (`BelongsToRestaurant` scope).
+
+### 14.4 Impact
+One cloud file. No schema, no migration, no contract or response-shape change, no POS change (the LAN flavor is the Dart `server.dart`, a separate implementation, not touched). Tenant scoping and permissions unchanged. Cloud deploys independently; no rollout order needed.
+
+### 14.5 Domain lens
+Helps restaurants with tables and an "ask for the bill / call the waiter" button, where the floor setup is edited while the tenant is live (tables renamed, deleted and re-created). Cafés, food trucks and cloud kitchens without tables never reach this screen and are neither helped nor hurt.
+
+### 14.6 Stages
+| Stage | Change | Tests that prove it | Rollback |
+|---|---|---|---|
+| **S1 the fix** | `WaiterCheckService.php:61-64`: add `->whereNotNull('table_id')` before `->pluck('table_id')->flip()` | In `tests/Feature/Pos/WaiterWireTest.php`: AC-F1 (null `table_id`), AC-F2 (delete table, then floor), AC-F3 (`bill_asked`), AC-F4 (closed request with null table; second tenant's open request). Run `--filter WaiterWireTest`, `WaiterShiftTest`, then the full suite | revert the one line |
+| **S2 optional, needs a product decision, not part of S1** | When a table is deleted (`destroy`, `bulkDestroy`), cancel or detach its open bill requests so an orphan does not linger on the dashboard bill board | dashboard feature test: delete a table with an open request; rules unchanged for tables with orders; cross-tenant 404 | revert |
+| ~~S3 app error detail~~ | Not planned: the floor screen already re-polls on a timer and keeps the last floor on a failed read (`floor_screen.dart:47-63`); a retry button adds little | — | — |
+
+### 14.7 Verification commands
+`cd apps/xorder-cloud/apps/api && php artisan test --filter WaiterWireTest`, `--filter WaiterShiftTest`, then `php artisan test` (needs `APP_KEY` and `JWT_SECRET` in the environment). SQLite `:memory:` only; `whereNotNull` is portable, no PostgreSQL-specific behavior is involved (stated, not exercised).
+
+### 14.8 Approvals needed
+- Go on S1 (this plan).
+- S2 only if the owner wants orphaned requests cancelled on table delete (behavior change: what happens to the guest's pending request).
+- Reaching `xorder-cloud` `main` auto-deploys to production: **no commit, push or merge** without explicit approval, and `/release-check` first. After deploy the user retries the Tables screen on the phone.
+
+### 14.9 Open questions
+- Is the demo tenant really affected? Confirm by closing any open bill request that shows no table in the dashboard (it should then load); nothing was read from production.
+- S2: cancel, detach or leave the open request when its table is deleted?
+- The `waiter-app` row in `docs/FEATURE_INVENTORY.md` still says "no cloud routes" (stale: POS-BE-033 routes exist); to be corrected by `/project-documentation update waiter-app` after the build.
+
+## 15. As built — floor 500 fix, stages 1 and 2 (2026-11-18, uncommitted, xorder-cloud `9aec07d4` + working tree, not deployed)
+- **S1** `app/Services/WaiterCheckService.php` `floor()`: the "asked for the bill" query adds `->whereNotNull('table_id')` before `pluck('table_id')->flip()`. Response shape and contract unchanged.
+- **S2** `app/Http/Controllers/Dashboard/TableController.php`: `destroy` and `bulkDestroy` now run `cancelOpenBillRequests()` and the delete in one `DB::transaction`. Open (REQUESTED, SEEN, IN_PROGRESS) requests of the table become CANCELLED with `cancelled_at`, and their unread `bill_request.created` alerts are marked read, exactly as `BillRequestController::updateStatus` does. A table with orders is still refused (409) / skipped and keeps its request. Decision taken (owner said "add stage 2"; the plan left cancel-vs-detach open): **cancel**, because it reuses the existing lifecycle the guest already sees.
+- **S2b (added after review, owner approved):** deleting a whole dining area with no orders (`DiningAreaController::destroy`) cascades its tables (`dining_tables.dining_area_id` cascadeOnDelete) and used to null their bill requests too. The cancel logic moved to `BillRequest::cancelOpenForTables(array $tableIds)` (model), shared by `TableController::destroy`/`bulkDestroy` and `DiningAreaController::destroy` (cancel + delete in one transaction). An area with orders is still refused (409) and keeps its requests.
+- **Known gap, still open:** deleting a **branch** (`BranchController::destroy`, line 118; it checks purchasing and financial accounts, not tables or bill requests) cascades areas and tables the same way and also nulls `bill_requests.branch_id`, so open requests are orphaned. Read from the schema and controller, not reproduced by a test. The waiter floor is protected by S1; the dashboard bill board is not. Follow-up: call `BillRequest::cancelOpenForTables` with the branch's table ids before the delete.
+- Tests: `tests/Feature/Pos/WaiterWireTest.php` (4 new), `tests/Feature/TableTest.php` (3 new), `tests/Feature/DiningAreaTest.php` (2 new). See TEST_REPORT.

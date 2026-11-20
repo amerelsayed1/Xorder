@@ -11,3 +11,17 @@
 | `apps/xorder_pos_waiter/test/package_boundaries_test.dart` | nothing under the handheld's `lib/` imports the till or either till app |
 
 Not covered (needs a person or a device): real Android/iOS phones and tablets, Arabic layout on small screens, restaurant Wi-Fi, the till's Settings › Waiter devices dialog by eye.
+
+## Floor 500 fix (2026-11-18)
+| Criterion | Test |
+|---|---|
+| AC-F1 open bill request with NULL table does not break the floor | `WaiterWireTest::test_an_open_bill_request_with_no_table_does_not_break_the_floor` |
+| AC-F2 floor loads after a table with an open request is deleted | `WaiterWireTest::test_the_floor_loads_after_a_table_with_an_open_bill_request_is_deleted` |
+| AC-F3 open request still marks `bill_asked` | `WaiterWireTest::test_a_table_with_an_open_bill_request_is_marked_bill_asked` |
+| AC-F4 closed / other tenant's requests never mark a table | `WaiterWireTest::test_closed_and_other_restaurants_bill_requests_do_not_mark_a_table` |
+| S2 delete cancels open requests, read alerts, other tenant untouched | `TableTest::test_deleting_a_table_cancels_its_open_bill_requests` |
+| S2 bulk delete, table with orders spared | `TableTest::test_bulk_delete_cancels_open_bill_requests_and_spares_tables_with_orders` |
+| S2 refused delete keeps the request | `TableTest::test_a_table_with_orders_that_cannot_be_deleted_keeps_its_open_bill_request` |
+| S2b area delete cancels its tables' open requests, other areas untouched | `DiningAreaTest::test_deleting_an_area_cancels_the_open_bill_requests_of_its_tables` |
+| S2b area with orders refused keeps the request | `DiningAreaTest::test_an_area_with_history_that_cannot_be_deleted_keeps_its_open_bill_requests` |
+Gaps: no test that a failing delete rolls the cancellation back; branch delete is not covered (known gap, TECHNICAL §15); PostgreSQL not exercised (JSON `data->bill_request_id` comparison read, not run).
