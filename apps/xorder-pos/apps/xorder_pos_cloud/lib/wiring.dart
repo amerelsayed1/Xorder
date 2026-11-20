@@ -16,11 +16,13 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_module/app/bootstrap_seeding.dart';
+import 'package:shared_module/app/password_sign_in.dart';
 import 'package:shared_module/app/branch_sales_providers.dart';
 import 'package:shared_module/app/providers.dart';
 import 'package:shared_module/app/sales_sync.dart';
 import 'package:shared_module/core/config/deployment.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
+import 'package:shared_module/data/cloud/cloud_api.dart';
 import 'package:shared_module/features/licensing/data/file_license_store.dart';
 import 'package:shared_module/data/unconfigured/unconfigured_repositories.dart';
 import 'package:shared_module/domain/models/branch_sales_source.dart';
@@ -33,6 +35,7 @@ import 'data/cloud/bootstrap_bundle.dart';
 import 'data/local/cloud_datastore.dart';
 import 'data/cloud/bootstrap_seeder.dart';
 import 'data/cloud/branch_sales_api.dart';
+import 'data/cloud/cloud_password_check.dart';
 import 'data/cloud/cloud_provisioning_repository.dart';
 import 'data/cloud/cloud_sync.dart';
 import 'features/cloud_back_office_screen.dart';
@@ -41,6 +44,17 @@ import 'features/cloud_back_office_screen.dart';
 List<Override> cloudOverrides() => [
   cloudSyncProvider.overrideWith(_cloudSync),
   provisioningRepositoryProvider.overrideWith(_provisioning),
+  // Daily sign-in by password, with the PIN kept for when the platform cannot
+  // be reached (tablet-cloud-onboarding, Stage 4).
+  platformPasswordCheckProvider.overrideWith(_passwordCheck),
+  // "Change business" destroys this till's data file and its key, which the
+  // hard reset keeps on purpose (tablet-cloud-onboarding, Stage 5).
+  changeBusinessWipeProvider.overrideWith(
+    (ref) => () async {
+      await ref.read(cloudDatabaseProvider).deleteFile();
+      await ref.read(cloudDataKeyStoreProvider).clear();
+    },
+  ),
   platformBranchSalesProvider.overrideWith(_platformBranchSales),
   bootstrapSeedingProvider.overrideWith(
     (ref) => _CloudBootstrapSeeding(ref),
@@ -73,6 +87,19 @@ List<Override> cloudOverrides() => [
   // extra desktop hangs off another's database, because there is none.
   deviceRoleProvider.overrideWith((ref) => TerminalRole.main),
 ];
+
+/// The platform's verdict on a typed password, for the lock screen. Null until
+/// the till knows its business and its address.
+PlatformPasswordCheck? _passwordCheck(Ref ref) {
+  final config = ref.watch(deploymentProvider);
+  final base = config.baseUrl;
+  final slug = config.tenantSlug;
+  if (base == null || base.isEmpty || slug == null || slug.isEmpty) return null;
+  return CloudPasswordCheck(
+    api: PosCloudApi(baseUrl: base),
+    tenantSlug: slug,
+  );
+}
 
 /// The background conversation with the platform: heartbeat, config-version
 /// refresh, and the outbox drain. Null when there is nothing to talk to or

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'android_keystore_secret_store.dart';
 import 'file_secret_store.dart';
 import 'mac_keychain_secret_store.dart';
 import 'pos_db_secret_store.dart';
@@ -62,6 +63,7 @@ abstract class SecretStore {
   }) => switch (platform ?? SecretPlatform.host) {
     SecretPlatform.windows => WindowsDpapiSecretStore(directory: directory),
     SecretPlatform.macos => MacKeychainSecretStore(),
+    SecretPlatform.android => AndroidKeystoreSecretStore(),
     SecretPlatform.development => DevelopmentFileSecretStore(
       directory: directory,
     ),
@@ -77,6 +79,10 @@ enum SecretPlatform {
   windows,
   macos,
 
+  /// An Android tablet (tablet-cloud-onboarding). Never the development file:
+  /// a tablet is a till somebody sells on.
+  android,
+
   /// Linux and anything else: a developer's machine or a test run. XOrder POS
   /// ships for Windows and macOS only, so no till lands here.
   development;
@@ -84,6 +90,7 @@ enum SecretPlatform {
   static SecretPlatform get host {
     if (Platform.isWindows) return SecretPlatform.windows;
     if (Platform.isMacOS) return SecretPlatform.macos;
+    if (Platform.isAndroid) return SecretPlatform.android;
     return SecretPlatform.development;
   }
 }
@@ -129,7 +136,7 @@ class SecretStoreUnavailable extends PosDbSecretStoreException {
   /// [PosDbSecretStoreException.describeCause], shared so the two cannot
   /// drift into one that quotes what the other names by type.
   static String describe(Object? failure) => switch (failure) {
-    KeychainStatus() || DpapiFailure() => '$failure',
+    KeychainStatus() || DpapiFailure() || AndroidSecretsFailure() => '$failure',
     _ => PosDbSecretStoreException.describeCause(failure),
   };
 }

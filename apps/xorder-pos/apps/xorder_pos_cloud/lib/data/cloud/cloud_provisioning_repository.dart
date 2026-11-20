@@ -335,19 +335,29 @@ class CloudProvisioningRepository implements ProvisioningRepository {
     }
     if (!_isOwner(login)) return _notOwner;
 
+    // Idempotency per POS-BE-007: a register that times out and retries must
+    // land on the same terminal row. One id per attempt-series, kept until
+    // the platform has answered (accepted or refused) — the server replays a
+    // known id instead of minting a second terminal. A fresh id on every call
+    // is what let a dropped reply spend two seats (tablet-cloud-onboarding).
+    final attempt = '$slug|$branchId|${terminalName.trim()}';
     final reply = await api.registerTerminal(
       jwt: jwt,
-      // Idempotency per POS-BE-007: a register that times out and retries must
-      // land on the same terminal row. Fresh per attempt-series, not per call.
-      clientTransactionId: _uuid.v4(),
+      clientTransactionId: _registrationIds.putIfAbsent(attempt, _uuid.v4),
       terminalName: terminalName.trim(),
       branchId: branchId,
       platform: _platformName,
       appVersion: posAppVersion,
       fingerprint: await fingerprint(),
     );
+    // Only a reply that never arrived keeps the id for the retry.
+    if (!reply.offline) _registrationIds.remove(attempt);
     return _finishClaim(reply);
   }
+
+  /// The `client_transaction_id` of a registration whose answer has not been
+  /// seen yet, by slug, branch and name.
+  static final _registrationIds = <String, String>{};
 
   Future<ClaimResult> _finishClaim(CloudReply reply) async {
     if (reply.offline) return _offline();

@@ -16,6 +16,7 @@ import 'package:shared_module/domain/models/ticket.dart';
 import 'package:shared_module/domain/repositories/admin_repositories.dart';
 import 'package:shared_module/domain/repositories/repositories.dart';
 import 'package:shared_module/features/sale/widgets/discount_sheet.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 
 /// The discount sheet — the first screen in this product where a cashier can
 /// change what a customer pays.
@@ -82,6 +83,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // The sign-in count is saved in the secret store; never the real one.
+          secretStoreProvider.overrideWithValue(InMemorySecretStore()),
           discountsRepositoryProvider.overrideWithValue(
             _Discounts(
               offered,

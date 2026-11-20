@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/password_sign_in.dart';
 import '../../app/providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
@@ -88,6 +89,16 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   final _username = TextEditingController();
 
+  /// The typed password, cleared the moment it has been sent — success or not.
+  /// Never read from anywhere but [_submitPassword].
+  final _password = TextEditingController();
+
+  /// Signing in by password rather than by PIN. Offered only where the app has
+  /// a platform to ask (the cloud app), and is then the default; the PIN is
+  /// always there, and is what works with no connection (tablet-cloud-onboarding, Stage 4).
+  bool _byPassword = false;
+  bool _checking = false;
+
   /// The pad's keyboard focus, so a tile — or Enter in the name field — can
   /// hand the keyboard straight to the digits.
   final _pad = FocusNode();
@@ -107,6 +118,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     super.initState();
     final remembered = ref.read(lastUsernameProvider);
     _prefilled = remembered != null;
+    // Daily sign-in is username + password wherever the platform can check
+    // one (decision Q1); the PIN stays one tap away and is the offline path.
+    _byPassword = ref.read(passwordSignInProvider) != null;
     if (remembered != null) _username.text = remembered;
 
     // Somebody is about to sign in with a PIN this till verifies from its
@@ -119,6 +133,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   void dispose() {
     _username.dispose();
+    _password.dispose();
     _pad.dispose();
     super.dispose();
   }
@@ -147,6 +162,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       // door is shut is not a guess at all — and a right PIN is not a way in.
       final limiter = ref.read(signInLimiterProvider);
       final username = _username.text;
+      await limiter.ready;
+      if (!mounted) return;
       if (limiter.lockedFor(username) case final wait?) {
         setState(() {
           _pin = '';
@@ -156,6 +173,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         });
         return;
       }
+
+      // Counted and saved before the PIN is compared, so ending the app
+      // between a guess and its answer does not make the guess free.
+      await limiter.reserve(username);
+      if (!mounted) return;
 
       // Name AND PIN. A PIN alone is four digits that get shared, watched over
       // a shoulder and reused, and `signIn` hands the till to whichever active
@@ -204,6 +226,72 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     }
   }
 
+  /// Password sign-in. The platform verifies the password; the till then signs
+  /// in that person from its own staff list (see [PasswordSignIn]). Counted
+  /// against the same limiter as wrong PINs, and answered in one message
+  /// whether the name or the password was wrong.
+  Future<void> _submitPassword() async {
+    final service = ref.read(passwordSignInProvider);
+    if (service == null || _checking) return;
+    final limiter = ref.read(signInLimiterProvider);
+    final username = _username.text;
+    final strings = context.strings;
+
+    await limiter.ready;
+    if (!mounted) return;
+    if (limiter.lockedFor(username) case final wait?) {
+      setState(() {
+        _password.clear();
+        _error = strings.signInLockedOut(AttemptLimiter.secondsToWait(wait));
+      });
+      return;
+    }
+
+    final typed = _password.text;
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
+    final PasswordSignInResult result;
+    try {
+      result = await service.signIn(username: username, password: typed);
+    } finally {
+      // Gone from the field whatever happened: it is never shown again.
+      _password.clear();
+    }
+    if (!mounted) return;
+    setState(() => _checking = false);
+
+    switch (result) {
+      case PasswordSignedIn(:final staff):
+        limiter.succeed(username);
+        ref.read(signedInStaffProvider.notifier).signIn(staff);
+        if (ref.read(shiftProvider).valueOrNull != null) {
+          unawaited(ref.read(ensureBusinessDayProvider)(staff));
+        }
+        widget.onUnlocked();
+      case PasswordRefused():
+        final failure = limiter.fail(username);
+        setState(() {
+          _error = switch (failure) {
+            AttemptRefused() => strings.wrongUsernameOrPassword,
+            AttemptLockedOut(:final wait) => strings.signInLockedOut(
+              AttemptLimiter.secondsToWait(wait),
+            ),
+          };
+        });
+      case PasswordAccountNotOnTill():
+        // The platform knows them and this till does not: ask for the list
+        // again, and say so rather than call the password wrong.
+        ref.read(cloudSyncProvider)?.nudge();
+        setState(() => _error = strings.passwordAccountNotOnTill);
+      case PasswordUnreachable():
+        setState(() => _error = strings.passwordNeedsConnection);
+      case PasswordThrottled():
+        setState(() => _error = strings.passwordTryAgainLater);
+    }
+  }
+
   void _backspace() {
     if (_pin.isEmpty) return;
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
@@ -238,7 +326,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
     return Scaffold(
       backgroundColor: context.pos.shell,
-      body: Center(
+      body: _scrollable(Center(
         child: SizedBox(
           width: PosSize.pinPad,
           child: Column(
@@ -319,18 +407,59 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 onSubmitted: _pad.requestFocus,
               ),
               const SizedBox(height: PosSpace.s24),
-              PinDots(length: _pin.length),
-              const SizedBox(height: PosSpace.s24),
-              // Takes the keyboard first only when the name is already in —
-              // a pad that grabbed it while the name field was empty would
-              // swallow every letter typed into it. Enter moves along, and so
-              // does a tap on a tile or a key.
-              PinPad(
-                focusNode: _pad,
-                onDigit: _push,
-                onBackspace: _backspace,
-                autofocus: _prefilled,
-              ),
+              if (_byPassword) ...[
+                MicroLabel(strings.password),
+                const SizedBox(height: PosSpace.sm),
+                TextField(
+                  key: const Key('lock-password'),
+                  controller: _password,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofocus: _prefilled,
+                  textAlign: TextAlign.center,
+                  textInputAction: TextInputAction.done,
+                  onChanged: (_) => setState(() => _error = null),
+                  onSubmitted: (_) => _submitPassword(),
+                ),
+                const SizedBox(height: PosSpace.s24),
+                PosButton(
+                  key: const Key('lock-password-submit'),
+                  label: strings.signIn,
+                  height: PosSize.secondaryAction,
+                  onPressed: _checking ? null : _submitPassword,
+                ),
+              ] else ...[
+                PinDots(length: _pin.length),
+                const SizedBox(height: PosSpace.s24),
+                // Takes the keyboard first only when the name is already in —
+                // a pad that grabbed it while the name field was empty would
+                // swallow every letter typed into it. Enter moves along, and so
+                // does a tap on a tile or a key.
+                PinPad(
+                  focusNode: _pad,
+                  onDigit: _push,
+                  onBackspace: _backspace,
+                  autofocus: _prefilled,
+                ),
+              ],
+              if (ref.watch(passwordSignInProvider) != null) ...[
+                const SizedBox(height: PosSpace.lg),
+                PosButton(
+                  key: const Key('lock-mode-toggle'),
+                  label: _byPassword
+                      ? strings.usePinInstead
+                      : strings.usePasswordInstead,
+                  foreground: context.pos.shellText,
+                  border: Border.fromBorderSide(context.pos.shellBorder),
+                  onPressed: () => setState(() {
+                    _byPassword = !_byPassword;
+                    _pin = '';
+                    _password.clear();
+                    _error = null;
+                  }),
+                ),
+              ],
               const SizedBox(height: PosSpace.lg),
               PosButton(
                 key: const Key('lock-back'),
@@ -342,9 +471,21 @@ class _LockScreenState extends ConsumerState<LockScreen> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
+
+  /// Centred when there is room, scrollable when there is not: a tablet held
+  /// at 600 px high, or with the keyboard up for the password, would otherwise
+  /// overflow and hide the keys or Sign in (tablet-cloud-onboarding, AC-10).
+  Widget _scrollable(Widget child) => LayoutBuilder(
+    builder: (context, box) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: box.maxHeight),
+        child: child,
+      ),
+    ),
+  );
 }
 
 /// One person who can take this till. Name large, username small — the name

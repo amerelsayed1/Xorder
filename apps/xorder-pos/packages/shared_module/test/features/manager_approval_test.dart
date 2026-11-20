@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_module/app/providers.dart';
+import 'package:xorder_pos_test_support/fakes.dart';
 import 'package:shared_module/core/l10n/app_strings.dart';
 import 'package:shared_module/core/ui/theme.dart';
 import 'package:shared_module/core/ui/tokens.dart';
@@ -77,6 +78,9 @@ void main() {
         overrides: [
           staffDirectoryRepositoryProvider.overrideWithValue(directory),
           signedInStaffProvider.overrideWith(_SignedIn.new),
+          // The sign-in count is saved in the secret store; a test must never
+          // reach the machine's real one (it would leave a lockout behind).
+          secretStoreProvider.overrideWithValue(InMemorySecretStore()),
         ],
         child: MaterialApp(
           locale: Locale(locale),

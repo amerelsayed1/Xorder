@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'attempt_store.dart';
+
 /// How many wrong PINs a door takes before it shuts, and for how long.
 ///
 /// **One rule, lifted out of Admin Mode.** Admin Mode's door had it — five
@@ -23,12 +28,21 @@
 /// PIN are refused with the same count and the same wait — a door that locked
 /// only real names would be a way of finding out which ones are real.
 ///
-/// **In memory, and lost on restart — on purpose for now.** Restarting the till
-/// is neither quiet nor quick, and it is the one way round this; ADR-006 asks
-/// for the count to be persisted in the database, which needs the per-till
-/// roles of Phase 1 to be worth anything (a till credential that can write its
-/// own lockout row can also delete it). Until then a file beside the config
-/// would be a second store to keep in step for no real gain.
+/// **Kept across restarts** (security audit F1). Given an [AttemptStore] the
+/// limiter saves its count after every change and [load]s it at start, so
+/// closing and reopening the till is no longer five fresh guesses. Until the
+/// load has finished, [lockedFor] answers with a short wait rather than "not
+/// locked": a door must not open for the few milliseconds it takes to read.
+/// Without a store it is in memory only, which is what tests use.
+///
+/// **Counted before the PIN is looked at.** [reserve] records a try and waits
+/// for it to be saved *before* the PIN is compared, so ending the app between
+/// a guess and its answer does not make the guess free. [succeed] and
+/// [release] give it back.
+///
+/// What this does not defend: moving the clock **forward** shortens a wait (a
+/// clock that goes back is caught on load), and somebody who can delete the
+/// store's contents can reset the count — they already own the machine.
 ///
 /// Pure Dart with an injectable clock, so the whole rule is unit-tested without
 /// waiting thirty seconds or building a widget.
@@ -39,8 +53,11 @@ class AttemptLimiter {
     this.terminalCeiling = defaultTerminalCeiling,
     this.firstLockout = defaultFirstLockout,
     this.longestLockout = defaultLongestLockout,
+    AttemptStore? store,
   }) : assert(maxFailures > 0 && terminalCeiling > 0),
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _store = store,
+       _loaded = store == null;
 
   /// Five wrong tries, then the door shuts. Enough that a manager mistyping
   /// under pressure is not shut out, few enough that a door is not a way to
@@ -72,14 +89,66 @@ class AttemptLimiter {
   final Duration longestLockout;
 
   final DateTime Function() _clock;
+  final AttemptStore? _store;
   final _keys = <String, _Count>{};
   final _terminal = _Count();
+
+  /// Keys with a [reserve]d try that has no answer yet.
+  final _pending = <String>{};
+
+  bool _loaded;
+  Future<void> _saving = Future.value();
+
+  /// Most names kept. A name nobody has still counts (so real and unknown
+  /// names look alike), which would let typed names grow the saved state
+  /// without end; the oldest unlocked ones are dropped past this.
+  static const maxKeys = 100;
+
+  /// Whether the saved count has been read. A limiter with no store is always
+  /// loaded.
+  bool get loaded => _loaded;
+
+  /// Read the saved count. Never throws: a store that cannot be asked starts
+  /// empty (the till could not sign anybody in without it anyway), and a saved
+  /// count that cannot be understood starts the terminal **locked** for the
+  /// first wait, because a damaged count is not a reason to open the door.
+  Future<void> load() => _loading ??= _load();
+
+  Future<void>? _loading;
+
+  /// Completes once the saved count has been read. The doors wait on this
+  /// before asking [lockedFor], so the first PIN after a start is not met with
+  /// "wait a moment".
+  Future<void> get ready => load();
+
+  Future<void> _load() async {
+    final store = _store;
+    if (store == null || _loaded) {
+      _loaded = true;
+      return;
+    }
+    try {
+      final raw = await store.read();
+      if (raw != null) _restore(raw);
+    } on Object {
+      // Cannot be asked, or cannot be understood: see above. A store that
+      // threw reading is treated as empty; a snapshot that failed to parse
+      // is handled inside [_restore].
+    } finally {
+      _loaded = true;
+    }
+  }
+
+  /// Completes when every change so far has been saved.
+  Future<void> get saved => _saving;
 
   /// How long [key] must still wait, or null when it may be tried now.
   ///
   /// Asked **before** the PIN is looked at, so a guess made while the door is
   /// shut is not a guess at all — not even a right one.
   Duration? lockedFor(String key) {
+    // Not read yet: shut for a moment rather than open without knowing.
+    if (!_loaded) return const Duration(seconds: 1);
     final now = _clock();
     final waits = [
       _terminal.remaining(now),
@@ -92,11 +161,18 @@ class AttemptLimiter {
   /// One more wrong try against [key].
   ///
   /// Synchronous, so two submits racing each other cannot both be the fourth.
+  ///
+  /// A try that was [reserve]d is already counted: this only reads off what
+  /// that came to.
   AttemptFailure fail(String key) {
     final now = _clock();
-    final count = _keys.putIfAbsent(_normalise(key), _Count.new);
-    count.miss(now, maxFailures, _lockoutFor);
-    _terminal.miss(now, terminalCeiling, _lockoutFor);
+    final name = _normalise(key);
+    final count = _keys.putIfAbsent(name, _Count.new);
+    if (!_pending.remove(name)) {
+      count.miss(now, maxFailures, _lockoutFor);
+      _terminal.miss(now, terminalCeiling, _lockoutFor);
+      _save();
+    }
 
     final wait = lockedFor(key);
     if (wait != null) return AttemptLockedOut(wait);
@@ -115,8 +191,90 @@ class AttemptLimiter {
   /// own, and signs in between guesses at colleagues is still held by each
   /// colleague's own count, which this does not touch.
   void succeed(String key) {
+    _pending.remove(_normalise(key));
     _keys.remove(_normalise(key));
     _terminal.clear();
+    _save();
+  }
+
+  /// Count a try against [key] **now** and wait until it is saved, before the
+  /// PIN is compared. Answer it with [succeed] (right), [fail] (wrong) or
+  /// [release] (nothing was checked). Ending the app in between leaves the try
+  /// counted, which is the point.
+  Future<void> reserve(String key) {
+    final name = _normalise(key);
+    // A second reserve for a name already waiting is the same try.
+    if (_pending.add(name)) {
+      final now = _clock();
+      _keys.putIfAbsent(name, _Count.new).miss(now, maxFailures, _lockoutFor);
+      _terminal.miss(now, terminalCeiling, _lockoutFor);
+    }
+    return _save();
+  }
+
+  /// Give a [reserve]d try back: nothing was checked, so nothing is counted
+  /// (the platform was unreachable, say).
+  void release(String key) {
+    final name = _normalise(key);
+    if (!_pending.remove(name)) return;
+    _keys[name]?.unmiss();
+    _terminal.unmiss();
+    _save();
+  }
+
+  Future<void> _save() {
+    final store = _store;
+    if (store == null) return Future.value();
+    _trim();
+    final snapshot = _snapshot();
+    // One write after another, in order; a failed write must not break the
+    // chain or the sign-in that asked.
+    return _saving = _saving
+        .then((_) => store.write(snapshot))
+        .catchError((Object _) {});
+  }
+
+  void _trim() {
+    if (_keys.length <= maxKeys) return;
+    final now = _clock();
+    for (final name in _keys.keys.toList()) {
+      if (_keys.length <= maxKeys) break;
+      if (_pending.contains(name)) continue;
+      if (_keys[name]!.remaining(now) == null) _keys.remove(name);
+    }
+  }
+
+  String _snapshot() => jsonEncode({
+    'v': 1,
+    'savedAt': _clock().millisecondsSinceEpoch,
+    'terminal': _terminal.toJson(),
+    'keys': {for (final e in _keys.entries) e.key: e.value.toJson()},
+  });
+
+  void _restore(String raw) {
+    final now = _clock();
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      // The clock went back since this was saved: lengthen what is left by the
+      // difference, so winding it back is not a way out.
+      final savedAt = DateTime.fromMillisecondsSinceEpoch(
+        json['savedAt'] as int,
+      );
+      final skew = savedAt.isAfter(now)
+          ? savedAt.difference(now)
+          : Duration.zero;
+      _terminal.restore(json['terminal'] as Map<String, dynamic>, skew);
+      for (final e in (json['keys'] as Map<String, dynamic>).entries) {
+        _keys[e.key] = _Count()
+          ..restore(e.value as Map<String, dynamic>, skew);
+      }
+    } on Object {
+      _keys.clear();
+      _terminal
+        ..clear()
+        ..lockouts = 1
+        ..lockedUntil = now.add(firstLockout);
+    }
   }
 
   /// Whole seconds, rounded up: "0 seconds" on a door that is still shut is a
@@ -177,9 +335,31 @@ class _Count {
     lockedUntil = now.add(lockoutFor(lockouts));
   }
 
+  /// Undo one [miss] that was never answered (a [release]). Only a count that
+  /// has not rolled into a lockout is given back; a lockout it caused is lifted
+  /// by the caller's next [succeed] or runs out as normal.
+  void unmiss() {
+    if (failures > 0) failures--;
+  }
+
   void clear() {
     failures = 0;
     lockouts = 0;
     lockedUntil = null;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'f': failures,
+    'l': lockouts,
+    if (lockedUntil != null) 'u': lockedUntil!.millisecondsSinceEpoch,
+  };
+
+  void restore(Map<String, dynamic> json, Duration skew) {
+    failures = json['f'] as int;
+    lockouts = json['l'] as int;
+    final until = json['u'] as int?;
+    lockedUntil = until == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(until).add(skew);
   }
 }
