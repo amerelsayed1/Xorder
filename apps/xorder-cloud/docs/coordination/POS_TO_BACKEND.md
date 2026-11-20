@@ -100,6 +100,7 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 | POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED (deferred) |
 | POS-BE-029 | Branch view on a cloud till (own branch, per-terminal) | MEDIUM | NO | PROPOSED |
 | POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | **READY** (platform half; till half built, not merged) |
+| POS-BE-033 | Incoming online orders and table requests on the till (`GET /api/pos/incoming`, accept/reject/handled) | HIGH | NO | PROPOSED (cloud half built, not deployed) |
 | **POS-BE-031** | **Online, dashboard-managed licence check (`/license/check`)** | **HIGH** | **NO** | APPROVED (2026-10-07) |
 | *Amd 006* | *Bilingual name snapshot on the wire (`name_ar_snapshot`)* | MEDIUM | NO | PROPOSED (see revision) |
 

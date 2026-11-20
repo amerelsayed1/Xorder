@@ -68,6 +68,7 @@ use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
 use App\Http\Controllers\Pos\CustomerController as PosCustomerController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
+use App\Http\Controllers\Pos\PosIncomingController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
 use App\Http\Controllers\Pos\RefundController as PosRefundController;
 use App\Http\Controllers\Pos\ShiftController as PosShiftController;
@@ -898,6 +899,12 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
     Route::post('pos/shifts/{shift}/close', [PosShiftController::class, 'close']);
     Route::get('pos/shifts/{shift}/report', [PosShiftController::class, 'report']);
     Route::post('pos/cash-movements', [PosShiftController::class, 'cashMovement']);
+
+    // Online orders and table requests of this till's branch (POS-BE-033).
+    Route::get('pos/incoming', [PosIncomingController::class, 'index']);
+    Route::post('pos/online-orders/{order}/accept', [PosIncomingController::class, 'accept'])->whereNumber('order');
+    Route::post('pos/online-orders/{order}/reject', [PosIncomingController::class, 'reject'])->whereNumber('order');
+    Route::post('pos/table-requests/{billRequest}/handled', [PosIncomingController::class, 'handled'])->whereNumber('billRequest');
 });
 
 /*
